@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #05070d;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+
+    canvas {
+      display: block !important;
+      position: absolute !important;
+      right: auto !important;
+      bottom: auto !important;
+      margin: 0 !important;
+      max-width: none !important;
+      max-height: none !important;
+    }
+
+    #boot {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      z-index: 2;
+      background: #05070d;
+      color: #9aa4b2;
+      font: 13px system-ui, sans-serif;
+      letter-spacing: .08em;
+    }
+  </style>
+
+  <script>
+    (() => {
+      window.__editKiroRuntimeHasError = false;
+      const reportError = (message, line = 0) => {
+        window.__editKiroRuntimeHasError = true;
+        document.getElementById('boot')?.remove();
+        try {
+          const text = String(message);
+          const lineNumber = Number(line) || 0;
+
+          if (lineNumber > 0 && window.Android?.onRuntimeError) {
+            window.Android.onRuntimeError(text, lineNumber);
+          } else {
+            window.Android?.onError(text);
+          }
+        } catch (_) {}
+      };
+      window.__editKiroReportError = reportError;
+
+      window.onerror = (message, source, line) => {
+        const userLine =
+          String(source || '').includes('sketch.js')
+            ? line
+            : 0;
+
+        reportError(message, userLine);
+        return true;
+      };
+
+      window.addEventListener('unhandledrejection', event => {
+        reportError(event.reason?.message || event.reason || 'Promise error');
+      });
+    })();
+  </script>
+
+  <script src="p5.min.js" onerror="window.__editKiroReportError('p5.js を読み込めませんでした')"></script>
+
+  <script>
+    (() => {
+      try {
+        const code = window.Android?.getSketchCode?.() || '';
+        const script = document.createElement('script');
+        script.id = 'user-sketch';
+        script.textContent = `${code}\n//# sourceURL=sketch.js`;
+        document.head.appendChild(script);
+      } catch (error) {
+        window.__editKiroReportError(error?.message || String(error));
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div id="boot">P5.JS / LOADING</div>
+
+  <script>
+    (() => {
+    let lastWidth = 0;
+    let lastHeight = 0;
+    let resizeFrame = 0;
+    let pendingForcedFit = false;
+    let sketchReady = false;
+    let recordingSession = null;
+    let canvasSizeObserver = null;
+    let orientationBase = null;
+
+    function resizeForOrientation(width, height) {
+      if (window.width === width && window.height === height) return;
+      if (typeof resizeCanvas !== 'function') throw new Error('Canvas resizing is unavailable');
+      // Setup-only 2D works have no draw callback to repaint a cleared buffer.
+      let snapshot = null;
+      if (typeof window.draw !== 'function' && window.drawingContext?.drawImage) {
+        const source = sketchCanvas();
+        snapshot = document.createElement('canvas');
+        snapshot.width = source.width;
+        snapshot.height = source.height;
+        snapshot.getContext('2d').drawImage(source, 0, 0);
+      }
+      resizeCanvas(width, height, true);
+      if (snapshot) {
+        const ctx = window.drawingContext, target = sketchCanvas();
+        const scale = Math.min(target.width / snapshot.width, target.height / snapshot.height);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(snapshot, (target.width - snapshot.width * scale) / 2,
+          (target.height - snapshot.height * scale) / 2, snapshot.width * scale, snapshot.height * scale);
+        ctx.restore();
+      }
+      if (typeof isLooping === 'function' && !isLooping() &&
+          typeof window.draw === 'function' && typeof redraw === 'function') redraw();
+      return true;
+    }
+
+    window.__editKiroSetCanvasSwapped = swapped => {
+      if (!sketchReady || recordingSession || !sketchCanvas()) return false;
+      try {
+        if (swapped && !orientationBase) {
+          const width = Number(window.width), height = Number(window.height);
+          if (!(width > 0 && height > 0)) return false;
+          resizeForOrientation(height, width);
+          orientationBase = { width, height };
+        } else if (!swapped && orientationBase) {
+          const original = orientationBase;
+          resizeForOrientation(original.width, original.height);
+          orientationBase = null;
+        }
+        scheduleFit(true);
+        return true;
+      } catch (error) {
+        notifyAndroid('onCaptureError', error?.message || String(error));
+        return false;
+      }
+    };
+
+    function notifyAndroid(method, ...args) {
+      try {
+        window.Android?.[method]?.(...args);
+      } catch (_) {}
+    }
+
+    function sketchCanvas() {
+      return document.querySelector('canvas.p5Canvas') || document.querySelector('canvas');
+    }
+
+    function viewportSize() {
+      const root = document.documentElement;
+      return {
+        width: Math.max(1, Math.round(root.clientWidth || window.innerWidth || 1)),
+        height: Math.max(1, Math.round(root.clientHeight || window.innerHeight || 1))
+      };
+    }
+
+    function fitSketch(force = false) {
+      if (!sketchReady) return;
+      const { width, height } = viewportSize();
+      if (!force && width === lastWidth && height === lastHeight) return;
+
+      const canvas = sketchCanvas();
+      if (!canvas) return;
+
+      try {
+        // Responsive sketches may resize after the virtual full-screen viewport
+        // changes. Keep the explicitly requested orientation until it is reset.
+        if (orientationBase && orientationBase.width !== orientationBase.height &&
+            window.width !== window.height &&
+            (window.width > window.height) === (orientationBase.width > orientationBase.height)) {
+          resizeForOrientation(window.height, window.width);
+        }
+        // Keep p5 logical coordinates and the backing buffer exactly as the sketch
+        // created them. A workspace resize changes CSS presentation only.
+        const logicalWidth = Number(window.width);
+        const logicalHeight = Number(window.height);
+        if (!(logicalWidth > 0 && logicalHeight > 0)) return;
+        const scale = Math.min(width / logicalWidth, height / logicalHeight);
+        const displayWidth = logicalWidth * scale;
+        const displayHeight = logicalHeight * scale;
+        canvas.style.width = `${displayWidth}px`;
+        canvas.style.height = `${displayHeight}px`;
+        canvas.style.left = `${(width - displayWidth) / 2}px`;
+        canvas.style.top = `${(height - displayHeight) / 2}px`;
+        lastWidth = width;
+        lastHeight = height;
+      } catch (error) {
+        window.__editKiroReportError(error?.message || String(error));
+      }
+    }
+
+    function scheduleFit(force = false) {
+      pendingForcedFit ||= force;
+      if (resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        const mustFit = pendingForcedFit;
+        pendingForcedFit = false;
+        fitSketch(mustFit);
+      });
+    }
+
+    window.pauseSketch = () => {
+      if (typeof noLoop === 'function') noLoop();
+      notifyAndroid('onStatusChanged', '一時停止中');
+    };
+
+    window.resumeSketch = () => {
+      if (typeof loop === 'function') loop();
+      if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
+    };
+
+    window.__editKiroCaptureScreenshot = () => {
+      try {
+        const canvas = sketchCanvas();
+        if (!canvas) throw new Error('キャンバスが見つかりません');
+        notifyAndroid('onScreenshotReady', canvas.toDataURL('image/png'));
+      } catch (error) {
+        notifyAndroid('onCaptureError', error?.message || String(error));
+      }
+    };
+
+    function releaseRecording(session) {
+      clearTimeout(session.timer);
+      session.stream?.getTracks().forEach(track => track.stop());
+      session.chunks = [];
+      if (session.recorder) {
+        session.recorder.ondataavailable = null;
+        session.recorder.onerror = null;
+        session.recorder.onstop = null;
+      }
+      if (recordingSession === session) recordingSession = null;
+    }
+
+    function failRecording(session, message) {
+      const recorder = session?.recorder;
+      if (session) releaseRecording(session);
+      try {
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      } catch (_) {}
+      notifyAndroid('onRecordingStatusChanged', false);
+      notifyAndroid('onCaptureError', message);
+    }
+
+    window.__editKiroStartRecording = () => {
+      // Keep ownership through FileReader completion so a rapid restart cannot mix clips.
+      if (recordingSession) return;
+      const session = { recorder: null, stream: null, chunks: [], timer: 0 };
+      try {
+        const canvas = sketchCanvas();
+        if (!canvas) throw new Error('キャンバスが見つかりません');
+        if (!canvas.captureStream || typeof MediaRecorder === 'undefined') {
+          throw new Error('この端末はキャンバス録画に対応していません');
+        }
+        const candidates = [
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp8',
+          'video/webm'
+        ];
+        const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+        session.stream = canvas.captureStream(30);
+        const recorder = new MediaRecorder(
+          session.stream,
+          mimeType ? { mimeType, videoBitsPerSecond: 5000000 } : undefined
+        );
+        session.recorder = recorder;
+        recordingSession = session;
+        recorder.ondataavailable = event => {
+          if (event.data && event.data.size > 0) session.chunks.push(event.data);
+        };
+        recorder.onerror = event => {
+          failRecording(session, event.error?.message || '録画中にエラーが発生しました');
+        };
+        recorder.onstop = () => {
+          clearTimeout(session.timer);
+          session.stream.getTracks().forEach(track => track.stop());
+          try {
+            const type = recorder.mimeType || mimeType || 'video/webm';
+            const blob = new Blob(session.chunks, { type });
+            session.chunks = [];
+            if (!blob.size) throw new Error('録画データが空です。少し長めに録画してください');
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (recordingSession !== session) return;
+              releaseRecording(session);
+              notifyAndroid('onRecordingStatusChanged', false);
+              notifyAndroid('onRecordingReady', String(reader.result || ''), type);
+            };
+            reader.onerror = () => failRecording(session, '録画データを読み出せませんでした');
+            reader.onabort = () => failRecording(session, '録画データの読み出しが中断されました');
+            reader.readAsDataURL(blob);
+          } catch (error) {
+            failRecording(session, error?.message || String(error));
+          }
+        };
+        recorder.start(1000);
+        notifyAndroid('onRecordingStatusChanged', true);
+        session.timer = setTimeout(() => window.__editKiroStopRecording(), 60000);
+      } catch (error) {
+        failRecording(session, error?.message || String(error));
+      }
+    };
+
+    window.__editKiroStopRecording = () => {
+      const session = recordingSession;
+      if (!session) return;
+      try {
+        clearTimeout(session.timer);
+        if (session.recorder.state !== 'inactive') {
+          session.recorder.stop();
+        }
+      } catch (error) {
+        failRecording(session, error?.message || String(error));
+      }
+    };
+
+    const onViewportResize = () => scheduleFit(false);
+    window.addEventListener('resize', onViewportResize, { passive: true });
+    window.visualViewport?.addEventListener('resize', onViewportResize, { passive: true });
+
+    const resizeObserver =
+      typeof ResizeObserver === 'function'
+        ? new ResizeObserver(onViewportResize)
+        : null;
+    resizeObserver?.observe(document.documentElement);
+
+    if (typeof p5 !== 'undefined') {
+      // preload() can finish long after window.load; resize only after setup has created its canvas.
+      p5.prototype.registerMethod('afterSetup', function () {
+        if (!this._isGlobal) return;
+        sketchReady = true;
+        // A resize explicitly requested by the sketch is still respected.
+        const canvas = sketchCanvas();
+        if (canvas && typeof MutationObserver === 'function') {
+          canvasSizeObserver?.disconnect();
+          canvasSizeObserver = new MutationObserver(() => scheduleFit(true));
+          canvasSizeObserver.observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+        }
+        document.getElementById('boot')?.remove();
+        scheduleFit(true);
+        if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
+      });
+    }
+
+    window.addEventListener('load', () => {
+      if (window.__editKiroRuntimeHasError) {
+        document.getElementById('boot')?.remove();
+        return;
+      }
+      if (typeof p5 === 'undefined') {
+        window.__editKiroReportError('p5.js の初期化に失敗しました');
+      } else if (typeof setup !== 'function' && typeof draw !== 'function') {
+        window.__editKiroReportError('setup() または draw() が見つかりません');
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      document.getElementById('boot')?.remove();
+      if (recordingSession) {
+        const session = recordingSession;
+        const recorder = session.recorder;
+        releaseRecording(session);
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      }
+      resizeObserver?.disconnect();
+      canvasSizeObserver?.disconnect();
+      cancelAnimationFrame(resizeFrame);
+    }, { once: true });
+    })();
+  </script>
+</body>
+</html>

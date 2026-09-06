@@ -1,0 +1,5 @@
+# Copy to release-signing.properties locally. Never commit the real file or key.
+storeFile=/absolute/path/to/edit-kiro-release.p12
+storePassword=REPLACE_WITH_YOUR_PASSWORD
+keyAlias=edit-kiro
+keyPassword=REPLACE_WITH_YOUR_PASSWORD

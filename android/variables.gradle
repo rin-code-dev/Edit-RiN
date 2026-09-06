@@ -1,0 +1,8 @@
+ext {
+    minSdkVersion = 23
+    compileSdkVersion = 35
+    targetSdkVersion = 35
+    androidxActivityVersion = '1.9.2'
+    androidxCoreVersion = '1.15.0'
+    materialVersion = '1.12.0'
+}

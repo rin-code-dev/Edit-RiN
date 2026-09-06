@@ -1,0 +1,11 @@
+{
+  "name": "edit-kiro",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "sync": "cd android && ./gradlew syncWebAssets",
+    "build:apk": "cd android && ./gradlew assembleDebug",
+    "build:release": "cd android && ./gradlew assembleRelease",
+    "clean": "cd android && ./gradlew clean"
+  }
+}
