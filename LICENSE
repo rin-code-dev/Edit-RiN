@@ -1,0 +1,68 @@
+Edit:KIRO Source-Available License 1.0
+
+Copyright (c) 2026 rin-code-dev. All rights reserved.
+
+1. Scope
+
+This license applies to the Edit:KIRO source code, original interface icons,
+launcher artwork, documentation, and other original material in this repository
+(collectively, the "Edit:KIRO Material"). Third-party components are excluded
+and remain subject to their respective licenses.
+
+2. Permitted use of official releases
+
+You may install and use an unmodified official Edit:KIRO application binary
+published by rin-code-dev. You may view the source code for evaluation, security
+review, and learning. You may make a local build solely for personal evaluation,
+provided that you do not publish, transfer, or distribute it.
+
+3. Prior permission required
+
+Before doing any of the following, you must contact rin-code-dev through the
+public Edit:KIRO repository's GitHub Issues and receive explicit written
+permission from rin-code-dev:
+
+- modifying the Edit:KIRO Material;
+- using or incorporating the Edit:KIRO Material, or a substantial portion of it,
+  in another application, service, library, product, or project;
+- publishing, sharing, selling, transferring, sublicensing, or otherwise
+  distributing the original or modified source code; or
+- distributing an application or other work built from or derived from the
+  Edit:KIRO Material.
+
+Making contact or opening an issue does not by itself grant permission. Silence
+or lack of response does not grant permission. Permission is valid only when
+rin-code-dev provides an explicit written approval, and it may include additional
+conditions for the requested use.
+
+4. Attribution required after permission
+
+Every permitted modification, use, or distribution under Section 3 must retain
+this license and all copyright notices and must display the following attribution
+in a reasonably visible place in the application, documentation, distribution
+page, or about/license screen:
+
+    Based on Edit:KIRO by rin-code-dev
+
+When the original repository URL is available, the attribution must also link to
+that repository. Attribution does not imply endorsement by rin-code-dev.
+
+5. No trademark permission
+
+This license does not grant permission to use the Edit:KIRO name, logo, or
+rin-code-dev name to identify or promote a derived product, except for the
+attribution required by Section 4 or as separately approved in writing.
+
+6. Termination
+
+Any permission granted under this license terminates automatically if you breach
+its terms. On termination, you must stop the unauthorized use or distribution and
+remove all unauthorized copies under your control.
+
+7. No warranty
+
+THE EDIT:KIRO MATERIAL IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. IN NO EVENT SHALL
+THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING
+FROM THE EDIT:KIRO MATERIAL OR ITS USE.

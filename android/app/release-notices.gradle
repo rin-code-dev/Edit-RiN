@@ -1,0 +1,57 @@
+// Package notices from the exact runtime artifacts selected by Gradle.
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+
+def generateReleaseNotices = tasks.register('generateReleaseNotices') {
+    def destination = file("$buildDir/generated/license-assets/licenses")
+    outputs.dir(destination)
+    outputs.upToDateWhen { false }
+    doLast {
+        destination.mkdirs()
+        def root = rootProject.projectDir.parentFile
+        def notices = new StringBuilder('Edit:KIRO 1.0.0-beta.3\nCopyright (c) 2026 rin-code-dev\n\n')
+        notices.append(new File(root, 'LICENSE').getText('UTF-8')).append('\n\n')
+        notices.append(new File(root, 'THIRD_PARTY_LICENSES.md').getText('UTF-8')).append('\n\n')
+        fileTree(new File(root, 'third_party/licenses')).matching { include '**/*.txt' }.files.sort().each {
+            notices.append('\n--- ').append(it.name).append(' ---\n').append(it.getText('UTF-8'))
+        }
+        def inventory = new StringBuilder('Resolved release runtime dependencies\n\n')
+        configurations.releaseRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.sort { it.moduleVersion.id.toString() }.each { artifact ->
+            def id = artifact.moduleVersion.id
+            inventory.append(id.toString()).append('\n')
+            notices.append('\n\n--- ').append(id.toString()).append(' ---\n')
+            def cached = new File(gradle.gradleUserHomeDir, "caches/modules-2/files-2.1/${id.group}/${id.name}/${id.version}")
+            fileTree(cached).matching { include '**/*.pom' }.files.take(1).each { pomFile ->
+                def pom = new XmlSlurper().parse(pomFile)
+                pom.licenses.license.each { license ->
+                    notices.append(license.name.text()).append(' ').append(license.url.text()).append('\n')
+                }
+                if (pom.url.text()) notices.append(pom.url.text()).append('\n')
+            }
+            if (artifact.file.name.endsWith('.aar') || artifact.file.name.endsWith('.jar')) {
+                new ZipFile(artifact.file).withCloseable { zip ->
+                    zip.entries().each { entry ->
+                        if (!entry.directory && entry.name.toUpperCase().matches('.*(LICENSE|NOTICE|COPYING).*')) {
+                            notices.append('\n').append(entry.name).append('\n')
+                            notices.append(zip.getInputStream(entry).getText('UTF-8')).append('\n')
+                        }
+                        if (entry.name == 'classes.jar') {
+                            new ZipInputStream(zip.getInputStream(entry)).withCloseable { nested ->
+                                def child
+                                while ((child = nested.nextEntry) != null) {
+                                    if (!child.directory && child.name.toUpperCase().matches('.*(LICENSE|NOTICE|COPYING).*')) {
+                                        notices.append('\n').append(child.name).append('\n')
+                                        notices.append(new String(nested.readAllBytes(), 'UTF-8')).append('\n')
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        new File(destination, 'THIRD_PARTY_NOTICES.txt').setText(notices.toString(), 'UTF-8')
+        new File(destination, 'DEPENDENCIES.txt').setText(inventory.toString(), 'UTF-8')
+    }
+}
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn(generateReleaseNotices) }
