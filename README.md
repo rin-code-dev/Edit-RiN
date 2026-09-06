@@ -1,4 +1,4 @@
-# Edit:KIRO
+# EDIT:KIRO
 
 **Write code. Make art. Wherever inspiration finds you.**  
 **ひらめいた場所を、アトリエに。**
