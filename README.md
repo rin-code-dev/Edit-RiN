@@ -1,4 +1,4 @@
-# EDIT:KIRO
+# Edit:KIRO
 
 A p5.js editor for making art on Android.
 
