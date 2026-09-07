@@ -6838,6 +6838,39 @@ class MainActivity : ComponentActivity() {
 
         var settingsTab by rememberSaveable { mutableStateOf(0) }
         var showLicenses by remember { mutableStateOf(false) }
+        val updateScope = androidx.compose.runtime.rememberCoroutineScope()
+        var checkingUpdate by remember { mutableStateOf(false) }
+        var updateMessage by remember { mutableStateOf<String?>(null) }
+        var availableRelease by remember { mutableStateOf<AppRelease?>(null) }
+        if (updateMessage != null) {
+            AlertDialog(
+                onDismissRequest = { updateMessage = null },
+                title = { Text(uiText("アップデート")) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(uiText(updateMessage!!))
+                        availableRelease?.let { Text(it.tag) }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (availableRelease != null) {
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
+                            } catch (_: android.content.ActivityNotFoundException) {
+                                Toast.makeText(this@MainActivity, uiText("ブラウザーを開けませんでした"), Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        updateMessage = null
+                    }) { Text(uiText(if (availableRelease != null) "配布ページを開く" else "閉じる")) }
+                },
+                dismissButton = {
+                    if (availableRelease != null) {
+                        TextButton(onClick = { updateMessage = null }) { Text(uiText("閉じる")) }
+                    }
+                }
+            )
+        }
         if (showLicenses) {
             val paragraphs = remember {
                 assets.open("licenses/THIRD_PARTY_NOTICES.txt").bufferedReader().use { it.readText() }
@@ -7733,6 +7766,34 @@ class MainActivity : ComponentActivity() {
                 Text("Edit:KIRO ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
                 Text("rin-code-dev", style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant)
+                TextButton(
+                    enabled = !checkingUpdate,
+                    onClick = {
+                        checkingUpdate = true
+                        availableRelease = null
+                        updateScope.launch {
+                            try {
+                                val release = withContext(Dispatchers.IO) { fetchNewestRelease() }
+                                val current = ReleaseVersion.parse(BuildConfig.VERSION_NAME)
+                                updateMessage = when {
+                                    release == null -> "公開済みのバージョンが見つかりません"
+                                    current == null -> "バージョンを比較できませんでした"
+                                    release.version > current -> {
+                                        availableRelease = release
+                                        "新しいバージョンがあります"
+                                    }
+                                    else -> "新しいアップデートはありません"
+                                }
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                updateMessage = "確認できませんでした。通信環境を確認して、もう一度お試しください"
+                            } finally {
+                                checkingUpdate = false
+                            }
+                        }
+                    }
+                ) { Text(uiText(if (checkingUpdate) "確認中…" else "アップデートを確認")) }
                 TextButton(onClick = { showLicenses = true }) {
                     Text(uiText("ライセンス情報"))
                 }

@@ -12,6 +12,16 @@ internal fun translateUi(source: String, language: String): String {
 }
 
 internal val uiTranslations = mapOf(
+    "アップデート" to ("Updates" to "更新"),
+    "アップデートを確認" to ("Check for updates" to "检查更新"),
+    "確認中…" to ("Checking…" to "正在检查…"),
+    "新しいバージョンがあります" to ("A new version is available" to "有新版本可用"),
+    "新しいアップデートはありません" to ("No new updates available" to "暂无新更新"),
+    "公開済みのバージョンが見つかりません" to ("No published version found" to "未找到已发布的版本"),
+    "バージョンを比較できませんでした" to ("Unable to compare versions" to "无法比较版本"),
+    "確認できませんでした。通信環境を確認して、もう一度お試しください" to ("Couldn't check for updates. Check your connection and try again." to "无法检查更新。请检查网络连接后重试"),
+    "配布ページを開く" to ("Open release page" to "打开发布页面"),
+    "ブラウザーを開けませんでした" to ("Couldn't open a browser" to "无法打开浏览器"),
     "ライセンス情報" to ("License information" to "许可证信息"),
     "アプリのフォント" to ("App font" to "应用字体"),
     "標準フォント" to ("Default font" to "默认字体"),
