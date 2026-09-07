@@ -1,8 +1,8 @@
-# Edit:KIRO 1.0.0-beta.3
+# Edit:KIRO 1.0.0-beta.4
 
 ## 日本語
 
-このベータ版はapplicationId `com.hikariatelier.app`、versionCode `4`です。
+このベータ版はapplicationId `com.hikariatelier.app`、versionCode `5`です。
 ReleaseビルドではR8による縮小・難読化と不要リソースの除去を有効にしています。
 WebViewから呼ぶJavaScriptブリッジはProGuardルールで保持します。
 
@@ -35,8 +35,8 @@ Release版をインストールし、バックアップを復元してくださ�
 
 ## English
 
-This beta uses application ID `com.hikariatelier.app`, version code `4`, and
-version name `1.0.0-beta.3`. Release enables R8 optimization/obfuscation and resource
+This beta uses application ID `com.hikariatelier.app`, version code `5`, and
+version name `1.0.0-beta.4`. Release enables R8 optimization/obfuscation and resource
 shrinking, with explicit rules preserving the JavaScript bridge.
 
 Use JDK 17 and Android SDK Platform 35. Copy the signing properties example to
