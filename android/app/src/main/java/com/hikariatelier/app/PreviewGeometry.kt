@@ -26,3 +26,10 @@ internal fun fitPreviewSize(
     if (fittedWidth == 0f || fittedHeight == 0f) return PreviewSize(0f, 0f)
     return PreviewSize(fittedWidth, fittedHeight)
 }
+
+/** Presentation only: hiding must not recreate the WebView or resize the artwork. */
+internal fun portraitPreviewHeight(width: Float, heightLimit: Float, ratio: Float, hidden: Boolean, compact: Boolean): Float {
+    if (hidden) return 0f
+    val fitted = fitPreviewSize(width, heightLimit, if (compact) 2.5f else ratio)
+    return fitted.height
+}

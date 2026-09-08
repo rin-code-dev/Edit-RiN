@@ -12,3 +12,5 @@ android/release-signing.properties
 *.p12
 *.pem
 private-signing/
+
+/outputs/

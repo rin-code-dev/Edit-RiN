@@ -21,6 +21,8 @@ function runner(code = 'function setup() {}') {
     width: 320, height: 180, drawingContext: drawing,
     Android: {
       getSketchCode: () => code,
+      getP5Version: () => '1.11.5',
+      isP5SoundEnabled: () => false,
       onStatusChanged: status => statuses.push(status),
       onError: error => errors.push(error),
       onRuntimeError: error => errors.push(error),
@@ -36,6 +38,7 @@ function runner(code = 'function setup() {}') {
     p5: function P5() {},
     document: {
       documentElement: { clientWidth: 320, clientHeight: 180 },
+      write() {},
       getElementById: () => ({ remove() { removed = true; } }),
       querySelector: () => canvas,
       createElement: () => ({ getContext: () => drawing }),
@@ -204,4 +207,22 @@ test('bundled DVD logo moves, bounces, changes color and stays inside resized ca
     vm.runInContext('measureLogo(); for (let i = 0; i < 1000; i++) updateLogo();', c);
     assert.equal(vm.runInContext('x >= 0 && y >= 0 && x + logoWidth <= width && y + logoHeight <= height', c), true);
   }
+});
+
+test('hiding and restoring portrait preview preserves artwork and paused pixels', () => {
+  const r = runner(); r.setup(); r.flush();
+  r.context.isLooping = () => false;
+  const original = { ...r.canvas.style };
+  r.context.document.documentElement.clientHeight = 0;
+  r.events.resize(); r.flush();
+  assert.equal(r.context.width, 320);
+  assert.equal(r.context.height, 180);
+  assert.equal(r.canvas.width, 320);
+  assert.equal(r.canvas.height, 180);
+  r.context.document.documentElement.clientHeight = 180;
+  r.events.resize(); r.flush();
+  assert.deepEqual(r.canvas.style, original);
+  assert.equal(r.stats().resizes, 0);
+  assert.equal(r.stats().painted, 0);
+  assert.deepEqual(r.errors, []);
 });

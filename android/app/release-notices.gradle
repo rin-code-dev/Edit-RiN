@@ -9,7 +9,7 @@ def generateReleaseNotices = tasks.register('generateReleaseNotices') {
     doLast {
         destination.mkdirs()
         def root = rootProject.projectDir.parentFile
-        def notices = new StringBuilder('Edit:KIRO 1.0.0-beta.4\nCopyright (c) 2026 rin-code-dev\n\n')
+        def notices = new StringBuilder('Edit:KIRO 1.0.1\nCopyright (c) 2026 rin-code-dev\n\n')
         notices.append(new File(root, 'LICENSE').getText('UTF-8')).append('\n\n')
         notices.append(new File(root, 'THIRD_PARTY_LICENSES.md').getText('UTF-8')).append('\n\n')
         fileTree(new File(root, 'third_party/licenses')).matching { include '**/*.txt' }.files.sort().each {

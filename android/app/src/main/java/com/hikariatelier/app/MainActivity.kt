@@ -62,6 +62,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,6 +112,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -292,27 +294,11 @@ internal fun changeLineIndent(
 }
 
 
-private val P5_COMPLETIONS = listOf(
-    "setup", "draw", "createCanvas", "resizeCanvas", "windowWidth", "windowHeight",
-    "background", "fill", "stroke", "strokeWeight", "noStroke", "noFill", "colorMode",
-    "circle", "ellipse", "rect", "line", "triangle", "beginShape", "vertex", "endShape",
-    "push", "pop", "translate", "rotate", "scale", "text", "textSize", "image", "loadImage",
-    "random", "noise", "map", "dist", "lerp", "constrain", "floor", "ceil", "round", "abs",
-    "sin", "cos", "tan", "mouseX", "mouseY", "frameCount", "deltaTime", "millis",
-    "mousePressed", "mouseDragged", "mouseReleased", "touchStarted", "touchMoved", "touchEnded"
-)
-
 private val PREVIEW_ASPECT_RATIOS = listOf("16:9", "4:3", "1:1", "9:16", "device")
 private val LANDSCAPE_PREVIEW_SPLITS = listOf(0.35f, 0.5f, 0.65f)
 
 internal fun normalizedPreviewAspectRatio(value: String?): String =
     value?.takeIf(PREVIEW_ASPECT_RATIOS::contains) ?: "1:1"
-
-private fun completionPrefix(value: TextFieldValue): String {
-    if (!value.selection.collapsed) return ""
-    val before = value.text.substring(0, value.selection.start)
-    return before.takeLastWhile { it.isLetterOrDigit() || it == '_' }
-}
 
 internal fun previewAspectRatioValue(value: String, deviceRatio: Float = 1f): Float = when (value) {
     "4:3" -> 4f / 3f
@@ -340,12 +326,20 @@ private fun composeProjectSource(
 class MainActivity : ComponentActivity() {
 
     private val sessionViewModel: EditorSessionViewModel by viewModels()
+    private val updateViewModel: UpdateViewModel by viewModels()
+    private val hideEditingPreviewKey = "hide_editing_preview"
 
+    private val p5UsernameKey = "p5_web_editor_username"
+
+    private val assetStorage by lazy { AssetStorage(File(filesDir, "project-assets")) }
+    @Volatile private var previewAssets = PreviewAssets("initial", emptyMap())
     private var webView: WebView? = null
     private val unreadableWorkFolders get() = sessionViewModel.unreadableFolderUris
 
     @Volatile
     private var pendingSketchCode = ""
+    @Volatile private var pendingP5Version = P5_VERSION_CURRENT
+    @Volatile private var pendingP5SoundEnabled = false
 
     @Volatile
     private var pendingMainLineOffset = 0
@@ -451,6 +445,7 @@ class MainActivity : ComponentActivity() {
         importedFontName = preferences.getString("custom_font_name", "").orEmpty()
         fontLigatures = preferences.getBoolean("font_ligatures", false)
 
+        updateViewModel.checkAtStartup()
         initializeSessionIfNeeded()
         enableEdgeToEdge()
 
@@ -478,6 +473,13 @@ class MainActivity : ComponentActivity() {
                 ligatures = fontLigatures
             ) {
 
+                UpdateDialog(updateViewModel, ::uiText) {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        Toast.makeText(this@MainActivity, uiText("ブラウザーを開けませんでした"), Toast.LENGTH_SHORT).show()
+                    }
+                }
                 MainScreen(
                     themeMode = themeMode,
 
@@ -505,7 +507,7 @@ class MainActivity : ComponentActivity() {
                 runCatching { Uri.parse(value) }.getOrNull()
             }
 
-        val store = folderUri?.let(::loadWorkStore)
+        val store = if (folderUri != null) loadWorkStore(folderUri) else loadLocalWorkStore()
         val initialWorks =
             store?.works?.takeIf { it.isNotEmpty() } ?: defaultWorks()
         val initialActiveId =
@@ -707,6 +709,9 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         if (sessionViewModel.initialized && preferences.getBoolean(draftRecoveryKey, true)) {
             saveDraftSnapshot(sessionViewModel.activeWorkIdState.value, sessionViewModel.editorValueState.value.text)
+        }
+        if (sessionViewModel.initialized && !sessionViewModel.assetBusy && preferences.getString(folderUriKey, null) == null) {
+            saveWorkStore(null, sessionViewModel.worksState.value, sessionViewModel.activeWorkIdState.value)
         }
         webView?.onPause()
         super.onPause()
@@ -1240,6 +1245,19 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(false)
         }
 
+        val assetScope = sessionViewModel.viewModelScope
+        var showAssets by rememberSaveable { mutableStateOf(false) }
+        var assetBusy by sessionViewModel::assetBusy
+        var assetTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+
+        var showP5Import by rememberSaveable { mutableStateOf(false) }
+        var p5Username by remember {
+            mutableStateOf(preferences.getString(p5UsernameKey, "").orEmpty())
+        }
+        var p5Sketches by remember { mutableStateOf<List<P5Sketch>>(emptyList()) }
+        var p5Busy by remember { mutableStateOf(false) }
+        var p5Error by remember { mutableStateOf<String?>(null) }
+
         var showProjectFilesDialog by remember {
             mutableStateOf(false)
         }
@@ -1250,6 +1268,16 @@ class MainActivity : ComponentActivity() {
 
         var showAspectRatioDialog by remember {
             mutableStateOf(false)
+        }
+
+        var showRuntimeDialog by remember {
+            mutableStateOf(false)
+        }
+        var runtimeP5Version by remember(activeWorkId) {
+            mutableStateOf(normalizedP5Version(activeWork?.p5Version))
+        }
+        var runtimeSoundEnabled by remember(activeWorkId) {
+            mutableStateOf(activeWork?.p5SoundEnabled == true)
         }
 
         val previewRatioSelection = normalizedPreviewAspectRatio(activeWork?.previewAspectRatio)
@@ -1401,6 +1429,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        BackHandler(enabled = editorFocused && !showSettings) { focusManager.clearFocus(force = true) }
+
         BackHandler(enabled = showSettings) { showSettings = false }
 
         var autoRun by remember {
@@ -1410,6 +1440,19 @@ class MainActivity : ComponentActivity() {
                     true
                 )
             )
+        }
+
+        var hideEditingPreview by remember {
+            mutableStateOf(preferences.getBoolean(hideEditingPreviewKey, true))
+        }
+
+        val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        var keyboardWasVisible by remember { mutableStateOf(false) }
+        LaunchedEffect(keyboardVisible) {
+            if (keyboardWasVisible && !keyboardVisible && hideEditingPreview && !isLandscape) {
+                focusManager.clearFocus(force = true)
+            }
+            keyboardWasVisible = keyboardVisible
         }
 
         var compactPreview by remember {
@@ -1734,9 +1777,7 @@ class MainActivity : ComponentActivity() {
                 activeWorkId
         ): Boolean {
 
-            val uri =
-                selectedFolderUri
-                    ?: return false
+            val uri = selectedFolderUri
 
             return saveWorkStore(
                 folderUri =
@@ -1769,7 +1810,6 @@ class MainActivity : ComponentActivity() {
         }
 
         fun persistWorkChange(targetWorks: List<Work>, targetId: String): Boolean {
-            if (selectedFolderUri == null) return true
             if (saveStore(targetWorks, targetId)) return true
             Toast.makeText(this@MainActivity,
                 uiText("保存できませんでした。保存先を確認して再試行してください"),
@@ -1796,7 +1836,9 @@ class MainActivity : ComponentActivity() {
 
         fun runSketch(
             source: String = editorText,
-            supportingFiles: Map<String, String> = activeWork?.files.orEmpty()
+            supportingFiles: Map<String, String> = activeWork?.files.orEmpty(),
+            sourceAssets: Map<String, ProjectAsset> = sessionViewModel.worksState.value
+                .find { it.id == sessionViewModel.activeWorkIdState.value }?.assets.orEmpty()
         ) {
 
             if (isPreviewRecording) {
@@ -1804,6 +1846,11 @@ class MainActivity : ComponentActivity() {
                 return
             }
 
+            previewAssets = PreviewAssets(java.util.UUID.randomUUID().toString(), sourceAssets.toMap())
+            val runtimeWork = sessionViewModel.worksState.value
+                .find { it.id == sessionViewModel.activeWorkIdState.value }
+            pendingP5Version = normalizedP5Version(runtimeWork?.p5Version)
+            pendingP5SoundEnabled = runtimeWork?.p5SoundEnabled == true
             pendingSketchCode =
                 composeProjectSource(source, supportingFiles)
 
@@ -1821,8 +1868,12 @@ class MainActivity : ComponentActivity() {
             consoleEntries.clear()
 
             webView?.loadUrl(
-                "file:///android_asset/public/p5_runner.html"
+                previewUrl(previewAssets.token)
             )
+        }
+
+        LaunchedEffect(sessionViewModel.assetPreviewRevision) {
+            if (sessionViewModel.assetPreviewRevision > 0) runSketch()
         }
 
         fun restoreCurrentWork() {
@@ -1879,8 +1930,11 @@ class MainActivity : ComponentActivity() {
             val saved = Work(
                 id = current.id, title = current.title, code = editorText,
                 files = current.files.toMutableMap(),
+                assets = current.assets.toMap(),
                 revisions = revisions.takeLast(30).toMutableList(),
                 previewAspectRatio = current.previewAspectRatio,
+                p5Version = current.p5Version,
+                p5SoundEnabled = current.p5SoundEnabled,
                 createdAt = current.createdAt, updatedAt = System.currentTimeMillis()
             )
             val updatedWorks = works.map { if (it.id == current.id) saved else it }
@@ -2120,6 +2174,143 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+        fun changeAssets(workId: String, updated: Map<String, ProjectAsset>) {
+            if (assetBusy) return
+            val target = works.find { it.id == workId } ?: return
+            validateAssetSet(updated)
+            val replacement = snapshotWork(target, updated)
+            val nextWorks = works.map { if (it.id == workId) replacement else snapshotWork(it) }
+            val folder = selectedFolderUri
+            val selectedId = activeWorkId
+            assetBusy = true
+            assetScope.launch {
+                val saved = withContext(Dispatchers.IO) { saveWorkStore(folder, nextWorks, selectedId) }
+                if (saved) {
+                    target.assets.clear()
+                    target.assets.putAll(updated)
+                    target.updatedAt = replacement.updatedAt
+                    if (activeWorkId == workId) sessionViewModel.assetPreviewRevision++
+                } else Toast.makeText(this@MainActivity, uiText("素材を保存できませんでした"), Toast.LENGTH_LONG).show()
+                assetBusy = false
+            }
+        }
+
+        val assetPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            val targetId = assetTargetId
+            assetTargetId = null
+            val target = works.find { it.id == targetId }
+            if (target != null && uris.isNotEmpty() && !assetBusy) {
+                val existing = target.assets.toMap()
+                val folder = selectedFolderUri
+                val selectedId = activeWorkId
+                val snapshots = works.map { snapshotWork(it) }
+                assetBusy = true
+                assetScope.launch {
+                    val result = runCatching {
+                        withContext(Dispatchers.IO) {
+                            pruneUnusedAssets(snapshots)
+                            val updated = existing.toMutableMap()
+                            require(updated.size + uris.size <= 100)
+                            uris.forEach { uri ->
+                                val original = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                                    if (it.moveToFirst()) it.getString(0) else null
+                                } ?: "asset"
+                                val name = uniqueAssetName(original, updated.keys)
+                                val mime = assetMimeType(name, contentResolver.getType(uri))
+                                val asset = contentResolver.openInputStream(uri)?.use { assetStorage.put(it, mime) }
+                                    ?: error("Cannot open asset")
+                                updated[name] = asset
+                                validateAssetSet(updated)
+                            }
+                            val nextWorks = snapshots.map { if (it.id == target.id) snapshotWork(it, updated) else it }
+                            check(saveWorkStore(folder, nextWorks, selectedId))
+                            updated.toMap()
+                        }
+                    }
+                    result.onSuccess { updated ->
+                        target.assets.clear(); target.assets.putAll(updated)
+                        target.updatedAt = System.currentTimeMillis()
+                        if (activeWorkId == target.id) sessionViewModel.assetPreviewRevision++
+                    }.onFailure {
+                        if (it is kotlinx.coroutines.CancellationException) throw it
+                        Toast.makeText(this@MainActivity, uiText("素材を追加できませんでした。ファイル名・サイズ・保存先を確認してください"), Toast.LENGTH_LONG).show()
+                    }
+                    assetBusy = false
+                }
+            }
+        }
+
+        fun loadP5Account() {
+            val username = p5Username.trim()
+            if (p5Busy || !validP5Username(username)) return
+            p5Busy = true
+            p5Error = null
+            p5Sketches = emptyList()
+            assetScope.launch {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) { fetchP5Sketches(username) }
+                }
+                result.onSuccess { sketches ->
+                    p5Sketches = sketches
+                    preferences.edit().putString(p5UsernameKey, username).apply()
+                    p5Username = username
+                    if (sketches.isEmpty()) p5Error = "公開作品がありません"
+                }.onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    p5Error = "p5.jsの作品を取得できませんでした"
+                }
+                p5Busy = false
+            }
+        }
+
+        fun importFromP5(sketch: P5Sketch) {
+            if (p5Busy) return
+            updateCurrentWork()
+            val currentWorks = works.map { snapshotWork(it) }
+            val folder = selectedFolderUri
+            p5Busy = true
+            p5Error = null
+            assetScope.launch {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        pruneUnusedAssets(currentWorks)
+                        val imported = importP5Sketch(sketch, assetStorage)
+                        val now = System.currentTimeMillis()
+                        val work = Work(
+                            id = "$now-${sketch.id}",
+                            title = imported.name,
+                            code = imported.code,
+                            files = imported.supportingFiles.toMutableMap(),
+                            assets = imported.assets,
+                            p5Version = imported.p5Version,
+                            p5SoundEnabled = imported.p5SoundEnabled,
+                            createdAt = now,
+                            updatedAt = now
+                        )
+                        val nextWorks = currentWorks + work
+                        check(saveWorkStore(folder, nextWorks, work.id))
+                        nextWorks to work
+                    }
+                }
+                result.onSuccess { (nextWorks, work) ->
+                    works = nextWorks
+                    activeWorkId = work.id
+                    editorValue = TextFieldValue(work.code)
+                    lastSavedText = work.code
+                    clearEditHistory()
+                    clearDraftSnapshot()
+                    sessionViewModel.assetPreviewRevision++
+                    showP5Import = false
+                    if (autoRun) runSketch(work.code, work.files)
+                    Toast.makeText(this@MainActivity, uiText("p5.jsの作品を取り込みました"), Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    p5Error = "作品を取り込めませんでした。ファイル数・容量・通信環境を確認してください"
+                }
+                p5Busy = false
+            }
+        }
+
         val exportJsLauncher =
             rememberLauncherForActivityResult(
                 contract =
@@ -2177,41 +2368,42 @@ class MainActivity : ComponentActivity() {
             rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.CreateDocument("application/zip")
             ) { uri ->
-                if (uri != null) {
-                    val exported = runCatching {
-                        val output = contentResolver.openOutputStream(uri, "wt")
-                            ?: return@runCatching false
-                        ZipOutputStream(output.buffered()).use { zip ->
-                            zip.putNextEntry(ZipEntry("works.json"))
-                            zip.write(serializeWorkStore(works, activeWorkId).toByteArray())
-                            zip.closeEntry()
-                            val settings = JSONObject()
-                                .put("themeMode", themeMode.name)
-                                .put("autoRun", autoRun)
-                                .put("compactPreview", compactPreview)
-                                .put("landscapeUseCutout", landscapeUseCutout)
-                                .put("appLanguage", appLanguage)
-                                .put("preserveExpandedPreview", preserveExpandedPreview)
-                                .put("landscapePreviewSplit", landscapePreviewFraction.toDouble())
-                                .put("resizeHandlesVisible", showResizeHandles)
-                                .put("editorFontSize", editorFontSize.toDouble())
-                                .put("autoIndent", autoIndent)
-                                .put("lineNumbers", showLineNumbers)
-                                .put("accessoryBar", showEditorAccessoryBar)
-                                .put("codeCompletion", codeCompletion)
-                                .put("accessoryNavigation", showAccessoryNavigation)
-                                .put("accessorySymbols", showAccessorySymbols)
-                                .put("compactAccessoryKeys", compactAccessoryKeys)
-                                .put("draftRecovery", draftRecovery)
-                            zip.putNextEntry(ZipEntry("settings.json"))
-                            zip.write(settings.toString(2).toByteArray())
-                            zip.closeEntry()
+                if (uri != null && !assetBusy) {
+                    val backupWorks = works.map { snapshotWork(it) }
+                    val backupActiveId = activeWorkId
+                    val settings = JSONObject()
+                        .put("themeMode", themeMode.name)
+                        .put("autoRun", autoRun)
+                        .put("compactPreview", compactPreview)
+                        .put("hideEditingPreview", hideEditingPreview)
+                        .put("p5Username", p5Username)
+                        .put("landscapeUseCutout", landscapeUseCutout)
+                        .put("appLanguage", appLanguage)
+                        .put("preserveExpandedPreview", preserveExpandedPreview)
+                        .put("landscapePreviewSplit", landscapePreviewFraction.toDouble())
+                        .put("resizeHandlesVisible", showResizeHandles)
+                        .put("editorFontSize", editorFontSize.toDouble())
+                        .put("autoIndent", autoIndent)
+                        .put("lineNumbers", showLineNumbers)
+                        .put("accessoryBar", showEditorAccessoryBar)
+                        .put("codeCompletion", codeCompletion)
+                        .put("accessoryNavigation", showAccessoryNavigation)
+                        .put("accessorySymbols", showAccessorySymbols)
+                        .put("compactAccessoryKeys", compactAccessoryKeys)
+                        .put("draftRecovery", draftRecovery)
+                    assetScope.launch {
+                        assetBusy = true
+                        val exported = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val output = contentResolver.openOutputStream(uri, "wt") ?: error("Cannot open backup")
+                                writeAssetBackup(output, backupWorks, backupActiveId, settings.toString(2), assetStorage)
+                            }.isSuccess
                         }
-                        true
-                    }.getOrDefault(false)
-                    if (!exported) {
-                        appendConsole(ConsoleLevel.ERROR, uiText("バックアップを書き出せませんでした"))
-                        showConsole = true
+                        if (!exported) {
+                            appendConsole(ConsoleLevel.ERROR, uiText("バックアップを書き出せませんでした"))
+                            showConsole = true
+                        }
+                        assetBusy = false
                     }
                 }
             }
@@ -2220,106 +2412,103 @@ class MainActivity : ComponentActivity() {
             rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocument()
             ) { uri ->
-                if (uri != null) {
-                    val restored = runCatching {
-                        var worksJson: String? = null
-                        var settingsJson: String? = null
-                        val input = contentResolver.openInputStream(uri)
-                            ?: return@runCatching false
-                        ZipInputStream(input.buffered()).use { zip ->
-                            var entry = zip.nextEntry
-                            while (entry != null) {
-                                if (!entry.isDirectory && entry.name == "works.json") {
-                                    worksJson = zip.readBytes().toString(Charsets.UTF_8)
-                                } else if (!entry.isDirectory && entry.name == "settings.json") {
-                                    settingsJson = zip.readBytes().toString(Charsets.UTF_8)
+                if (uri != null && !assetBusy) {
+                    assetScope.launch {
+                        assetBusy = true
+                        val restored = runCatching {
+                            val backup = withContext(Dispatchers.IO) {
+                                contentResolver.openInputStream(uri)?.let { readAssetBackup(it, assetStorage) }
+                                    ?: error("Cannot open backup")
+                            }
+                            val store = backup.store
+                            val settingsJson = backup.settings
+                            // Validate settings and complete persistence before replacing the open session.
+                            val restoredSettings = settingsJson?.let(::JSONObject)
+                            val restoredActiveId = store.activeWorkId.takeIf { id ->
+                                store.works.any { it.id == id }
+                            } ?: store.works.first().id
+                            val restoredFolder = selectedFolderUri
+                            if (!withContext(Dispatchers.IO) { saveWorkStore(restoredFolder, store.works, restoredActiveId) }) {
+                                return@runCatching false
+                            }
+                            works = store.works
+                            activeWorkId = restoredActiveId
+                            editorValue = TextFieldValue(
+                                store.works.find { it.id == activeWorkId }?.code.orEmpty()
+                            )
+                            lastSavedText = editorValue.text
+                            clearEditHistory()
+                            restoredSettings?.let { settings ->
+                                runCatching {
+                                    AppThemeMode.valueOf(settings.optString("themeMode"))
+                                }.getOrNull()?.let(onThemeModeChange)
+                                autoRun = settings.optBoolean("autoRun", autoRun)
+                                hideEditingPreview = settings.optBoolean("hideEditingPreview", hideEditingPreview)
+                                p5Username = settings.optString("p5Username", p5Username)
+                                    .takeIf(::validP5Username).orEmpty()
+                                compactPreview = settings.optBoolean("compactPreview", compactPreview)
+                                landscapeUseCutout = settings.optBoolean("landscapeUseCutout", landscapeUseCutout)
+                                appLanguage = settings.optString("appLanguage", appLanguage)
+                                    .takeIf { it in listOf("system", "ja", "en", "zh") } ?: "system"
+                                preserveExpandedPreview = settings.optBoolean(
+                                    "preserveExpandedPreview",
+                                    preserveExpandedPreview
+                                )
+                                landscapePreviewFraction = settings.optDouble(
+                                    "landscapePreviewSplit",
+                                    landscapePreviewFraction.toDouble()
+                                ).toFloat().let { restored ->
+                                    LANDSCAPE_PREVIEW_SPLITS.minByOrNull {
+                                        kotlin.math.abs(it - restored)
+                                    } ?: 0.5f
                                 }
-                                zip.closeEntry()
-                                entry = zip.nextEntry
+                                showResizeHandles = settings.optBoolean(
+                                    "resizeHandlesVisible",
+                                    showResizeHandles
+                                )
+                                editorFontSize = settings.optDouble("editorFontSize", editorFontSize.toDouble())
+                                    .toFloat().takeIf { it.isFinite() }?.coerceIn(12f, 20f) ?: 14f
+                                autoIndent = settings.optBoolean("autoIndent", autoIndent)
+                                showLineNumbers = settings.optBoolean("lineNumbers", showLineNumbers)
+                                showEditorAccessoryBar = settings.optBoolean("accessoryBar", showEditorAccessoryBar)
+                                codeCompletion = settings.optBoolean("codeCompletion", codeCompletion)
+                                showAccessoryNavigation = settings.optBoolean("accessoryNavigation", showAccessoryNavigation)
+                                showAccessorySymbols = settings.optBoolean("accessorySymbols", showAccessorySymbols)
+                                compactAccessoryKeys = settings.optBoolean("compactAccessoryKeys", compactAccessoryKeys)
+                                draftRecovery = settings.optBoolean("draftRecovery", draftRecovery)
+                                preferences.edit()
+                                    .putBoolean(autoRunKey, autoRun)
+                                    .putBoolean(compactPreviewKey, compactPreview)
+                                    .putBoolean(hideEditingPreviewKey, hideEditingPreview)
+                                    .putString(p5UsernameKey, p5Username)
+                                    .putBoolean(landscapeCutoutKey, landscapeUseCutout)
+                                    .putString(appLanguageKey, appLanguage)
+                                    .putBoolean(preserveExpandedPreviewKey, preserveExpandedPreview)
+                                    .putFloat(landscapePreviewSplitKey, landscapePreviewFraction)
+                                    .putBoolean(resizeHandlesVisibleKey, showResizeHandles)
+                                    .putFloat(editorFontKey, editorFontSize)
+                                    .putBoolean(autoIndentKey, autoIndent)
+                                    .putBoolean(lineNumbersKey, showLineNumbers)
+                                    .putBoolean(editorAccessoryBarKey, showEditorAccessoryBar)
+                                    .putBoolean(codeCompletionKey, codeCompletion)
+                                    .putBoolean(accessoryNavigationKey, showAccessoryNavigation)
+                                    .putBoolean(accessorySymbolsKey, showAccessorySymbols)
+                                    .putBoolean(compactAccessoryKeysKey, compactAccessoryKeys)
+                                    .putBoolean(draftRecoveryKey, draftRecovery)
+                                    .apply()
                             }
-                        }
-                        val store = worksJson?.let(::parseWorkStoreJson)
-                            ?.takeIf { it.works.isNotEmpty() }
-                            ?: return@runCatching false
-                        // Validate settings and complete persistence before replacing the open session.
-                        val restoredSettings = settingsJson?.let(::JSONObject)
-                        val restoredActiveId = store.activeWorkId.takeIf { id ->
-                            store.works.any { it.id == id }
-                        } ?: store.works.first().id
-                        if (selectedFolderUri != null && !saveWorkStore(selectedFolderUri, store.works, restoredActiveId)) {
-                            return@runCatching false
-                        }
-                        works = store.works
-                        activeWorkId = restoredActiveId
-                        editorValue = TextFieldValue(
-                            store.works.find { it.id == activeWorkId }?.code.orEmpty()
-                        )
-                        lastSavedText = editorValue.text
-                        clearEditHistory()
-                        restoredSettings?.let { settings ->
-                            runCatching {
-                                AppThemeMode.valueOf(settings.optString("themeMode"))
-                            }.getOrNull()?.let(onThemeModeChange)
-                            autoRun = settings.optBoolean("autoRun", autoRun)
-                            compactPreview = settings.optBoolean("compactPreview", compactPreview)
-                            landscapeUseCutout = settings.optBoolean("landscapeUseCutout", landscapeUseCutout)
-                            appLanguage = settings.optString("appLanguage", appLanguage)
-                                .takeIf { it in listOf("system", "ja", "en", "zh") } ?: "system"
-                            preserveExpandedPreview = settings.optBoolean(
-                                "preserveExpandedPreview",
-                                preserveExpandedPreview
-                            )
-                            landscapePreviewFraction = settings.optDouble(
-                                "landscapePreviewSplit",
-                                landscapePreviewFraction.toDouble()
-                            ).toFloat().let { restored ->
-                                LANDSCAPE_PREVIEW_SPLITS.minByOrNull {
-                                    kotlin.math.abs(it - restored)
-                                } ?: 0.5f
+                            clearDraftSnapshot()
+                            if (autoRun) {
+                                val restoredWork = store.works.first { it.id == restoredActiveId }
+                                runSketch(restoredWork.code, restoredWork.files)
                             }
-                            showResizeHandles = settings.optBoolean(
-                                "resizeHandlesVisible",
-                                showResizeHandles
-                            )
-                            editorFontSize = settings.optDouble("editorFontSize", editorFontSize.toDouble())
-                                .toFloat().takeIf { it.isFinite() }?.coerceIn(12f, 20f) ?: 14f
-                            autoIndent = settings.optBoolean("autoIndent", autoIndent)
-                            showLineNumbers = settings.optBoolean("lineNumbers", showLineNumbers)
-                            showEditorAccessoryBar = settings.optBoolean("accessoryBar", showEditorAccessoryBar)
-                            codeCompletion = settings.optBoolean("codeCompletion", codeCompletion)
-                            showAccessoryNavigation = settings.optBoolean("accessoryNavigation", showAccessoryNavigation)
-                            showAccessorySymbols = settings.optBoolean("accessorySymbols", showAccessorySymbols)
-                            compactAccessoryKeys = settings.optBoolean("compactAccessoryKeys", compactAccessoryKeys)
-                            draftRecovery = settings.optBoolean("draftRecovery", draftRecovery)
-                            preferences.edit()
-                                .putBoolean(autoRunKey, autoRun)
-                                .putBoolean(compactPreviewKey, compactPreview)
-                                .putBoolean(landscapeCutoutKey, landscapeUseCutout)
-                                .putString(appLanguageKey, appLanguage)
-                                .putBoolean(preserveExpandedPreviewKey, preserveExpandedPreview)
-                                .putFloat(landscapePreviewSplitKey, landscapePreviewFraction)
-                                .putBoolean(resizeHandlesVisibleKey, showResizeHandles)
-                                .putFloat(editorFontKey, editorFontSize)
-                                .putBoolean(autoIndentKey, autoIndent)
-                                .putBoolean(lineNumbersKey, showLineNumbers)
-                                .putBoolean(editorAccessoryBarKey, showEditorAccessoryBar)
-                                .putBoolean(codeCompletionKey, codeCompletion)
-                                .putBoolean(accessoryNavigationKey, showAccessoryNavigation)
-                                .putBoolean(accessorySymbolsKey, showAccessorySymbols)
-                                .putBoolean(compactAccessoryKeysKey, compactAccessoryKeys)
-                                .putBoolean(draftRecoveryKey, draftRecovery)
-                                .apply()
+                            true
+                        }.getOrDefault(false)
+                        if (!restored) {
+                            appendConsole(ConsoleLevel.ERROR, uiText("バックアップを復元できませんでした"))
+                            showConsole = true
                         }
-                        clearDraftSnapshot()
-                        if (autoRun) {
-                            val restoredWork = store.works.first { it.id == restoredActiveId }
-                            runSketch(restoredWork.code, restoredWork.files)
-                        }
-                        true
-                    }.getOrDefault(false)
-                    if (!restored) {
-                        appendConsole(ConsoleLevel.ERROR, uiText("バックアップを復元できませんでした"))
-                        showConsole = true
+                        assetBusy = false
                     }
                 }
             }
@@ -2655,6 +2844,13 @@ class MainActivity : ComponentActivity() {
                 )
 
                 ActionRow(
+                    iconRes = R.drawable.ic_folder_code,
+                    title = uiText("作品の素材"),
+                    subtitle = uiText("画像・音声・フォントなどを管理"),
+                    onClick = { workActionsMenuExpanded = false; focusManager.clearFocus(force = true); showAssets = true }
+                )
+
+                ActionRow(
                     iconRes = R.drawable.ic_restore,
                     title = uiText("変更履歴"),
                     subtitle = uiText("過去30回の保存状態を表示・復元"),
@@ -2672,6 +2868,18 @@ class MainActivity : ComponentActivity() {
                     onClick = {
                         workActionsMenuExpanded = false
                         showAspectRatioDialog = true
+                    }
+                )
+
+                ActionRow(
+                    iconRes = R.drawable.ic_code,
+                    title = uiText("実行環境"),
+                    subtitle = uiText("p5.jsとp5.soundを作品ごとに設定"),
+                    onClick = {
+                        workActionsMenuExpanded = false
+                        runtimeP5Version = normalizedP5Version(activeWork?.p5Version)
+                        runtimeSoundEnabled = activeWork?.p5SoundEnabled == true
+                        showRuntimeDialog = true
                     }
                 )
 
@@ -2720,8 +2928,11 @@ class MainActivity : ComponentActivity() {
                                         editorText,
                                     files =
                                         current.files.toMutableMap(),
+                                    assets = current.assets.toMap(),
                                     previewAspectRatio =
                                         current.previewAspectRatio,
+                                    p5Version = current.p5Version,
+                                    p5SoundEnabled = current.p5SoundEnabled,
                                     createdAt =
                                         now,
                                     updatedAt =
@@ -3170,6 +3381,12 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         @JavascriptInterface
+                                        fun getP5Version(): String = pendingP5Version
+
+                                        @JavascriptInterface
+                                        fun isP5SoundEnabled(): Boolean = pendingP5SoundEnabled
+
+                                        @JavascriptInterface
                                         fun onError(
                                             message:
                                             String
@@ -3394,8 +3611,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
-                                webViewClient =
-                                    WebViewClient()
+                                webViewClient = AssetWebClient(assets, assetStorage) { previewAssets }
 
                                 setOnTouchListener {
                                         currentView,
@@ -3419,6 +3635,9 @@ class MainActivity : ComponentActivity() {
                                     false
                                 }
 
+                                previewAssets = PreviewAssets(java.util.UUID.randomUUID().toString(), activeWork?.assets?.toMap().orEmpty())
+                                pendingP5Version = normalizedP5Version(activeWork?.p5Version)
+                                pendingP5SoundEnabled = activeWork?.p5SoundEnabled == true
                                 pendingSketchCode =
                                     composeProjectSource(editorText, activeWork?.files.orEmpty())
 
@@ -3428,7 +3647,7 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                 loadUrl(
-                                    "file:///android_asset/public/p5_runner.html"
+                                    previewUrl(previewAssets.token)
                                 )
 
                                 webView =
@@ -4573,20 +4792,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val editorSuggestions = remember(editorValue.text, editorValue.selection, editorFocused, codeCompletion) {
+            if (!editorFocused || !codeCompletion) emptyList() else editorCompletions(editorValue)
+        }
+
         @Composable
         fun CompletionBar(
             modifier: Modifier = Modifier
         ) {
-            val prefix = completionPrefix(editorValue)
-            val suggestions = remember(prefix) {
-                if (prefix.length < 2) {
-                    emptyList()
-                } else {
-                    P5_COMPLETIONS
-                        .filter { it.startsWith(prefix, ignoreCase = true) && it != prefix }
-                        .take(8)
-                }
-            }
+            val suggestions = editorSuggestions
             AnimatedVisibility(
                 visible = editorFocused && codeCompletion && suggestions.isNotEmpty(),
                 modifier = modifier,
@@ -4608,7 +4822,7 @@ class MainActivity : ComponentActivity() {
                             SuggestionChip(
                                 onClick = {
                                     val end = editorValue.selection.start
-                                    val start = (end - prefix.length).coerceAtLeast(0)
+                                    val start = (end - completionPrefix(editorValue).length).coerceAtLeast(0)
                                     applyEditorChange(TextFieldValue(
                                         editorText.replaceRange(start, end, suggestion),
                                         TextRange(start + suggestion.length)
@@ -4909,6 +5123,11 @@ class MainActivity : ComponentActivity() {
                             .apply()
                     },
 
+                    hideEditingPreview = hideEditingPreview,
+                    onHideEditingPreviewChange = {
+                        hideEditingPreview = it
+                        preferences.edit().putBoolean(hideEditingPreviewKey, it).apply()
+                    },
                     compactPreview =
                         compactPreview,
 
@@ -5097,6 +5316,12 @@ class MainActivity : ComponentActivity() {
                         }
                     },
 
+                    p5Username = p5Username,
+                    onImportP5 = {
+                        p5Error = null
+                        showP5Import = true
+                    },
+
                     onImportJs = {
 
                         importJsLauncher.launch(
@@ -5138,11 +5363,7 @@ class MainActivity : ComponentActivity() {
                         .imePadding()
                 ) {
                 // Reserve editing space even for tall works and when the keyboard is open.
-                val completionText = completionPrefix(editorValue)
-                val hasVisibleCompletions = editorFocused && codeCompletion &&
-                    completionText.length >= 2 && P5_COMPLETIONS.any {
-                        it.startsWith(completionText, ignoreCase = true) && it != completionText
-                    }
+                val hasVisibleCompletions = editorSuggestions.isNotEmpty()
                 val chromeHeight = (if (editorFocused) 0.dp else 108.dp) +
                     (if (showResizeHandles && !editorFocused) 28.dp else 0.dp) +
                     (if (showConsole) 176.dp else 0.dp) +
@@ -5157,15 +5378,12 @@ class MainActivity : ComponentActivity() {
                     availableForEditing * 0.65f
                 }
                 val availablePreviewWidth = (maxWidth - 24.dp).value
-                val portraitPreviewSize = fitPreviewSize(
-                    availablePreviewWidth,
-                    previewHeightLimit.value,
-                    workPreviewRatio
-                )
                 val portraitHeight by animateFloatAsState(
-                    targetValue = if (useWideEditingPreview) {
-                        minOf(availablePreviewWidth / 2.5f, previewHeightLimit.value)
-                    } else portraitPreviewSize.height,
+                    targetValue = portraitPreviewHeight(
+                        availablePreviewWidth, previewHeightLimit.value, workPreviewRatio,
+                        hidden = hideEditingPreview && editorFocused && !isLandscape,
+                        compact = useWideEditingPreview
+                    ),
                     animationSpec = tween(220, easing = FastOutSlowInEasing),
                     label = "boundedPortraitPreview"
                 )
@@ -5550,7 +5768,7 @@ class MainActivity : ComponentActivity() {
                     } else {
 
                         Box(
-                            Modifier.fillMaxWidth().height(portraitHeight.coerceAtMost(previewHeightLimit.value).dp),
+                            Modifier.fillMaxWidth().height(portraitHeight.coerceAtMost(previewHeightLimit.value).dp).clipToBounds(),
                             contentAlignment = Alignment.Center
                         ) {
                             val fitted = fitPreviewSize(
@@ -5907,6 +6125,87 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        if (showRuntimeDialog) {
+            AlertDialog(
+                onDismissRequest = { showRuntimeDialog = false },
+                icon = { Icon(painterResource(R.drawable.ic_code), contentDescription = null) },
+                title = { Text(uiText("実行環境")) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(uiText("p5.jsバージョン"), style = MaterialTheme.typography.labelLarge)
+                        listOf(
+                            P5_VERSION_CURRENT to uiText("現在の標準"),
+                            P5_VERSION_LEGACY to uiText("旧作品向け")
+                        ).forEach { (version, description) ->
+                            val selected = runtimeP5Version == version
+                            Surface(
+                                onClick = { runtimeP5Version = version },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (selected) colors.primary else colors.outlineVariant
+                                ),
+                                color = if (selected) colors.primaryContainer else Color.Transparent
+                            ) {
+                                Row(
+                                    Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("p5.js $version", modifier = Modifier.weight(1f))
+                                    Text(
+                                        description,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("p5.sound", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    uiText("音声再生・合成・解析を有効にします"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = runtimeSoundEnabled,
+                                onCheckedChange = { runtimeSoundEnabled = it }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = saveRuntime@{
+                        val work = activeWork ?: return@saveRuntime
+                        val previousVersion = work.p5Version
+                        val previousSound = work.p5SoundEnabled
+                        val previousUpdatedAt = work.updatedAt
+                        work.p5Version = runtimeP5Version
+                        work.p5SoundEnabled = runtimeSoundEnabled
+                        work.updatedAt = System.currentTimeMillis()
+                        if (selectedFolderUri != null && !saveStore()) {
+                            work.p5Version = previousVersion
+                            work.p5SoundEnabled = previousSound
+                            work.updatedAt = previousUpdatedAt
+                            Toast.makeText(this@MainActivity, uiText("実行環境を保存できませんでした"), Toast.LENGTH_SHORT).show()
+                            return@saveRuntime
+                        }
+                        showRuntimeDialog = false
+                        runSketch()
+                    }) { Text(uiText("保存")) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRuntimeDialog = false }) { Text(uiText("キャンセル")) }
+                }
+            )
+        }
+
         if (showAspectRatioDialog) {
             val aspectColumns = if (isLandscape) 3 else 2
             val deviceRatioText = if (devicePreviewRatio >= 1f) {
@@ -5995,6 +6294,48 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+
+        if (assetBusy && !showAssets) {
+            AlertDialog(onDismissRequest = {}, title = { Text(uiText("ファイルを処理中…")) },
+                text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
+        }
+
+        if (showP5Import) {
+            P5AccountImportDialog(
+                username = p5Username,
+                sketches = p5Sketches,
+                busy = p5Busy,
+                error = p5Error,
+                text = { uiText(it) },
+                onUsernameChange = { value ->
+                    p5Username = value.take(64)
+                    p5Sketches = emptyList()
+                    p5Error = null
+                },
+                onLoad = ::loadP5Account,
+                onImport = ::importFromP5,
+                onDismiss = { showP5Import = false }
+            )
+        }
+
+        if (showAssets) {
+            AssetManagerDialog(
+                assets = activeWork?.assets.orEmpty(), busy = assetBusy, text = ::uiText,
+                onAdd = {
+                    assetTargetId = activeWorkId
+                    assetPicker.launch(arrayOf("*/*"))
+                },
+                onRename = { old, new ->
+                    activeWork?.let { work ->
+                        val updated = work.assets.toMutableMap()
+                        updated.remove(old)?.let { updated[new] = it }
+                        changeAssets(work.id, updated)
+                    }
+                },
+                onDelete = { name -> activeWork?.let { changeAssets(it.id, it.assets.toMap() - name) } },
+                onClose = { showAssets = false }
+            )
         }
 
         if (showProjectFilesDialog) {
@@ -6776,6 +7117,8 @@ class MainActivity : ComponentActivity() {
         autoRun: Boolean,
         onAutoRunChange:
             (Boolean) -> Unit,
+        hideEditingPreview: Boolean,
+        onHideEditingPreviewChange: (Boolean) -> Unit,
         compactPreview: Boolean,
         onCompactPreviewChange:
             (Boolean) -> Unit,
@@ -6824,6 +7167,8 @@ class MainActivity : ComponentActivity() {
         draftRecovery: Boolean,
         onDraftRecoveryChange:
             (Boolean) -> Unit,
+        p5Username: String,
+        onImportP5: () -> Unit,
         onImportJs: () -> Unit,
         onExportJs: () -> Unit,
         onExportBackup: () -> Unit,
@@ -6838,39 +7183,6 @@ class MainActivity : ComponentActivity() {
 
         var settingsTab by rememberSaveable { mutableStateOf(0) }
         var showLicenses by remember { mutableStateOf(false) }
-        val updateScope = androidx.compose.runtime.rememberCoroutineScope()
-        var checkingUpdate by remember { mutableStateOf(false) }
-        var updateMessage by remember { mutableStateOf<String?>(null) }
-        var availableRelease by remember { mutableStateOf<AppRelease?>(null) }
-        if (updateMessage != null) {
-            AlertDialog(
-                onDismissRequest = { updateMessage = null },
-                title = { Text(uiText("アップデート")) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(uiText(updateMessage!!))
-                        availableRelease?.let { Text(it.tag) }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        if (availableRelease != null) {
-                            try {
-                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
-                            } catch (_: android.content.ActivityNotFoundException) {
-                                Toast.makeText(this@MainActivity, uiText("ブラウザーを開けませんでした"), Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        updateMessage = null
-                    }) { Text(uiText(if (availableRelease != null) "配布ページを開く" else "閉じる")) }
-                },
-                dismissButton = {
-                    if (availableRelease != null) {
-                        TextButton(onClick = { updateMessage = null }) { Text(uiText("閉じる")) }
-                    }
-                }
-            )
-        }
         if (showLicenses) {
             val paragraphs = remember {
                 assets.open("licenses/THIRD_PARTY_NOTICES.txt").bufferedReader().use { it.readText() }
@@ -6923,7 +7235,7 @@ class MainActivity : ComponentActivity() {
                         listOf(
                             R.drawable.ic_settings to uiText("外観"),
                             R.drawable.ic_code to uiText("エディター"),
-                            R.drawable.ic_folder_code to uiText("ストレージ")
+                            R.drawable.ic_folder_code to uiText("保存とバックアップ")
                         ).forEachIndexed { index, (icon, label) ->
                             Surface(
                                 onClick = { settingsTab = index },
@@ -7059,6 +7371,45 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp)
+                ) {
+                    Text(
+                        text = uiText("p5.js Web Editor"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = uiText("アカウントの公開作品を選んで取り込みます"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    if (p5Username.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "@$p5Username",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.primary
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    FilledTonalButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onImportP5
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_import_js),
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(uiText("p5.jsから作品を取り込む"))
+                    }
+                }
+
+                SettingsDivider()
+
+                Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -7191,7 +7542,7 @@ class MainActivity : ComponentActivity() {
                             RoundedCornerShape(12.dp)).padding(12.dp))
                 }
                 SettingSwitchRow(
-                    title = uiText("リガチャ"),
+                    title = uiText("フォントの連字"),
                     description = uiText("対応フォントの連字を有効にします。コードの文字列は変わりません"),
                     checked = fontLigatures,
                     onCheckedChange = {
@@ -7234,7 +7585,7 @@ class MainActivity : ComponentActivity() {
 
                 SettingSwitchRow(
                     title =
-                        uiText("端末の向きで回転しない"),
+                        uiText("画面の向きを固定"),
                     description =
                         if (manualRotation) {
                             uiText("自動回転を停止し、上部の↻ボタンで縦横を切り替えます")
@@ -7270,10 +7621,21 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
+                    title = uiText("編集時にプレビューを隠す"),
+                    description = uiText("縦画面でコード欄を選ぶと非表示になり、編集を終えると戻ります"),
+                    checked = hideEditingPreview,
+                    onCheckedChange = onHideEditingPreviewChange
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    enabled = !hideEditingPreview,
                     title =
-                        uiText("入力中はプレビューを縮小"),
+                        uiText("編集時にプレビューを縮小"),
                     description =
-                        uiText("縦画面の編集中は横幅いっぱいの浅いプレビューに切り替えます。作品の保存比率は変更しません"),
+                        if (hideEditingPreview) uiText("プレビューを隠す設定が優先されます")
+                        else uiText("縦画面の編集中だけプレビューを低く表示します"),
                     checked =
                         compactPreview,
                     onCheckedChange =
@@ -7283,7 +7645,7 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    title = uiText("サイズ変更の境界線"),
+                    title = uiText("サイズ調整バー"),
                     description = if (showResizeHandles) {
                         uiText("プレビューとエディターの間にドラッグ操作を表示します")
                     } else {
@@ -7302,13 +7664,13 @@ class MainActivity : ComponentActivity() {
                             .padding(horizontal = 18.dp, vertical = 16.dp)
                     ) {
                         Text(
-                            text = uiText("横画面のプレビュー占有幅"),
+                            text = uiText("横画面のプレビュー幅"),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = uiText("左側のプレビュー領域と右側のエディター領域を切り替えます"),
+                            text = uiText("プレビューに使う横幅を調整します"),
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant
                         )
@@ -7336,7 +7698,7 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    title = uiText("拡大時も作品サイズを維持"),
+                    title = uiText("全画面でも描画サイズを維持"),
                     description = uiText("通常プレビューと同じ座標・縦横比で実行し、表示だけを拡大します"),
                     checked = preserveExpandedPreview,
                     onCheckedChange = onPreserveExpandedPreviewChange
@@ -7363,7 +7725,7 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    title = uiText("キーボード操作パネル"),
+                    title = uiText("編集キー"),
                     description = uiText("編集中にTAB、カーソル移動、記号ボタンを表示します"),
                     checked = showEditorAccessoryBar,
                     onCheckedChange = onShowEditorAccessoryBarChange
@@ -7372,8 +7734,8 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    title = uiText("p5.js入力候補"),
-                    description = uiText("入力中の関数名や変数名の候補を表示します"),
+                    title = uiText("入力候補"),
+                    description = uiText("p5.jsの関数名や変数名の候補を表示します"),
                     checked = codeCompletion,
                     onCheckedChange = onCodeCompletionChange
                 )
@@ -7401,7 +7763,7 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    title = uiText("コンパクトなキー"),
+                    title = uiText("編集キーを小さくする"),
                     description = uiText("操作パネルの高さとキー幅を小さくします"),
                     checked = compactAccessoryKeys,
                     enabled = showEditorAccessoryBar,
@@ -7412,7 +7774,7 @@ class MainActivity : ComponentActivity() {
 
                 SettingSwitchRow(
                     title =
-                        uiText("編集中の内容を自動復元"),
+                        uiText("未保存のコードを復元"),
                     description =
                         uiText("未保存の変更を一時保存し、次回起動時に復元します"),
                     checked =
@@ -7519,7 +7881,7 @@ class MainActivity : ComponentActivity() {
 
             if (!settingsLandscape || settingsTab == 2) {
             SettingsSection(
-                title = uiText("ストレージ"),
+                title = uiText("保存とバックアップ"),
                 description = uiText("保存先とファイル入出力")
             ) {
 
@@ -7717,7 +8079,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth().padding(18.dp)
                 ) {
                     Text(
-                        text = uiText("一括バックアップ"),
+                        text = uiText("作品と設定のバックアップ"),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -7767,33 +8129,9 @@ class MainActivity : ComponentActivity() {
                 Text("rin-code-dev", style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant)
                 TextButton(
-                    enabled = !checkingUpdate,
-                    onClick = {
-                        checkingUpdate = true
-                        availableRelease = null
-                        updateScope.launch {
-                            try {
-                                val release = withContext(Dispatchers.IO) { fetchNewestRelease() }
-                                val current = ReleaseVersion.parse(BuildConfig.VERSION_NAME)
-                                updateMessage = when {
-                                    release == null -> "公開済みのバージョンが見つかりません"
-                                    current == null -> "バージョンを比較できませんでした"
-                                    release.version > current -> {
-                                        availableRelease = release
-                                        "新しいバージョンがあります"
-                                    }
-                                    else -> "新しいアップデートはありません"
-                                }
-                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                throw cancelled
-                            } catch (_: Exception) {
-                                updateMessage = "確認できませんでした。通信環境を確認して、もう一度お試しください"
-                            } finally {
-                                checkingUpdate = false
-                            }
-                        }
-                    }
-                ) { Text(uiText(if (checkingUpdate) "確認中…" else "アップデートを確認")) }
+                    enabled = !updateViewModel.checking,
+                    onClick = { updateViewModel.checkManually() }
+                ) { Text(uiText(if (updateViewModel.manualChecking) "確認中…" else "アップデートを確認")) }
                 TextButton(onClick = { showLicenses = true }) {
                     Text(uiText("ライセンス情報"))
                 }
@@ -8043,6 +8381,68 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun pruneUnusedAssets(works: List<Work>) {
+        val local = AtomicFile(File(filesDir, "local-works.json"))
+        val localWorks = if (local.baseFile.exists() || File(local.baseFile.path + ".bak").exists()) {
+            runCatching { local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) } }.getOrNull()?.works
+                ?: return
+        } else emptyList()
+        val keep = (works + localWorks).flatMap { it.assets.values }.map { it.hash }.toSet() +
+            previewAssets.assets.values.map { it.hash }
+        assetStorage.prune(keep)
+    }
+
+    private fun loadLocalWorkStore(): WorkStore? = try {
+        val local = AtomicFile(File(filesDir, "local-works.json"))
+        if (!local.baseFile.exists() && !File(local.baseFile.path + ".bak").exists()) null else {
+            val store = local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) }
+                ?: error("Invalid local works")
+            check(store.works.flatMap { it.assets.values }.all(assetStorage::contains))
+            store
+        }
+    } catch (_: Exception) { unreadableWorkFolders.add("local"); null }
+
+    @Synchronized
+    private fun saveLocalWorkStore(works: List<Work>, activeId: String): Boolean {
+        if ("local" in unreadableWorkFolders) return false
+        return runCatching {
+            val json = serializeWorkStore(works, activeId)
+            val atomic = AtomicFile(File(filesDir, "local-works.json"))
+            val output = atomic.startWrite()
+            try { output.write(json.toByteArray(Charsets.UTF_8)); atomic.finishWrite(output) }
+            catch (error: Exception) { atomic.failWrite(output); throw error }
+        }.isSuccess
+    }
+
+    private fun saveFolderAssets(directory: DocumentFile, works: List<Work>) {
+        val references = works.flatMap { it.assets.values }.distinctBy { it.hash }
+        if (references.isEmpty()) return
+        val folder = directory.findFile("assets") ?: directory.createDirectory("assets") ?: error("Cannot create assets")
+        references.forEach { asset ->
+            check(assetStorage.contains(asset))
+            val existing = folder.findFile(asset.hash)
+            if (existing == null || existing.length() != asset.size) {
+                val document = existing ?: folder.createFile("application/octet-stream", asset.hash) ?: error("Cannot save asset")
+                contentResolver.openOutputStream(document.uri, "wt")?.use { output ->
+                    assetStorage.file(asset).inputStream().use { copyBounded(it, output, MAX_ASSET_BYTES) }
+                } ?: error("Cannot save asset")
+            }
+        }
+    }
+
+    private fun restoreFolderAssets(directory: DocumentFile, works: List<Work>) {
+        val references = works.flatMap { it.assets.values }.distinctBy { it.hash }
+        if (references.isEmpty()) return
+        val folder = directory.findFile("assets") ?: error("Missing assets")
+        references.forEach { asset ->
+            if (!assetStorage.contains(asset)) {
+                val document = folder.findFile(asset.hash) ?: error("Missing asset")
+                val loaded = contentResolver.openInputStream(document.uri)?.use { assetStorage.put(it, asset.mime, asset.hash) }
+                check(loaded?.size == asset.size)
+            }
+        }
+    }
+
     private fun loadWorkStore(folderUri: Uri): WorkStore? {
         return try {
             val directory = DocumentFile.fromTreeUri(this, folderUri)
@@ -8057,6 +8457,7 @@ class MainActivity : ComponentActivity() {
                 ?: error(uiText("作品ファイルを読み込めません"))
             val store = parseWorkStoreJson(json) ?: error(uiText("作品ファイルの形式を読み取れません"))
             check(store.works.isNotEmpty()) { uiText("作品ファイルが空です") }
+            restoreFolderAssets(directory, store.works)
             unreadableWorkFolders.remove(folderUri.toString())
             store
         } catch (error: Exception) {
@@ -8071,11 +8472,13 @@ class MainActivity : ComponentActivity() {
         works: List<Work>,
         activeWorkId: String
     ): Boolean {
-        if (folderUri == null || folderUri.toString() in unreadableWorkFolders) return false
+        if (folderUri == null) return saveLocalWorkStore(works, activeWorkId)
+        if (folderUri.toString() in unreadableWorkFolders) return false
         return try {
             // Serialize before opening the provider's truncating stream.
             val json = serializeWorkStore(works, activeWorkId)
             val directory = DocumentFile.fromTreeUri(this, folderUri) ?: return false
+            saveFolderAssets(directory, works)
             val file = directory.findFile(worksFileName)
                 ?: directory.createFile("application/json", worksFileName)
                 ?: return false
@@ -8094,7 +8497,7 @@ class MainActivity : ComponentActivity() {
     ): String {
 
         if (uri == null) {
-            return uiText("未選択")
+            return uiText("端末内")
         }
 
         return try {

@@ -16,8 +16,8 @@ android {
         applicationId "com.hikariatelier.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.0.0-beta.4"
+        versionCode 7
+        versionName "1.0.1"
 
         vectorDrawables {
             useSupportLibrary true
@@ -35,6 +35,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-runtime-debug"
+            resValue "string", "app_name", "Edit:KIRO Dev"
+        }
         release {
             debuggable false
             if (releaseSigningFile.exists()) signingConfig signingConfigs.release
@@ -87,6 +92,9 @@ def syncWebAssets = tasks.register("syncWebAssets", Sync) {
     from(webSourceDir) {
         include 'p5_runner.html'
         include 'p5.min.js'
+        include 'p5-v1.min.js'
+        include 'p5-v2.min.js'
+        include 'p5.sound.min.js'
         include 'samples/*.js'
     }
     into new File(generatedWebAssetsDir, "public")

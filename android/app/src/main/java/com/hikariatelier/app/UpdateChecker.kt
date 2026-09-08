@@ -26,9 +26,12 @@ internal data class ReleaseVersion(val numbers: List<Long>, val suffix: List<Str
 
     companion object {
         fun parse(tag: String): ReleaseVersion? {
-            val match = Regex("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-([0-9A-Za-z.-]+))?(?:\\+[0-9A-Za-z.-]+)?$")
+            val match = Regex("^v?(\\d+)\\.(\\d+)(?:\\.(\\d+))?(?:-([0-9A-Za-z.-]+))?(?:\\+[0-9A-Za-z.-]+)?$")
                 .matchEntire(tag) ?: return null
-            val numbers = (1..3).map { match.groupValues[it].toLongOrNull() ?: return null }
+            val numbers = (1..3).map {
+                if (it == 3 && match.groupValues[it].isEmpty()) 0L
+                else match.groupValues[it].toLongOrNull() ?: return null
+            }
             val suffix = match.groupValues[4].takeIf { it.isNotEmpty() }?.split('.') ?: emptyList()
             if (suffix.any { it.isEmpty() }) return null
             return ReleaseVersion(numbers, suffix)
@@ -42,14 +45,15 @@ internal fun newestRelease(json: String): AppRelease? {
     val releases = JSONArray(json)
     return (0 until releases.length()).mapNotNull { index ->
         val release = releases.getJSONObject(index)
-        if (release.optBoolean("draft", false)) return@mapNotNull null
+        if (release.optBoolean("draft", false) || release.optBoolean("prerelease", false)) return@mapNotNull null
         val tag = release.optString("tag_name")
         val version = ReleaseVersion.parse(tag) ?: return@mapNotNull null
+        if (version.suffix.isNotEmpty()) return@mapNotNull null
         AppRelease(tag, version)
     }.maxByOrNull { it.version }
 }
 
-// Call only on user request, off the main thread. No credentials or artwork are sent.
+// Run off the main thread at startup or on explicit request. No artwork or credentials are sent.
 internal fun fetchNewestRelease(): AppRelease? {
     val connection = URL("https://api.github.com/repos/rin-code-dev/EDIT-KIRO/releases?per_page=100")
         .openConnection() as HttpURLConnection
@@ -76,3 +80,20 @@ internal fun fetchNewestRelease(): AppRelease? {
         connection.disconnect()
     }
 }
+
+internal data class UpdateResult(val message: String?, val release: AppRelease? = null)
+
+internal fun evaluateUpdate(release: AppRelease?, currentName: String, silent: Boolean): UpdateResult {
+    val current = ReleaseVersion.parse(currentName)
+    if (release != null && current != null && release.version > current) {
+        return UpdateResult("新しいバージョンがあります", release)
+    }
+    return UpdateResult(if (silent) null else when {
+        current == null -> "バージョンを比較できませんでした"
+        release == null -> "公開済みのバージョンが見つかりません"
+        else -> "新しいアップデートはありません"
+    })
+}
+
+internal fun updateFailureMessage(silent: Boolean): String? = if (silent) null else
+    "確認できませんでした。通信環境を確認して、もう一度お試しください"
