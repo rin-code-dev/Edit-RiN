@@ -7,6 +7,12 @@ const html = readFileSync(`${__dirname}/../www/p5_runner.html`, 'utf8');
 const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
   .map(match => match[1]).filter(Boolean);
 
+test('sound starts from preview interaction without visible language text', () => {
+  assert.equal(html.includes('タップして音声を開始'), false);
+  assert.equal(html.includes('id="sound-start"'), false);
+  assert.match(html, /addEventListener\('pointerdown', unlockAudio, true\)/);
+});
+
 function runner(code = 'function setup() {}') {
   const events = {}, hooks = {}, frames = new Map(), statuses = [], errors = [];
   let frameId = 0, resizes = 0, painted = 0, removed = false, stoppedTracks = 0;

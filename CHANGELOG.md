@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2 — 2026-09-09
+
+- Fix preview initialization with p5.js 2.x.
+- Keep p5.sound off by default and start enabled works on their first preview interaction without a visible language-specific prompt.
+- Resume audio when resuming a paused sketch.
+- Align fullscreen touch input with the scaled WebView while preserving the logical drawing size.
+- Add browser coverage for 1.x/2.x, sound, 2D/WebGL, and resized touch coordinates.
+- Add separate sound-loading examples for p5.js 1.x and 2.x.
+
 ## ver1.0.1 — 2026-09-08
 
 - 作品メニューの「実行環境」から、p5.js 2.3.3と1.11.5を作品ごとに選択できるようにしました。新しい作品は2.3.3、旧形式から読み込んだ作品は互換性のため1.11.5で動きます。

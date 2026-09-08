@@ -98,7 +98,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
             } else {
                 P5_VERSION_LEGACY
             },
-            p5SoundEnabled = storedVersion >= 6 && item.optBoolean("p5SoundEnabled", false),
+            p5SoundEnabled = item.optBoolean("p5SoundEnabled", false),
             createdAt = item.optLong("createdAt", now),
             updatedAt = item.optLong("updatedAt", now)
         )

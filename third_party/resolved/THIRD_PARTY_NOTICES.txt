@@ -1,4 +1,4 @@
-Edit:KIRO 1.0.1
+Edit:KIRO 1.0.2
 Copyright (c) 2026 rin-code-dev
 
 Edit:KIRO Source-Available License 1.0

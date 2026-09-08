@@ -67,8 +67,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -3318,31 +3316,11 @@ class MainActivity : ComponentActivity() {
                 ) {
 
                 val density = LocalDensity.current
-                val fixedSize = logicalSize?.takeIf { it.width > 0 && it.height > 0 }
-                val webViewModifier = if (fixedSize != null) {
-                    val logicalWidth = with(density) { fixedSize.width.toDp() }
-                    val logicalHeight = with(density) { fixedSize.height.toDp() }
-                    val displayScale = minOf(
-                        maxWidth.value / logicalWidth.value,
-                        maxHeight.value / logicalHeight.value
-                    )
-                    Modifier
-                        .requiredSize(logicalWidth, logicalHeight)
-                        .graphicsLayer {
-                            scaleX = displayScale
-                            scaleY = displayScale
-                            transformOrigin = TransformOrigin.Center
-                        }
-                        .align(Alignment.Center)
-                } else {
-                    Modifier.fillMaxSize()
-                }
-
                 AndroidView(
                     factory = {
                             context ->
 
-                        webView?.also { retainedView ->
+                        val preview = webView?.also { retainedView ->
                             (retainedView.parent as? ViewGroup)?.removeView(retainedView)
                             retainedView.onResume()
                             retainedView.post { retainedView.onResume() }
@@ -3653,12 +3631,14 @@ class MainActivity : ComponentActivity() {
                                 webView =
                                     this
                             }
+                        PreviewWebViewHost(context, preview)
                     },
 
-                    modifier = webViewModifier,
+                    modifier = Modifier.fillMaxSize(),
+                    update = { host -> host.setLogicalSize(logicalSize?.width, logicalSize?.height) },
 
                     onRelease = { releasedView ->
-                        releasedView.onPause()
+                        releasedView.preview.onPause()
                     }
                 )
 
