@@ -20,6 +20,17 @@ class WorkStoreCodecTest {
     }
 
     @Test
+    fun soundDefaultsOffButExplicitOnSurvives() {
+        assertFalse(Work("new", "New", "").p5SoundEnabled)
+        for (version in listOf(5, 6, 999)) {
+            val missing = parseWorkStoreJson("""{"version":$version,"works":[{"id":"a","title":"A","code":""}]}""")!!
+            assertFalse(missing.works.single().p5SoundEnabled)
+            val on = parseWorkStoreJson("""{"version":$version,"works":[{"id":"a","title":"A","code":"","p5SoundEnabled":true}]}""")!!
+            assertTrue(on.works.single().p5SoundEnabled)
+        }
+    }
+
+    @Test
     fun missingActiveWorkFallsBackToExistingWork() {
         val parsed = parseWorkStoreJson("""{"activeWorkId":"missing","works":[{"id":"a","title":"A","code":""}]}""")
         assertEquals("a", parsed!!.activeWorkId)

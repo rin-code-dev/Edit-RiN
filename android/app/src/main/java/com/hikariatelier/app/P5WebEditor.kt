@@ -103,7 +103,7 @@ internal fun fetchP5Sketches(username: String): List<P5Sketch> {
         connection.readTimeout = 20_000
         connection.instanceFollowRedirects = false
         connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "Edit-KIRO/1.0.1")
+        connection.setRequestProperty("User-Agent", "Edit-KIRO/1.0.2")
         check(connection.responseCode == 200) { "Account request failed" }
         parseP5Sketches(String(readBounded(connection.inputStream, MAX_ACCOUNT_RESPONSE_BYTES.toLong()), Charsets.UTF_8))
     } finally {
@@ -126,7 +126,7 @@ private fun openRemoteAsset(source: String): Pair<ByteArray, String?> {
             connection.connectTimeout = 12_000
             connection.readTimeout = 25_000
             connection.instanceFollowRedirects = false
-            connection.setRequestProperty("User-Agent", "Edit-KIRO/1.0.1")
+            connection.setRequestProperty("User-Agent", "Edit-KIRO/1.0.2")
             when (val status = connection.responseCode) {
                 200 -> return readBounded(connection.inputStream, MAX_ASSET_BYTES) to connection.contentType
                 301, 302, 303, 307, 308 -> {

@@ -41,19 +41,6 @@
       letter-spacing: .08em;
     }
 
-    #sound-start {
-      position: fixed;
-      left: 50%;
-      bottom: max(20px, env(safe-area-inset-bottom));
-      transform: translateX(-50%);
-      z-index: 4;
-      border: 1px solid #ffffff44;
-      border-radius: 999px;
-      padding: 10px 16px;
-      background: #111827dd;
-      color: white;
-      font: 13px system-ui, sans-serif;
-    }
   </style>
 
   <script>
@@ -251,6 +238,7 @@
 
     window.resumeSketch = () => {
       if (typeof loop === 'function') loop();
+      try { if (typeof getAudioContext === 'function') getAudioContext().resume().catch(() => {}); } catch (_) {}
       if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
     };
 
@@ -370,7 +358,7 @@
 
     if (typeof p5 !== 'undefined') {
       // preload() can finish long after window.load; resize only after setup has created its canvas.
-      p5.prototype.registerMethod('afterSetup', function () {
+      const afterSetup = function () {
         if (!this._isGlobal) return;
         sketchReady = true;
         // A resize explicitly requested by the sketch is still respected.
@@ -383,24 +371,25 @@
         document.getElementById('boot')?.remove();
         scheduleFit(true);
         if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
-      });
+      };
+      if (typeof p5.registerAddon === 'function') {
+        p5.registerAddon((constructor, prototype, hooks) => { hooks.postsetup = afterSetup; });
+      } else {
+        p5.prototype.registerMethod('afterSetup', afterSetup);
+      }
     }
 
     if (window.__editKiroSoundEnabled) {
-      const button = document.createElement('button');
-      button.id = 'sound-start';
-      button.type = 'button';
-      button.textContent = 'タップして音声を開始';
-      button.addEventListener('click', async () => {
+      const unlockAudio = async () => {
         try {
-          if (typeof userStartAudio === 'function') await userStartAudio();
-          else if (typeof getAudioContext === 'function') await getAudioContext().resume();
-          button.remove();
+          if (typeof userStartAudio === 'function') userStartAudio();
+          if (typeof getAudioContext === 'function') await getAudioContext().resume();
+          window.removeEventListener('pointerdown', unlockAudio, true);
         } catch (error) {
           window.__editKiroReportError(error?.message || String(error));
         }
-      });
-      document.body.appendChild(button);
+      };
+      window.addEventListener('pointerdown', unlockAudio, true);
     }
 
     window.addEventListener('load', () => {
