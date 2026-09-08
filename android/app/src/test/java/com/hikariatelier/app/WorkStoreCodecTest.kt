@@ -1,6 +1,7 @@
 package com.hikariatelier.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -8,9 +9,10 @@ import org.junit.Test
 
 class WorkStoreCodecTest {
     @Test
-    fun futureFormatsAndMalformedOptionalDataAreRejected() {
+    fun futureFormatsKeepKnownFieldsAndMalformedOptionalDataAreRejected() {
         val work = """{"id":"a","title":"A","code":""}"""
-        assertNull(parseWorkStoreJson("""{"version":5,"works":[$work]}"""))
+        val future = parseWorkStoreJson("""{"version":999,"works":[$work],"futureField":true}""")
+        assertEquals("a", future!!.works.single().id)
         for (field in listOf("\"files\":[]", "\"revisions\":{}", "\"files\":{\"bad.js\":42}")) {
             val broken = work.dropLast(1) + "," + field + "}"
             assertNull(parseWorkStoreJson("""{"works":[$broken]}"""))
@@ -49,6 +51,8 @@ class WorkStoreCodecTest {
                     WorkRevision("// second revision $index\nbackground(0);", 2_000L + index)
                 ),
                 previewAspectRatio = ratio,
+                p5Version = if (index % 2 == 0) P5_VERSION_CURRENT else P5_VERSION_LEGACY,
+                p5SoundEnabled = index % 2 == 0,
                 createdAt = 3_000L + index,
                 updatedAt = 4_000L + index
             )
@@ -64,6 +68,8 @@ class WorkStoreCodecTest {
             assertEquals(original.title, actual.title)
             assertEquals(original.code, actual.code)
             assertEquals(original.previewAspectRatio, actual.previewAspectRatio)
+            assertEquals(original.p5Version, actual.p5Version)
+            assertEquals(original.p5SoundEnabled, actual.p5SoundEnabled)
             assertEquals(original.files.toMap(), actual.files.toMap())
             assertEquals(original.revisions.toList(), actual.revisions.toList())
             assertEquals(original.createdAt, actual.createdAt)
@@ -92,6 +98,8 @@ class WorkStoreCodecTest {
         assertEquals("旧作品", work.title)
         assertEquals("function draw() {}", work.code)
         assertEquals("1:1", work.previewAspectRatio)
+        assertEquals(P5_VERSION_LEGACY, work.p5Version)
+        assertFalse(work.p5SoundEnabled)
         assertTrue(work.files.isEmpty())
         assertTrue(work.revisions.isEmpty())
         assertTrue(work.createdAt > 0L)

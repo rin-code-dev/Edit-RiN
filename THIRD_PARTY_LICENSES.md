@@ -11,8 +11,27 @@ It is distributed under the GNU Lesser General Public License, version 2.1.
 - Upstream: https://github.com/processing/p5.js/tree/v1.11.5
 - License: third_party/licenses/p5-LGPL-2.1.txt
 - Corresponding source and build scripts: third_party/sources/p5.js-v1.11.5-source.tar.gz
-- www/p5.min.js matches the published p5@1.11.5 distribution byte for byte.
-- Replace www/p5.min.js and rebuild to use a modified runtime.
+- Runtime: www/p5-v1.min.js (www/p5.min.js is retained for compatibility)
+
+## p5.js 2.3.3
+
+p5.js is created by the Processing Foundation and p5.js contributors.
+It is distributed under the GNU Lesser General Public License, version 2.1.
+
+- Upstream: https://github.com/processing/p5.js/tree/v2.3.3
+- License: third_party/licenses/p5-LGPL-2.1.txt
+- Corresponding source and build scripts: third_party/sources/p5-2.3.3-source.tgz
+- Runtime: www/p5-v2.min.js
+
+## p5.sound 0.4.1
+
+p5.sound is created by the Processing Foundation and contributors.
+It is distributed under the GNU Lesser General Public License, version 2.1.
+
+- Upstream: https://github.com/processing/p5.sound.js/tree/v0.4.1
+- License: third_party/licenses/p5-sound-LGPL-2.1.txt
+- Corresponding source and build scripts: third_party/sources/p5.sound-0.4.1-source.tgz
+- Runtime: www/p5.sound.min.js
 
 ## Android runtime dependencies
 

@@ -1,17 +1,22 @@
-# Edit:KIRO
+# EDIT:KIRO ver1.0.1
 
 A p5.js editor for making art on Android.
 
-[Download](https://github.com/rin-code-dev/EDIT-KIRO/releases) · [Changelog](BETA_NOTES.md) · [Issues](https://github.com/rin-code-dev/EDIT-KIRO/issues)
+[Download](https://github.com/rin-code-dev/EDIT-KIRO/releases) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/rin-code-dev/EDIT-KIRO/issues)
 
 - Code editing and live preview
 - Fullscreen, screenshots and recording
 - Saved works and backups
+- Per-work images, audio, fonts and data: [Asset guide](ASSETS.md)
+- Import public works from a p5.js Web Editor account
+- Per-work p5.js 2.3.3 / 1.11.5 runtime selection
+- p5.sound playback, synthesis and analysis
 - Custom themes and fonts
 - Japanese, English and Chinese UI
 
-Requires Android 6.0 or later. This is a beta—back up your work.  
-Check for new releases, including betas, from Settings.
+Requires Android 6.0 or later.
+Checks for stable updates silently at startup and only notifies when an update is available.
+“Hide preview while editing” is enabled by default to free up portrait editing space.
 
 ## Build
 
@@ -32,6 +37,6 @@ Modification, reuse or redistribution requires prior contact, permission and att
 
 ## 日本語
 
-Androidでp5.jsの作品を書いて、その場で動かせるアプリです。保存・録画・フォント変更に対応。ベータ版のため、大切な作品はバックアップしてください。
+Androidでp5.jsの作品を書いて、その場で動かせるアプリです。正式版 ver1.0.1。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応します。
 
 © 2026 rin-code-dev · Made with p5.js and Jetpack Compose.

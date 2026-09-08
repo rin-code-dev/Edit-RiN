@@ -5,6 +5,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreviewGeometryTest {
+    @Test fun hiddenPreviewReleasesAllSpaceAndRestoresOriginalGeometry() {
+        for (compact in listOf(true, false)) {
+            assertEquals(0f, portraitPreviewHeight(360f, 240f, 9f / 16f, true, compact), 0f)
+        }
+        assertEquals(144f, portraitPreviewHeight(360f, 240f, 9f / 16f, false, true), 0.001f)
+        assertEquals(240f, portraitPreviewHeight(360f, 240f, 9f / 16f, false, false), 0.001f)
+    }
+
     @Test
     fun deviceRatioIsAcceptedAndResolvedAtRuntime() {
         assertEquals("device", normalizedPreviewAspectRatio("device"))
