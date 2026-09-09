@@ -28,3 +28,38 @@ AGENTS.md
 .env
 .env.*
 android/.kotlin/
+
+# Local tooling and generated files (at any project depth)
+.gradle/
+.kotlin/
+.idea/
+.vscode/
+.externalNativeBuild/
+.cxx/
+*.iml
+/build/
+/work/
+/private-signing/
+local.properties
+release-signing.properties
+agents.md
+
+# Private keys and local environment overrides
+*.pfx
+*.key
+/.envrc
+
+# Editor backups, temporary files and diagnostic output
+*~
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+*.tmp
+*.log
+*.hprof
+/hs_err_pid*.log
+/replay_pid*.log
+Thumbs.db
+Desktop.ini

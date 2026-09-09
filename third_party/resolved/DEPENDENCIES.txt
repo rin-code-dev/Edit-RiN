@@ -82,7 +82,7 @@ com.google.errorprone:error_prone_annotations:2.15.0
 com.google.guava:listenablefuture:1.0
 org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22
 org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22
-org.jetbrains.kotlin:kotlin-stdlib:1.9.25
+org.jetbrains.kotlin:kotlin-stdlib:2.2.10
 org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3
 org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.7.3
 org.jetbrains:annotations:23.0.0

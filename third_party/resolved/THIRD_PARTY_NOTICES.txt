@@ -1,4 +1,4 @@
-Edit:RiN 1.0.3
+Edit:RiN 1.0.4
 Copyright (c) 2026 rin-code-dev
 
 Edit:RiN Source-Available License 1.0
@@ -2243,7 +2243,7 @@ The Apache License, Version 2.0 http://www.apache.org/licenses/LICENSE-2.0.txt
 https://kotlinlang.org/
 
 
---- org.jetbrains.kotlin:kotlin-stdlib:1.9.25 ---
+--- org.jetbrains.kotlin:kotlin-stdlib:2.2.10 ---
 The Apache License, Version 2.0 http://www.apache.org/licenses/LICENSE-2.0.txt
 https://kotlinlang.org/
 

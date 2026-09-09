@@ -1,4 +1,4 @@
-# Edit:RiN ver1.0.3
+# Edit:RiN ver1.0.4
 
 A p5.js editor for making art on Android.
 
@@ -20,7 +20,8 @@ Checks for stable updates silently at startup and only notifies when an update i
 
 ## Build
 
-JDK 17 + Android SDK 35
+JDK 17 + Android SDK Platform 35 + Build Tools 36.0.0.
+Gradle 9.5.0 (Wrapper), Android Gradle Plugin 9.3.2, built-in Kotlin and Compose compiler 2.2.10.
 
 ```sh
 cd android
@@ -38,6 +39,6 @@ Modification, reuse or redistribution requires prior contact, permission and att
 ## 日本語
 
 Androidでp5.jsの作品を書いて、その場で動かせるアプリです。
-正式版 ver1.0.3。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応しています。
+正式版 ver1.0.4。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応しています。
 
 © 2026 rin-code-dev · Made with p5.js and Jetpack Compose.

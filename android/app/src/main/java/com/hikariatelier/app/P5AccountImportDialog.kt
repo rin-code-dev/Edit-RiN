@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -39,7 +38,7 @@ internal fun P5AccountImportDialog(
     onImport: (P5Sketch) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    EditSettingsDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(text("p5.jsアカウント")) },
         text = {
@@ -49,18 +48,18 @@ internal fun P5AccountImportDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = username,
                         onValueChange = onUsernameChange,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         label = { Text(text("ユーザー名")) },
                         singleLine = true,
                         enabled = !busy,
                         isError = username.isNotBlank() && !validP5Username(username.trim())
                     )
-                    Spacer(Modifier.width(8.dp))
                     Button(
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = onLoad,
                         enabled = !busy && validP5Username(username.trim())
                     ) {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.4 — 2026-09-10
+
+- Migrate to Gradle 9.5.0 and Android Gradle Plugin 9.3.2 with built-in Kotlin and Compose compiler 2.2.10.
+- Update license generation for Gradle 9's Groovy XML package.
+
+- Unify settings and work panels with the editor's outlined surfaces and compact headers.
+- Add category navigation in portrait settings and adapt wide layouts to available width and font size.
+- Keep work-setting dialog content scrollable with visible actions and explicit theme colors.
+- Adapt runtime selection, asset management, and account import to short screens and larger text.
+
 ## 1.0.3 — 2026-09-09
 
 - Renamed the app and project from Edit:KIRO to Edit:RiN.

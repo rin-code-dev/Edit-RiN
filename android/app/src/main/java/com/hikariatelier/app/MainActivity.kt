@@ -930,6 +930,9 @@ class MainActivity : ComponentActivity() {
             configuration.orientation ==
                     Configuration.ORIENTATION_LANDSCAPE
 
+        val wideWorkPanels = configuration.screenWidthDp >= 640 &&
+            configuration.fontScale <= 1.25f
+
         val colors =
             MaterialTheme.colorScheme
 
@@ -2538,7 +2541,7 @@ class MainActivity : ComponentActivity() {
                 containerColor = colors.surface,
                 contentColor = colors.onSurface,
                 tonalElevation = 0.dp,
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 dragHandle = null
             ) {
                 KeepLandscapeDialogImmersive(enabled = isLandscape)
@@ -2553,7 +2556,7 @@ class MainActivity : ComponentActivity() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text(title, style = MaterialTheme.typography.titleMedium,
+                            Text(title, color = colors.onSurface, style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold)
                             Text(subtitle, style = MaterialTheme.typography.labelSmall,
                                 color = colors.onSurfaceVariant, maxLines = 1,
@@ -3176,7 +3179,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Column(Modifier.weight(1f)) {
                             EditActions()
-                            if (!isLandscape) {
+                            if (!wideWorkPanels) {
                                 Spacer(Modifier.height(12.dp))
                                 FileActions()
                                 Spacer(Modifier.height(12.dp))
@@ -3184,7 +3187,7 @@ class MainActivity : ComponentActivity() {
                                 DeleteAction()
                             }
                         }
-                        if (isLandscape) {
+                        if (wideWorkPanels) {
                             Column(Modifier.weight(1f)) {
                                 FileActions()
                                 Spacer(Modifier.height(12.dp))
@@ -6033,7 +6036,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showHistoryDialog) {
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = { showHistoryDialog = false },
                 icon = {
                     Icon(painterResource(R.drawable.ic_restore), contentDescription = null)
@@ -6106,16 +6109,14 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showRuntimeDialog) {
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = { showRuntimeDialog = false },
                 icon = { Icon(painterResource(R.drawable.ic_code), contentDescription = null) },
                 title = { Text(uiText("実行環境")) },
                 text = {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.58f).dp)
-                            .verticalScroll(rememberScrollState()),
+                            .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
@@ -6131,26 +6132,27 @@ class MainActivity : ComponentActivity() {
                             Surface(
                                 onClick = { runtimeP5Version = version },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 border = BorderStroke(
                                     1.dp,
                                     if (selected) colors.primary else colors.outlineVariant
                                 ),
-                                color = if (selected) colors.primaryContainer else Color.Transparent
+                                color = if (selected) colors.primaryContainer else colors.surface,
+                                contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface
                             ) {
-                                Row(
+                                Column(
                                     Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Text(
                                         "p5.js $version",
-                                        modifier = Modifier.weight(1f),
-                                        color = colors.onSurface
+                                        color = if (selected) colors.onPrimaryContainer else colors.onSurface,
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
                                         description,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = colors.onSurfaceVariant
+                                        color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
                                     )
                                 }
                             }
@@ -6205,7 +6207,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showAspectRatioDialog) {
-            val aspectColumns = if (isLandscape) 3 else 2
+            val aspectColumns = if (wideWorkPanels) 3 else if (configuration.fontScale > 1.5f) 1 else 2
             val deviceRatioText = if (devicePreviewRatio >= 1f) {
                 String.format(java.util.Locale.ROOT, "%.2f:1", devicePreviewRatio)
             } else {
@@ -6337,7 +6339,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showProjectFilesDialog) {
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = { showProjectFilesDialog = false },
                 icon = {
                     Icon(painterResource(R.drawable.ic_folder_code), contentDescription = null)
@@ -6377,7 +6379,8 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
                                 border = BorderStroke(1.dp, colors.outlineVariant),
-                                color = Color.Transparent
+                                color = colors.surface,
+                                contentColor = colors.onSurface
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
@@ -6389,8 +6392,8 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Text(name, fontFamily = codeFontFamily)
-                                    Spacer(Modifier.weight(1f))
+                                    Text(name, modifier = Modifier.weight(1f), fontFamily = codeFontFamily)
+                                    Spacer(Modifier.width(8.dp))
                                     Text(uiText("編集"), style = MaterialTheme.typography.labelSmall)
                                 }
                             }
@@ -6426,7 +6429,7 @@ class MainActivity : ComponentActivity() {
             val normalizedName = auxiliaryFileName.trim()
             val validName = normalizedName.matches(Regex("[A-Za-z0-9._-]+\\.js")) &&
                 normalizedName != "sketch.js"
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = { showAuxiliaryFileEditor = false },
                 title = { Text(if (originalAuxiliaryFileName == null) uiText("JSファイルを追加") else uiText("JSファイルを編集")) },
                 text = {
@@ -6771,7 +6774,7 @@ class MainActivity : ComponentActivity() {
                     }
                     Text(uiText("描画比率"), style = MaterialTheme.typography.labelLarge,
                         color = colors.onSurfaceVariant)
-                    val creationAspectColumns = if (isLandscape) 3 else 2
+                    val creationAspectColumns = if (wideWorkPanels) 3 else if (configuration.fontScale > 1.5f) 1 else 2
                     creationAspectOptions.chunked(creationAspectColumns).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { option ->
@@ -6892,7 +6895,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = {
                     showRenameDialog =
                         false
@@ -6989,7 +6992,7 @@ class MainActivity : ComponentActivity() {
 
         if (showDeleteDialog) {
 
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = {
                     showDeleteDialog =
                         false
@@ -7176,8 +7179,10 @@ class MainActivity : ComponentActivity() {
         val colors =
             MaterialTheme.colorScheme
 
-        val settingsLandscape =
-            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        // A sideways phone or a large font does not necessarily have room for a sidebar.
+        val settingsConfiguration = LocalConfiguration.current
+        val settingsLandscape = settingsConfiguration.screenWidthDp >= 640 &&
+            settingsConfiguration.screenWidthDp / settingsConfiguration.fontScale >= 560
 
         var settingsTab by rememberSaveable { mutableStateOf(0) }
         var showLicenses by remember { mutableStateOf(false) }
@@ -7186,7 +7191,7 @@ class MainActivity : ComponentActivity() {
                 assets.open("licenses/THIRD_PARTY_NOTICES.txt").bufferedReader().use { it.readText() }
                     .split("\n\n")
             }
-            AlertDialog(
+            EditSettingsDialog(
                 onDismissRequest = { showLicenses = false },
                 title = { Text(uiText("ライセンス情報")) },
                 text = {
@@ -7211,13 +7216,15 @@ class MainActivity : ComponentActivity() {
                 modifier
                     .fillMaxSize()
                     .background(colors.background)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(if (settingsLandscape) 8.dp else 0.dp)
         ) {
 
             if (settingsLandscape) {
                 Surface(
-                    modifier = Modifier.width(148.dp).fillMaxHeight(),
+                    modifier = Modifier.width(184.dp).fillMaxHeight(),
                     color = colors.surface,
+                    contentColor = colors.onSurface,
                     border = BorderStroke(1.dp, colors.outlineVariant),
                     shape = RoundedCornerShape(20.dp)
                 ) {
@@ -7240,7 +7247,8 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(14.dp),
                                 color = if (settingsTab == index) colors.primary.copy(alpha = 0.1f)
-                                    else Color.Transparent,
+                                    else colors.surface,
+                                contentColor = colors.onSurface,
                                 border = if (settingsTab == index) BorderStroke(1.dp, colors.primary)
                                     else null
                             ) {
@@ -7249,7 +7257,9 @@ class MainActivity : ComponentActivity() {
                                     Icon(painterResource(icon), null, Modifier.size(18.dp),
                                         tint = if (settingsTab == index) colors.primary else colors.onSurfaceVariant)
                                     Spacer(Modifier.width(8.dp))
-                                    Text(label, style = MaterialTheme.typography.labelLarge)
+                                    Text(label, modifier = Modifier.weight(1f),
+                                        color = colors.onSurface,
+                                        style = MaterialTheme.typography.labelLarge)
                                 }
                             }
                         }
@@ -7264,15 +7274,15 @@ class MainActivity : ComponentActivity() {
                     .fillMaxHeight()
                     .verticalScroll(settingsScroll)
                     .padding(
-                        start = if (settingsLandscape) 12.dp else 20.dp,
+                        start = if (settingsLandscape) 12.dp else 16.dp,
                         top = 8.dp,
-                        end = if (settingsLandscape) 8.dp else 20.dp,
+                        end = if (settingsLandscape) 8.dp else 16.dp,
                         bottom = 16.dp
                     ),
 
             verticalArrangement =
                 Arrangement.spacedBy(
-                    22.dp
+                    16.dp
                 )
         ) {
 
@@ -7281,7 +7291,7 @@ class MainActivity : ComponentActivity() {
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(64.dp),
+                        .heightIn(min = 64.dp),
 
                 verticalAlignment =
                     Alignment.CenterVertically
@@ -7337,7 +7347,28 @@ class MainActivity : ComponentActivity() {
             }
             }
 
-            if (!settingsLandscape || settingsTab == 0) {
+            if (!settingsLandscape) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        R.drawable.ic_settings to uiText("外観"),
+                        R.drawable.ic_code to uiText("エディター"),
+                        R.drawable.ic_folder_code to uiText("保存とバックアップ")
+                    ).forEachIndexed { index, (icon, label) ->
+                        FilterChip(
+                            selected = settingsTab == index,
+                            onClick = { settingsTab = index },
+                            label = { Text(label) },
+                            leadingIcon = { Icon(painterResource(icon), null, Modifier.size(18.dp)) },
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                    }
+                }
+            }
+
+            if (settingsTab == 0) {
             SettingsSection(
                 title = uiText("外観"),
                 description = uiText("テーマとシステムUI")
@@ -7599,7 +7630,7 @@ class MainActivity : ComponentActivity() {
 
             }
 
-            if (!settingsLandscape || settingsTab == 1) {
+            if (settingsTab == 1) {
             SettingsSection(
                 title = uiText("エディター"),
                 description = uiText("編集とプレビューの動作")
@@ -7877,7 +7908,7 @@ class MainActivity : ComponentActivity() {
 
             }
 
-            if (!settingsLandscape || settingsTab == 2) {
+            if (settingsTab == 2) {
             SettingsSection(
                 title = uiText("保存とバックアップ"),
                 description = uiText("保存先とファイル入出力")
@@ -8173,15 +8204,9 @@ class MainActivity : ComponentActivity() {
                 )
         ) {
 
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 4.dp
-                        ),
-                verticalAlignment =
-                    Alignment.Bottom
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
 
                 Text(
@@ -8193,12 +8218,6 @@ class MainActivity : ComponentActivity() {
                             .titleMedium,
                     fontWeight =
                         FontWeight.SemiBold
-                )
-
-                Spacer(
-                    Modifier.width(
-                        8.dp
-                    )
                 )
 
                 Text(
@@ -8218,12 +8237,11 @@ class MainActivity : ComponentActivity() {
                     Modifier.fillMaxWidth(),
                 shape =
                     RoundedCornerShape(
-                        22.dp
+                        16.dp
                     ),
-                color =
-                    colors.surfaceVariant.copy(
-                        alpha = 0.58f
-                    ),
+                color = colors.surface,
+                contentColor = colors.onSurface,
+                tonalElevation = 0.dp,
                 border =
                     BorderStroke(
                         1.dp,

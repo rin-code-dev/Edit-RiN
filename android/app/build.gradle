@@ -1,5 +1,5 @@
 apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 
 def webSourceDir = file("../../www")
@@ -9,18 +9,18 @@ def releaseSigning = new Properties()
 if (releaseSigningFile.exists()) releaseSigningFile.withInputStream { releaseSigning.load(it) }
 
 android {
-    namespace "com.hikariatelier.app"
+    namespace = "com.hikariatelier.app"
     compileSdk rootProject.ext.compileSdkVersion
 
     defaultConfig {
         applicationId "com.hikariatelier.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 9
-        versionName "1.0.3"
+        versionCode 10
+        versionName "1.0.4"
 
         vectorDrawables {
-            useSupportLibrary true
+            useSupportLibrary = true
         }
     }
 
@@ -42,9 +42,9 @@ android {
         }
         release {
             debuggable false
-            if (releaseSigningFile.exists()) signingConfig signingConfigs.release
+            if (releaseSigningFile.exists()) signingConfig = signingConfigs.release
             minifyEnabled true
-            shrinkResources true
+            shrinkResources = true
 
             proguardFiles(
                     getDefaultProguardFile('proguard-android-optimize.txt'),
@@ -58,20 +58,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-
     buildFeatures {
-        compose true
-        buildConfig true
+        compose = true
+        buildConfig = true
+        resValues = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion '1.5.15'
-    }
-
-    packagingOptions {
+    packaging {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
             excludes += '/META-INF/{LICENSE.md,LICENSE-notice.md}'
