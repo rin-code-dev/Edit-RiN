@@ -100,10 +100,10 @@ function draw() {
 Open the work menu → **Work assets** → **Add assets**. Use **Copy path** to insert
 an `assets/name.ext` path into your sketch. Renaming an asset also requires updating
 your code. Assets are included when duplicating works and exporting a ZIP backup.
-The debug app is named **Edit:KIRO Dev** and uses a separate application ID.
+The debug app is named **Edit:RiN Dev** and uses a separate application ID.
 
 ## 中文
 
 打开作品菜单 → **作品素材** → **添加素材**。点击 **复制路径**，在代码中使用
 `assets/文件名`。重命名素材后，请同时更新代码中的路径。复制作品和导出 ZIP 备份时
-会包含素材。调试版的应用名称为 **Edit:KIRO Dev**，可单独安装。
+会包含素材。调试版的应用名称为 **Edit:RiN Dev**，可单独安装。

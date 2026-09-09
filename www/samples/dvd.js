@@ -1,4 +1,4 @@
-const logo = "EDIT:KIRO";
+const logo = "EDIT:RiN";
 const palette = [
   "#A8C7FA",
   "#FF8CB5",

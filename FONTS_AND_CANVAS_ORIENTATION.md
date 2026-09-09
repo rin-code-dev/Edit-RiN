@@ -1,8 +1,8 @@
-# EDIT:KIRO template, fullscreen orientation and fonts
+# EDIT:RiN template, fullscreen orientation and fonts
 
 ## New works
 
-New works use the supplied simple circle template. The selected aspect ratio supplies the initial canvas dimensions. Responsive templates explicitly use `windowWidth`, `windowHeight` and `windowResized`; fixed templates retain their selected dimensions. The DVD-style bouncing `EDIT:KIRO` logo remains available as a bundled work at 4:3, alongside Axis, Halo and Gravity at 1:1. Existing saved source code is not replaced.
+New works use the supplied simple circle template. The selected aspect ratio supplies the initial canvas dimensions. Responsive templates explicitly use `windowWidth`, `windowHeight` and `windowResized`; fixed templates retain their selected dimensions. The DVD-style bouncing `EDIT:RiN` logo remains available as a bundled work at 4:3, alongside Axis, Halo and Gravity at 1:1. Existing saved source code is not replaced.
 
 ## Fullscreen orientation
 

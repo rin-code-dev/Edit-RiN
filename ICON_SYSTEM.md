@@ -1,6 +1,6 @@
-# Edit:KIRO Icon System
+# Edit:RiN Icon System
 
-The current UI icon set consists of original Edit:KIRO artwork drawn on a 24 x 24 grid.
+The current UI icon set consists of original Edit:RiN artwork drawn on a 24 x 24 grid.
 The launcher icon uses the approved code-mark motif on a pale blue background.
 
 ## Current UI mapping

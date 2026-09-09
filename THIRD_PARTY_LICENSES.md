@@ -1,6 +1,6 @@
 # Third-party software
 
-Edit:KIRO's own code and original icons use the root Edit:KIRO Source-Available License.
+Edit:RiN's own code and original icons use the root Edit:RiN Source-Available License.
 Third-party software retains its own license terms.
 
 ## p5.js 1.11.5

@@ -1,9 +1,9 @@
-# Edit:KIRO ver1.0.2
+# Edit:RiN ver1.0.3
 
 - applicationId: `com.hikariatelier.app`
-- versionName: `1.0.2`
-- versionCode: `8`
-- Suggested Git tag: `v1.0.2`
+- versionName: `1.0.3`
+- versionCode: `9`
+- Suggested Git tag: `v1.0.3`
 
 ## ビルド / Build
 
