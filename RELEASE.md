@@ -1,13 +1,15 @@
-# Edit:RiN ver1.0.3
+# Edit:RiN ver1.0.4
 
 - applicationId: `com.hikariatelier.app`
-- versionName: `1.0.3`
-- versionCode: `9`
-- Suggested Git tag: `v1.0.3`
+- versionName: `1.0.4`
+- versionCode: `10`
+- Suggested Git tag: `v1.0.4`
 
 ## ビルド / Build
 
-JDK 17、Android SDK Platform 35を使用します。SDKパスを `ANDROID_HOME` または
+JDK 17、Android SDK Platform 35、Build Tools 36.0.0を使用します。
+Gradle Wrapper 9.5.0、AGP 9.3.2、AGP内蔵Kotlin／Compose compiler 2.2.10の構成です。
+初回は新しいビルドツールの取得が必要です。SDKパスを `ANDROID_HOME` または
 `android/local.properties` に設定してください。
 
 1. `android/release-signing.properties.example` を `android/release-signing.properties` にコピーします。
@@ -28,7 +30,9 @@ GitHub Releasesには署名済みAPK、同じソースのZIP、SHA-256チェッ�
 p5.jsソース・ライセンス資料も同梱します。署名鍵・パスワード・実際の署名設定・
 ローカルSDK設定は公開しません。`mapping.txt` は公開アセットに含めずローカルに保管します。
 
-Use JDK 17 and Android SDK 35. Configure your private signing properties using the example,
+Use JDK 17, Android SDK Platform 35 and Build Tools 36.0.0. Use the Gradle 9.5.0 wrapper
+with AGP 9.3.2 and built-in Kotlin / Compose compiler 2.2.10.
+Configure your private signing properties using the example,
 then run the commands above. Release builds enable R8 and resource shrinking. Keep your
 signing key, passwords, local SDK configuration and mapping file private. Update an existing
 installation with the same signing key and a higher version code.

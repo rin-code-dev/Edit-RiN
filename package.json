@@ -1,7 +1,7 @@
 {
   "name": "edit-rin",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "scripts": {
     "sync": "cd android && ./gradlew syncWebAssets",
     "build:apk": "cd android && ./gradlew assembleDebug",
