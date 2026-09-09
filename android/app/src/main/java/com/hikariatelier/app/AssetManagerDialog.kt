@@ -20,7 +20,7 @@ internal fun AssetManagerDialog(
     var renaming by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
+    EditSettingsDialog(
         onDismissRequest = { if (!busy) onClose() },
         title = { Text(text("作品の素材")) },
         text = {
@@ -53,7 +53,7 @@ internal fun AssetManagerDialog(
     )
     renaming?.let { old ->
         val valid = validAssetName(newName) && (newName == old || newName !in assets)
-        AlertDialog(onDismissRequest = { renaming = null }, title = { Text(text("名前を変更")) },
+        EditSettingsDialog(onDismissRequest = { renaming = null }, title = { Text(text("名前を変更")) },
             text = { Column {
                 OutlinedTextField(value = newName, onValueChange = { newName = it }, singleLine = true,
                     label = { Text(text("ファイル名")) }, isError = !valid)
@@ -63,7 +63,7 @@ internal fun AssetManagerDialog(
             dismissButton = { TextButton(onClick = { renaming = null }) { Text(text("閉じる")) } })
     }
     deleting?.let { name ->
-        AlertDialog(onDismissRequest = { deleting = null }, title = { Text(text("素材を削除")) },
+        EditSettingsDialog(onDismissRequest = { deleting = null }, title = { Text(text("素材を削除")) },
             text = { Text(name) },
             confirmButton = { TextButton(onClick = { onDelete(name); deleting = null }) { Text(text("削除")) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(text("閉じる")) } })

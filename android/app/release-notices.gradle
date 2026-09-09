@@ -1,6 +1,7 @@
 // Package notices from the exact runtime artifacts selected by Gradle.
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
+import groovy.xml.XmlSlurper
 
 def generateReleaseNotices = tasks.register('generateReleaseNotices') {
     def destination = file("$buildDir/generated/license-assets/licenses")
