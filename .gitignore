@@ -14,3 +14,17 @@ android/release-signing.properties
 private-signing/
 
 /outputs/
+
+# Local development instructions and internal records
+AGENTS.md
+.agents/
+.codex/
+/REVIEW_NOTES.md
+/OPTIMIZATION_REVIEW.md
+/MODIFICATIONS.md
+/GITHUB_RELEASE_GUIDE.md
+/BETA_NOTES.md
+/RELEASE_NOTES*.md
+.env
+.env.*
+android/.kotlin/
