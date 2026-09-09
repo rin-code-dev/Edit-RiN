@@ -4,7 +4,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONArray
 
-internal const val RELEASES_URL = "https://github.com/rin-code-dev/EDIT-KIRO/releases"
+internal const val RELEASES_URL = "https://github.com/rin-code-dev/Edit-RiN/releases"
 
 internal data class ReleaseVersion(val numbers: List<Long>, val suffix: List<String>) : Comparable<ReleaseVersion> {
     override fun compareTo(other: ReleaseVersion): Int {
@@ -55,14 +55,14 @@ internal fun newestRelease(json: String): AppRelease? {
 
 // Run off the main thread at startup or on explicit request. No artwork or credentials are sent.
 internal fun fetchNewestRelease(): AppRelease? {
-    val connection = URL("https://api.github.com/repos/rin-code-dev/EDIT-KIRO/releases?per_page=100")
+    val connection = URL("https://api.github.com/repos/rin-code-dev/Edit-RiN/releases?per_page=100")
         .openConnection() as HttpURLConnection
     return try {
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
         connection.instanceFollowRedirects = false
         connection.setRequestProperty("Accept", "application/vnd.github+json")
-        connection.setRequestProperty("User-Agent", "Edit-KIRO-UpdateCheck")
+        connection.setRequestProperty("User-Agent", "Edit-RiN-UpdateCheck")
         check(connection.responseCode == 200) { "Update check failed" }
         val bytes = connection.inputStream.use { input ->
             val output = java.io.ByteArrayOutputStream()

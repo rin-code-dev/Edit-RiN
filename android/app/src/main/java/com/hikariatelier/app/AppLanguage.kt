@@ -66,7 +66,7 @@ internal val uiTranslations = mapOf(
     "フォントの連字" to ("Ligatures" to "连字"),
     "対応フォントの連字を有効にします。コードの文字列は変わりません" to ("Enable ligatures in supported fonts. Code text is unchanged." to "启用字体支持的连字，不更改代码文本。"),
     "フォントを読み込めません。20MB以下のTTF・OTF・TTCを選んでください" to ("Could not load font. Choose a TTF, OTF or TTC up to 20 MB." to "无法加载字体。请选择不超过 20 MB 的 TTF、OTF 或 TTC。"),
-    "反射するEDIT:KIROのテンプレート" to ("Bouncing EDIT:KIRO template" to "EDIT:KIRO 反弹模板"),
+    "反射するEDIT:RiNのテンプレート" to ("Bouncing EDIT:RiN template" to "EDIT:RiN 反弹模板"),
     "描画の縦横を切り替える" to ("Swap canvas width and height" to "切换画布横竖方向"),
     "録画を停止してから描画の向きを変更してください" to ("Stop recording before changing canvas orientation" to "请先停止录屏再更改画布方向"),
     "描画の向きを変更できませんでした" to ("Could not change canvas orientation" to "无法更改画布方向"),

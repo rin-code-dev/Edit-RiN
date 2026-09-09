@@ -5327,7 +5327,7 @@ class MainActivity : ComponentActivity() {
 
                     onExportBackup = {
                         updateCurrentWork()
-                        exportBackupLauncher.launch("Edit-KIRO-backup.zip")
+                        exportBackupLauncher.launch("Edit-RiN-backup.zip")
                     },
 
                     onImportBackup = {
@@ -6111,8 +6111,18 @@ class MainActivity : ComponentActivity() {
                 icon = { Icon(painterResource(R.drawable.ic_code), contentDescription = null) },
                 title = { Text(uiText("実行環境")) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(uiText("p5.jsバージョン"), style = MaterialTheme.typography.labelLarge)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.58f).dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            uiText("p5.jsバージョン"),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.onSurface
+                        )
                         listOf(
                             P5_VERSION_CURRENT to uiText("現在の標準"),
                             P5_VERSION_LEGACY to uiText("旧作品向け")
@@ -6132,7 +6142,11 @@ class MainActivity : ComponentActivity() {
                                     Modifier.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("p5.js $version", modifier = Modifier.weight(1f))
+                                    Text(
+                                        "p5.js $version",
+                                        modifier = Modifier.weight(1f),
+                                        color = colors.onSurface
+                                    )
                                     Text(
                                         description,
                                         style = MaterialTheme.typography.labelSmall,
@@ -6146,7 +6160,11 @@ class MainActivity : ComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("p5.sound", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "p5.sound",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = colors.onSurface
+                                )
                                 Text(
                                     uiText("音声再生・合成・解析を有効にします"),
                                     style = MaterialTheme.typography.bodySmall,
@@ -7307,7 +7325,7 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Text(
-                        text = "Edit:KIRO",
+                        text = "Edit:RiN",
                         style =
                             MaterialTheme
                                 .typography
@@ -7514,7 +7532,7 @@ class MainActivity : ComponentActivity() {
                         }, enabled = customFontFamily != null && !fontImportBusy,
                             modifier = Modifier.weight(1f)) { Text(uiText("標準に戻す")) }
                     }
-                    Text("EDIT:KIRO  Aa 0123  日本語 中文\n->  =>  !=  ===  <=  >=",
+                    Text("EDIT:RiN  Aa 0123  日本語 中文\n->  =>  !=  ===  <=  >=",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = codeFontFamily, fontFeatureSettings = fontFeatures,
                             letterSpacing = 0.sp),
@@ -8105,7 +8123,7 @@ class MainActivity : ComponentActivity() {
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Edit:KIRO ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
+                Text("Edit:RiN ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
                 Text("rin-code-dev", style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant)
                 TextButton(
@@ -8117,7 +8135,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             Text(
-                text = "Edit:KIRO  •  p5.js editor",
+                text = "Edit:RiN  •  p5.js editor",
                 modifier =
                     Modifier
                         .fillMaxWidth()
