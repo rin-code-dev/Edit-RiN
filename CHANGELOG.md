@@ -32,4 +32,21 @@
 - Added silent startup update checks that appear only when a newer stable release exists.
 - Added Japanese, English, and Chinese interfaces.
 
-Earlier beta details are available in [BETA_NOTES.md](BETA_NOTES.md).
+## Beta history
+
+### 1.0.0-beta.4
+
+- Added update checks in Settings.
+- Simplified the README and consolidated update history.
+
+### 1.0.0-beta.3
+
+- Updated the four bundled sketches and the simple circle starter.
+- Set dark mode as the default and tidied Settings.
+- Fixed controls in narrow previews.
+
+### 1.0.0-beta.2
+
+- Updated author credits and licensing.
+- Improved icons and title layout.
+- Prepared distribution builds and license notices.
