@@ -332,6 +332,7 @@ class MainActivity : ComponentActivity() {
     private val assetStorage by lazy { AssetStorage(File(filesDir, "project-assets")) }
     @Volatile private var previewAssets = PreviewAssets("initial", emptyMap())
     private var webView: WebView? = null
+    private var previewWorkId: String? = null
     private val unreadableWorkFolders get() = sessionViewModel.unreadableFolderUris
 
     @Volatile
@@ -562,6 +563,10 @@ class MainActivity : ComponentActivity() {
                     AtomicFile(file).openRead().bufferedReader().use { it.readText() }
                 )
 
+            root.optJSONObject("fileDrafts")?.let { files ->
+                files.keys().forEach { name -> sessionViewModel.fileDrafts[name] = files.getString(name) }
+            }
+
             DraftSnapshot(
                 workId =
                     root.optString(
@@ -588,27 +593,24 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        runCatching {
+        val files = sessionViewModel.fileDrafts.toMap()
+        val updatedAt = System.currentTimeMillis()
+        draftWriter.execute {
+            val draftJson = JSONObject().put("workId", workId).put("code", code)
+                .put("fileDrafts", JSONObject(files)).put("updatedAt", updatedAt).toString()
+            writeDraftJson(draftJson)
+        }
+    }
 
-            val root =
-                JSONObject()
-                    .put(
-                        "workId",
-                        workId
-                    )
-                    .put(
-                        "code",
-                        code
-                    )
-                    .put(
-                        "updatedAt",
-                        System.currentTimeMillis()
-                    )
+    private val draftWriter = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    private fun writeDraftJson(draftJson: String) {
+        runCatching {
 
             val atomicFile = AtomicFile(getFileStreamPath(draftFileName))
             val output = atomicFile.startWrite()
             try {
-                output.write(root.toString().toByteArray(Charsets.UTF_8))
+                output.write(draftJson.toByteArray(Charsets.UTF_8))
                 atomicFile.finishWrite(output)
             } catch (error: Exception) {
                 atomicFile.failWrite(output)
@@ -624,12 +626,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun clearDraftSnapshot() {
-
-        runCatching {
+        if (sessionViewModel.fileDrafts.isNotEmpty() && preferences.getBoolean(draftRecoveryKey, true)) {
+            saveDraftSnapshot(sessionViewModel.activeWorkIdState.value, sessionViewModel.editorValueState.value.text)
+            return
+        }
+        draftWriter.execute { runCatching {
             deleteFile(
                 draftFileName
             )
-        }
+        } }
     }
 
     private fun displayNameForUri(
@@ -721,6 +726,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        draftWriter.shutdown()
         webView?.let(::disposeWebView)
         webView = null
         super.onDestroy()
@@ -1383,42 +1389,83 @@ class MainActivity : ComponentActivity() {
                 FocusRequester()
             }
 
-        val undoStack = sessionViewModel.undoStack
-        val redoStack = sessionViewModel.redoStack
         var lastSavedText by sessionViewModel.lastSavedTextState
 
         val hasUnsavedChanges =
-            editorText != lastSavedText
+            editorText != lastSavedText || sessionViewModel.fileDrafts.keys.any { it.startsWith("$activeWorkId/") }
+
+        var selectedEditorFile by rememberSaveable(activeWorkId) { mutableStateOf("sketch.js") }
+        val editingFile = selectedEditorFile.takeIf { it in activeWork?.files.orEmpty() } ?: "sketch.js"
+        val editingKey = "$activeWorkId/$editingFile"
+        val editingState = if (editingFile == "sketch.js") sessionViewModel.editorValueState else
+            remember(editingKey) {
+                val state = sessionViewModel.fileEditorValues.getOrPut(editingKey) {
+                    mutableStateOf(TextFieldValue(sessionViewModel.fileDrafts[editingKey]
+                        ?: activeWork?.files?.get(editingFile).orEmpty()))
+                }
+                object : androidx.compose.runtime.MutableState<TextFieldValue> {
+                    override var value: TextFieldValue
+                        get() = state.value
+                        set(next) {
+                            if (next.text != state.value.text) sessionViewModel.fileDrafts[editingKey] = next.text
+                            state.value = next
+                        }
+                    override fun component1() = value
+                    override fun component2(): (TextFieldValue) -> Unit = { value = it }
+                }
+            }
+        var editingValue by editingState
+        val editingText = editingValue.text
+        val undoStack = if (editingFile == "sketch.js") sessionViewModel.undoStack else
+            sessionViewModel.fileUndoStacks.getOrPut(editingKey) { mutableStateListOf() }
+        val redoStack = if (editingFile == "sketch.js") sessionViewModel.redoStack else
+            sessionViewModel.fileRedoStacks.getOrPut(editingKey) { mutableStateListOf() }
+        var pendingRevision by remember { mutableStateOf<WorkRevision?>(null) }
+        var consoleHeight by rememberSaveable { mutableFloatStateOf(170f) }
+        var consoleExpanded by rememberSaveable { mutableStateOf(false) }
+        var workSaving by remember { mutableStateOf(false) }
+        var previewAsset by remember { mutableStateOf<Pair<String, ProjectAsset>?>(null) }
+        if (workSaving) {
+            Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+                Surface(shape = RoundedCornerShape(16.dp)) {
+                    Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Text(uiText("保存中"))
+                    }
+                }
+            }
+        }
 
         fun clearEditHistory() {
-            undoStack.clear()
-            redoStack.clear()
+            sessionViewModel.undoStack.clear()
+            sessionViewModel.redoStack.clear()
         }
 
         fun applyEditorChange(
             nextValue: TextFieldValue
         ) {
-            if (nextValue.text != editorValue.text) {
-                undoStack.add(editorValue.copy(composition = null))
-                while (undoStack.size > 100) {
+            if (nextValue.text != editingValue.text) {
+                undoStack.add(editingValue.copy(composition = null))
+                while (undoStack.size > 100 || (undoStack.size > 1 && undoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
                     undoStack.removeAt(0)
                 }
                 redoStack.clear()
             }
-            editorValue = nextValue
+            editingValue = nextValue
         }
 
         fun undoEditorChange() {
             if (undoStack.isEmpty()) return
-            redoStack.add(editorValue.copy(composition = null))
-            editorValue = undoStack.removeAt(undoStack.lastIndex)
+            redoStack.add(editingValue.copy(composition = null))
+            editingValue = undoStack.removeAt(undoStack.lastIndex)
             editorFocusRequester.requestFocus()
         }
 
         fun redoEditorChange() {
             if (redoStack.isEmpty()) return
-            undoStack.add(editorValue.copy(composition = null))
-            editorValue = redoStack.removeAt(redoStack.lastIndex)
+            undoStack.add(editingValue.copy(composition = null))
+            editingValue = redoStack.removeAt(redoStack.lastIndex)
             editorFocusRequester.requestFocus()
         }
 
@@ -1547,6 +1594,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(
             editorText,
             activeWorkId,
+            sessionViewModel.fileDrafts.toMap(),
             draftRecovery
         ) {
 
@@ -1640,6 +1688,7 @@ class MainActivity : ComponentActivity() {
         fun jumpToLine(
             line: Int
         ) {
+            selectedEditorFile = "sketch.js"
 
             if (line <= 0) {
                 return
@@ -1686,7 +1735,7 @@ class MainActivity : ComponentActivity() {
 
         fun searchMatches(): List<IntRange> {
             if (searchQuery.isEmpty()) return emptyList()
-            val source = editorText
+            val source = editingText
             val needle = searchQuery
             val matches = mutableListOf<IntRange>()
             var fromIndex = 0
@@ -1704,8 +1753,8 @@ class MainActivity : ComponentActivity() {
         ) {
             val matches = searchMatches()
             if (matches.isEmpty()) return
-            val selectionStart = editorValue.selection.min
-            val selectionEnd = editorValue.selection.max
+            val selectionStart = editingValue.selection.min
+            val selectionEnd = editingValue.selection.max
             val currentIndex = matches.indexOfFirst {
                 it.first == selectionStart && it.last + 1 == selectionEnd
             }
@@ -1727,7 +1776,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val target = matches[targetIndex]
-            editorValue = editorValue.copy(
+            editingValue = editingValue.copy(
                 selection = TextRange(target.first, target.last + 1)
             )
             editorFocusRequester.requestFocus()
@@ -1735,9 +1784,9 @@ class MainActivity : ComponentActivity() {
 
         fun replaceSelectedMatch() {
             if (searchQuery.isEmpty()) return
-            val start = editorValue.selection.min
-            val end = editorValue.selection.max
-            val selected = editorText.substring(start, end)
+            val start = editingValue.selection.min
+            val end = editingValue.selection.max
+            val selected = editingText.substring(start, end)
             val matches = if (searchMatchCase) {
                 selected == searchQuery
             } else {
@@ -1749,7 +1798,7 @@ class MainActivity : ComponentActivity() {
             }
             applyEditorChange(
                 TextFieldValue(
-                    editorText.replaceRange(start, end, replacementText),
+                    editingText.replaceRange(start, end, replacementText),
                     TextRange(start + replacementText.length)
                 )
             )
@@ -1758,7 +1807,7 @@ class MainActivity : ComponentActivity() {
         fun replaceAllMatches() {
             val matches = searchMatches()
             if (matches.isEmpty()) return
-            val builder = StringBuilder(editorText)
+            val builder = StringBuilder(editingText)
             matches.asReversed().forEach { range ->
                 builder.replace(range.first, range.last + 1, replacementText)
             }
@@ -1850,13 +1899,17 @@ class MainActivity : ComponentActivity() {
             previewAssets = PreviewAssets(java.util.UUID.randomUUID().toString(), sourceAssets.toMap())
             val runtimeWork = sessionViewModel.worksState.value
                 .find { it.id == sessionViewModel.activeWorkIdState.value }
+            previewWorkId = runtimeWork?.id
             pendingP5Version = normalizedP5Version(runtimeWork?.p5Version)
             pendingP5SoundEnabled = runtimeWork?.p5SoundEnabled == true
+            val runningFiles = supportingFiles.mapValues { (name, code) ->
+                sessionViewModel.fileDrafts["${sessionViewModel.activeWorkIdState.value}/$name"] ?: code
+            }
             pendingSketchCode =
-                composeProjectSource(source, supportingFiles)
+                composeProjectSource(source, runningFiles)
 
             pendingMainLineOffset =
-                supportingFiles.values.sumOf { code ->
+                runningFiles.values.sumOf { code ->
                     code.count { it == '\n' } + 2
                 }
 
@@ -1923,6 +1976,7 @@ class MainActivity : ComponentActivity() {
         }
 
         fun saveCurrentWork() {
+            if (workSaving || assetBusy) return
             val current = works.find { it.id == activeWorkId } ?: return
             val revisions = current.revisions.toMutableList()
             if (lastSavedText != editorText) {
@@ -1930,7 +1984,9 @@ class MainActivity : ComponentActivity() {
             }
             val saved = Work(
                 id = current.id, title = current.title, code = editorText,
-                files = current.files.toMutableMap(),
+                files = current.files.mapValues { (name, code) ->
+                    sessionViewModel.fileDrafts["${current.id}/$name"] ?: code
+                }.toMutableMap(),
                 assets = current.assets.toMap(),
                 revisions = revisions.takeLast(30).toMutableList(),
                 previewAspectRatio = current.previewAspectRatio,
@@ -1938,15 +1994,26 @@ class MainActivity : ComponentActivity() {
                 p5SoundEnabled = current.p5SoundEnabled,
                 createdAt = current.createdAt, updatedAt = System.currentTimeMillis()
             )
-            val updatedWorks = works.map { if (it.id == current.id) saved else it }
-            if (saveStore(updatedWorks)) {
-                works = updatedWorks
-                isError = false
-                lastSavedText = editorText
-                clearDraftSnapshot()
-            } else {
-                isError = true
-                Toast.makeText(this@MainActivity, uiText("保存できませんでした。保存先フォルダーを確認してください"), Toast.LENGTH_LONG).show()
+            val updatedWorks = works.map { if (it.id == current.id) saved else snapshotWork(it) }
+            val folder = selectedFolderUri
+            workSaving = true
+            assetBusy = true
+            lifecycleScope.launch {
+                try {
+                    if (withContext(Dispatchers.IO) { saveWorkStore(folder, updatedWorks, current.id) }) {
+                        works = updatedWorks
+                        isError = false
+                        lastSavedText = saved.code
+                        saved.files.forEach { (name, code) ->
+                            val key = "${saved.id}/$name"
+                            if (sessionViewModel.fileDrafts[key] == code) sessionViewModel.fileDrafts.remove(key)
+                        }
+                        clearDraftSnapshot()
+                    } else {
+                        isError = true
+                        Toast.makeText(this@MainActivity, uiText("保存できませんでした。保存先フォルダーを確認してください"), Toast.LENGTH_LONG).show()
+                    }
+                } finally { workSaving = false; assetBusy = false }
             }
         }
 
@@ -2514,6 +2581,50 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+        val exportWorkZip = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) {
+                val current = activeWork?.let { snapshotWork(it) }?.also { it.code = editorText }
+                current?.files?.keys?.toList()?.forEach { name ->
+                    sessionViewModel.fileDrafts["${current.id}/$name"]?.let { current.files[name] = it }
+                }
+                if (current != null) lifecycleScope.launch {
+                    val success = withContext(Dispatchers.IO) { runCatching {
+                        contentResolver.openOutputStream(uri)?.use {
+                            writeAssetBackup(it, listOf(current), current.id, "{}", assetStorage)
+                        } ?: error("Cannot open ZIP")
+                    }.isSuccess }
+                    Toast.makeText(this@MainActivity, uiText(if (success) "作品ZIPを保存しました" else "作品ZIPを保存できませんでした"), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        val importWorkZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null && !assetBusy) lifecycleScope.launch {
+                assetBusy = true
+                try {
+                    val imported = withContext(Dispatchers.IO) {
+                        val backup = contentResolver.openInputStream(uri)?.use { readAssetBackup(it, assetStorage) }
+                            ?: error("Cannot open ZIP")
+                        require(backup.store.works.size == 1)
+                        val original = backup.store.works.single()
+                        Work(id = java.util.UUID.randomUUID().toString(), title = original.title,
+                            code = original.code, files = original.files.toMutableMap(), assets = original.assets.toMap(),
+                            previewAspectRatio = original.previewAspectRatio, p5Version = original.p5Version,
+                            p5SoundEnabled = original.p5SoundEnabled)
+                    }
+                    val next = works.map { snapshotWork(it) } + imported
+                    val folder = selectedFolderUri
+                    val selected = activeWorkId
+                    if (withContext(Dispatchers.IO) { saveWorkStore(folder, next, selected) }) {
+                        works = next
+                        Toast.makeText(this@MainActivity, uiText("作品ZIPを追加しました"), Toast.LENGTH_SHORT).show()
+                    } else error("Save failed")
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    Toast.makeText(this@MainActivity, uiText("作品ZIPを読み込めませんでした"), Toast.LENGTH_LONG).show()
+                } finally { assetBusy = false }
+            }
+        }
+
         val workPreviewRatio = previewAspectRatioValue(previewRatioSelection, devicePreviewRatio)
 
 
@@ -2532,6 +2643,7 @@ class MainActivity : ComponentActivity() {
             subtitle: String,
             onDismiss: () -> Unit,
             headerAction: @Composable () -> Unit = {},
+            minimal: Boolean = false,
             content: @Composable ColumnScope.() -> Unit
         ) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -2541,7 +2653,8 @@ class MainActivity : ComponentActivity() {
                 containerColor = colors.surface,
                 contentColor = colors.onSurface,
                 tonalElevation = 0.dp,
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                shape = RoundedCornerShape(topStart = if (minimal) 8.dp else 20.dp,
+                    topEnd = if (minimal) 8.dp else 20.dp),
                 dragHandle = null
             ) {
                 KeepLandscapeDialogImmersive(enabled = isLandscape)
@@ -2557,6 +2670,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(title, color = colors.onSurface, style = MaterialTheme.typography.titleMedium,
+                                fontFamily = if (minimal) FontFamily.Monospace else FontFamily.Default,
                                 fontWeight = FontWeight.SemiBold)
                             Text(subtitle, style = MaterialTheme.typography.labelSmall,
                                 color = colors.onSurfaceVariant, maxLines = 1,
@@ -2613,101 +2727,76 @@ class MainActivity : ComponentActivity() {
             }
 
             if (workMenuExpanded) {
-                var query by rememberSaveable { mutableStateOf("") }
-                val filteredWorks = works.filter { it.title.contains(query.trim(), ignoreCase = true) }
-                WorkSheet(
-                    title = uiText("作品を選択"),
-                    subtitle = uiText("%s作品", works.size),
-                    onDismiss = { workMenuExpanded = false },
-                    headerAction = {
-                        OutlinedButton(
-                            onClick = { workMenuExpanded = false; showAddDialog = true },
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp)
-                        ) {
-                            Icon(painterResource(R.drawable.ic_add), null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(uiText("追加"))
-                        }
-                    }
-                ) {
-                    OutlinedTextField(
-                        value = query, onValueChange = { query = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(uiText("作品名で検索")) },
-                        leadingIcon = {
-                            Icon(painterResource(R.drawable.ic_search), null, Modifier.size(20.dp))
-                        },
-                        trailingIcon = {
-                            if (query.isNotEmpty()) IconButton(onClick = { query = "" }) {
-                                Icon(painterResource(R.drawable.ic_close), uiText("検索をクリア"),
-                                    Modifier.size(18.dp))
-                            }
-                        },
-                        singleLine = true, shape = RoundedCornerShape(16.dp)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
-                    ) {
-                        if (filteredWorks.isEmpty()) item {
-                            Text(uiText("一致する作品がありません"),
-                                Modifier.padding(vertical = 24.dp),
-                                color = colors.onSurfaceVariant)
-                        }
-                        items(filteredWorks, key = { it.id }) { work ->
-                            val selected = work.id == activeWorkId
-                            Surface(
-                                onClick = selectWork@{
-                                    if (work.id == activeWorkId) {
-                                        workMenuExpanded = false
-                                        return@selectWork
-                                    }
-                                    updateCurrentWork()
-                                    if (!persistWorkChange(works, work.id)) return@selectWork
-                                    activeWorkId = work.id
-                                    editorValue = TextFieldValue(work.code)
-                                    clearDraftSnapshot()
-                                    workMenuExpanded = false
-                                    if (autoRun) runSketch(work.code, work.files)
-                                },
-                                modifier = Modifier.fillMaxWidth().semantics {
-                                    contentDescription = work.title + if (selected) uiText("、選択中") else ""
-                                },
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (selected) colors.primary.copy(alpha = 0.08f) else colors.surface,
-                                border = BorderStroke(1.dp,
-                                    if (selected) colors.primary.copy(alpha = 0.7f) else colors.outlineVariant)
-                            ) {
-                                Row(Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = RoundedCornerShape(12.dp),
-                                        color = colors.surfaceVariant) {
-                                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                                            Icon(painterResource(R.drawable.ic_folder_code), null,
-                                                Modifier.size(22.dp),
-                                                tint = if (selected) colors.primary else colors.onSurfaceVariant)
-                                        }
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(work.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                            fontWeight = FontWeight.Medium)
-                                        Text((if (work.previewAspectRatio == "device") uiText("端末")
-                                            else work.previewAspectRatio) + "  ·  " +
-                                            if (selected && hasUnsavedChanges) uiText("未保存の変更あり")
-                                            else if (selected) uiText("選択中") else uiText("タップして開く"),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (selected && hasUnsavedChanges)
-                                                colors.tertiary else colors.onSurfaceVariant)
+                var sort by remember { mutableStateOf(preferences.getString("work_sort", "更新順") ?: "更新順") }
+                var favorites by remember { mutableStateOf(preferences.getStringSet("favorite_works", emptySet())!!.toSet()) }
+                var previewRevision by remember { mutableIntStateOf(0) }
+                var updatedPreviewId by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(Unit) {
+                    val view = webView
+                    val workId = previewWorkId
+                    val token = previewAssets.token
+                    if (view != null && workId != null && !isError && view.url == previewUrl(token)) {
+                        captureWorkPreview(view) { encoded ->
+                            if (previewWorkId == workId && previewAssets.token == token) {
+                                lifecycleScope.launch {
+                                    if (storeWorkPreview(workPreviewFile(cacheDir, workId), encoded)) {
+                                        updatedPreviewId = workId
+                                        previewRevision++
                                     }
                                 }
                             }
                         }
                     }
                 }
+                WorkGallery(
+                    works = works, activeId = activeWorkId, unsaved = hasUnsavedChanges,
+                    sort = sort, favorites = favorites, cacheDir = cacheDir, previewRevision = previewRevision,
+                    updatedPreviewId = updatedPreviewId,
+                    text = ::uiText,
+                    onSort = { sort = it; preferences.edit().putString("work_sort", it).apply() },
+                    onFavorite = { id ->
+                        favorites = if (id in favorites) favorites - id else favorites + id
+                        preferences.edit().putStringSet("favorite_works", favorites).apply()
+                    },
+                    onOpen = selectWork@{ work, openMenu ->
+                        if (workSaving || assetBusy) return@selectWork
+                        if (work.id != activeWorkId) {
+                            updateCurrentWork()
+                            val snapshots = works.map { snapshotWork(it) }
+                            val folder = selectedFolderUri
+                            workSaving = true
+                            assetBusy = true
+                            lifecycleScope.launch {
+                                try {
+                                    val saved = withContext(Dispatchers.IO) {
+                                        saveWorkStore(folder, snapshots, work.id)
+                                    }
+                                    if (saved) {
+                                        activeWorkId = work.id
+                                        editorValue = TextFieldValue(work.code)
+                                        clearDraftSnapshot()
+                                        if (autoRun) runSketch(work.code, work.files)
+                                        workMenuExpanded = false
+                                        if (openMenu) workActionsMenuExpanded = true
+                                    } else {
+                                        Toast.makeText(this@MainActivity,
+                                            uiText("保存できませんでした。保存先を確認して再試行してください"),
+                                            Toast.LENGTH_LONG).show()
+                                    }
+                                } finally {
+                                    workSaving = false
+                                    assetBusy = false
+                                }
+                            }
+                            return@selectWork
+                        }
+                        workMenuExpanded = false
+                        if (openMenu) workActionsMenuExpanded = true
+                    },
+                    onAdd = { workMenuExpanded = false; showAddDialog = true },
+                    onDismiss = { workMenuExpanded = false },
+                    windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+                )
             }
         }
 
@@ -2826,8 +2915,8 @@ class MainActivity : ComponentActivity() {
                     subtitle = uiText("インデントと空行を整理"),
                     onClick = {
                         workActionsMenuExpanded = false
-                        val formatted = formatJavaScript(editorText)
-                        if (formatted != editorText) {
+                        val formatted = formatJavaScript(editingText)
+                        if (formatted != editingText) {
                             applyEditorChange(TextFieldValue(formatted, TextRange(0)))
                         }
                         editorFocusRequester.requestFocus()
@@ -2976,6 +3065,14 @@ class MainActivity : ComponentActivity() {
 
             @Composable
             fun FileActions() {
+                TextButton(enabled = !assetBusy, onClick = {
+                    workActionsMenuExpanded = false
+                    exportWorkZip.launch("Edit-RiN-work.zip")
+                }) { Text(uiText("作品ZIPを書き出す")) }
+                TextButton(enabled = !assetBusy, onClick = {
+                    workActionsMenuExpanded = false
+                    importWorkZip.launch(arrayOf("application/zip", "application/octet-stream"))
+                }) { Text(uiText("作品ZIPを追加")) }
 
                 SectionLabel(
                     text =
@@ -3313,7 +3410,6 @@ class MainActivity : ComponentActivity() {
                             0.dp
                     )
             ) {
-
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -3617,6 +3713,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 previewAssets = PreviewAssets(java.util.UUID.randomUUID().toString(), activeWork?.assets?.toMap().orEmpty())
+                                previewWorkId = activeWork?.id
                                 pendingP5Version = normalizedP5Version(activeWork?.p5Version)
                                 pendingP5SoundEnabled = activeWork?.p5SoundEnabled == true
                                 pendingSketchCode =
@@ -4259,11 +4356,7 @@ class MainActivity : ComponentActivity() {
                             min =
                                 96.dp,
                             max =
-                                if (isLandscape) {
-                                    150.dp
-                                } else {
-                                    170.dp
-                                }
+                                consoleHeight.coerceAtMost(configuration.screenHeightDp * 0.65f).dp
                         )
                         .border(
                             width =
@@ -4316,6 +4409,12 @@ class MainActivity : ComponentActivity() {
                         Text(
                             text =
                                 "CONSOLE",
+                            modifier = Modifier.pointerInput(Unit) {
+                                detectVerticalDragGestures { change, amount ->
+                                    change.consume()
+                                    consoleHeight = (consoleHeight - amount / density).coerceIn(110f, 600f)
+                                }
+                            },
                             style =
                                 MaterialTheme
                                     .typography
@@ -4327,6 +4426,13 @@ class MainActivity : ComponentActivity() {
                             color =
                                 colors.onSurfaceVariant
                         )
+
+                        TextButton(onClick = {
+                            consoleExpanded = !consoleExpanded
+                            consoleHeight = if (consoleExpanded) configuration.screenHeightDp * 0.6f else 170f
+                        }) { Text(if (consoleExpanded) "−" else "+", modifier = Modifier.semantics {
+                            contentDescription = uiText("コンソールの高さを変更")
+                        }) }
 
                         val errorCount =
                             consoleEntries.count {
@@ -4453,11 +4559,7 @@ class MainActivity : ComponentActivity() {
                                     .fillMaxWidth()
                                     .heightIn(
                                         max =
-                                            if (isLandscape) {
-                                                112.dp
-                                            } else {
-                                                132.dp
-                                            }
+                                            (consoleHeight.coerceAtMost(configuration.screenHeightDp * 0.65f) - 40f).dp
                                     ),
                             contentPadding =
                                 PaddingValues(
@@ -4665,20 +4767,20 @@ class MainActivity : ComponentActivity() {
             }
 
             val moveLeft = {
-                    val target = if (!editorValue.selection.collapsed) {
-                        editorValue.selection.min
+                    val target = if (!editingValue.selection.collapsed) {
+                        editingValue.selection.min
                     } else {
-                        (editorValue.selection.start - 1).coerceAtLeast(0)
+                        (editingValue.selection.start - 1).coerceAtLeast(0)
                     }
-                    applyEdit(editorValue.copy(selection = TextRange(target)))
+                    applyEdit(editingValue.copy(selection = TextRange(target)))
                 }
             val moveRight = {
-                    val target = if (!editorValue.selection.collapsed) {
-                        editorValue.selection.max
+                    val target = if (!editingValue.selection.collapsed) {
+                        editingValue.selection.max
                     } else {
-                        (editorValue.selection.end + 1).coerceAtMost(editorValue.text.length)
+                        (editingValue.selection.end + 1).coerceAtMost(editingValue.text.length)
                     }
-                    applyEdit(editorValue.copy(selection = TextRange(target)))
+                    applyEdit(editingValue.copy(selection = TextRange(target)))
                 }
 
             Surface(
@@ -4727,8 +4829,8 @@ class MainActivity : ComponentActivity() {
                         showSearchDialog = true
                     }
                     AccessoryKey("≡", uiText("コードを整形"), command = true) {
-                        val formatted = formatJavaScript(editorText)
-                        if (formatted != editorText) {
+                        val formatted = formatJavaScript(editingText)
+                        if (formatted != editingText) {
                             applyEdit(TextFieldValue(formatted, TextRange(0)))
                         }
                     }
@@ -4736,17 +4838,17 @@ class MainActivity : ComponentActivity() {
                     if (showAccessoryNavigation) {
                         KeyDivider()
                         AccessoryKey("TAB", uiText("インデント"), 54, true) {
-                            applyEdit(changeLineIndent(editorValue, true))
+                            applyEdit(changeLineIndent(editingValue, true))
                         }
                         AccessoryKey("⇤", uiText("インデントを戻す"), command = true) {
-                            applyEdit(changeLineIndent(editorValue, false))
+                            applyEdit(changeLineIndent(editingValue, false))
                         }
                         AccessoryKey("←", uiText("左へ移動"), onClick = moveLeft)
                         AccessoryKey("↑", uiText("上へ移動")) {
-                            applyEdit(moveCursorVertically(editorValue, -1))
+                            applyEdit(moveCursorVertically(editingValue, -1))
                         }
                         AccessoryKey("↓", uiText("下へ移動")) {
-                            applyEdit(moveCursorVertically(editorValue, 1))
+                            applyEdit(moveCursorVertically(editingValue, 1))
                         }
                         AccessoryKey("→", uiText("右へ移動"), onClick = moveRight)
                     }
@@ -4759,24 +4861,24 @@ class MainActivity : ComponentActivity() {
                             Triple("''", "'", "'")
                         ).forEach { (label, opening, closing) ->
                             AccessoryKey(label, uiText("%s を入力", label)) {
-                                applyEdit(insertAtSelection(editorValue, opening, closing))
+                                applyEdit(insertAtSelection(editingValue, opening, closing))
                             }
                         }
                         listOf(";", "=", ",", ".").forEach { symbol ->
                             AccessoryKey(symbol, uiText("%s を入力", symbol)) {
-                                applyEdit(insertAtSelection(editorValue, symbol))
+                                applyEdit(insertAtSelection(editingValue, symbol))
                             }
                         }
                         AccessoryKey("//", uiText("コメントを入力"), 44) {
-                            applyEdit(insertAtSelection(editorValue, "// "))
+                            applyEdit(insertAtSelection(editingValue, "// "))
                         }
                     }
                 }
             }
         }
 
-        val editorSuggestions = remember(editorValue.text, editorValue.selection, editorFocused, codeCompletion) {
-            if (!editorFocused || !codeCompletion) emptyList() else editorCompletions(editorValue)
+        val editorSuggestions = remember(editingValue.text, editingValue.selection, editorFocused, codeCompletion, selectedEditorFile) {
+            if (!editorFocused || !codeCompletion) emptyList() else editorCompletions(editingValue)
         }
 
         @Composable
@@ -4804,17 +4906,17 @@ class MainActivity : ComponentActivity() {
                         suggestions.forEach { suggestion ->
                             SuggestionChip(
                                 onClick = {
-                                    val end = editorValue.selection.start
-                                    val start = (end - completionPrefix(editorValue).length).coerceAtLeast(0)
+                                    val end = editingValue.selection.start
+                                    val start = (end - completionPrefix(editingValue).length).coerceAtLeast(0)
                                     applyEditorChange(TextFieldValue(
-                                        editorText.replaceRange(start, end, suggestion),
+                                        editingText.replaceRange(start, end, suggestion),
                                         TextRange(start + suggestion.length)
                                     ))
                                     editorFocusRequester.requestFocus()
                                 },
                                 label = {
                                     Text(
-                                        suggestion,
+                                        completionHelp(suggestion, ::uiText),
                                         fontFamily = codeFontFamily,
                                         fontSize = 12.sp
                                     )
@@ -4843,22 +4945,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val javascriptHighlighter =
-                remember(darkEditorTheme, editorErrorLines) {
-                    JavaScriptHighlighter(
-                        darkTheme = darkEditorTheme,
-                        errorLines = editorErrorLines
-                    )
-                }
+            val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme,
+                if (editingFile == "sketch.js") editorErrorLines else emptySet())
 
-            var editorTextLayout by remember {
+            var editorTextLayout by remember(editingKey) {
                 mutableStateOf<TextLayoutResult?>(null)
             }
 
-            val logicalLineStarts = remember(editorText) {
+            val logicalLineStarts = remember(editingText) {
                 buildList {
                     add(0)
-                    editorText.forEachIndexed { index, character ->
+                    editingText.forEachIndexed { index, character ->
                         if (character == '\n') add(index + 1)
                     }
                 }
@@ -4874,7 +4971,7 @@ class MainActivity : ComponentActivity() {
                 colors.error
             ) {
                 val visualStarts = editorTextLayout?.takeIf {
-                    it.layoutInput.text.text == editorText
+                    it.layoutInput.text.text == editingText
                 }?.let { layout ->
                     List(layout.lineCount) { visualLine ->
                         layout.getLineStart(visualLine)
@@ -4958,6 +5055,14 @@ class MainActivity : ComponentActivity() {
                     )
             ) {
 
+                Column(Modifier.fillMaxSize()) {
+                FileTabs(listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted(), selectedEditorFile) {
+                    if (selectedEditorFile != it) {
+                        focusManager.clearFocus(force = true)
+                        editorFocused = false
+                        selectedEditorFile = it
+                    }
+                }
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -5000,11 +5105,11 @@ class MainActivity : ComponentActivity() {
                         }
 
                         BasicTextField(
-                            value = editorValue,
+                            value = editingValue,
                             onValueChange = {
                                 applyEditorChange(
-                                    if (autoIndent && editorValue.composition == null && it.composition == null) {
-                                        applyAutomaticIndent(editorValue, it)
+                                    if (autoIndent && editingValue.composition == null && it.composition == null) {
+                                        applyAutomaticIndent(editingValue, it)
                                     } else {
                                         it
                                     }
@@ -5033,21 +5138,15 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                }
             }
         }
 
-        val selectedFolderName =
-            remember(
-                selectedFolderUri,
-                appLanguage,
-                showSettings
-            ) {
-                if (showSettings) {
-                    getFolderName(selectedFolderUri)
-                } else {
-                    ""
-                }
-            }
+        val selectedFolderName by produceState("", selectedFolderUri, appLanguage, showSettings) {
+            value = if (showSettings) withContext(Dispatchers.IO) {
+                getFolderName(selectedFolderUri)
+            } else ""
+        }
 
         Scaffold(
             containerColor =
@@ -6053,22 +6152,7 @@ class MainActivity : ComponentActivity() {
                         items(revisions) { revision ->
                             Surface(
                                 onClick = {
-                                    val work = activeWork ?: return@Surface
-                                    if (editorText != revision.code) {
-                                        work.revisions.add(
-                                            WorkRevision(editorText, System.currentTimeMillis())
-                                        )
-                                    }
-                                    while (work.revisions.size > 30) work.revisions.removeAt(0)
-                                    work.code = revision.code
-                                    work.updatedAt = System.currentTimeMillis()
-                                    editorValue = TextFieldValue(revision.code)
-                                    lastSavedText = revision.code
-                                    clearEditHistory()
-                                    saveWorkStore(selectedFolderUri, works, activeWorkId)
-                                    clearDraftSnapshot()
-                                    showHistoryDialog = false
-                                    if (autoRun) runSketch(revision.code, work.files)
+                                    pendingRevision = revision
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
@@ -6106,6 +6190,42 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = { showHistoryDialog = false }) { Text(uiText("閉じる")) }
                 }
             )
+        }
+
+        pendingRevision?.let { revision ->
+            EditSettingsDialog(onDismissRequest = { pendingRevision = null },
+                title = { Text(uiText("変更内容を確認")) },
+                text = {
+                    Column {
+                        Text(uiText("− 現在のコード / + 復元するコード"))
+                        Text(remember(editorText, revision) { revisionDifference(editorText, revision.code) },
+                            modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())
+                                .horizontalScroll(rememberScrollState()), fontFamily = codeFontFamily)
+                    }
+                },
+                confirmButton = { TextButton(onClick = {
+                    val current = activeWork
+                    if (current != null) {
+                        val updated = snapshotWork(current).also {
+                            it.revisions.add(WorkRevision(editorText, System.currentTimeMillis()))
+                            while (it.revisions.size > 30) it.revisions.removeAt(0)
+                            it.code = revision.code
+                            it.updatedAt = System.currentTimeMillis()
+                        }
+                        val next = works.map { if (it.id == current.id) updated else snapshotWork(it) }
+                        if (persistWorkChange(next, activeWorkId)) {
+                            works = next
+                            editorValue = TextFieldValue(revision.code)
+                            lastSavedText = revision.code
+                            clearEditHistory()
+                            clearDraftSnapshot()
+                            pendingRevision = null
+                            showHistoryDialog = false
+                            if (autoRun) runSketch(revision.code, updated.files)
+                        }
+                    }
+                }) { Text(uiText("復元")) } },
+                dismissButton = { TextButton(onClick = { pendingRevision = null }) { Text(uiText("キャンセル")) } })
         }
 
         if (showRuntimeDialog) {
@@ -6296,7 +6416,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        if (assetBusy && !showAssets) {
+        if (assetBusy && !showAssets && !workSaving) {
             AlertDialog(onDismissRequest = {}, title = { Text(uiText("ファイルを処理中…")) },
                 text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
         }
@@ -6334,8 +6454,16 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onDelete = { name -> activeWork?.let { changeAssets(it.id, it.assets.toMap() - name) } },
-                onClose = { showAssets = false }
+                onClose = { showAssets = false },
+                onPreview = { name, asset -> previewAsset = name to asset },
+                onInsert = { name, asset ->
+                    applyEditorChange(insertAtSelection(editingValue, assetLoaderCode(name, asset)))
+                    showAssets = false
+                }
             )
+        }
+        previewAsset?.let { (name, asset) ->
+            AssetPreviewDialog(name, asset, assetStorage.file(asset), ::uiText) { previewAsset = null }
         }
 
         if (showProjectFilesDialog) {
@@ -6374,7 +6502,7 @@ class MainActivity : ComponentActivity() {
                                     auxiliaryFileName = name
                                     auxiliaryFileContent = content
                                     showProjectFilesDialog = false
-                                    showAuxiliaryFileEditor = true
+                                    selectedEditorFile = name
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
@@ -6506,8 +6634,8 @@ class MainActivity : ComponentActivity() {
 
             val matches = searchMatches()
             val selectedMatchIndex = matches.indexOfFirst {
-                it.first == editorValue.selection.min &&
-                    it.last + 1 == editorValue.selection.max
+                it.first == editingValue.selection.min &&
+                    it.last + 1 == editingValue.selection.max
             }
 
             AlertDialog(
@@ -8483,6 +8611,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Synchronized
     private fun saveWorkStore(
         folderUri: Uri?,
         works: List<Work>,
