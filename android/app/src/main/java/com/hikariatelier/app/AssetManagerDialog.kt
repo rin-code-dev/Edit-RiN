@@ -14,7 +14,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun AssetManagerDialog(
     assets: Map<String, ProjectAsset>, busy: Boolean, text: (String) -> String,
-    onAdd: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit
+    onAdd: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit,
+    onPreview: (String, ProjectAsset) -> Unit, onInsert: (String, ProjectAsset) -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     var renaming by remember { mutableStateOf<String?>(null) }
@@ -37,6 +38,8 @@ internal fun AssetManagerDialog(
                                 Text("assets/$name", style = MaterialTheme.typography.bodySmall)
                                 Text(android.text.format.Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, asset.size), style = MaterialTheme.typography.bodySmall)
                                 FlowRow {
+                                    TextButton(enabled = !busy, onClick = { onPreview(name, asset) }) { Text(text("プレビュー")) }
+                                    TextButton(enabled = !busy, onClick = { onInsert(name, asset) }) { Text(text("読み込みコードを挿入")) }
                                     TextButton(enabled = !busy, onClick = { clipboard.setText(AnnotatedString("assets/$name")) }) { Text(text("パスをコピー")) }
                                     TextButton(enabled = !busy, onClick = { renaming = name; newName = name }) { Text(text("名前を変更")) }
                                     TextButton(enabled = !busy, onClick = { deleting = name }) { Text(text("削除")) }

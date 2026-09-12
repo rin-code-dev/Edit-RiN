@@ -1,4 +1,4 @@
-Edit:RiN 1.0.4
+Edit:RiN 1.0.5
 Copyright (c) 2026 rin-code-dev
 
 Edit:RiN Source-Available License 1.0

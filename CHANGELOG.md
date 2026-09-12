@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.5 — 2026-09-13
+
+- Browse works in a thumbnail gallery with search, sorting and favorites.
+- Edit multiple JavaScript files using tabs.
+- Export and import individual works with their assets and runtime settings.
+- Preview assets and insert loading code into the editor.
+- View changes before restoring a saved revision.
+- Resize the console and see parameter hints for p5.js code completion.
+- Improve landscape layouts and responsiveness.
+
 ## 1.0.4 — 2026-09-10
 
 - Migrate to Gradle 9.5.0 and Android Gradle Plugin 9.3.2 with built-in Kotlin and Compose compiler 2.2.10.

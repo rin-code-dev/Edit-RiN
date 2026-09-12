@@ -1,13 +1,13 @@
-# Edit:RiN ver1.0.4
+# Edit:RiN ver1.0.5
 
 - applicationId: `com.hikariatelier.app`
-- versionName: `1.0.4`
-- versionCode: `10`
-- Suggested Git tag: `v1.0.4`
+- versionName: `1.0.5`
+- versionCode: `11`
+- Suggested Git tag: `v1.0.5`
 
 ## ビルド / Build
 
-JDK 17、Android SDK Platform 35、Build Tools 36.0.0を使用します。
+JDK 25、Android SDK Platform 35、Build Tools 36.0.0を使用します。
 Gradle Wrapper 9.5.0、AGP 9.3.2、AGP内蔵Kotlin／Compose compiler 2.2.10の構成です。
 初回は新しいビルドツールの取得が必要です。SDKパスを `ANDROID_HOME` または
 `android/local.properties` に設定してください。
@@ -30,7 +30,7 @@ GitHub Releasesには署名済みAPK、同じソースのZIP、SHA-256チェッ�
 p5.jsソース・ライセンス資料も同梱します。署名鍵・パスワード・実際の署名設定・
 ローカルSDK設定は公開しません。`mapping.txt` は公開アセットに含めずローカルに保管します。
 
-Use JDK 17, Android SDK Platform 35 and Build Tools 36.0.0. Use the Gradle 9.5.0 wrapper
+Use JDK 25, Android SDK Platform 35 and Build Tools 36.0.0. Use the Gradle 9.5.0 wrapper
 with AGP 9.3.2 and built-in Kotlin / Compose compiler 2.2.10.
 Configure your private signing properties using the example,
 then run the commands above. Release builds enable R8 and resource shrinking. Keep your
@@ -39,3 +39,6 @@ installation with the same signing key and a higher version code.
 
 デバッグ版など署名が異なるアプリには上書きできません。その場合は作品バックアップを
 保存してから旧版を削除し、正式版で復元してください。フォントは再インポートが必要です。
+
+Gradle and Java compilation use JDK 25. Install JDK 25 and set JAVA_HOME to its directory.
+The committed Gradle Daemon JVM criteria select version 25; Android bytecode compatibility remains Java 17.

@@ -27,3 +27,23 @@ internal fun editorCompletions(value: TextFieldValue): List<String> {
         .filter { it.startsWith(prefix, ignoreCase = true) && it != prefix }
         .take(8).toList()
 }
+
+internal fun completionHelp(name: String, text: (String) -> String): String {
+    val detail = when (name) {
+        "circle" -> "(x, y, d)" to "円を描画"
+        "rect" -> "(x, y, w, h)" to "四角形を描画"
+        "ellipse" -> "(x, y, w, h)" to "楕円を描画"
+        "line" -> "(x1, y1, x2, y2)" to "線を描画"
+        "createCanvas", "resizeCanvas" -> "(width, height)" to "キャンバスの大きさ"
+        "background", "fill", "stroke" -> "(color)" to "色を指定"
+        "loadImage" -> "(path)" to "画像を読み込む"
+        "image" -> "(img, x, y)" to "画像を描画"
+        "random" -> "(min, max)" to "乱数を生成"
+        "map" -> "(value, a, b, c, d)" to "数値の範囲を変換"
+        "translate" -> "(x, y)" to "座標を移動"
+        "rotate" -> "(angle)" to "座標を回転"
+        "text" -> "(str, x, y)" to "文字を描画"
+        else -> return name
+    }
+    return name + detail.first + "\n" + text(detail.second)
+}
