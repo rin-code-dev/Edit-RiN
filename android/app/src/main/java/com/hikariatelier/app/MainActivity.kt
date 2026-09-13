@@ -2,6 +2,7 @@ package com.hikariatelier.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -10,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.provider.MediaStore
 import android.util.Base64
@@ -109,9 +111,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.documentfile.provider.DocumentFile
@@ -294,6 +298,9 @@ internal fun changeLineIndent(
 
 private val PREVIEW_ASPECT_RATIOS = listOf("16:9", "4:3", "1:1", "9:16", "device")
 private val LANDSCAPE_PREVIEW_SPLITS = listOf(0.35f, 0.5f, 0.65f)
+private val MP4_BITRATE_OPTIONS = listOf(2, 5, 10)
+private val RECORDING_COUNTDOWN_OPTIONS = listOf(0, 3, 5)
+private const val DEFAULT_X_SHARE_TEXT = "Created with Edit:RiN\n\n#EditRiN #p5js"
 
 internal fun normalizedPreviewAspectRatio(value: String?): String =
     value?.takeIf(PREVIEW_ASPECT_RATIOS::contains) ?: "1:1"
@@ -320,9 +327,24 @@ private fun composeProjectSource(
     append("\n//# sourceURL=sketch.js")
 }
 
+private data class SavedPreviewMedia(
+    val uri: Uri,
+    val mimeType: String,
+    val displayName: String,
+    val sizeBytes: Long = 0,
+    val durationMillis: Long = 0,
+    val thumbnail: android.graphics.Bitmap? = null
+)
+
+internal fun formatRecordingDuration(milliseconds: Long): String {
+    val seconds = milliseconds.coerceAtLeast(0L) / 1000L
+    return String.format(java.util.Locale.ROOT, "%02d:%02d", seconds / 60L, seconds % 60L)
+}
+
 
 class MainActivity : ComponentActivity() {
 
+    private val recordingTransfer by lazy { RecordingTransfer(File(cacheDir, "recording-transfer")) }
     private val sessionViewModel: EditorSessionViewModel by viewModels()
     private val updateViewModel: UpdateViewModel by viewModels()
     private val hideEditingPreviewKey = "hide_editing_preview"
@@ -388,6 +410,10 @@ class MainActivity : ComponentActivity() {
 
     private val compactAccessoryKeysKey =
         "setting_compact_accessory_keys"
+
+    private val mp4BitrateKey = "setting_mp4_bitrate_mbps"
+    private val xShareTextKey = "setting_x_share_text"
+    private val recordingCountdownKey = "setting_recording_countdown_seconds"
 
     private val folderUriKey =
         "works_folder_uri"
@@ -473,11 +499,7 @@ class MainActivity : ComponentActivity() {
             ) {
 
                 UpdateDialog(updateViewModel, ::uiText) {
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
-                    } catch (_: android.content.ActivityNotFoundException) {
-                        Toast.makeText(this@MainActivity, uiText("ブラウザーを開けませんでした"), Toast.LENGTH_SHORT).show()
-                    }
+                    openExternalUrl(RELEASES_URL)
                 }
                 MainScreen(
                     themeMode = themeMode,
@@ -495,6 +517,14 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+    }
+
+    private fun openExternalUrl(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, uiText("ブラウザーを開けませんでした"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -726,6 +756,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        recordingTransfer.abort()
         draftWriter.shutdown()
         webView?.let(::disposeWebView)
         webView = null
@@ -734,6 +765,7 @@ class MainActivity : ComponentActivity() {
 
     private fun disposeWebView(view: WebView) {
         view.stopLoading()
+        recordingTransfer.abort()
         view.removeJavascriptInterface("Android")
         view.loadUrl("about:blank")
         view.clearHistory()
@@ -742,13 +774,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun savePreviewMedia(
-        dataUrl: String,
+        dataUrl: String = "",
         mimeType: String,
         displayName: String,
-        video: Boolean
+        video: Boolean,
+        sourceFile: File? = null
     ): Uri? = runCatching {
-        val encoded = dataUrl.substringAfter(',', dataUrl)
-        val bytes = Base64.decode(encoded, Base64.DEFAULT)
+        fun copyTo(output: java.io.OutputStream) {
+            if (sourceFile != null) sourceFile.inputStream().use { it.copyTo(output, 64 * 1024) }
+            else output.write(Base64.decode(dataUrl.substringAfter(',', dataUrl), Base64.DEFAULT))
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val collection = if (video) {
@@ -761,14 +796,14 @@ class MainActivity : ComponentActivity() {
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    if (video) "Movies/EditKIRO" else "Pictures/EditKIRO"
+                    if (video) "Movies/EditRiN" else "Pictures/EditRiN"
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri = contentResolver.insert(collection, values)
                 ?: error(uiText("保存先を作成できませんでした"))
             try {
-                contentResolver.openOutputStream(uri, "w")?.use { it.write(bytes) }
+                contentResolver.openOutputStream(uri, "w")?.use { copyTo(it) }
                     ?: error(uiText("保存先を開けませんでした"))
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -783,18 +818,96 @@ class MainActivity : ComponentActivity() {
             val parent = getExternalFilesDir(
                 if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
             ) ?: error(uiText("保存先を利用できません"))
-            val directory = File(parent, "EditKIRO").apply { mkdirs() }
+            val directory = File(parent, "EditRiN").apply { mkdirs() }
             val file = File(directory, displayName)
-            file.outputStream().use { it.write(bytes) }
+            file.outputStream().use { copyTo(it) }
             MediaScannerConnection.scanFile(
                 this,
                 arrayOf(file.absolutePath),
                 arrayOf(mimeType),
                 null
             )
-            Uri.fromFile(file)
+            FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                file
+            )
         }
     }.getOrNull()
+
+    private fun openPreviewMedia(media: SavedPreviewMedia) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(media.uri, media.mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(contentResolver, media.displayName, media.uri)
+        }
+        runCatching { startActivity(intent) }
+            .onFailure {
+                Toast.makeText(this, uiText("録画を開けませんでした"), Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private var recordingShareBusy = false
+
+    private fun sharePreviewMedia(media: SavedPreviewMedia, xOnly: Boolean, xText: String = "") {
+        fun sendIntent(uri: Uri, packageName: String? = null) = Intent(Intent.ACTION_SEND).apply {
+            type = media.mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TITLE, media.displayName)
+            if (xOnly) {
+                // Give this attachment an identity in Intent.data as well as EXTRA_STREAM.
+                // Some receiving activities reuse intents based on data, not extras.
+                setDataAndType(uri, media.mimeType)
+                if (xText.isNotBlank()) putExtra(Intent.EXTRA_TEXT, xText)
+            }
+            clipData = ClipData(
+                media.displayName, arrayOf(media.mimeType), ClipData.Item(uri)
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (packageName != null) setPackage(packageName)
+        }
+
+        if (!xOnly) {
+            runCatching {
+                startActivity(Intent.createChooser(sendIntent(media.uri), uiText("共有")))
+            }.onFailure {
+                Toast.makeText(this, uiText("共有できませんでした"), Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        if (recordingShareBusy) return
+        recordingShareBusy = true
+        Toast.makeText(this, uiText("共有の準備中"), Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            var attachment: File? = null
+            var handedOff = false
+            try {
+                val uri = withContext(Dispatchers.IO) {
+                    val file = createRecordingShareFile(
+                        File(cacheDir, "recording-shares"), media.mimeType, media.sizeBytes
+                    ) { contentResolver.openInputStream(media.uri) }
+                    attachment = file
+                    FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", file)
+                }
+                try {
+                    startActivity(sendIntent(uri, "com.twitter.android"))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    Toast.makeText(this@MainActivity,
+                        uiText("Xアプリを開けないため共有先を選択してください"), Toast.LENGTH_SHORT).show()
+                    startActivity(Intent.createChooser(sendIntent(uri), uiText("共有")))
+                }
+                handedOff = true
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(this@MainActivity, uiText("録画を共有できませんでした。空き容量と録画ファイルを確認してください"),
+                    Toast.LENGTH_LONG).show()
+            } finally {
+                if (!handedOff) attachment?.delete()
+                recordingShareBusy = false
+            }
+        }
+    }
 
     @Composable
     private fun KeepLandscapeDialogImmersive(
@@ -1325,6 +1438,82 @@ class MainActivity : ComponentActivity() {
 
         var isPreviewRecording by remember {
             mutableStateOf(false)
+        }
+        var showRecordingFormatDialog by remember {
+            mutableStateOf(false)
+        }
+        var recordingFormatLabel by remember { mutableStateOf("") }
+        var recordingStartedAt by remember { mutableLongStateOf(0L) }
+        var recordingLimitMillis by remember { mutableLongStateOf(0L) }
+        var recordingElapsedMillis by remember { mutableLongStateOf(0L) }
+        var savedPreviewMedia by remember { mutableStateOf<SavedPreviewMedia?>(null) }
+        var isRecordingSaving by remember { mutableStateOf(false) }
+        var mp4BitrateMbps by remember {
+            mutableIntStateOf(
+                preferences.getInt(mp4BitrateKey, 5).takeIf(MP4_BITRATE_OPTIONS::contains) ?: 5
+            )
+        }
+        var xShareText by remember {
+            mutableStateOf(preferences.getString(xShareTextKey, DEFAULT_X_SHARE_TEXT) ?: DEFAULT_X_SHARE_TEXT)
+        }
+        var recordingCountdownSeconds by remember {
+            mutableIntStateOf(
+                preferences.getInt(recordingCountdownKey, 3)
+                    .takeIf(RECORDING_COUNTDOWN_OPTIONS::contains) ?: 3
+            )
+        }
+        var pendingRecordingFormat by remember { mutableStateOf<String?>(null) }
+        var recordingCountdownRemaining by remember { mutableIntStateOf(0) }
+        val isRecordingOrCountingDown = isPreviewRecording || isRecordingSaving || pendingRecordingFormat != null
+
+        fun startSelectedRecording(format: String) {
+            savedPreviewMedia = null
+            recordingFormatLabel = format.uppercase()
+            recordingLimitMillis = if (format == "gif") 15_000L else 60_000L
+            recordingStartedAt = SystemClock.elapsedRealtime()
+            recordingElapsedMillis = 0L
+            recordingCountdownRemaining = 0
+            val bitrate = mp4BitrateMbps * 1_000_000
+            webView?.evaluateJavascript(
+                "window.__editKiroStartRecording?.('$format', $bitrate)",
+                null
+            )
+        }
+
+        fun requestPreviewRecording(format: String) {
+            recordingFormatLabel = format.uppercase()
+            recordingLimitMillis = if (format == "gif") 15_000L else 60_000L
+            if (recordingCountdownSeconds == 0) {
+                startSelectedRecording(format)
+            } else {
+                pendingRecordingFormat = format
+                recordingCountdownRemaining = recordingCountdownSeconds
+            }
+        }
+
+        fun cancelRecordingCountdown() {
+            pendingRecordingFormat = null
+            recordingCountdownRemaining = 0
+        }
+
+        LaunchedEffect(pendingRecordingFormat) {
+            val format = pendingRecordingFormat ?: return@LaunchedEffect
+            while (recordingCountdownRemaining > 0) {
+                delay(1000)
+                recordingCountdownRemaining--
+            }
+            if (pendingRecordingFormat == format) {
+                pendingRecordingFormat = null
+                startSelectedRecording(format)
+            }
+        }
+
+        LaunchedEffect(isPreviewRecording, isRecordingSaving, recordingStartedAt) {
+            while (isPreviewRecording && !isRecordingSaving) {
+                recordingElapsedMillis = (SystemClock.elapsedRealtime() - recordingStartedAt)
+                    .coerceIn(0L, recordingLimitMillis)
+                delay(200)
+            }
         }
 
         var previewActionsExpanded by remember {
@@ -1891,7 +2080,7 @@ class MainActivity : ComponentActivity() {
                 .find { it.id == sessionViewModel.activeWorkIdState.value }?.assets.orEmpty()
         ) {
 
-            if (isPreviewRecording) {
+            if (isRecordingOrCountingDown) {
                 Toast.makeText(this@MainActivity, uiText("録画を停止してから再実行してください"), Toast.LENGTH_SHORT).show()
                 return
             }
@@ -2459,6 +2648,9 @@ class MainActivity : ComponentActivity() {
                         .put("accessorySymbols", showAccessorySymbols)
                         .put("compactAccessoryKeys", compactAccessoryKeys)
                         .put("draftRecovery", draftRecovery)
+                        .put("mp4BitrateMbps", mp4BitrateMbps)
+                        .put("xShareText", xShareText)
+                        .put("recordingCountdownSeconds", recordingCountdownSeconds)
                     assetScope.launch {
                         assetBusy = true
                         val exported = withContext(Dispatchers.IO) {
@@ -2544,6 +2736,13 @@ class MainActivity : ComponentActivity() {
                                 showAccessorySymbols = settings.optBoolean("accessorySymbols", showAccessorySymbols)
                                 compactAccessoryKeys = settings.optBoolean("compactAccessoryKeys", compactAccessoryKeys)
                                 draftRecovery = settings.optBoolean("draftRecovery", draftRecovery)
+                                mp4BitrateMbps = settings.optInt("mp4BitrateMbps", mp4BitrateMbps)
+                                    .takeIf(MP4_BITRATE_OPTIONS::contains) ?: 5
+                                xShareText = settings.optString("xShareText", xShareText).take(1000)
+                                recordingCountdownSeconds = settings.optInt(
+                                    "recordingCountdownSeconds",
+                                    recordingCountdownSeconds
+                                ).takeIf(RECORDING_COUNTDOWN_OPTIONS::contains) ?: 3
                                 preferences.edit()
                                     .putBoolean(autoRunKey, autoRun)
                                     .putBoolean(compactPreviewKey, compactPreview)
@@ -2563,6 +2762,9 @@ class MainActivity : ComponentActivity() {
                                     .putBoolean(accessorySymbolsKey, showAccessorySymbols)
                                     .putBoolean(compactAccessoryKeysKey, compactAccessoryKeys)
                                     .putBoolean(draftRecoveryKey, draftRecovery)
+                                    .putInt(mp4BitrateKey, mp4BitrateMbps)
+                                    .putString(xShareTextKey, xShareText)
+                                    .putInt(recordingCountdownKey, recordingCountdownSeconds)
                                     .apply()
                             }
                             clearDraftSnapshot()
@@ -2701,9 +2903,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.ic_folder_code), null,
-                        Modifier.size(20.dp), tint = colors.primary)
-                    Spacer(Modifier.width(10.dp))
                     Column(
                         Modifier
                             .weight(1f, fill = false)
@@ -2720,15 +2919,11 @@ class MainActivity : ComponentActivity() {
                             fontWeight = FontWeight.SemiBold, maxLines = 1,
                             overflow = TextOverflow.Ellipsis)
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Icon(painterResource(R.drawable.ic_chevron_down), uiText("作品一覧を開く"),
-                        Modifier.size(18.dp), tint = colors.onSurfaceVariant)
                 }
             }
 
             if (workMenuExpanded) {
                 var sort by remember { mutableStateOf(preferences.getString("work_sort", "更新順") ?: "更新順") }
-                var favorites by remember { mutableStateOf(preferences.getStringSet("favorite_works", emptySet())!!.toSet()) }
                 var previewRevision by remember { mutableIntStateOf(0) }
                 var updatedPreviewId by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(Unit) {
@@ -2750,14 +2945,10 @@ class MainActivity : ComponentActivity() {
                 }
                 WorkGallery(
                     works = works, activeId = activeWorkId, unsaved = hasUnsavedChanges,
-                    sort = sort, favorites = favorites, cacheDir = cacheDir, previewRevision = previewRevision,
+                    sort = sort, cacheDir = cacheDir, previewRevision = previewRevision,
                     updatedPreviewId = updatedPreviewId,
                     text = ::uiText,
                     onSort = { sort = it; preferences.edit().putString("work_sort", it).apply() },
-                    onFavorite = { id ->
-                        favorites = if (id in favorites) favorites - id else favorites + id
-                        preferences.edit().putStringSet("favorite_works", favorites).apply()
-                    },
                     onOpen = selectWork@{ work, openMenu ->
                         if (workSaving || assetBusy) return@selectWork
                         if (work.id != activeWorkId) {
@@ -3543,13 +3734,13 @@ class MainActivity : ComponentActivity() {
                                                 val saved = savePreviewMedia(
                                                     dataUrl = dataUrl,
                                                     mimeType = "image/png",
-                                                    displayName = "EditKIRO_${System.currentTimeMillis()}.png",
+                                                    displayName = "EditRiN_${System.currentTimeMillis()}.png",
                                                     video = false
                                                 )
                                                 runOnUiThread {
                                                     Toast.makeText(
                                                         this@MainActivity,
-                                                        if (saved != null) uiText("スクリーンショットをPictures/EditKIROへ保存しました")
+                                                        if (saved != null) uiText("スクリーンショットをPictures/EditRiNへ保存しました")
                                                         else uiText("スクリーンショットを保存できませんでした"),
                                                         Toast.LENGTH_SHORT
                                                     ).show()
@@ -3565,24 +3756,64 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         @JavascriptInterface
-                                        fun onRecordingReady(dataUrl: String, mimeType: String) {
-                                            runOnUiThread { isPreviewRecording = false }
-                                            Thread {
-                                                val saved = savePreviewMedia(
-                                                    dataUrl = dataUrl,
-                                                    mimeType = mimeType.ifBlank { "video/webm" },
-                                                    displayName = "EditKIRO_${System.currentTimeMillis()}.webm",
-                                                    video = true
-                                                )
-                                                runOnUiThread {
-                                                    Toast.makeText(
-                                                        this@MainActivity,
-                                                        if (saved != null) uiText("録画をMovies/EditKIROへ保存しました")
-                                                        else uiText("録画を保存できませんでした"),
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                        fun beginRecordingTransfer(token: String): Boolean =
+                                            recordingTransfer.begin(token)
+
+                                        @JavascriptInterface
+                                        fun appendRecordingChunk(token: String, encoded: String): Boolean =
+                                            recordingTransfer.append(token, encoded)
+
+                                        @JavascriptInterface
+                                        fun abortRecordingTransfer(token: String) {
+                                            recordingTransfer.abort(token)
+                                            runOnUiThread {
+                                                isRecordingSaving = false
+                                                isPreviewRecording = false
+                                            }
+                                        }
+
+                                        @JavascriptInterface
+                                        fun onRecordingSaving() {
+                                            runOnUiThread {
+                                                if (!isRecordingSaving) {
+                                                    recordingElapsedMillis = (SystemClock.elapsedRealtime() - recordingStartedAt)
+                                                        .coerceIn(0L, recordingLimitMillis)
                                                 }
-                                            }.start()
+                                                isRecordingSaving = true
+                                            }
+                                        }
+
+                                        @JavascriptInterface
+                                        fun finishRecordingTransfer(token: String, mimeType: String) {
+                                            val file = recordingTransfer.finish(token)
+                                            runOnUiThread {
+                                                isPreviewRecording = false
+                                                isRecordingSaving = true
+                                                val elapsed = recordingElapsedMillis
+                                                lifecycleScope.launch {
+                                                    val media = withContext(Dispatchers.IO) {
+                                                        if (file == null) return@withContext null
+                                                        try {
+                                                            val mime = mimeType.substringBefore(';').lowercase()
+                                                            val extension = when (mime) {
+                                                                "image/gif" -> "gif"
+                                                                "video/mp4" -> "mp4"
+                                                                "video/webm" -> "webm"
+                                                                else -> return@withContext null
+                                                            }
+                                                            val name = "EditRiN_" + java.util.UUID.randomUUID() + "." + extension
+                                                            val thumbnail = recordingThumbnail(file, mime)
+                                                            val uri = savePreviewMedia(mimeType = mime, displayName = name,
+                                                                video = mime != "image/gif", sourceFile = file)
+                                                            uri?.let { SavedPreviewMedia(it, mime, name, file.length(), elapsed, thumbnail) }
+                                                        } finally { file.delete() }
+                                                    }
+                                                    savedPreviewMedia = media
+                                                    isRecordingSaving = false
+                                                    if (media == null) Toast.makeText(this@MainActivity,
+                                                        uiText("録画を保存できませんでした"), Toast.LENGTH_LONG).show()
+                                                }
+                                            }
                                         }
 
                                         @JavascriptInterface
@@ -3751,7 +3982,7 @@ class MainActivity : ComponentActivity() {
                                         description = uiText("描画の縦横を切り替える"),
                                         active = expandedCanvasSwapped,
                                         onClick = {
-                                            if (isPreviewRecording) {
+                                            if (isRecordingOrCountingDown) {
                                                 Toast.makeText(this@MainActivity,
                                                     uiText("録画を停止してから描画の向きを変更してください"),
                                                     Toast.LENGTH_SHORT).show()
@@ -3783,22 +4014,30 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 PreviewOverlayButton(
-                                    iconRes = if (isPreviewRecording) {
+                                    iconRes = if (isRecordingOrCountingDown) {
                                         R.drawable.ic_stop
                                     } else {
                                         R.drawable.ic_record
                                     },
-                                    description = if (isPreviewRecording) uiText("録画を停止") else uiText("プレビューを録画"),
-                                    active = isPreviewRecording,
+                                    description = when {
+                                        pendingRecordingFormat != null -> uiText("録画カウントダウンを中止")
+                                        isPreviewRecording -> uiText("録画を停止")
+                                        else -> uiText("プレビューを録画")
+                                    },
+                                    active = isRecordingOrCountingDown,
                                     onClick = {
-                                        webView?.evaluateJavascript(
-                                            if (isPreviewRecording) {
-                                                "window.__editKiroStopRecording?.()"
-                                            } else {
-                                                "window.__editKiroStartRecording?.()"
-                                            },
-                                            null
-                                        )
+                                        if (pendingRecordingFormat != null) {
+                                            cancelRecordingCountdown()
+                                        } else if (isRecordingSaving) {
+                                            // Wait for the current recording to finish saving.
+                                        } else if (isPreviewRecording) {
+                                            webView?.evaluateJavascript(
+                                                "window.__editKiroStopRecording?.()",
+                                                null
+                                            )
+                                        } else {
+                                            showRecordingFormatDialog = true
+                                        }
                                         previewActionsExpanded = false
                                     }
                                 )
@@ -3819,7 +4058,7 @@ class MainActivity : ComponentActivity() {
                                         description = uiText("全画面表示を閉じる"),
                                         onClick = {
                                             previewActionsExpanded = false
-                                            if (isPreviewRecording) {
+                                            if (isRecordingOrCountingDown) {
                                                 Toast.makeText(
                                                     this@MainActivity,
                                                     uiText("録画を停止してから全画面表示を閉じてください"),
@@ -3840,6 +4079,29 @@ class MainActivity : ComponentActivity() {
                     } else 0.dp
                     // A separate popup can extend outside a narrow preview without squeezing buttons.
                     val usePopup = availableWidth < (if (fullscreen) 248.dp else 201.dp) || maxHeight < 60.dp
+                    if (recordingCountdownRemaining > 0) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.Center),
+                            shape = RoundedCornerShape(22.dp),
+                            color = Color.Black.copy(alpha = 0.82f),
+                            contentColor = Color.White,
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 28.dp, vertical = 18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = recordingCountdownRemaining.toString(),
+                                    style = MaterialTheme.typography.displayMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                TextButton(onClick = ::cancelRecordingCountdown) {
+                                    Text(uiText("キャンセル"), color = Color.White)
+                                }
+                            }
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -3859,6 +4121,15 @@ class MainActivity : ComponentActivity() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
+                        if (isPreviewRecording || isRecordingSaving) {
+                            RecordingStatus(
+                                format = recordingFormatLabel, elapsed = recordingElapsedMillis,
+                                remaining = (recordingLimitMillis - recordingElapsedMillis).coerceAtLeast(0),
+                                saving = isRecordingSaving, text = ::uiText,
+                                modifier = Modifier.weight(1f, fill = false),
+                                onStop = { webView?.evaluateJavascript("window.__editKiroStopRecording?.()", null) }
+                            )
+                        }
                         AnimatedVisibility(
                             visible = previewActionsExpanded && !usePopup,
                             enter = fadeIn(tween(130)) + expandHorizontally(
@@ -3897,7 +4168,7 @@ class MainActivity : ComponentActivity() {
                         PreviewOverlayButton(
                             iconRes = R.drawable.ic_more_horizontal,
                             description = if (previewActionsExpanded) uiText("プレビュー操作を閉じる") else uiText("プレビュー操作を開く"),
-                            active = isPreviewRecording,
+                            active = isRecordingOrCountingDown,
                             onClick = {
                                 previewActionsExpanded = !previewActionsExpanded
                             }
@@ -5378,6 +5649,22 @@ class MainActivity : ComponentActivity() {
                         preferences.edit().putBoolean(compactAccessoryKeysKey, it).apply()
                     },
 
+                    mp4BitrateMbps = mp4BitrateMbps,
+                    onMp4BitrateChange = {
+                        mp4BitrateMbps = it
+                        preferences.edit().putInt(mp4BitrateKey, it).apply()
+                    },
+                    xShareText = xShareText,
+                    onXShareTextChange = {
+                        xShareText = it.take(1000)
+                        preferences.edit().putString(xShareTextKey, xShareText).apply()
+                    },
+                    recordingCountdownSeconds = recordingCountdownSeconds,
+                    onRecordingCountdownChange = {
+                        recordingCountdownSeconds = it
+                        preferences.edit().putInt(recordingCountdownKey, it).apply()
+                    },
+
                     draftRecovery =
                         draftRecovery,
 
@@ -6106,7 +6393,7 @@ class MainActivity : ComponentActivity() {
         if (showExpandedPreview) {
             Dialog(
                 onDismissRequest = {
-                    if (!isPreviewRecording) showExpandedPreview = false
+                    if (!isRecordingOrCountingDown) showExpandedPreview = false
                 },
                 properties = DialogProperties(
                     usePlatformDefaultWidth = false,
@@ -6132,6 +6419,38 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+
+        if (showRecordingFormatDialog && !isRecordingOrCountingDown) {
+            RecordingOptionsSheet(
+                bitrate = mp4BitrateMbps, countdown = recordingCountdownSeconds,
+                text = ::uiText,
+                onBitrate = {
+                    mp4BitrateMbps = it
+                    preferences.edit().putInt(mp4BitrateKey, it).apply()
+                },
+                onCountdown = {
+                    recordingCountdownSeconds = it
+                    preferences.edit().putInt(recordingCountdownKey, it).apply()
+                },
+                onDismiss = { showRecordingFormatDialog = false },
+                onStart = { format ->
+                    showRecordingFormatDialog = false
+                    requestPreviewRecording(format)
+                }
+            )
+        }
+
+        savedPreviewMedia?.let { media ->
+            SavedRecordingSheet(
+                name = media.displayName, mimeType = media.mimeType,
+                sizeBytes = media.sizeBytes, durationMillis = media.durationMillis,
+                thumbnail = media.thumbnail, text = ::uiText,
+                onOpen = { openPreviewMedia(media) },
+                onShare = { sharePreviewMedia(media, false) },
+                onX = { sharePreviewMedia(media, true, xShareText) },
+                onDismiss = { savedPreviewMedia = null }
+            )
         }
 
         if (showHistoryDialog) {
@@ -7233,6 +7552,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun SettingsScreen(
         onImportFont: () -> Unit,
@@ -7293,6 +7613,12 @@ class MainActivity : ComponentActivity() {
         compactAccessoryKeys: Boolean,
         onCompactAccessoryKeysChange:
             (Boolean) -> Unit,
+        mp4BitrateMbps: Int,
+        onMp4BitrateChange: (Int) -> Unit,
+        xShareText: String,
+        onXShareTextChange: (String) -> Unit,
+        recordingCountdownSeconds: Int,
+        onRecordingCountdownChange: (Int) -> Unit,
         draftRecovery: Boolean,
         onDraftRecoveryChange:
             (Boolean) -> Unit,
@@ -7368,7 +7694,8 @@ class MainActivity : ComponentActivity() {
                         listOf(
                             R.drawable.ic_settings to uiText("外観"),
                             R.drawable.ic_code to uiText("エディター"),
-                            R.drawable.ic_folder_code to uiText("保存とバックアップ")
+                            R.drawable.ic_folder_code to uiText("保存とバックアップ"),
+                            R.drawable.ic_more_horizontal to "About"
                         ).forEachIndexed { index, (icon, label) ->
                             Surface(
                                 onClick = { settingsTab = index },
@@ -7483,7 +7810,8 @@ class MainActivity : ComponentActivity() {
                     listOf(
                         R.drawable.ic_settings to uiText("外観"),
                         R.drawable.ic_code to uiText("エディター"),
-                        R.drawable.ic_folder_code to uiText("保存とバックアップ")
+                        R.drawable.ic_folder_code to uiText("保存とバックアップ"),
+                        R.drawable.ic_more_horizontal to "About"
                     ).forEachIndexed { index, (icon, label) ->
                         FilterChip(
                             selected = settingsTab == index,
@@ -8043,6 +8371,78 @@ class MainActivity : ComponentActivity() {
             ) {
 
                 Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = uiText("録画と共有"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Text(
+                        text = uiText("MP4ビットレート"),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        text = uiText("高い値ほど画質とファイルサイズが大きくなります"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MP4_BITRATE_OPTIONS.forEach { bitrate ->
+                            ThemeChip(
+                                modifier = Modifier.widthIn(min = 88.dp),
+                                label = "$bitrate Mbps",
+                                selected = mp4BitrateMbps == bitrate,
+                                onClick = { onMp4BitrateChange(bitrate) }
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = uiText("録画開始カウントダウン"),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RECORDING_COUNTDOWN_OPTIONS.forEach { seconds ->
+                            ThemeChip(
+                                modifier = Modifier.widthIn(min = 88.dp),
+                                label = if (seconds == 0) uiText("なし") else uiText("%s秒", seconds),
+                                selected = recordingCountdownSeconds == seconds,
+                                onClick = { onRecordingCountdownChange(seconds) }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = xShareText,
+                        onValueChange = onXShareTextChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(uiText("X共有の定型文")) },
+                        supportingText = {
+                            Text(uiText("Xで共有するときに録画と一緒に入力します"))
+                        },
+                        minLines = 3,
+                        maxLines = 6
+                    )
+                    TextButton(
+                        onClick = { onXShareTextChange(DEFAULT_X_SHARE_TEXT) },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(uiText("初期値に戻す"))
+                    }
+                }
+
+                SettingsDivider()
+
+                Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -8281,35 +8681,102 @@ class MainActivity : ComponentActivity() {
 
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Edit:RiN ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
-                Text("rin-code-dev", style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant)
-                TextButton(
-                    enabled = !updateViewModel.checking,
-                    onClick = { updateViewModel.checkManually() }
-                ) { Text(uiText(if (updateViewModel.manualChecking) "確認中…" else "アップデートを確認")) }
-                TextButton(onClick = { showLicenses = true }) {
-                    Text(uiText("ライセンス情報"))
+            if (settingsTab == 3) {
+            SettingsSection(
+                title = "About",
+                description = uiText("アプリ情報とリンク")
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = uiText("アプリ情報"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Edit",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = uiText("バージョン %s", BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    TextButton(
+                        enabled = !updateViewModel.checking,
+                        onClick = { updateViewModel.checkManually() },
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text(uiText(if (updateViewModel.manualChecking) "確認中…" else "アップデートを確認"))
+                    }
+                    TextButton(
+                        onClick = { showLicenses = true },
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text(uiText("ライセンス情報"))
+                    }
+                }
+
+                SettingsDivider()
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = uiText("開発者"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant
+                    )
+                    Surface(
+                        onClick = { openExternalUrl(DEVELOPER_X_URL) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.Transparent,
+                        contentColor = colors.primary
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text("X")
+                            Text(
+                                text = "@rincodedev",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+
+                SettingsDivider()
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = uiText("サポート"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant
+                    )
+                    Text(
+                        text = uiText("開発を任意で支援できます"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    TextButton(
+                        onClick = { openExternalUrl(SUPPORT_OFUSE_URL) },
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text("OFUSE (Tip)")
+                    }
                 }
             }
-            Text(
-                text = "Edit:RiN  •  p5.js editor",
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            top = 2.dp
-                        ),
-                style =
-                    MaterialTheme
-                        .typography
-                        .labelSmall,
-                color =
-                    colors.onSurfaceVariant.copy(
-                        alpha = 0.65f
-                    )
-            )
+
+            }
         }
     }
     }
