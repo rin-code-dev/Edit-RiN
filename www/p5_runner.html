@@ -254,7 +254,10 @@
 
     function releaseRecording(session) {
       clearTimeout(session.timer);
+      clearInterval(session.captureTimer);
       session.stream?.getTracks().forEach(track => track.stop());
+      session.gifWorker?.terminate();
+      if (session.gifWorkerUrl) URL.revokeObjectURL(session.gifWorkerUrl);
       session.chunks = [];
       if (session.recorder) {
         session.recorder.ondataavailable = null;
@@ -265,7 +268,9 @@
     }
 
     function failRecording(session, message) {
+      if (recordingSession && recordingSession !== session) return;
       const recorder = session?.recorder;
+      if (session?.transferId) notifyAndroid('abortRecordingTransfer', session.transferId);
       if (session) releaseRecording(session);
       try {
         if (recorder && recorder.state !== 'inactive') recorder.stop();
@@ -274,31 +279,451 @@
       notifyAndroid('onCaptureError', message);
     }
 
-    window.__editKiroStartRecording = () => {
+    function gifWorkerMain() {
+      let width = 0;
+      let height = 0;
+      let parts = [];
+      let lastDelayCs = 0;
+      let lastDelayBytes = null;
+
+      const bytes = (...values) => Uint8Array.from(values);
+      const littleEndian = value => bytes(value & 255, (value >>> 8) & 255);
+      const textBytes = value => Uint8Array.from([...value].map(character => character.charCodeAt(0)));
+
+      function adaptivePalette(rgba) {
+        // Build a compact 5-bit/channel histogram, then split it into weighted
+        // median-cut boxes. Per-frame palettes retain gradients far better than
+        // the previous fixed RGB332 table.
+        const counts = new Uint32Array(32768);
+        const redSums = new Uint32Array(32768);
+        const greenSums = new Uint32Array(32768);
+        const blueSums = new Uint32Array(32768);
+        const colors = [];
+        for (let offset = 0; offset < rgba.length; offset += 4) {
+          const red = rgba[offset];
+          const green = rgba[offset + 1];
+          const blue = rgba[offset + 2];
+          const bin = (red >>> 3) << 10 | (green >>> 3) << 5 | (blue >>> 3);
+          if (counts[bin] === 0) colors.push(bin);
+          counts[bin]++;
+          redSums[bin] += red;
+          greenSums[bin] += green;
+          blueSums[bin] += blue;
+        }
+
+        const makeBox = entries => {
+          let minRed = 31, minGreen = 31, minBlue = 31;
+          let maxRed = 0, maxGreen = 0, maxBlue = 0, population = 0;
+          for (const bin of entries) {
+            const red = (bin >>> 10) & 31;
+            const green = (bin >>> 5) & 31;
+            const blue = bin & 31;
+            minRed = Math.min(minRed, red); maxRed = Math.max(maxRed, red);
+            minGreen = Math.min(minGreen, green); maxGreen = Math.max(maxGreen, green);
+            minBlue = Math.min(minBlue, blue); maxBlue = Math.max(maxBlue, blue);
+            population += counts[bin];
+          }
+          const ranges = [maxRed - minRed, maxGreen - minGreen, maxBlue - minBlue];
+          return {
+            entries, population, ranges,
+            score: Math.max(...ranges) * Math.sqrt(population)
+          };
+        };
+
+        const boxes = [makeBox(colors.length ? colors : [0])];
+        while (boxes.length < 256) {
+          let selectedIndex = -1;
+          let selectedScore = -1;
+          for (let index = 0; index < boxes.length; index++) {
+            const box = boxes[index];
+            if (box.entries.length > 1 && box.score > selectedScore) {
+              selectedIndex = index;
+              selectedScore = box.score;
+            }
+          }
+          if (selectedIndex < 0) break;
+          const selected = boxes.splice(selectedIndex, 1)[0];
+          const channel = selected.ranges.indexOf(Math.max(...selected.ranges));
+          const shift = channel === 0 ? 10 : channel === 1 ? 5 : 0;
+          selected.entries.sort((left, right) =>
+            ((left >>> shift) & 31) - ((right >>> shift) & 31)
+          );
+          const midpoint = selected.population / 2;
+          let accumulated = 0;
+          let split = 1;
+          for (; split < selected.entries.length; split++) {
+            accumulated += counts[selected.entries[split - 1]];
+            if (accumulated >= midpoint) break;
+          }
+          split = Math.max(1, Math.min(selected.entries.length - 1, split));
+          boxes.push(
+            makeBox(selected.entries.slice(0, split)),
+            makeBox(selected.entries.slice(split))
+          );
+        }
+
+        const palette = new Uint8Array(256 * 3);
+        boxes.forEach((box, paletteIndex) => {
+          let population = 0, red = 0, green = 0, blue = 0;
+          for (const bin of box.entries) {
+            population += counts[bin];
+            red += redSums[bin];
+            green += greenSums[bin];
+            blue += blueSums[bin];
+          }
+          palette[paletteIndex * 3] = Math.round(red / Math.max(1, population));
+          palette[paletteIndex * 3 + 1] = Math.round(green / Math.max(1, population));
+          palette[paletteIndex * 3 + 2] = Math.round(blue / Math.max(1, population));
+        });
+        const last = Math.max(0, boxes.length - 1);
+        for (let index = boxes.length; index < 256; index++) {
+          palette[index * 3] = palette[last * 3];
+          palette[index * 3 + 1] = palette[last * 3 + 1];
+          palette[index * 3 + 2] = palette[last * 3 + 2];
+        }
+        return { palette, colorCount: boxes.length };
+      }
+
+      function ditherAndIndex(rgba, palette, colorCount) {
+        const indexed = new Uint8Array(width * height);
+        const lookup = new Int16Array(32768);
+        lookup.fill(-1);
+        let currentRed = new Float32Array(width + 2);
+        let currentGreen = new Float32Array(width + 2);
+        let currentBlue = new Float32Array(width + 2);
+        let nextRed = new Float32Array(width + 2);
+        let nextGreen = new Float32Array(width + 2);
+        let nextBlue = new Float32Array(width + 2);
+        const clamp = value => Math.max(0, Math.min(255, value));
+
+        const nearestColor = (red, green, blue) => {
+          const bin = (red >>> 3) << 10 | (green >>> 3) << 5 | (blue >>> 3);
+          const cached = lookup[bin];
+          if (cached >= 0) return cached;
+          let best = 0;
+          let bestDistance = Infinity;
+          for (let index = 0; index < colorCount; index++) {
+            const paletteOffset = index * 3;
+            const redDifference = red - palette[paletteOffset];
+            const greenDifference = green - palette[paletteOffset + 1];
+            const blueDifference = blue - palette[paletteOffset + 2];
+            const distance = redDifference * redDifference * 3 +
+              greenDifference * greenDifference * 4 +
+              blueDifference * blueDifference * 2;
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              best = index;
+            }
+          }
+          lookup[bin] = best;
+          return best;
+        };
+
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const pixel = y * width + x;
+            const source = pixel * 4;
+            const errorIndex = x + 1;
+            const red = Math.round(clamp(rgba[source] + currentRed[errorIndex]));
+            const green = Math.round(clamp(rgba[source + 1] + currentGreen[errorIndex]));
+            const blue = Math.round(clamp(rgba[source + 2] + currentBlue[errorIndex]));
+            const paletteIndex = nearestColor(red, green, blue);
+            indexed[pixel] = paletteIndex;
+            const paletteOffset = paletteIndex * 3;
+            const redError = red - palette[paletteOffset];
+            const greenError = green - palette[paletteOffset + 1];
+            const blueError = blue - palette[paletteOffset + 2];
+
+            currentRed[errorIndex + 1] += redError * 7 / 16;
+            currentGreen[errorIndex + 1] += greenError * 7 / 16;
+            currentBlue[errorIndex + 1] += blueError * 7 / 16;
+            nextRed[errorIndex - 1] += redError * 3 / 16;
+            nextGreen[errorIndex - 1] += greenError * 3 / 16;
+            nextBlue[errorIndex - 1] += blueError * 3 / 16;
+            nextRed[errorIndex] += redError * 5 / 16;
+            nextGreen[errorIndex] += greenError * 5 / 16;
+            nextBlue[errorIndex] += blueError * 5 / 16;
+            nextRed[errorIndex + 1] += redError / 16;
+            nextGreen[errorIndex + 1] += greenError / 16;
+            nextBlue[errorIndex + 1] += blueError / 16;
+          }
+          [currentRed, nextRed] = [nextRed, currentRed]; nextRed.fill(0);
+          [currentGreen, nextGreen] = [nextGreen, currentGreen]; nextGreen.fill(0);
+          [currentBlue, nextBlue] = [nextBlue, currentBlue]; nextBlue.fill(0);
+        }
+        return indexed;
+      }
+
+      function lzwBlocks(indexed) {
+        const clearCode = 256;
+        const endCode = 257;
+        let nextCode = 258;
+        let codeSize = 9;
+        let dictionary = new Map();
+        const compressed = [];
+        let accumulator = 0;
+        let bitCount = 0;
+
+        const writeCode = code => {
+          accumulator |= code << bitCount;
+          bitCount += codeSize;
+          while (bitCount >= 8) {
+            compressed.push(accumulator & 255);
+            accumulator >>>= 8;
+            bitCount -= 8;
+          }
+        };
+        const reset = () => {
+          dictionary = new Map();
+          nextCode = 258;
+          codeSize = 9;
+        };
+
+        writeCode(clearCode);
+        if (indexed.length) {
+          let prefix = indexed[0];
+          for (let offset = 1; offset < indexed.length; offset++) {
+            const suffix = indexed[offset];
+            const key = prefix * 256 + suffix;
+            const found = dictionary.get(key);
+            if (found !== undefined) {
+              prefix = found;
+              continue;
+            }
+            writeCode(prefix);
+            if (nextCode < 4096) {
+              dictionary.set(key, nextCode++);
+              // The decoder adds this entry after it reads the next emitted code.
+              if (nextCode > (1 << codeSize) && codeSize < 12) codeSize++;
+            } else {
+              writeCode(clearCode);
+              reset();
+            }
+            prefix = suffix;
+          }
+          writeCode(prefix);
+        }
+        writeCode(endCode);
+        if (bitCount) compressed.push(accumulator & 255);
+
+        const blocks = [bytes(8)];
+        for (let offset = 0; offset < compressed.length; offset += 255) {
+          const block = compressed.slice(offset, offset + 255);
+          blocks.push(bytes(block.length), Uint8Array.from(block));
+        }
+        blocks.push(bytes(0));
+        return blocks;
+      }
+
+      function beginGif() {
+        parts = [
+          textBytes('GIF89a'), littleEndian(width), littleEndian(height),
+          bytes(0x70, 0, 0),
+          bytes(0x21, 0xff, 0x0b), textBytes('NETSCAPE2.0'),
+          bytes(3, 1, 0, 0, 0)
+        ];
+      }
+
+      function addFrame(rgba, delayCs) {
+        const quantized = adaptivePalette(rgba);
+        const indexed = ditherAndIndex(rgba, quantized.palette, quantized.colorCount);
+        lastDelayCs = Math.max(1, Math.min(65535, delayCs));
+        lastDelayBytes = littleEndian(lastDelayCs);
+        parts.push(
+          bytes(0x21, 0xf9, 4, 0), lastDelayBytes, bytes(0, 0),
+          bytes(0x2c), littleEndian(0), littleEndian(0), littleEndian(width), littleEndian(height), bytes(0x87),
+          quantized.palette,
+          ...lzwBlocks(indexed)
+        );
+      }
+
+      self.onmessage = event => {
+        const message = event.data;
+        if (message.type === 'init') {
+          width = message.width;
+          height = message.height;
+          beginGif();
+        } else if (message.type === 'frame') {
+          addFrame(new Uint8ClampedArray(message.buffer), message.delayCs);
+          self.postMessage({ type: 'ready' });
+        } else if (message.type === 'extend' && lastDelayBytes) {
+          lastDelayCs = Math.min(65535, lastDelayCs + message.delayCs);
+          lastDelayBytes[0] = lastDelayCs & 255;
+          lastDelayBytes[1] = (lastDelayCs >>> 8) & 255;
+        } else if (message.type === 'finish') {
+          parts.push(bytes(0x3b));
+          self.postMessage({ type: 'done', blob: new Blob(parts, { type: 'image/gif' }) });
+        }
+      };
+    }
+    const gifWorkerSource = `(${gifWorkerMain.toString()})()`;
+    window.__editKiroGifWorkerSource = gifWorkerSource;
+
+    function finishGifWhenReady(session) {
+      if (session.gifStopping && session.gifPending === 0 && !session.gifFinishing) {
+        session.gifFinishing = true;
+        session.gifWorker.postMessage({ type: 'finish' });
+      }
+    }
+
+    async function queueRecordingBlob(session, blob) {
+      for (let offset = 0; offset < blob.size; offset += 192 * 1024) {
+        if (recordingSession !== session) throw new Error('録画の保存を中断しました');
+        const encoded = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(',')[1]);
+          reader.onerror = reader.onabort = () => reject(new Error('録画データを読み出せませんでした'));
+          reader.readAsDataURL(blob.slice(offset, offset + 192 * 1024));
+        });
+        if (recordingSession !== session ||
+            !window.Android?.appendRecordingChunk(session.transferId, encoded)) {
+          throw new Error('録画を保存できませんでした');
+        }
+        session.transferred += Math.min(192 * 1024, blob.size - offset);
+      }
+    }
+
+    function finishRecordingTransfer(session, mimeType) {
+      if (recordingSession !== session) return;
+      if (!session.transferred) throw new Error('録画データが空です。少し長めに録画してください');
+      notifyAndroid('finishRecordingTransfer', session.transferId, mimeType);
+      releaseRecording(session);
+      notifyAndroid('onRecordingStatusChanged', false);
+    }
+
+    function startGifRecording(session, canvas) {
+      const longestSide = Math.max(canvas.width, canvas.height);
+      const scale = Math.min(1, 720 / Math.max(1, longestSide));
+      const width = Math.max(1, Math.round(canvas.width * scale));
+      const height = Math.max(1, Math.round(canvas.height * scale));
+      const captureCanvas = document.createElement('canvas');
+      captureCanvas.width = width;
+      captureCanvas.height = height;
+      const captureContext = captureCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+      if (!captureContext || typeof Worker === 'undefined') {
+        throw new Error('この端末はGIF録画に対応していません');
+      }
+
+      session.format = 'gif';
+      session.gifPending = 0;
+      session.gifStopping = false;
+      session.gifFinishing = false;
+      session.gifFrameIndex = 0;
+      session.gifTickIndex = 0;
+      session.gifPendingDelayCs = 0;
+      session.gifCaptureCanvas = captureCanvas;
+      session.gifCaptureContext = captureContext;
+      session.gifWorkerUrl = URL.createObjectURL(new Blob(
+        [gifWorkerSource],
+        { type: 'text/javascript' }
+      ));
+      session.gifWorker = new Worker(session.gifWorkerUrl);
+      session.gifWorker.onerror = event => failRecording(
+        session,
+        event.message || 'GIFの作成中にエラーが発生しました'
+      );
+      session.gifWorker.onmessage = event => {
+        if (recordingSession !== session) return;
+        if (event.data.type === 'ready') {
+          session.gifPending = Math.max(0, session.gifPending - 1);
+          finishGifWhenReady(session);
+        } else if (event.data.type === 'done') {
+          session.pending = queueRecordingBlob(session, event.data.blob);
+          session.pending.then(() => finishRecordingTransfer(session, 'image/gif'))
+            .catch(error => failRecording(session, error.message));
+        }
+      };
+      session.gifWorker.postMessage({ type: 'init', width, height });
+
+      const captureFrame = () => {
+        if (recordingSession !== session || session.gifStopping) return;
+        session.gifPendingDelayCs += session.gifTickIndex % 3 === 2 ? 4 : 3;
+        session.gifTickIndex++;
+        if (session.gifPending >= 2) return;
+        try {
+          captureContext.drawImage(canvas, 0, 0, width, height);
+          const image = captureContext.getImageData(0, 0, width, height);
+          // GIF timing uses 1/100-second units. 3, 3, 4 averages exactly 30 fps.
+          // If encoding falls behind, retain elapsed time instead of shortening the clip.
+          const delayCs = session.gifPendingDelayCs;
+          session.gifPendingDelayCs = 0;
+          session.gifFrameIndex++;
+          session.gifPending++;
+          session.gifWorker.postMessage(
+            { type: 'frame', buffer: image.data.buffer, delayCs },
+            [image.data.buffer]
+          );
+        } catch (error) {
+          failRecording(session, error?.message || String(error));
+        }
+      };
+      captureFrame();
+      session.captureTimer = setInterval(captureFrame, 1000 / 30);
+      session.timer = setTimeout(() => window.__editKiroStopRecording(), 15000);
+    }
+
+    window.__editKiroStartRecording = (
+      requestedFormat = 'webm',
+      requestedVideoBitsPerSecond = 5000000
+    ) => {
       // Keep ownership through FileReader completion so a rapid restart cannot mix clips.
       if (recordingSession) return;
-      const session = { recorder: null, stream: null, chunks: [], timer: 0 };
+      const session = {
+        recorder: null, stream: null, chunks: [], timer: 0, captureTimer: 0,
+        gifWorker: null, gifWorkerUrl: '', format: requestedFormat,
+        pending: Promise.resolve(), queuedBytes: 0, transferred: 0,
+        transferId: Date.now().toString(36) + Math.random().toString(36).slice(2)
+      };
       try {
         const canvas = sketchCanvas();
         if (!canvas) throw new Error('キャンバスが見つかりません');
+        recordingSession = session;
+        if (window.Android?.beginRecordingTransfer &&
+            !window.Android.beginRecordingTransfer(session.transferId)) {
+          throw new Error('録画の保存先を準備できませんでした');
+        }
+        if (requestedFormat === 'gif') {
+          startGifRecording(session, canvas);
+          notifyAndroid('onRecordingStatusChanged', true);
+          return;
+        }
         if (!canvas.captureStream || typeof MediaRecorder === 'undefined') {
           throw new Error('この端末はキャンバス録画に対応していません');
         }
-        const candidates = [
+        const candidates = requestedFormat === 'mp4' ? [
+          'video/mp4;codecs=avc1.42E01E',
+          'video/mp4;codecs=avc1',
+          'video/mp4'
+        ] : [
           'video/webm;codecs=vp9',
           'video/webm;codecs=vp8',
           'video/webm'
         ];
-        const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+        const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type));
+        if (!mimeType && requestedFormat === 'mp4') {
+          throw new Error('この端末はMP4録画に対応していません');
+        }
+        const numericBitrate = Number(requestedVideoBitsPerSecond);
+        const videoBitsPerSecond = Number.isFinite(numericBitrate)
+          ? Math.max(500000, Math.min(20000000, Math.round(numericBitrate)))
+          : 5000000;
         session.stream = canvas.captureStream(30);
         const recorder = new MediaRecorder(
           session.stream,
-          mimeType ? { mimeType, videoBitsPerSecond: 5000000 } : undefined
+          mimeType ? { mimeType, videoBitsPerSecond } : undefined
         );
         session.recorder = recorder;
-        recordingSession = session;
         recorder.ondataavailable = event => {
-          if (event.data && event.data.size > 0) session.chunks.push(event.data);
+          if (event.data && event.data.size > 0) {
+            session.queuedBytes += event.data.size;
+            if (session.queuedBytes > 16 * 1024 * 1024) {
+              failRecording(session, '保存処理が追いつきません。ビットレートを下げてください');
+              return;
+            }
+            session.pending = session.pending.then(() => queueRecordingBlob(session, event.data))
+              .then(() => { session.queuedBytes -= event.data.size; });
+            session.pending.catch(error => failRecording(session, error.message));
+          }
         };
         recorder.onerror = event => {
           failRecording(session, event.error?.message || '録画中にエラーが発生しました');
@@ -308,19 +733,9 @@
           session.stream.getTracks().forEach(track => track.stop());
           try {
             const type = recorder.mimeType || mimeType || 'video/webm';
-            const blob = new Blob(session.chunks, { type });
-            session.chunks = [];
-            if (!blob.size) throw new Error('録画データが空です。少し長めに録画してください');
-            const reader = new FileReader();
-            reader.onload = () => {
-              if (recordingSession !== session) return;
-              releaseRecording(session);
-              notifyAndroid('onRecordingStatusChanged', false);
-              notifyAndroid('onRecordingReady', String(reader.result || ''), type);
-            };
-            reader.onerror = () => failRecording(session, '録画データを読み出せませんでした');
-            reader.onabort = () => failRecording(session, '録画データの読み出しが中断されました');
-            reader.readAsDataURL(blob);
+            notifyAndroid('onRecordingSaving');
+            session.pending.then(() => finishRecordingTransfer(session, type))
+              .catch(error => failRecording(session, error.message));
           } catch (error) {
             failRecording(session, error?.message || String(error));
           }
@@ -338,6 +753,20 @@
       if (!session) return;
       try {
         clearTimeout(session.timer);
+        notifyAndroid('onRecordingSaving');
+        if (session.format === 'gif') {
+          clearInterval(session.captureTimer);
+          session.gifStopping = true;
+          if (session.gifFrameIndex === 0) {
+            throw new Error('録画データが空です。少し長めに録画してください');
+          }
+          if (session.gifPendingDelayCs > 0) {
+            session.gifWorker.postMessage({ type: 'extend', delayCs: session.gifPendingDelayCs });
+            session.gifPendingDelayCs = 0;
+          }
+          finishGifWhenReady(session);
+          return;
+        }
         if (session.recorder.state !== 'inactive') {
           session.recorder.stop();
         }
@@ -409,6 +838,7 @@
       if (recordingSession) {
         const session = recordingSession;
         const recorder = session.recorder;
+        notifyAndroid('abortRecordingTransfer', session.transferId);
         releaseRecording(session);
         if (recorder && recorder.state !== 'inactive') recorder.stop();
       }

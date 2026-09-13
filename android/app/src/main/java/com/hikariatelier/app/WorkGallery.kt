@@ -26,7 +26,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -37,6 +36,9 @@ import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONTokener
 
 /** Disposable UI cache; never part of works.json or exported work data. */
@@ -47,6 +49,7 @@ internal fun workPreviewFile(cacheDir: File, id: String): File {
 }
 
 internal fun captureWorkPreview(view: WebView, onResult: (String) -> Unit) {
+    if (previewCaptures.put(view, true) != null) return
     // Copy the canvas without resizing it or changing its drawing/animation state.
     view.evaluateJavascript("""
         (() => {
@@ -62,13 +65,20 @@ internal fun captureWorkPreview(view: WebView, onResult: (String) -> Unit) {
             } catch (_) { return null; }
         })()
     """.trimIndent()) { result ->
+        previewCaptures.remove(view)
         val data = runCatching { JSONTokener(result).nextValue() as? String }.getOrNull()
         if (data != null && data.startsWith("data:image/png;base64,")) onResult(data.substringAfter(','))
     }
 }
 
+private val previewCaptures = java.util.WeakHashMap<WebView, Boolean>()
+private val previewWriteMutex = Mutex()
+private val previewBitmaps = object : android.util.LruCache<String, android.graphics.Bitmap>(12 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.allocationByteCount
+}
+
 internal suspend fun storeWorkPreview(file: File, encoded: String): Boolean = withContext(Dispatchers.IO) {
-    runCatching {
+    previewWriteMutex.withLock { runCatching {
         val bytes = Base64.decode(encoded, Base64.DEFAULT)
         file.parentFile?.mkdirs()
         val atomic = android.util.AtomicFile(file)
@@ -76,21 +86,33 @@ internal suspend fun storeWorkPreview(file: File, encoded: String): Boolean = wi
         try {
             stream.write(bytes)
             atomic.finishWrite(stream)
+            previewBitmaps.remove(file.path)
         } catch (error: Exception) {
             atomic.failWrite(stream)
             throw error
         }
-    }.isSuccess
+        // Only disposable thumbnails in this dedicated directory are eligible.
+        val files = file.parentFile?.listFiles { candidate -> candidate.name.matches(Regex("[a-f0-9]{64}\\.png")) }
+            .orEmpty().sortedByDescending { it.lastModified() }
+        var total = 0L
+        files.forEachIndexed { index, candidate ->
+            total += candidate.length()
+            if (index >= 120 || total > 32L * 1024 * 1024) {
+                candidate.delete()
+                previewBitmaps.remove(candidate.path)
+            }
+        }
+    }.isSuccess }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun WorkGallery(
     works: List<Work>, activeId: String, unsaved: Boolean,
-    sort: String, favorites: Set<String>, cacheDir: File, previewRevision: Int,
+    sort: String, cacheDir: File, previewRevision: Int,
     updatedPreviewId: String?,
     text: (String) -> String,
-    onSort: (String) -> Unit, onFavorite: (String) -> Unit,
+    onSort: (String) -> Unit,
     onOpen: (Work, Boolean) -> Unit, onAdd: () -> Unit, onDismiss: () -> Unit,
     windowSetup: @Composable () -> Unit = {}
 ) {
@@ -101,10 +123,9 @@ internal fun WorkGallery(
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var sorting by remember { mutableStateOf(false) }
-    val visibleWorks by remember(works, sort, favorites) { derivedStateOf {
+    val visibleWorks by remember(works, sort) { derivedStateOf {
         works.filter { it.title.contains(query.trim(), ignoreCase = true) }
         .let { list -> if (sort == "名前順") list.sortedBy { it.title.lowercase() } else list.sortedByDescending { it.updatedAt } }
-        .sortedByDescending { it.id in favorites }
     } }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -158,7 +179,8 @@ internal fun WorkGallery(
                         color = colors.onSurfaceVariant)
                 }
                 LazyVerticalGrid(
-                    columns = if (landscape) GridCells.Adaptive(168.dp) else GridCells.Fixed(2),
+                    columns = if (landscape || configuration.fontScale > 1.3f)
+                        GridCells.Adaptive(168.dp) else GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -168,7 +190,16 @@ internal fun WorkGallery(
                         val bitmap by produceState<android.graphics.Bitmap?>(null, work.id,
                             if (work.id == updatedPreviewId) previewRevision else 0) {
                             value = withContext(Dispatchers.IO) {
-                                runCatching { BitmapFactory.decodeFile(workPreviewFile(cacheDir, work.id).path) }.getOrNull()
+                                ensureActive()
+                                val file = workPreviewFile(cacheDir, work.id)
+                                previewBitmaps.get(file.path) ?: runCatching {
+                                    val decoded = BitmapFactory.decodeFile(file.path)
+                                    ensureActive()
+                                    decoded?.also { previewBitmaps.put(file.path, it) }
+                                }.getOrElse {
+                                    if (it is kotlinx.coroutines.CancellationException) throw it
+                                    null
+                                }
                             }
                         }
                         Column(Modifier.clip(RoundedCornerShape(6.dp))
@@ -185,16 +216,6 @@ internal fun WorkGallery(
                                         Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                                 } ?: Text(text("プレビュー未作成"), fontSize = 11.sp,
                                     color = colors.onSurfaceVariant, modifier = Modifier.padding(12.dp))
-                                IconToggleButton(checked = work.id in favorites,
-                                    onCheckedChange = { onFavorite(work.id) },
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(2.dp)
-                                        .semantics { contentDescription = text("お気に入り") }) {
-                                    Surface(shape = RoundedCornerShape(20.dp), color = background.copy(alpha = 0.8f)) {
-                                        Text(if (work.id in favorites) "★" else "☆",
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            color = colors.onSurface, fontSize = 16.sp)
-                                    }
-                                }
                             }
                             Text(work.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(top = 8.dp), fontSize = 14.sp)

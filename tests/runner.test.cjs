@@ -7,6 +7,66 @@ const html = readFileSync(`${__dirname}/../www/p5_runner.html`, 'utf8');
 const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
   .map(match => match[1]).filter(Boolean);
 
+test('recording streams bounded chunks in order and finishes only after final data', async () => {
+  const r = runner();
+  const writes = [], finished = [];
+  let recorder;
+  r.context.FileReader = class {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then(bytes => {
+        this.result = 'data:video/mp4;base64,' + Buffer.from(bytes).toString('base64');
+        this.onload();
+      });
+    }
+  };
+  r.context.Android.beginRecordingTransfer = () => true;
+  r.context.Android.appendRecordingChunk = (id, data) => { writes.push(Buffer.from(data, 'base64')); return true; };
+  r.context.Android.finishRecordingTransfer = (id, mime) => finished.push(mime);
+  r.context.MediaRecorder = class {
+    static isTypeSupported() { return true; }
+    constructor() { recorder = this; this.mimeType = 'video/mp4'; this.state = 'inactive'; }
+    start() { this.state = 'recording'; }
+    stop() {
+      this.state = 'inactive';
+      this.ondataavailable({data:new Blob(['final'])});
+      this.onstop();
+    }
+  };
+  r.context.__editKiroStartRecording('mp4');
+  const first = Buffer.alloc(500_000, 97);
+  recorder.ondataavailable({data:new Blob([first])});
+  r.context.__editKiroStopRecording();
+  for (let i = 0; i < 50 && !finished.length; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(finished, ['video/mp4']);
+  assert.ok(writes.every(chunk => chunk.length <= 192 * 1024));
+  assert.deepEqual(Buffer.concat(writes), Buffer.concat([first, Buffer.from('final')]));
+});
+
+test('failed recording chunk aborts transfer without publishing a partial file', async () => {
+  const r = runner();
+  let recorder, aborted = 0, finished = 0;
+  r.context.FileReader = class {
+    readAsDataURL() { this.result = 'data:video/mp4;base64,YQ=='; queueMicrotask(() => this.onload()); }
+  };
+  r.context.Android.beginRecordingTransfer = () => true;
+  r.context.Android.appendRecordingChunk = () => false;
+  r.context.Android.abortRecordingTransfer = () => aborted++;
+  r.context.Android.finishRecordingTransfer = () => finished++;
+  r.context.MediaRecorder = class {
+    static isTypeSupported() { return true; }
+    constructor() { recorder = this; this.mimeType = 'video/mp4'; this.state = 'inactive'; }
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; }
+  };
+  r.context.__editKiroStartRecording('mp4');
+  recorder.ondataavailable({data:new Blob(['a'])});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(aborted > 0);
+  assert.equal(finished, 0);
+  assert.equal(r.statuses.at(-1), false);
+  assert.ok(r.errors.length);
+});
+
 test('sound starts from preview interaction without visible language text', () => {
   assert.equal(html.includes('タップして音声を開始'), false);
   assert.equal(html.includes('id="sound-start"'), false);
@@ -37,7 +97,7 @@ function runner(code = 'function setup() {}') {
     },
     requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
     cancelAnimationFrame(id) { frames.delete(id); },
-    setTimeout: () => 1, clearTimeout() {},
+    setTimeout: () => 1, clearTimeout() {}, setInterval: () => 2, clearInterval() {},
     addEventListener(name, callback) { events[name] = callback; },
     isLooping: () => true,
     resizeCanvas(w, h) { resizes++; context.width = w; context.height = h; canvas.width = w; canvas.height = h; },
@@ -141,6 +201,83 @@ test('recording initialization failure releases the capture track', () => {
   assert.equal(r.stats().stoppedTracks, 1);
   assert.deepEqual(r.statuses, [false]);
   assert.equal(r.errors[0], 'unsupported encoder');
+});
+
+test('MP4 recording never falls back to a differently labelled WebM file', () => {
+  const r = runner();
+  r.context.MediaRecorder = class {
+    static isTypeSupported(type) { return type.startsWith('video/webm'); }
+  };
+  r.context.__editKiroStartRecording('mp4');
+  assert.deepEqual(r.statuses, [false]);
+  assert.equal(r.errors[0], 'この端末はMP4録画に対応していません');
+  assert.equal(r.stats().stoppedTracks, 0);
+});
+
+test('MP4 recording applies the selected bitrate', () => {
+  const r = runner();
+  let options;
+  r.context.MediaRecorder = class {
+    static isTypeSupported(type) { return type.startsWith('video/mp4'); }
+    constructor(stream, selected) {
+      options = selected;
+      this.state = 'inactive';
+      this.mimeType = selected.mimeType;
+    }
+    start() {}
+  };
+  r.context.__editKiroStartRecording('mp4', 10000000);
+  assert.equal(options.videoBitsPerSecond, 10000000);
+  assert.match(options.mimeType, /^video\/mp4/);
+  assert.equal(r.statuses.at(-1), true);
+});
+
+test('GIF worker writes a looping 30 fps GIF with a valid frame envelope', async () => {
+  const r = runner();
+  const messages = [];
+  const workerSelf = { postMessage: message => messages.push(message) };
+  const workerContext = { self: workerSelf, Blob, Uint8Array, Uint8ClampedArray, Map, Math };
+  vm.createContext(workerContext);
+  const workerSource = r.context.__editKiroGifWorkerSource;
+  vm.runInContext(workerSource, workerContext);
+  workerSelf.onmessage({ data: { type: 'init', width: 32, height: 32 } });
+  const pixels = new Uint8ClampedArray(32 * 32 * 4);
+  for (let index = 0; index < 32 * 32; index++) {
+    const value = index & 255;
+    pixels[index * 4] = value;
+    pixels[index * 4 + 1] = value;
+    pixels[index * 4 + 2] = value;
+    pixels[index * 4 + 3] = 255;
+  }
+  workerSelf.onmessage({ data: { type: 'frame', buffer: pixels.buffer, delayCs: 3 } });
+  workerSelf.onmessage({ data: { type: 'extend', delayCs: 7 } });
+  workerSelf.onmessage({ data: { type: 'finish' } });
+  assert.deepEqual(messages.map(message => message.type), ['ready', 'done']);
+  const encoded = new Uint8Array(await messages[1].blob.arrayBuffer());
+  assert.equal(Buffer.from(encoded.subarray(0, 6)).toString('ascii'), 'GIF89a');
+  assert.equal(encoded[encoded.length - 1], 0x3b);
+  const imageDescriptor = encoded.indexOf(0x2c);
+  assert.ok(imageDescriptor > 0);
+  assert.equal(encoded[imageDescriptor + 9], 0x87);
+  const localPalette = encoded.subarray(imageDescriptor + 10, imageDescriptor + 10 + 256 * 3);
+  const paletteColors = new Set();
+  for (let index = 0; index < 256; index++) {
+    const red = localPalette[index * 3];
+    const green = localPalette[index * 3 + 1];
+    const blue = localPalette[index * 3 + 2];
+    assert.equal(red, green);
+    assert.equal(green, blue);
+    paletteColors.add(`${red},${green},${blue}`);
+  }
+  // The 5-bit/channel histogram retains all 32 grayscale buckets instead of
+  // forcing them through the old RGB332 palette's four blue levels.
+  assert.ok(paletteColors.size >= 30);
+  const graphicControl = encoded.findIndex((value, index) =>
+    value === 0x21 && encoded[index + 1] === 0xf9 && encoded[index + 2] === 4
+  );
+  assert.equal(encoded[graphicControl + 4] | (encoded[graphicControl + 5] << 8), 10);
+  assert.match(html, /gifTickIndex % 3 === 2 \? 4 : 3/);
+  assert.match(html, /ditherAndIndex/);
 });
 
 test('screenshot failure does not report recording stopped', () => {

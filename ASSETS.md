@@ -107,7 +107,7 @@ The debug app is named **Edit:RiN Dev** and uses a separate application ID.
 打开作品菜单 → **作品素材** → **添加素材**。点击 **复制路径**，在代码中使用
 `assets/文件名`。重命名素材后，请同时更新代码中的路径。复制作品和导出 ZIP 备份时
 会包含素材。调试版的应用名称为 **Edit:RiN Dev**，可单独安装。
-# Sharing one work (v1.0.5)
+# Sharing one work (v1.0.6)
 
 Use **Export work ZIP** in the work menu to share the current work, including its
 JavaScript files, assets and p5.js settings. **Import work ZIP** adds it as a new

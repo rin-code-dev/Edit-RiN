@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.7 — 2026-09-13
+
+- Add an About section for app information, update checks, developer links and optional support.
+- Remove favorites from the work-selection gallery.
+- Reduce recording transfer memory use and improve recording settings, progress and saved-media sharing.
+- Limit thumbnail caches and improve layouts for landscape and larger text.
+- Share a distinct recording attachment with X and validate it before opening the app.
+
+## 1.0.6 — 2026-09-13
+
+- Improve MP4/GIF recording and add configurable capture and sharing options.
+- Add the corrected monochrome `/R\_` icon and ensure X shares the latest recording.
+
 ## 1.0.5 — 2026-09-13
 
 - Browse works in a thumbnail gallery with search, sorting and favorites.
