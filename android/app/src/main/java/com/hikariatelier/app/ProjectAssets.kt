@@ -13,12 +13,17 @@ const val MAX_ASSET_BYTES = 50L * 1024 * 1024
 internal const val MAX_WORK_ASSET_BYTES = 200L * 1024 * 1024
 internal const val MAX_BACKUP_BYTES = 512L * 1024 * 1024
 
+private val assetHashPattern = Regex("[a-f0-9]{64}")
+private val assetMimePattern = Regex("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")
+private val backupAssetPattern = Regex("assets/[a-f0-9]{64}")
+private val assetRangePattern = Regex("bytes=(\\d*)-(\\d*)")
+
 /** Immutable references let works share a blob without sharing mutable filenames. */
 data class ProjectAsset(val hash: String, val size: Long, val mime: String) {
     init {
-        require(hash.matches(Regex("[a-f0-9]{64}")))
+        require(assetHashPattern.matches(hash))
         require(size in 0..MAX_ASSET_BYTES)
-        require(mime.matches(Regex("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")))
+        require(assetMimePattern.matches(mime))
     }
 }
 
@@ -58,7 +63,7 @@ internal class AssetStorage(private val root: File) {
 
     @Synchronized
     fun prune(keep: Set<String>) {
-        root.listFiles().orEmpty().filter { it.name.matches(Regex("[a-f0-9]{64}")) && it.name !in keep }
+        root.listFiles().orEmpty().filter { assetHashPattern.matches(it.name) && it.name !in keep }
             .forEach { it.delete() }
     }
 
@@ -120,7 +125,7 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
                     val text = output.toString("UTF-8")
                     if (entry.name == "works.json") works = text else settings = text
                 }
-                entry.name.matches(Regex("assets/[a-f0-9]{64}")) -> {
+                backupAssetPattern.matches(entry.name) -> {
                     val hash = entry.name.substringAfter('/')
                     val asset = storage.put(zip, "application/octet-stream", hash)
                     blobs[hash] = asset
@@ -143,7 +148,7 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
 
 internal fun assetByteRange(header: String?, size: Long): LongRange? {
     if (header == null || size <= 0) return null
-    val match = Regex("bytes=(\\d*)-(\\d*)").matchEntire(header) ?: return null
+    val match = assetRangePattern.matchEntire(header) ?: return null
     val (first, last) = match.destructured
     if (first.isEmpty()) {
         val suffix = last.toLongOrNull()?.takeIf { it > 0 } ?: return null
@@ -158,18 +163,21 @@ internal fun snapshotWork(work: Work, assets: Map<String, ProjectAsset> = work.a
     id = work.id, title = work.title, code = work.code, files = work.files.toMutableMap(), assets = assets,
     revisions = work.revisions.toMutableList(), previewAspectRatio = work.previewAspectRatio,
     p5Version = work.p5Version, p5SoundEnabled = work.p5SoundEnabled,
+    libraries = work.libraries.toMap(),
     createdAt = work.createdAt, updatedAt = work.updatedAt
 )
 
-internal fun assetMimeType(name: String, provided: String?): String {
-    val known = mapOf("png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif",
+private val knownAssetMimeTypes = mapOf("png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif",
         "webp" to "image/webp", "svg" to "image/svg+xml", "mp3" to "audio/mpeg", "wav" to "audio/wav",
         "ogg" to "audio/ogg", "m4a" to "audio/mp4", "mp4" to "video/mp4", "webm" to "video/webm",
         "ttf" to "font/ttf", "otf" to "font/otf", "woff" to "font/woff", "woff2" to "font/woff2",
         "json" to "application/json", "csv" to "text/csv", "txt" to "text/plain", "obj" to "text/plain",
         "mtl" to "text/plain", "vert" to "text/plain", "frag" to "text/plain", "glsl" to "text/plain")
-    return known[name.substringAfterLast('.', "").lowercase()]
-        ?: provided?.takeIf { it.matches(Regex("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")) }
+
+internal fun assetMimeType(name: String, provided: String?): String {
+
+    return knownAssetMimeTypes[name.substringAfterLast('.', "").lowercase()]
+        ?: provided?.takeIf { assetMimePattern.matches(it) }
         ?: "application/octet-stream"
 }
 

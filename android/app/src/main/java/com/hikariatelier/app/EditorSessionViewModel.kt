@@ -1,5 +1,6 @@
 package com.hikariatelier.app
 
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -31,6 +32,7 @@ class Work(
     previewAspectRatio: String = "1:1",
     p5Version: String = P5_VERSION_CURRENT,
     p5SoundEnabled: Boolean = false,
+    libraries: Map<String, String> = emptyMap(),
     val createdAt: Long = System.currentTimeMillis(),
     updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -39,6 +41,7 @@ class Work(
     var previewAspectRatio by mutableStateOf(previewAspectRatio)
     var p5Version by mutableStateOf(normalizedP5Version(p5Version))
     var p5SoundEnabled by mutableStateOf(p5SoundEnabled)
+    var libraries by mutableStateOf(normalizedWorkLibraries(libraries))
     var updatedAt by mutableStateOf(updatedAt)
     val files = files.toList().toMutableStateMap()
     val revisions = revisions.toMutableStateList()
@@ -54,8 +57,27 @@ class EditorSessionViewModel : ViewModel() {
     var assetBusy by mutableStateOf(false)
     val fileDrafts = androidx.compose.runtime.mutableStateMapOf<String, String>()
     val fileEditorValues = mutableMapOf<String, androidx.compose.runtime.MutableState<TextFieldValue>>()
+    internal val codeFoldStates = androidx.compose.runtime.mutableStateMapOf<String, CodeFoldState>()
     val fileUndoStacks = mutableMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue>>()
     val fileRedoStacks = mutableMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue>>()
+    var auxiliaryEditorGeneration by mutableIntStateOf(0)
+        private set
+
+    /** Discard caches only when their saved source is replaced or deleted. */
+    fun clearAuxiliaryEditors(workId: String? = null) {
+        val keys = (fileDrafts.keys + fileEditorValues.keys + fileUndoStacks.keys + fileRedoStacks.keys)
+            .filter { workId == null || it.startsWith("$workId/") }
+        keys.forEach { key ->
+            fileDrafts.remove(key)
+            fileEditorValues.remove(key)
+            fileUndoStacks.remove(key)
+            fileRedoStacks.remove(key)
+        }
+        codeFoldStates.keys.filter { workId == null || it.startsWith("$workId/") }
+            .forEach { codeFoldStates.remove(it) }
+        auxiliaryEditorGeneration++
+    }
+
     var assetPreviewRevision by mutableStateOf(0)
     val worksState = mutableStateOf<List<Work>>(emptyList())
     val activeWorkIdState = mutableStateOf("")

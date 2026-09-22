@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.hikariatelier.app.ui.theme.LocalCustomTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -117,7 +118,8 @@ internal fun WorkGallery(
     windowSetup: @Composable () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
-    val background = if (colors.surface.luminance() < 0.5f) Color(0xFF0D0D10) else colors.surface
+    val background = if (LocalCustomTheme.current) colors.background
+        else if (colors.surface.luminance() < 0.5f) Color(0xFF0D0D10) else colors.surface
     val configuration = LocalConfiguration.current
     val landscape = configuration.screenWidthDp > configuration.screenHeightDp
     var searching by rememberSaveable { mutableStateOf(false) }

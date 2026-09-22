@@ -22,8 +22,8 @@ android {
         applicationId "com.hikariatelier.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 13
-        versionName "1.0.7"
+        versionCode 14
+        versionName "1.0.8"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -94,6 +94,7 @@ def syncWebAssets = tasks.register("syncWebAssets", Sync) {
         include 'p5-v1.min.js'
         include 'p5-v2.min.js'
         include 'p5.sound.min.js'
+        include 'p5.brush-2.2.1.js'
         include 'samples/*.js'
     }
     into new File(generatedWebAssetsDir, "public")

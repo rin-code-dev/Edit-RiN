@@ -1,4 +1,4 @@
-# Edit:RiN ver1.0.7
+# Edit:RiN ver1.0.8
 
 A p5.js editor for making art on Android.
 
@@ -45,6 +45,6 @@ Modification, reuse or redistribution requires prior contact, permission and att
 ## 日本語
 
 Androidでp5.jsの作品を書いて、その場で動かせるアプリです。
-ver1.0.7。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応しています。
+ver1.0.8。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応しています。
 
 © 2026 rin-code-dev · Made with p5.js and Jetpack Compose.

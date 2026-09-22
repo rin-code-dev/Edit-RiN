@@ -1,9 +1,9 @@
-# Edit:RiN ver1.0.7
+# Edit:RiN ver1.0.8
 
 - applicationId: `com.hikariatelier.app`
-- versionName: `1.0.7`
-- versionCode: `13`
-- Suggested Git tag: `v1.0.7`
+- versionName: `1.0.8`
+- versionCode: `14`
+- Suggested Git tag: `v1.0.8`
 
 ## ビルド / Build
 
