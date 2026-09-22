@@ -34,7 +34,8 @@ internal class AssetWebClient(
         return try {
             when (relative) {
                 "p5_runner.html" -> WebResourceResponse("text/html", "UTF-8", bundled.open("public/p5_runner.html"))
-                "p5.min.js", "p5-v1.min.js", "p5-v2.min.js", "p5.sound.min.js" ->
+                "p5.min.js", "p5-v1.min.js", "p5-v2.min.js", "p5.sound.min.js",
+                "p5.brush-2.2.1.js" ->
                     WebResourceResponse("application/javascript", "UTF-8", bundled.open("public/$relative"))
                 else -> {
                     if (!relative.startsWith("assets/")) return missing()

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.8 — 2026-09-22
+
+- Add offline p5.brush support with per-work selection and backup support.
+- Add a Custom theme with adjustable background and accent colors.
+- Open Work settings from the toolbar to manage files, assets, and runtime options.
+- Search across all JavaScript files in a work and jump to matching code.
+- Jump from console errors to the corresponding JavaScript file and line.
+- Fold and unfold multiline JavaScript blocks in the editor.
+- Improve editor responsiveness, transitions, and support for high-refresh-rate displays.
+- Reduce memory use when importing assets and improve saving and restoring works.
+- Fix JavaScript tabs after restoring works and support reloading locally saved works.
+
 ## 1.0.7 — 2026-09-13
 
 - Add an About section for app information, update checks, developer links and optional support.

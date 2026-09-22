@@ -369,3 +369,16 @@ test('hiding and restoring portrait preview preserves artwork and paused pixels'
   assert.equal(r.stats().painted, 0);
   assert.deepEqual(r.errors, []);
 });
+
+test('runtime errors preserve combined source lines and find user frames in Promise stacks', () => {
+  const r = runner();
+  const locations = [];
+  r.context.Android.onRuntimeError = (message, line) => locations.push([message, line]);
+  r.context.onerror('helper failed', 'sketch.js', 3);
+  r.events.unhandledrejection({ reason: { message: 'async failed', stack: 'Error: async failed\n    at task (sketch.js:12:7)' } });
+  r.context.onerror('library failed', 'p5-v2.min.js', 200, 1,
+    { stack: 'Error\n    at library (p5-v2.min.js:200:1)\n    at draw (sketch.js:17:2)' });
+  r.context.onerror('external', 'https://example.com/sketch.js', 99);
+  assert.deepEqual(locations, [['helper failed', 3], ['async failed', 12], ['library failed', 17]]);
+  assert.equal(r.errors.at(-1), 'external');
+});

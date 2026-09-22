@@ -1,5 +1,7 @@
 package com.hikariatelier.app
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -85,7 +87,7 @@ internal fun RecordingOptionsSheet(
                         label = { Text(if (it == 0) text("なし") else "$it s") })
                 }
             }
-            Button(onClick = { onStart(format) }, modifier = Modifier.fillMaxWidth()) {
+            Button(shape = ButtonDefaults.shape, onClick = { onStart(format) }, modifier = Modifier.fillMaxWidth()) {
                 Text(text("録画を開始"))
             }
         }
@@ -115,9 +117,9 @@ internal fun SavedRecordingSheet(
                 Text(formatRecordingDuration(durationMillis))
                 Text(recordingSize(sizeBytes))
             }
-            OutlinedButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(text("開く")) }
-            OutlinedButton(onClick = onShare, modifier = Modifier.fillMaxWidth()) { Text(text("共有")) }
-            Button(onClick = onX, modifier = Modifier.fillMaxWidth()) { Text(text("Xで共有")) }
+            OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(text("開く")) }
+            OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = onShare, modifier = Modifier.fillMaxWidth()) { Text(text("共有")) }
+            Button(shape = ButtonDefaults.shape, onClick = onX, modifier = Modifier.fillMaxWidth()) { Text(text("Xで共有")) }
         }
     }
 }

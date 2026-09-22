@@ -46,3 +46,10 @@ notice text is available from Settings > License information.
 
 The same generated notices and dependency list accompany the release project in
 third_party/resolved. They do not change the upstream terms.
+
+## p5.brush 2.2.1
+
+- Author: Alejandro Campos. License: MIT, third_party/licenses/p5-brush-MIT.txt
+- Upstream: https://github.com/acamposuribe/p5.brush/tree/v2.2.1
+- Runtime: www/p5.brush-2.2.1.js (requires p5.js 2.3.3 and a WEBGL canvas in Edit:RiN)
+- Distribution: https://registry.npmjs.org/p5.brush/-/p5.brush-2.2.1.tgz

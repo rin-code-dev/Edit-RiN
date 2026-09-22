@@ -62,18 +62,22 @@
       };
       window.__editKiroReportError = reportError;
 
-      window.onerror = (message, source, line) => {
+      const stackLine = error => {
+        const match = String(error?.stack || '').match(/(?:^|[\s(])sketch\.js:(\d+):\d+/m);
+        return match ? Number(match[1]) : 0;
+      };
+      window.onerror = (message, source, line, column, error) => {
         const userLine =
-          String(source || '').includes('sketch.js')
+          String(source || '') === 'sketch.js'
             ? line
-            : 0;
+            : stackLine(error);
 
         reportError(message, userLine);
         return true;
       };
 
       window.addEventListener('unhandledrejection', event => {
-        reportError(event.reason?.message || event.reason || 'Promise error');
+        reportError(event.reason?.message || event.reason || 'Promise error', stackLine(event.reason));
       });
     })();
   </script>
@@ -86,6 +90,17 @@
       document.write(`<script src="p5-v${version}.min.js" onerror="window.__editKiroReportError('p5.js を読み込めませんでした')"><\/script>`);
       if (soundEnabled) {
         document.write('<script src="p5.sound.min.js" onerror="window.__editKiroReportError(\'p5.sound を読み込めませんでした\')"><\/script>');
+      }
+    })();
+  </script>
+
+  <script>
+    (() => {
+      const libraries = JSON.parse(window.Android?.getWorkLibraries?.() || '{}');
+      const load = file => document.write(`<script src="${file}" onerror="window.__editKiroReportError('Library load failed: ${file}')"><\/script>`);
+      if (libraries['p5.brush'] === '2.2.1') {
+        if (window.Android?.getP5Version?.() === '2.3.3') load('p5.brush-2.2.1.js');
+        else window.__editKiroReportError('p5.brush 2.2.1 requires p5.js 2.3.3');
       }
     })();
   </script>

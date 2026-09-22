@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>): VisualTransformation {
     val immediate = remember(dark, errors) { JavaScriptHighlighter(dark, errors) }
-    if (source.length < 50_000) return immediate
+    if (source.length < 8_000) return immediate
     val result by produceState<Pair<String, TransformedText>?>(null, source, dark, errors) {
         value = withContext(Dispatchers.Default) {
             source to JavaScriptHighlighter(dark, errors).filter(AnnotatedString(source))
@@ -30,10 +30,21 @@ internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>): V
     }
 }
 
+/** Keep first-open parsing of a large sketch away from keyboard and sheet animations. */
+@Composable
+internal fun editorFoldRegions(source: String): List<CodeFold>? {
+    if (source.length < 8_000) return remember(source) { codeFolds(source) }
+    val result by produceState<Pair<String, List<CodeFold>>?>(null, source) {
+        value = withContext(Dispatchers.Default) { source to codeFolds(source) }
+    }
+    return result?.takeIf { it.first == source }?.second
+}
+
 internal fun revisionDifference(current: String, revision: String): String {
     val before = current.lines()
     val after = revision.lines()
-    val prefix = before.zip(after).takeWhile { it.first == it.second }.size
+    var prefix = 0
+    while (prefix < minOf(before.size, after.size) && before[prefix] == after[prefix]) prefix++
     var suffix = 0
     while (suffix < minOf(before.size, after.size) - prefix &&
         before[before.lastIndex - suffix] == after[after.lastIndex - suffix]) suffix++

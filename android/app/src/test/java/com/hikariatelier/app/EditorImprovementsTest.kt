@@ -28,7 +28,8 @@ class EditorImprovementsTest {
             val storage = AssetStorage(directory)
             val asset = storage.put(ByteArrayInputStream(byteArrayOf(1, 2, 3)), "image/png")
             val work = Work("work", "Title", "draw()", files = mutableMapOf("helper.js" to "let x = 1"),
-                assets = mapOf("a.png" to asset), p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true)
+                assets = mapOf("a.png" to asset), p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true,
+                libraries = mapOf("p5.brush" to "2.2.1"))
             val output = ByteArrayOutputStream()
             writeAssetBackup(output, listOf(work), work.id, "{}", storage)
             val restored = readAssetBackup(ByteArrayInputStream(output.toByteArray()), storage).store.works.single()
@@ -37,6 +38,7 @@ class EditorImprovementsTest {
             assertEquals(work.assets.toMap(), restored.assets.toMap())
             assertEquals(P5_VERSION_LEGACY, restored.p5Version)
             assertTrue(restored.p5SoundEnabled)
+            assertEquals(work.libraries, restored.libraries)
         } finally { directory.deleteRecursively() }
     }
 }

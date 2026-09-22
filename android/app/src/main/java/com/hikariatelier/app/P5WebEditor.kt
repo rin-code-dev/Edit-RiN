@@ -117,7 +117,7 @@ private fun readBounded(input: InputStream, limit: Long): ByteArray = input.use 
     output.toByteArray()
 }
 
-private fun openRemoteAsset(source: String): Pair<ByteArray, String?> {
+private fun importRemoteAsset(source: String, name: String, storage: AssetStorage): ProjectAsset {
     var url = URL(source)
     require(url.protocol == "https") { "Only HTTPS assets are supported" }
     repeat(4) { redirectCount ->
@@ -128,7 +128,9 @@ private fun openRemoteAsset(source: String): Pair<ByteArray, String?> {
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("User-Agent", "Edit-RiN/1.0.3")
             when (val status = connection.responseCode) {
-                200 -> return readBounded(connection.inputStream, MAX_ASSET_BYTES) to connection.contentType
+                200 -> return connection.inputStream.use { input ->
+                    storage.put(input, assetMimeType(name, connection.contentType))
+                }
                 301, 302, 303, 307, 308 -> {
                     check(redirectCount < 3) { "Too many redirects" }
                     url = URL(url, connection.getHeaderField("Location"))
@@ -180,9 +182,13 @@ internal fun importP5Sketch(sketch: P5Sketch, storage: AssetStorage): ImportedP5
     assetFiles.forEach { file ->
         val name = uniqueAssetName(safeImportedName(file.path), names)
         names += name
-        val (bytes, providedMime) = file.url?.let(::openRemoteAsset)
-            ?: (file.content.toByteArray(Charsets.UTF_8) to null)
-        val asset = storage.put(ByteArrayInputStream(bytes), assetMimeType(name, providedMime))
+        val asset = if (file.url != null) {
+            importRemoteAsset(file.url, name, storage)
+        } else {
+            ByteArrayInputStream(file.content.toByteArray(Charsets.UTF_8)).use {
+                storage.put(it, assetMimeType(name, null))
+            }
+        }
         assets[name] = asset
         replacements[file.path] = "assets/$name"
     }

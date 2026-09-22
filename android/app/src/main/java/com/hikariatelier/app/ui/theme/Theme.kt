@@ -4,25 +4,33 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
 
 enum class AppThemeMode {
     SYSTEM,
     DARK,
-    LIGHT
+    LIGHT,
+    CUSTOM
 }
+
+val LocalCustomTheme = staticCompositionLocalOf { false }
 
 private val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFA8C7FA),
@@ -62,22 +70,58 @@ private val LightColorScheme = lightColorScheme(
     onErrorContainer = Color(0xFF410002)
 )
 
+private fun contrastingText(color: Color): Color =
+    if (color.luminance() > 0.179f) Color.Black else Color.White
+
+private fun customColorScheme(background: Color, accent: Color): androidx.compose.material3.ColorScheme {
+    val foreground = contrastingText(background)
+    val base = if (foreground == Color.White) DarkColorScheme else LightColorScheme
+    val container = lerp(background, accent, 0.18f)
+    return base.copy(
+        primary = accent, onPrimary = contrastingText(accent),
+        primaryContainer = container, onPrimaryContainer = contrastingText(container),
+        secondary = accent, onSecondary = contrastingText(accent),
+        secondaryContainer = container, onSecondaryContainer = contrastingText(container),
+        tertiary = accent, onTertiary = contrastingText(accent),
+        tertiaryContainer = container, onTertiaryContainer = contrastingText(container),
+        background = background, onBackground = foreground,
+        surface = background, onSurface = foreground, surfaceTint = accent,
+        surfaceVariant = lerp(background, foreground, 0.08f),
+        onSurfaceVariant = lerp(background, foreground, 0.75f),
+        surfaceDim = background, surfaceBright = lerp(background, foreground, 0.12f),
+        surfaceContainerLowest = background,
+        surfaceContainerLow = lerp(background, foreground, 0.03f),
+        surfaceContainer = lerp(background, foreground, 0.05f),
+        surfaceContainerHigh = lerp(background, foreground, 0.08f),
+        surfaceContainerHighest = lerp(background, foreground, 0.12f),
+        inverseSurface = foreground, inverseOnSurface = background,
+        inversePrimary = accent,
+        outline = lerp(background, foreground, 0.5f),
+        outlineVariant = lerp(background, foreground, 0.22f)
+    )
+}
+
 @Composable
 fun AppTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     customFont: FontFamily? = null,
     ligatures: Boolean = false,
+    customBackground: Color = Color(0xFF101014),
+    customAccent: Color = Color(0xFFA8C7FA),
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
+    val custom = themeMode == AppThemeMode.CUSTOM
     val darkTheme = when (themeMode) {
         AppThemeMode.DARK -> true
         AppThemeMode.LIGHT -> false
         AppThemeMode.SYSTEM -> systemDark
+        AppThemeMode.CUSTOM -> contrastingText(customBackground) == Color.White
     }
 
     val colorScheme = when {
+        custom -> customColorScheme(customBackground, customAccent)
         themeMode == AppThemeMode.SYSTEM && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
@@ -119,9 +163,12 @@ fun AppTheme(
             labelSmall = Typography.labelSmall.withFont()
         )
     }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalCustomTheme provides custom) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typography,
+            shapes = Shapes(),
+            content = content
+        )
+    }
 }
