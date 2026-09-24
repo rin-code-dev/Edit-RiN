@@ -17,6 +17,7 @@ private-signing/
 
 # Local development instructions and internal records
 AGENTS.md
+GEMINI.md
 .agents/
 .codex/
 /REVIEW_NOTES.md

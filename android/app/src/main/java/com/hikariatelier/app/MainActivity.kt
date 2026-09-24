@@ -58,6 +58,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.core.os.ConfigurationCompat
+
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -145,190 +147,7 @@ private data class ConsoleEntry(
     val count: Int = 1
 )
 
-private data class DraftSnapshot(
-    val workId: String,
-    val code: String,
-    val updatedAt: Long
-)
 
-private const val EDITOR_INDENT = "  "
-
-private fun applyAutomaticIndent(
-    previous: TextFieldValue,
-    changed: TextFieldValue
-): TextFieldValue {
-    if (
-        !previous.selection.collapsed ||
-        changed.text.length != previous.text.length + 1 ||
-        changed.selection.start != previous.selection.start + 1
-    ) return changed
-
-    val insertedAt = previous.selection.start
-    if (
-        insertedAt !in changed.text.indices ||
-        changed.text[insertedAt] != '\n' ||
-        changed.text.removeRange(insertedAt, insertedAt + 1) != previous.text
-    ) return changed
-
-    val before = previous.text.substring(0, insertedAt)
-    val currentLine = before.substringAfterLast('\n')
-    val baseIndent = currentLine.takeWhile { it == ' ' || it == '\t' }
-    val opener = before.lastOrNull()
-    val closer = previous.text.getOrNull(insertedAt)
-    val matchingPair =
-        (opener == '{' && closer == '}') ||
-            (opener == '[' && closer == ']') ||
-            (opener == '(' && closer == ')')
-    val deeperIndent = if (opener == '{' || opener == '[' || opener == '(') {
-        EDITOR_INDENT
-    } else {
-        ""
-    }
-    val insertion = if (matchingPair) {
-        "\n$baseIndent$deeperIndent\n$baseIndent"
-    } else {
-        "\n$baseIndent$deeperIndent"
-    }
-    val newText = previous.text.replaceRange(insertedAt, insertedAt, insertion)
-    val cursor = insertedAt + 1 + baseIndent.length + deeperIndent.length
-    return TextFieldValue(newText, TextRange(cursor))
-}
-
-internal fun insertAtSelection(
-    value: TextFieldValue,
-    insertion: String,
-    closing: String = ""
-): TextFieldValue {
-    val start = value.selection.min
-    val end = value.selection.max
-    val selected = if (closing.isNotEmpty()) value.text.substring(start, end) else ""
-    val replacement = insertion + selected + closing
-    val cursor = if (start == end && closing.isNotEmpty()) {
-        start + insertion.length
-    } else {
-        start + replacement.length
-    }
-    return TextFieldValue(
-        value.text.replaceRange(start, end, replacement),
-        TextRange(cursor)
-    )
-}
-
-private fun moveCursorVertically(
-    value: TextFieldValue,
-    direction: Int
-): TextFieldValue {
-    val cursor = if (direction < 0) value.selection.min else value.selection.max
-    val currentStart = if (cursor == 0) {
-        0
-    } else {
-        value.text.lastIndexOf('\n', cursor - 1) + 1
-    }
-    val column = cursor - currentStart
-    val targetStart: Int
-    val targetEnd: Int
-    if (direction < 0) {
-        if (currentStart == 0) return value.copy(selection = TextRange(0))
-        targetEnd = currentStart - 1
-        targetStart = if (targetEnd == 0) {
-            0
-        } else {
-            value.text.lastIndexOf('\n', targetEnd - 1) + 1
-        }
-    } else {
-        val currentEnd = value.text.indexOf('\n', cursor).let {
-            if (it < 0) value.text.length else it
-        }
-        if (currentEnd == value.text.length) {
-            return value.copy(selection = TextRange(value.text.length))
-        }
-        targetStart = currentEnd + 1
-        targetEnd = value.text.indexOf('\n', targetStart).let {
-            if (it < 0) value.text.length else it
-        }
-    }
-    return value.copy(
-        selection = TextRange((targetStart + column).coerceAtMost(targetEnd))
-    )
-}
-
-internal fun changeLineIndent(
-    value: TextFieldValue,
-    addIndent: Boolean
-): TextFieldValue {
-    if (addIndent && value.selection.collapsed) {
-        return insertAtSelection(value, EDITOR_INDENT)
-    }
-    val firstLineStart = if (value.selection.min == 0) {
-        0
-    } else {
-        value.text.lastIndexOf('\n', value.selection.min - 1) + 1
-    }
-    val starts = mutableListOf(firstLineStart)
-    var newline = value.text.indexOf('\n', firstLineStart)
-    while (newline >= 0 && newline + 1 < value.selection.max) {
-        starts += newline + 1
-        newline = value.text.indexOf('\n', newline + 1)
-    }
-    val builder = StringBuilder(value.text)
-    var newStart = value.selection.min
-    var newEnd = value.selection.max
-    starts.asReversed().forEach { start ->
-        if (addIndent) {
-            builder.insert(start, EDITOR_INDENT)
-            if (start <= newStart) newStart += EDITOR_INDENT.length
-            if (start <= newEnd) newEnd += EDITOR_INDENT.length
-        } else {
-            val removeCount = when {
-                builder.substring(start).startsWith("\t") -> 1
-                builder.substring(start).startsWith(EDITOR_INDENT) -> EDITOR_INDENT.length
-                builder.getOrNull(start) == ' ' -> 1
-                else -> 0
-            }
-            if (removeCount > 0) {
-                builder.delete(start, start + removeCount)
-                if (start < newStart) newStart = (newStart - removeCount).coerceAtLeast(start)
-                if (start < newEnd) newEnd = (newEnd - removeCount).coerceAtLeast(start)
-            }
-        }
-    }
-    return TextFieldValue(
-        builder.toString(),
-        TextRange(newStart, newEnd)
-    )
-}
-
-
-private val PREVIEW_ASPECT_RATIOS = listOf("16:9", "4:3", "1:1", "9:16", "device")
-private val LANDSCAPE_PREVIEW_SPLITS = listOf(0.35f, 0.5f, 0.65f)
-private val MP4_BITRATE_OPTIONS = listOf(2, 5, 10)
-private val RECORDING_COUNTDOWN_OPTIONS = listOf(0, 3, 5)
-private const val DEFAULT_X_SHARE_TEXT = "Created with Edit:RiN\n\n#EditRiN #p5js"
-
-internal fun normalizedPreviewAspectRatio(value: String?): String =
-    value?.takeIf(PREVIEW_ASPECT_RATIOS::contains) ?: "1:1"
-
-internal fun previewAspectRatioValue(value: String, deviceRatio: Float = 1f): Float = when (value) {
-    "4:3" -> 4f / 3f
-    "16:9" -> 16f / 9f
-    "9:16" -> 9f / 16f
-    "device" -> deviceRatio.takeIf { it.isFinite() && it > 0f } ?: 1f
-    else -> 1f
-}
-
-private data class SavedPreviewMedia(
-    val uri: Uri,
-    val mimeType: String,
-    val displayName: String,
-    val sizeBytes: Long = 0,
-    val durationMillis: Long = 0,
-    val thumbnail: android.graphics.Bitmap? = null
-)
-
-internal fun formatRecordingDuration(milliseconds: Long): String {
-    val seconds = milliseconds.coerceAtLeast(0L) / 1000L
-    return String.format(java.util.Locale.ROOT, "%02d:%02d", seconds / 60L, seconds % 60L)
-}
 
 
 class MainActivity : ComponentActivity() {
@@ -428,13 +247,13 @@ class MainActivity : ComponentActivity() {
     private val fontFeatures: String get() = if (fontLigatures)
         "'liga' 1, 'clig' 1, 'calt' 1" else "'liga' 0, 'clig' 0, 'calt' 0"
 
-    @Suppress("DEPRECATION")
     private fun uiText(source: String, vararg arguments: Any?): String {
-        val text = translateUi(source,
-            resolveUiLanguage(appLanguage, resources.configuration.locale.language))
+        val deviceLanguage = ConfigurationCompat.getLocales(resources.configuration)[0]?.language ?: "en"
+        val text = translateUi(source, resolveUiLanguage(appLanguage, deviceLanguage))
         return if (arguments.isEmpty()) text
             else String.format(java.util.Locale.ROOT, text, *arguments)
     }
+
 
     private val manualRotationKey =
         "setting_manual_rotation"
@@ -533,7 +352,7 @@ class MainActivity : ComponentActivity() {
 
         val store = if (folderUri != null) loadWorkStore(folderUri) else loadLocalWorkStore()
         val initialWorks =
-            store?.works?.takeIf { it.isNotEmpty() } ?: defaultWorks()
+            store?.works?.takeIf { it.isNotEmpty() } ?: defaultWorks(assets)
         val initialActiveId =
             store?.activeWorkId?.takeIf { id ->
                 initialWorks.any { it.id == id }
@@ -949,6 +768,7 @@ class MainActivity : ComponentActivity() {
                 onDispose {}
             } else {
 
+                @Suppress("DEPRECATION")
                 fun applyImmersiveMode() {
 
                     WindowCompat
@@ -1160,6 +980,7 @@ class MainActivity : ComponentActivity() {
             showStatusBar
         ) {
 
+            @Suppress("DEPRECATION")
             if (!view.isInEditMode) {
 
                 val window =
@@ -1407,16 +1228,7 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(false)
         }
         var showParameterSheet by remember { mutableStateOf(false) }
-        var runtimeP5Version by remember(activeWorkId) {
-            mutableStateOf(normalizedP5Version(activeWork?.p5Version))
-        }
-        var runtimeSoundEnabled by remember(activeWorkId) {
-            mutableStateOf(activeWork?.p5SoundEnabled == true)
-        }
 
-        var runtimeLibraries by remember(activeWorkId) {
-            mutableStateOf(activeWork?.libraries.orEmpty())
-        }
 
         val previewRatioSelection = normalizedPreviewAspectRatio(activeWork?.previewAspectRatio)
         val currentPreviewRatio = rememberUpdatedState(previewRatioSelection)
@@ -3461,10 +3273,8 @@ class MainActivity : ComponentActivity() {
                             subtitle = uiText("p5.jsとライブラリを作品ごとに設定"),
                             onClick = {
                                 workSettingsMenuExpanded = false
-                                runtimeP5Version = normalizedP5Version(activeWork?.p5Version)
-                                runtimeSoundEnabled = activeWork?.p5SoundEnabled == true
-                                runtimeLibraries = activeWork?.libraries.orEmpty()
                                 showRuntimeDialog = true
+
                             }
                         )
                     }
@@ -6679,205 +6489,49 @@ class MainActivity : ComponentActivity() {
                 dismissButton = { TextButton(onClick = { pendingRevision = null }) { Text(uiText("キャンセル")) } })
         }
 
-        if (showRuntimeDialog) {
-            EditSettingsDialog(
-                onDismissRequest = { showRuntimeDialog = false },
-                icon = { Icon(painterResource(R.drawable.ic_code), contentDescription = null) },
-                title = { Text(uiText("実行環境")) },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            uiText("p5.jsバージョン"),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.onSurface
-                        )
-                        listOf(
-                            P5_VERSION_CURRENT to uiText("現在の標準"),
-                            P5_VERSION_LEGACY to uiText("旧作品向け")
-                        ).forEach { (version, description) ->
-                            val selected = runtimeP5Version == version
-                            Surface(
-                                onClick = {
-                                    runtimeP5Version = version
-                                    if (version != P5_VERSION_CURRENT) runtimeLibraries = runtimeLibraries - "p5.brush"
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (selected) colors.primary else colors.outlineVariant
-                                ),
-                                color = if (selected) colors.primaryContainer else colors.surface,
-                                contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface
-                            ) {
-                                Column(
-                                    Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        "p5.js $version",
-                                        color = if (selected) colors.onPrimaryContainer else colors.onSurface,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        description,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "p5.sound",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = colors.onSurface
-                                )
-                                Text(
-                                    uiText("音声再生・合成・解析を有効にします"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = runtimeSoundEnabled,
-                                onCheckedChange = { runtimeSoundEnabled = it }
-                            )
-                        }
-                        WorkLibraryControls(
-                            libraries = runtimeLibraries,
-                            p5Version = runtimeP5Version,
-                            onChange = { runtimeLibraries = it },
-                            text = { uiText(it) }
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = saveRuntime@{
-                        val work = activeWork ?: return@saveRuntime
-                        val previousVersion = work.p5Version
-                        val previousSound = work.p5SoundEnabled
-                        val previousLibraries = work.libraries
-                        val previousUpdatedAt = work.updatedAt
-                        work.p5Version = runtimeP5Version
-                        work.p5SoundEnabled = runtimeSoundEnabled
-                        work.libraries = runtimeLibraries
-                        work.updatedAt = System.currentTimeMillis()
-                        if (!saveStore()) {
-                            work.p5Version = previousVersion
-                            work.p5SoundEnabled = previousSound
-                            work.libraries = previousLibraries
-                            work.updatedAt = previousUpdatedAt
-                            Toast.makeText(this@MainActivity, uiText("実行環境を保存できませんでした"), Toast.LENGTH_SHORT).show()
-                            return@saveRuntime
-                        }
-                        showRuntimeDialog = false
-                        runSketch()
-                    }) { Text(uiText("保存")) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showRuntimeDialog = false }) { Text(uiText("キャンセル")) }
+        WorkRuntimeDialog(
+            visible = showRuntimeDialog,
+            initialP5Version = normalizedP5Version(activeWork?.p5Version),
+            initialSoundEnabled = activeWork?.p5SoundEnabled == true,
+            initialLibraries = activeWork?.libraries.orEmpty(),
+            uiText = { uiText(it) },
+            onSave = { version, soundEnabled, libraries ->
+                val work = activeWork ?: return@WorkRuntimeDialog
+                val previousVersion = work.p5Version
+                val previousSound = work.p5SoundEnabled
+                val previousLibraries = work.libraries
+                val previousUpdatedAt = work.updatedAt
+                work.p5Version = version
+                work.p5SoundEnabled = soundEnabled
+                work.libraries = libraries
+                work.updatedAt = System.currentTimeMillis()
+                if (!saveStore()) {
+                    work.p5Version = previousVersion
+                    work.p5SoundEnabled = previousSound
+                    work.libraries = previousLibraries
+                    work.updatedAt = previousUpdatedAt
+                    Toast.makeText(this@MainActivity, uiText("実行環境を保存できませんでした"), Toast.LENGTH_SHORT).show()
+                    return@WorkRuntimeDialog
                 }
-            )
-        }
+                showRuntimeDialog = false
+                runSketch()
+            },
+            onDismiss = { showRuntimeDialog = false }
+        )
 
-        if (showAspectRatioDialog) {
-            val aspectColumns = if (wideWorkPanels) 3 else if (configuration.fontScale > 1.5f) 1 else 2
-            val deviceRatioText = if (devicePreviewRatio >= 1f) {
-                String.format(java.util.Locale.ROOT, "%.2f:1", devicePreviewRatio)
-            } else {
-                String.format(java.util.Locale.ROOT, "1:%.2f", 1f / devicePreviewRatio)
-            }
-            WorkSheet(
-                title = uiText("プレビュー比率"),
-                subtitle = uiText("作品の表示枠を選択"),
-                onDismiss = { showAspectRatioDialog = false }
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    PREVIEW_ASPECT_RATIOS.chunked(aspectColumns).forEach { row ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            row.forEach { ratio ->
-                                val selected = previewRatioSelection == ratio
-                                val ratioValue = previewAspectRatioValue(ratio, devicePreviewRatio)
-                                Surface(
-                                    onClick = {
-                                        updateActiveWorkPreviewRatio(ratio)
-                                        showAspectRatioDialog = false
-                                    },
-                                    modifier = Modifier.weight(1f).heightIn(min = 84.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (selected) colors.primary.copy(alpha = 0.08f)
-                                        else colors.surface,
-                                    border = BorderStroke(1.dp,
-                                        if (selected) colors.primary else colors.outlineVariant)
-                                ) {
-                                    Column(
-                                        Modifier.fillMaxWidth().padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Box(
-                                            Modifier.fillMaxWidth().height(28.dp),
-                                            contentAlignment = Alignment.CenterStart
-                                        ) {
-                                            val previewShape = fitPreviewSize(42f, 26f, ratioValue)
-                                            Box(
-                                                Modifier.size(previewShape.width.dp, previewShape.height.dp)
-                                                    .border(
-                                                        1.dp,
-                                                        if (selected) colors.primary
-                                                        else colors.onSurfaceVariant,
-                                                        RoundedCornerShape(4.dp)
-                                                    )
-                                            )
-                                        }
-                                        Text(
-                                            if (ratio == "device") uiText("端末") else ratio,
-                                            fontFamily = codeFontFamily,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (selected) colors.primary else colors.onSurface
-                                        )
-                                        Text(
-                                            if (ratio == "device") deviceRatioText else when (ratio) {
-                                                "1:1" -> uiText("正方形")
-                                                "4:3" -> uiText("標準・横")
-                                                "16:9" -> uiText("ワイド")
-                                                else -> uiText("縦長")
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = colors.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                            repeat(aspectColumns - row.size) {
-                                Spacer(Modifier.weight(1f))
-                            }
-                        }
-                    }
-                    Text(
-                        uiText("端末の向きに合わせて比率が切り替わります"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-                    )
-                }
-            }
-        }
+        AspectRatioDialog(
+            visible = showAspectRatioDialog,
+            wideWorkPanels = wideWorkPanels,
+            isLandscape = isLandscape,
+            devicePreviewRatio = devicePreviewRatio,
+            previewRatioSelection = previewRatioSelection,
+            codeFontFamily = codeFontFamily,
+            uiText = { uiText(it) },
+            onSelectRatio = { updateActiveWorkPreviewRatio(it) },
+            onDismiss = { showAspectRatioDialog = false }
+        )
+
+
 
         if (assetBusy && !showAssets && !workSaving) {
             AlertDialog(onDismissRequest = {}, title = { Text(uiText("ファイルを処理中…")) },
@@ -7836,11 +7490,13 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { showUserGuide = false },
                 properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
             ) {
+                val deviceLanguage = ConfigurationCompat.getLocales(resources.configuration)[0]?.language ?: "en"
                 UserGuideScreen(
-                    language = resolveUiLanguage(appLanguage, resources.configuration.locale.language),
+                    language = resolveUiLanguage(appLanguage, deviceLanguage),
                     onClose = { showUserGuide = false }
                 )
             }
+
         }
         if (showLicenses) {
             val paragraphs = remember {
@@ -9018,215 +8674,6 @@ class MainActivity : ComponentActivity() {
     }
     }
 
-    @Composable
-    private fun SettingsSection(
-        title: String,
-        description: String,
-        content:
-            @Composable ColumnScope.() -> Unit
-    ) {
-
-        val colors =
-            MaterialTheme.colorScheme
-
-        Column(
-            verticalArrangement =
-                Arrangement.spacedBy(
-                    8.dp
-                )
-        ) {
-
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-
-                Text(
-                    text =
-                        title,
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium,
-                    fontWeight =
-                        FontWeight.SemiBold
-                )
-
-                Text(
-                    text =
-                        description,
-                    style =
-                        MaterialTheme
-                            .typography
-                            .labelSmall,
-                    color =
-                        colors.onSurfaceVariant
-                )
-            }
-
-            Surface(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                shape =
-                    RoundedCornerShape(
-                        16.dp
-                    ),
-                color = colors.surface,
-                contentColor = colors.onSurface,
-                tonalElevation = 0.dp,
-                border =
-                    BorderStroke(
-                        1.dp,
-                        colors.outlineVariant.copy(
-                            alpha = 0.65f
-                        )
-                    ),
-                content = {
-                    Column(
-                        content =
-                            content
-                    )
-                }
-            )
-        }
-    }
-
-    @Composable
-    private fun ThemeChip(
-        modifier: Modifier,
-        label: String,
-        selected: Boolean,
-        onClick: () -> Unit
-    ) {
-
-        FilterChip(
-            modifier =
-                modifier,
-            selected =
-                selected,
-            onClick =
-                onClick,
-            label = {
-                Text(
-                    text =
-                        label,
-                    modifier =
-                        Modifier.fillMaxWidth(),
-                    textAlign =
-                        androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
-        )
-    }
-
-    @Composable
-    private fun SettingsDivider() {
-
-        HorizontalDivider(
-            modifier =
-                Modifier.padding(
-                    horizontal = 18.dp
-                ),
-            color =
-                MaterialTheme
-                    .colorScheme
-                    .outlineVariant
-                    .copy(
-                        alpha = 0.7f
-                    )
-        )
-    }
-
-    @Composable
-    private fun SettingSwitchRow(
-        title: String,
-        description: String,
-        checked: Boolean,
-        enabled: Boolean = true,
-        onCheckedChange:
-            (Boolean) -> Unit
-    ) {
-
-        val colors =
-            MaterialTheme.colorScheme
-
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
-                    .padding(
-                        horizontal = 18.dp,
-                        vertical = 14.dp
-                    ),
-            verticalAlignment =
-                Alignment.CenterVertically
-        ) {
-
-            Column(
-                modifier =
-                    Modifier.weight(1f)
-            ) {
-
-                Text(
-                    text =
-                        title,
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleSmall,
-                    fontWeight =
-                        FontWeight.SemiBold,
-                    color =
-                        if (enabled) {
-                            colors.onSurface
-                        } else {
-                            colors.onSurfaceVariant.copy(
-                                alpha = 0.55f
-                            )
-                        }
-                )
-
-                Spacer(
-                    Modifier.height(
-                        3.dp
-                    )
-                )
-
-                Text(
-                    text =
-                        description,
-                    style =
-                        MaterialTheme
-                            .typography
-                            .bodySmall,
-                    color =
-                        colors.onSurfaceVariant.copy(
-                            alpha =
-                                if (enabled) {
-                                    1f
-                                } else {
-                                    0.55f
-                                }
-                        )
-                )
-            }
-
-            Spacer(
-                Modifier.width(
-                    14.dp
-                )
-            )
-
-            Switch(
-                checked =
-                    checked,
-                enabled =
-                    enabled,
-                onCheckedChange = null
-            )
-        }
-    }
 
 
     private fun pruneUnusedAssets(works: List<Work>) = workRepository.pruneUnusedAssets(works)
@@ -9263,23 +8710,5 @@ class MainActivity : ComponentActivity() {
             uiText("選択済みフォルダー")
         }
     }
-
-    private fun defaultWorks(): List<Work> {
-        val now = System.currentTimeMillis()
-        return listOf(
-            Triple("axis", "Axis", "1:1"),
-            Triple("halo", "Halo", "1:1"),
-            Triple("gravity", "Gravity", "1:1"),
-            Triple("dvd", "dvd", "4:3")
-        ).map { (id, title, ratio) ->
-            Work(
-                id = id,
-                title = title,
-                code = assets.open("public/samples/$title.js").bufferedReader().use { it.readText() },
-                createdAt = now,
-                updatedAt = now,
-                previewAspectRatio = ratio
-            )
-        }
-    }
 }
+

@@ -1,44 +1,60 @@
-# Edit:RiN ver1.0.9
+# Release & Build Guide / リリース・ビルド手順
 
-- applicationId: `com.hikariatelier.app`
-- versionName: `1.0.9`
-- versionCode: `15`
-- Suggested Git tag: `v1.0.9`
+- **Application ID**: `com.hikariatelier.app`
+- **Current Version**: `1.0.9` (Version Code: `15`)
+- **Git Tag**: `v1.0.9`
 
-## ビルド / Build
+---
 
-JDK 25、Android SDK Platform 35、Build Tools 36.0.0を使用します。
-Gradle Wrapper 9.5.0、AGP 9.3.2、AGP内蔵Kotlin／Compose compiler 2.2.10の構成です。
-初回は新しいビルドツールの取得が必要です。SDKパスを `ANDROID_HOME` または
-`android/local.properties` に設定してください。
+## 日本語
 
-1. `android/release-signing.properties.example` を `android/release-signing.properties` にコピーします。
-2. 既存アプリの更新には同じ署名鍵を設定します。
-3. 以下を実行します。依存関係を取得済みの場合は `--offline` を追加できます。
+### ビルド環境要件
+- **JDK**: JDK 25 (`JAVA_HOME` に設定)
+  - Gradle デーモンおよび Java コンパイルに JDK 25 を使用し、Android バイトコード互換性は Java 17 を維持します。
+- **Android SDK**: Platform 35, Build Tools 36.0.0
+- **ビルドツール**: Gradle Wrapper 9.5.0, Android Gradle Plugin (AGP) 9.3.2, Kotlin / Compose Compiler 2.2.10
 
-```sh
-node tests/runner.test.cjs
-cd android
-./gradlew testReleaseUnitTest assembleRelease lintRelease
-```
+### リリースビルド手順
+1. **署名設定の作成**:
+   `android/release-signing.properties.example` を `android/release-signing.properties` にコピーし、リリース用キーストアの情報を設定します。
+2. **テストとビルド実行**:
+   ```sh
+   node tests/runner.test.cjs
+   cd android
+   ./gradlew testReleaseUnitTest assembleRelease lintRelease
+   ```
+3. **成果物の確認**:
+   - 署名済みAPK: `android/app/build/outputs/apk/release/app-release.apk`
+   - ※ 署名設定がない場合は `app-release-unsigned.apk` が生成されます（端末への直接インストール不可）。
 
-署名済み出力：`android/app/build/outputs/apk/release/app-release.apk`。
-署名設定がない場合は未署名の `app-release-unsigned.apk` となり、そのままインストールできません。
-R8の最適化・難読化とリソース縮小は有効です。WebViewのJavaScriptブリッジは保持します。
+### 注意点・公開時のチェック
+- リリースビルドでは R8（最適化・難読化）とリソース縮小が有効です。WebView との JavaScript ブリッジは自動で保持されます。
+- 署名鍵、パスワード、`release-signing.properties`、`local.properties`、難読化マップ（`mapping.txt`）は絶対に公開・コミットしないでください。
+- 署名が異なるビルド（デバッグ版など）には上書きインストールできません。必要に応じてアプリ内で作品の ZIP バックアップを取得してからインストールしてください。
 
-GitHub Releasesには署名済みAPK、同じソースのZIP、SHA-256チェックサムを添付します。
-p5.jsソース・ライセンス資料も同梱します。署名鍵・パスワード・実際の署名設定・
-ローカルSDK設定は公開しません。`mapping.txt` は公開アセットに含めずローカルに保管します。
+---
 
-Use JDK 25, Android SDK Platform 35 and Build Tools 36.0.0. Use the Gradle 9.5.0 wrapper
-with AGP 9.3.2 and built-in Kotlin / Compose compiler 2.2.10.
-Configure your private signing properties using the example,
-then run the commands above. Release builds enable R8 and resource shrinking. Keep your
-signing key, passwords, local SDK configuration and mapping file private. Update an existing
-installation with the same signing key and a higher version code.
+## English
 
-デバッグ版など署名が異なるアプリには上書きできません。その場合は作品バックアップを
-保存してから旧版を削除し、正式版で復元してください。フォントは再インポートが必要です。
+### Build Requirements
+- **JDK**: JDK 25 (set as `JAVA_HOME`). Gradle daemon and compilation target Java 25, while maintaining Android bytecode compatibility at Java 17.
+- **Android SDK**: Platform 35, Build Tools 36.0.0.
+- **Build Tools**: Gradle 9.5.0 wrapper, AGP 9.3.2, built-in Kotlin / Compose compiler 2.2.10.
 
-Gradle and Java compilation use JDK 25. Install JDK 25 and set JAVA_HOME to its directory.
-The committed Gradle Daemon JVM criteria select version 25; Android bytecode compatibility remains Java 17.
+### Release Steps
+1. **Configure Signing**:
+   Copy `android/release-signing.properties.example` to `android/release-signing.properties` and fill in your keystore credentials.
+2. **Run Verification & Build**:
+   ```sh
+   node tests/runner.test.cjs
+   cd android
+   ./gradlew testReleaseUnitTest assembleRelease lintRelease
+   ```
+3. **Artifacts**:
+   - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
+   - Note: If signing is not configured, Gradle will produce `app-release-unsigned.apk` which cannot be installed directly.
+
+### Publication Guidelines
+- Keep your signing key, passwords, `release-signing.properties`, local SDK paths, and `mapping.txt` private.
+- Attach the signed release APK, matching source ZIP, and SHA-256 checksums to GitHub Releases.
+- Do not overwrite installations signed with different keys (e.g. debug builds); back up works to ZIP before upgrading.

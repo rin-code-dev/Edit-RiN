@@ -22,7 +22,7 @@ internal fun WorkParameterPanel(
         Text(text("パラメータ"), style = MaterialTheme.typography.titleMedium)
         if (parameters.isEmpty()) {
             Text(text("コードにパラメータ宣言を追加してください"))
-            Text("// @rin number speed \"Speed\" 0 3 1 0.1\n// @rin color ink \"Color\" #BA90E2",
+            Text("// @rin number speed \"Speed\" 0 3 1 0.1\n// @rin color ink \"Color\" #BA90E2\n// @rin boolean glow \"Glow\" true",
                 style = MaterialTheme.typography.bodySmall)
             Text(text("コードでは rinParams.speed と rinParams.ink を使います"),
                 style = MaterialTheme.typography.bodySmall)
@@ -57,6 +57,22 @@ internal fun WorkParameterPanel(
                     },
                     text = text
                 )
+                is WorkParameter.Boolean -> {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Text(parameter.label)
+                        Switch(
+                            checked = value.toBoolean(),
+                            onCheckedChange = { checked ->
+                                onChange(parameter, checked.toString())
+                                onCommit()
+                            }
+                        )
+                    }
+                }
             }
         }
     }

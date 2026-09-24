@@ -125,10 +125,12 @@ internal fun WorkGallery(
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var sorting by remember { mutableStateOf(false) }
-    val visibleWorks by remember(works, sort) { derivedStateOf {
-        works.filter { it.title.contains(query.trim(), ignoreCase = true) }
-        .let { list -> if (sort == "名前順") list.sortedBy { it.title.lowercase() } else list.sortedByDescending { it.updatedAt } }
-    } }
+    val visibleWorks = remember(works, sort, query) {
+        val trimmed = query.trim()
+        val filtered = if (trimmed.isEmpty()) works else works.filter { it.title.contains(trimmed, ignoreCase = true) }
+        if (sort == "名前順") filtered.sortedBy { it.title.lowercase() } else filtered.sortedByDescending { it.updatedAt }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),

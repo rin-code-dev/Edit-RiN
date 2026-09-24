@@ -22,7 +22,7 @@ function setup() {
 
   let index = 0;
 
-  // 動かない値は起動時に一度だけ計算する
+  // Precompute static values once at startup
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const x = map(i, 0, N - 1, -RANGE, RANGE);
@@ -57,7 +57,7 @@ function draw() {
     const n = pointNoise[i];
     const gravity = exp(-r / 105);
 
-    // 波
+    // Wave motion
     const wave =
       sin(
         r * 0.055 -
@@ -65,7 +65,7 @@ function draw() {
         n * 2
       );
 
-    // 渦
+    // Vortex distortion
     const twist =
       gravity *
       (
@@ -77,7 +77,7 @@ function draw() {
       a +
       twist;
 
-    // 半径変形
+    // Radial deformation
     let radius =
       r +
       wave *
@@ -101,21 +101,21 @@ function draw() {
       sin(angle) *
       radius;
 
-    // リング
+    // Outer ring
     const ring =
       exp(
         -sq(r - 112) /
         1600
       );
 
-    // 中央の落ち込み
+    // Central sinkhole
     const pit =
       exp(
         -sq(r) /
         2300
       );
 
-    // 微細な表面
+    // Subtle surface texture
     const texture =
       sin(
         n * 12 +
