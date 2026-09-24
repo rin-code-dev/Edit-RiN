@@ -12,6 +12,11 @@ internal fun translateUi(source: String, language: String): String {
 }
 
 internal val uiTranslations = mapOf(
+    "使い方ガイド" to ("User Guide" to "使用指南"),
+    "パラメータ" to ("Parameters" to "参数"),
+    "コードにパラメータ宣言を追加してください" to ("Add parameter declarations to your code" to "请在代码中添加参数声明"),
+    "コードでは rinParams.speed と rinParams.ink を使います" to
+        ("Use rinParams.speed and rinParams.ink in your code" to "在代码中使用 rinParams.speed 和 rinParams.ink"),
     "%s行目を展開" to ("Expand line %s" to "展开第%s行"),
     "%s行目を折りたたむ" to ("Fold line %s" to "折叠第%s行"),
     "現在のファイル" to ("Current file" to "当前文件"),

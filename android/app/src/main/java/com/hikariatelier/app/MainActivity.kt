@@ -316,20 +316,6 @@ internal fun previewAspectRatioValue(value: String, deviceRatio: Float = 1f): Fl
     else -> 1f
 }
 
-private fun composeProjectSource(
-    mainCode: String,
-    files: Map<String, String>
-): String = buildString {
-    files.toSortedMap().forEach { (name, code) ->
-        append(code)
-        append("\n//# sourceURL=")
-        append(name)
-        append("\n")
-    }
-    append(mainCode)
-    append("\n//# sourceURL=sketch.js")
-}
-
 private data class SavedPreviewMedia(
     val uri: Uri,
     val mimeType: String,
@@ -355,19 +341,12 @@ class MainActivity : ComponentActivity() {
     private val p5UsernameKey = "p5_web_editor_username"
 
     private val assetStorage by lazy { AssetStorage(File(filesDir, "project-assets")) }
-    @Volatile private var previewAssets = PreviewAssets("initial", emptyMap())
+    private val previewSession = PreviewSession()
     private var webView: WebView? = null
-    private var previewWorkId: String? = null
     private val unreadableWorkFolders get() = sessionViewModel.unreadableFolderUris
-
-    @Volatile
-    private var pendingSketchCode = ""
-    @Volatile private var pendingP5Version = P5_VERSION_CURRENT
-    @Volatile private var pendingP5SoundEnabled = false
-    @Volatile private var pendingLibraries = "{}"
-
-    @Volatile
-    private var pendingSourceFiles: List<PreviewSourceFile> = emptyList()
+    private val workRepository by lazy {
+        WorkStoreRepository(this, assetStorage, unreadableWorkFolders, { previewSession.assets }, worksFileName)
+    }
 
     private val prefsName =
         "ugoku_atelier_prefs"
@@ -1427,6 +1406,7 @@ class MainActivity : ComponentActivity() {
         var showRuntimeDialog by remember {
             mutableStateOf(false)
         }
+        var showParameterSheet by remember { mutableStateOf(false) }
         var runtimeP5Version by remember(activeWorkId) {
             mutableStateOf(normalizedP5Version(activeWork?.p5Version))
         }
@@ -1877,7 +1857,7 @@ class MainActivity : ComponentActivity() {
                 previous?.level == level &&
                 previous.message == normalized &&
                 previous.line == normalizedLine &&
-                previous.file == file && previous.workId == previewWorkId
+                previous.file == file && previous.workId == previewSession.workId
             ) {
 
                 val lastIndex =
@@ -1908,7 +1888,7 @@ class MainActivity : ComponentActivity() {
                     line =
                         normalizedLine,
                     file = file,
-                    workId = previewWorkId
+                    workId = previewSession.workId
                 )
             )
 
@@ -2110,20 +2090,12 @@ class MainActivity : ComponentActivity() {
                 return
             }
 
-            previewAssets = PreviewAssets(java.util.UUID.randomUUID().toString(), sourceAssets.toMap())
             val runtimeWork = sessionViewModel.worksState.value
                 .find { it.id == sessionViewModel.activeWorkIdState.value }
-            previewWorkId = runtimeWork?.id
-            pendingP5Version = normalizedP5Version(runtimeWork?.p5Version)
-            pendingP5SoundEnabled = runtimeWork?.p5SoundEnabled == true
-            pendingLibraries = JSONObject(runtimeWork?.libraries.orEmpty()).toString()
-            val runningFiles = supportingFiles.mapValues { (name, code) ->
-                sessionViewModel.fileDrafts["${sessionViewModel.activeWorkIdState.value}/$name"] ?: code
-            }
-            pendingSketchCode =
-                composeProjectSource(source, runningFiles)
-
-            pendingSourceFiles = previewSourceFiles(source, runningFiles)
+            val previewToken = previewSession.prepare(
+                runtimeWork, source, supportingFiles, sourceAssets,
+                sessionViewModel.fileDrafts.toMap()
+            )
 
             isPaused =
                 false
@@ -2134,7 +2106,7 @@ class MainActivity : ComponentActivity() {
             consoleEntries.clear()
 
             webView?.loadUrl(
-                previewUrl(previewAssets.token)
+                previewUrl(previewToken)
             )
         }
 
@@ -2204,6 +2176,7 @@ class MainActivity : ComponentActivity() {
                 p5Version = current.p5Version,
                 p5SoundEnabled = current.p5SoundEnabled,
                 libraries = current.libraries.toMap(),
+                parameterValues = current.parameterValues.toMap(),
                 createdAt = current.createdAt, updatedAt = System.currentTimeMillis()
             )
             val updatedWorks = works.map { if (it.id == current.id) saved else snapshotWork(it) }
@@ -2841,7 +2814,8 @@ class MainActivity : ComponentActivity() {
                         Work(id = java.util.UUID.randomUUID().toString(), title = original.title,
                             code = original.code, files = original.files.toMutableMap(), assets = original.assets.toMap(),
                             previewAspectRatio = original.previewAspectRatio, p5Version = original.p5Version,
-                            p5SoundEnabled = original.p5SoundEnabled, libraries = original.libraries.toMap())
+                            p5SoundEnabled = original.p5SoundEnabled, libraries = original.libraries.toMap(),
+                            parameterValues = original.parameterValues.toMap())
                     }
                     val next = works.map { snapshotWork(it) } + imported
                     val folder = selectedFolderUri
@@ -2958,11 +2932,11 @@ class MainActivity : ComponentActivity() {
                 var updatedPreviewId by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(Unit) {
                     val view = webView
-                    val workId = previewWorkId
-                    val token = previewAssets.token
+                    val workId = previewSession.workId
+                    val token = previewSession.assets.token
                     if (view != null && workId != null && !isError && view.url == previewUrl(token)) {
                         captureWorkPreview(view) { encoded ->
-                            if (previewWorkId == workId && previewAssets.token == token) {
+                            if (previewSession.workId == workId && previewSession.assets.token == token) {
                                 lifecycleScope.launch {
                                     if (storeWorkPreview(workPreviewFile(cacheDir, workId), encoded)) {
                                         updatedPreviewId = workId
@@ -3222,6 +3196,7 @@ class MainActivity : ComponentActivity() {
                                     p5Version = current.p5Version,
                                     p5SoundEnabled = current.p5SoundEnabled,
                                     libraries = current.libraries.toMap(),
+                                    parameterValues = current.parameterValues.toMap(),
                                     createdAt =
                                         now,
                                     updatedAt =
@@ -3690,17 +3665,20 @@ class MainActivity : ComponentActivity() {
                                         fun getSketchCode():
                                                 String {
 
-                                            return pendingSketchCode
+                                            return previewSession.sketchCode
                                         }
 
                                         @JavascriptInterface
-                                        fun getP5Version(): String = pendingP5Version
+                                        fun getP5Version(): String = previewSession.p5Version
 
                                         @JavascriptInterface
-                                        fun isP5SoundEnabled(): Boolean = pendingP5SoundEnabled
+                                        fun isP5SoundEnabled(): Boolean = previewSession.soundEnabled
 
                                         @JavascriptInterface
-                                        fun getWorkLibraries(): String = pendingLibraries
+                                        fun getWorkLibraries(): String = previewSession.libraries
+
+                                        @JavascriptInterface
+                                        fun getWorkParameters(): String = previewSession.parameters
 
                                         @JavascriptInterface
                                         fun onError(
@@ -3748,7 +3726,7 @@ class MainActivity : ComponentActivity() {
                                                 isError =
                                                     true
 
-                                                val location = previewSourceLocation(pendingSourceFiles, line)
+                                                val location = previewSourceLocation(previewSession.sourceFiles, line)
                                                 appendConsole(ConsoleLevel.ERROR, message, location?.line, location?.file)
 
                                                 showConsole =
@@ -3918,7 +3896,7 @@ class MainActivity : ComponentActivity() {
                                                             }
 
                                                         val location = if (it.sourceId() == "sketch.js") {
-                                                            previewSourceLocation(pendingSourceFiles, it.lineNumber())
+                                                            previewSourceLocation(previewSession.sourceFiles, it.lineNumber())
                                                         } else null
 
                                                         runOnUiThread {
@@ -3950,7 +3928,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
-                                webViewClient = AssetWebClient(assets, assetStorage) { previewAssets }
+                                webViewClient = AssetWebClient(assets, assetStorage) { previewSession.assets }
 
                                 setOnTouchListener {
                                         currentView,
@@ -3974,19 +3952,11 @@ class MainActivity : ComponentActivity() {
                                     false
                                 }
 
-                                previewAssets = PreviewAssets(java.util.UUID.randomUUID().toString(), activeWork?.assets?.toMap().orEmpty())
-                                previewWorkId = activeWork?.id
-                                pendingP5Version = normalizedP5Version(activeWork?.p5Version)
-                                pendingP5SoundEnabled = activeWork?.p5SoundEnabled == true
-                                pendingLibraries = JSONObject(activeWork?.libraries.orEmpty()).toString()
-                                pendingSketchCode =
-                                    composeProjectSource(editorText, activeWork?.files.orEmpty())
-
-                                pendingSourceFiles = previewSourceFiles(editorText, activeWork?.files.orEmpty())
-
-                                loadUrl(
-                                    previewUrl(previewAssets.token)
+                                val previewToken = previewSession.prepare(
+                                    activeWork, editorText, activeWork?.files.orEmpty(),
+                                    activeWork?.assets?.toMap().orEmpty()
                                 )
+                                loadUrl(previewUrl(previewToken))
 
                                 webView =
                                     this
@@ -4039,6 +4009,16 @@ class MainActivity : ComponentActivity() {
                                             null
                                         )
                                         previewActionsExpanded = false
+                                    }
+                                )
+
+                                PreviewOverlayButton(
+                                    iconRes = R.drawable.ic_settings,
+                                    description = uiText("パラメータ"),
+                                    onClick = {
+                                        previewActionsExpanded = false
+                                        showExpandedPreview = false
+                                        showParameterSheet = true
                                     }
                                 )
 
@@ -5177,8 +5157,25 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val editorSuggestions = remember(editingValue.text, editingValue.selection, editorFocused, codeCompletion, selectedEditorFile) {
-            if (!editorFocused || !codeCompletion) emptyList() else editorCompletions(editingValue)
+        val completionSources = remember(activeWorkId, editingFile, editingText, editorText,
+            activeWork?.files, sessionViewModel.auxiliaryEditorGeneration, codeCompletion) {
+            if (!codeCompletion) emptyMap()
+            else projectSearchSources(activeWorkId, editorText, activeWork?.files.orEmpty(),
+                sessionViewModel.fileDrafts).toMutableMap().apply { put(editingFile, editingText) }
+        }
+        val projectCompletionSnapshot by produceState<Pair<String, List<ProjectSymbol>>>(
+            "" to emptyList(), activeWorkId, completionSources
+        ) {
+            if (completionSources.values.sumOf { it.length } >= 8_000) delay(120)
+            value = activeWorkId to withContext(Dispatchers.Default) { projectSymbols(completionSources) }
+        }
+        val projectCompletionSymbols = projectCompletionSnapshot.second.takeIf {
+            projectCompletionSnapshot.first == activeWorkId
+        }.orEmpty()
+        val editorSuggestions = remember(editingValue.text, editingValue.selection, editorFocused,
+            codeCompletion, editingFile, projectCompletionSymbols) {
+            if (!editorFocused || !codeCompletion) emptyList()
+            else projectCompletions(editingValue, projectCompletionSymbols, editingFile)
         }
 
         @Composable
@@ -5209,14 +5206,15 @@ class MainActivity : ComponentActivity() {
                                     val end = editingValue.selection.start
                                     val start = (end - completionPrefix(editingValue).length).coerceAtLeast(0)
                                     applyEditorChange(TextFieldValue(
-                                        editingText.replaceRange(start, end, suggestion),
-                                        TextRange(start + suggestion.length)
+                                        editingText.replaceRange(start, end, suggestion.name),
+                                        TextRange(start + suggestion.name.length)
                                     ))
                                     editorFocusRequester.requestFocus()
                                 },
                                 label = {
                                     Text(
-                                        completionHelp(suggestion, ::uiText),
+                                        suggestion.file?.let { "${suggestion.name} · $it" }
+                                            ?: completionHelp(suggestion.name, ::uiText),
                                         fontFamily = codeFontFamily,
                                         fontSize = 12.sp
                                     )
@@ -5248,7 +5246,7 @@ class MainActivity : ComponentActivity() {
             val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme,
                 editorErrorLines)
 
-            val parsedFoldRegions = editorFoldRegions(editingText)
+            val parsedFoldRegions = editorFoldRegions(editingText, editingKey)
             val foldRegions = parsedFoldRegions.orEmpty()
             val storedFolds = sessionViewModel.codeFoldStates[editingKey]
             val collapsedFolds = remember(storedFolds, editingText, parsedFoldRegions) {
@@ -6518,6 +6516,40 @@ class MainActivity : ComponentActivity() {
                         fullscreen = true
                     )
                 }
+            }
+        }
+
+        if (showParameterSheet) {
+            val parameterWork = activeWork
+            val sources = parameterWork?.files.orEmpty().mapValues { (name, code) ->
+                sessionViewModel.fileDrafts["${parameterWork?.id}/$name"] ?: code
+            } + ("sketch.js" to editorText)
+            val declarations = workParameters(sources)
+            ModalBottomSheet(
+                onDismissRequest = { showParameterSheet = false },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = colors.surface
+            ) {
+                WorkParameterPanel(
+                    parameters = declarations,
+                    values = parameterWork?.parameterValues.orEmpty(),
+                    onChange = { parameter, value ->
+                        parameterWork?.parameterValues?.set(parameter.name, value)
+                        val jsonValue = if (parameter is WorkParameter.Number) value else JSONObject.quote(value)
+                        webView?.evaluateJavascript(
+                            "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
+                        )
+                    },
+                    onCommit = {
+                        if (parameterWork != null) {
+                            parameterWork.updatedAt = System.currentTimeMillis()
+                            if (!saveStore()) Toast.makeText(this@MainActivity,
+                                uiText("保存できませんでした。保存先を確認して再試行してください"),
+                                Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    text = ::uiText
+                )
             }
         }
 
@@ -7798,6 +7830,18 @@ class MainActivity : ComponentActivity() {
 
         var settingsTab by rememberSaveable { mutableStateOf(0) }
         var showLicenses by remember { mutableStateOf(false) }
+        var showUserGuide by remember { mutableStateOf(false) }
+        if (showUserGuide) {
+            Dialog(
+                onDismissRequest = { showUserGuide = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+            ) {
+                UserGuideScreen(
+                    language = resolveUiLanguage(appLanguage, resources.configuration.locale.language),
+                    onClose = { showUserGuide = false }
+                )
+            }
+        }
         if (showLicenses) {
             val paragraphs = remember {
                 assets.open("licenses/THIRD_PARTY_NOTICES.txt").bufferedReader().use { it.readText() }
@@ -8900,6 +8944,12 @@ class MainActivity : ComponentActivity() {
                         Text(uiText(if (updateViewModel.manualChecking) "確認中…" else "アップデートを確認"))
                     }
                     TextButton(
+                        onClick = { showUserGuide = true },
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text(uiText("使い方ガイド"))
+                    }
+                    TextButton(
                         onClick = { showLicenses = true },
                         contentPadding = PaddingValues(horizontal = 0.dp)
                     ) {
@@ -9179,119 +9229,14 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun pruneUnusedAssets(works: List<Work>) {
-        val local = AtomicFile(File(filesDir, "local-works.json"))
-        val localWorks = if (local.baseFile.exists() || File(local.baseFile.path + ".bak").exists()) {
-            runCatching { local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) } }.getOrNull()?.works
-                ?: return
-        } else emptyList()
-        val keep = (works + localWorks).flatMap { it.assets.values }.map { it.hash }.toSet() +
-            previewAssets.assets.values.map { it.hash }
-        assetStorage.prune(keep)
-    }
+    private fun pruneUnusedAssets(works: List<Work>) = workRepository.pruneUnusedAssets(works)
 
-    private fun loadLocalWorkStore(): WorkStore? = try {
-        val local = AtomicFile(File(filesDir, "local-works.json"))
-        if (!local.baseFile.exists() && !File(local.baseFile.path + ".bak").exists()) null else {
-            val store = local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) }
-                ?: error("Invalid local works")
-            check(store.works.flatMap { it.assets.values }.all(assetStorage::contains))
-            store
-        }
-    } catch (_: Exception) { unreadableWorkFolders.add("local"); null }
+    private fun loadLocalWorkStore(): WorkStore? = workRepository.loadLocal()
 
-    @Synchronized
-    private fun saveLocalWorkStore(works: List<Work>, activeId: String): Boolean {
-        if ("local" in unreadableWorkFolders) return false
-        return runCatching {
-            val json = serializeWorkStore(works, activeId)
-            val atomic = AtomicFile(File(filesDir, "local-works.json"))
-            val output = atomic.startWrite()
-            try { output.write(json.toByteArray(Charsets.UTF_8)); atomic.finishWrite(output) }
-            catch (error: Exception) { atomic.failWrite(output); throw error }
-        }.isSuccess
-    }
+    private fun loadWorkStore(folderUri: Uri): WorkStore? = workRepository.loadFolder(folderUri)
 
-    private fun saveFolderAssets(directory: DocumentFile, works: List<Work>) {
-        val references = works.flatMap { it.assets.values }.distinctBy { it.hash }
-        if (references.isEmpty()) return
-        val folder = directory.findFile("assets") ?: directory.createDirectory("assets") ?: error("Cannot create assets")
-        val existingFiles = folder.listFiles().associateBy { it.name }
-        references.forEach { asset ->
-            check(assetStorage.contains(asset))
-            val existing = existingFiles[asset.hash]
-            if (existing == null || existing.length() != asset.size) {
-                val document = existing ?: folder.createFile("application/octet-stream", asset.hash) ?: error("Cannot save asset")
-                contentResolver.openOutputStream(document.uri, "wt")?.use { output ->
-                    assetStorage.file(asset).inputStream().use { copyBounded(it, output, MAX_ASSET_BYTES) }
-                } ?: error("Cannot save asset")
-            }
-        }
-    }
-
-    private fun restoreFolderAssets(directory: DocumentFile, works: List<Work>) {
-        val references = works.flatMap { it.assets.values }.distinctBy { it.hash }
-        if (references.isEmpty()) return
-        val folder = directory.findFile("assets") ?: error("Missing assets")
-        val missing = references.filterNot(assetStorage::contains)
-        if (missing.isEmpty()) return
-        val existingFiles = folder.listFiles().associateBy { it.name }
-        missing.forEach { asset ->
-            val document = existingFiles[asset.hash] ?: error("Missing asset")
-            val loaded = contentResolver.openInputStream(document.uri)?.use { assetStorage.put(it, asset.mime, asset.hash) }
-            check(loaded?.size == asset.size)
-        }
-    }
-
-    private fun loadWorkStore(folderUri: Uri): WorkStore? {
-        return try {
-            val directory = DocumentFile.fromTreeUri(this, folderUri)
-                ?: error(uiText("保存先フォルダーにアクセスできません"))
-            check(directory.exists() && directory.canRead()) { uiText("保存先フォルダーを読み込めません") }
-            val file = directory.findFile(worksFileName)
-            if (file == null) {
-                unreadableWorkFolders.remove(folderUri.toString())
-                return null
-            }
-            val json = contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
-                ?: error(uiText("作品ファイルを読み込めません"))
-            val store = parseWorkStoreJson(json) ?: error(uiText("作品ファイルの形式を読み取れません"))
-            check(store.works.isNotEmpty()) { uiText("作品ファイルが空です") }
-            restoreFolderAssets(directory, store.works)
-            unreadableWorkFolders.remove(folderUri.toString())
-            store
-        } catch (error: Exception) {
-            unreadableWorkFolders.add(folderUri.toString())
-            Log.e("EditKIRO", "Failed to load work store; refusing overwrite", error)
-            null
-        }
-    }
-
-    @Synchronized
-    private fun saveWorkStore(
-        folderUri: Uri?,
-        works: List<Work>,
-        activeWorkId: String
-    ): Boolean {
-        if (folderUri == null) return saveLocalWorkStore(works, activeWorkId)
-        if (folderUri.toString() in unreadableWorkFolders) return false
-        return try {
-            // Serialize before opening the provider's truncating stream.
-            val json = serializeWorkStore(works, activeWorkId)
-            val directory = DocumentFile.fromTreeUri(this, folderUri) ?: return false
-            saveFolderAssets(directory, works)
-            val file = directory.findFile(worksFileName)
-                ?: directory.createFile("application/json", worksFileName)
-                ?: return false
-            contentResolver.openOutputStream(file.uri, "wt")?.bufferedWriter()?.use {
-                it.write(json)
-            } ?: return false
-            true
-        } catch (error: Exception) {
-            Log.e("EditKIRO", "Failed to save work store", error)
-            false
-        }
-    }
+    private fun saveWorkStore(folderUri: Uri?, works: List<Work>, activeWorkId: String): Boolean =
+        workRepository.save(folderUri, works, activeWorkId)
 
     private fun getFolderName(
         uri: Uri?

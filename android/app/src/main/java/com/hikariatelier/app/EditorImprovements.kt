@@ -12,6 +12,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -19,6 +20,8 @@ internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>): V
     val immediate = remember(dark, errors) { JavaScriptHighlighter(dark, errors) }
     if (source.length < 8_000) return immediate
     val result by produceState<Pair<String, TransformedText>?>(null, source, dark, errors) {
+        // Rapid typing supersedes this job before a full-document scan begins.
+        delay(120)
         value = withContext(Dispatchers.Default) {
             source to JavaScriptHighlighter(dark, errors).filter(AnnotatedString(source))
         }
@@ -32,12 +35,18 @@ internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>): V
 
 /** Keep first-open parsing of a large sketch away from keyboard and sheet animations. */
 @Composable
-internal fun editorFoldRegions(source: String): List<CodeFold>? {
+internal fun editorFoldRegions(source: String, documentKey: String): List<CodeFold>? {
     if (source.length < 8_000) return remember(source) { codeFolds(source) }
+    var lastComplete by remember(documentKey) { mutableStateOf<Pair<String, List<CodeFold>>?>(null) }
     val result by produceState<Pair<String, List<CodeFold>>?>(null, source) {
+        delay(120)
         value = withContext(Dispatchers.Default) { source to codeFolds(source) }
     }
-    return result?.takeIf { it.first == source }?.second
+    if (result?.first == source) {
+        SideEffect { lastComplete = result }
+        return result?.second
+    }
+    return lastComplete?.let { (oldSource, folds) -> rebaseCodeFoldRegions(oldSource, folds, source) }
 }
 
 internal fun revisionDifference(current: String, revision: String): String {

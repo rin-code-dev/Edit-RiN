@@ -61,6 +61,31 @@ internal class AssetStorage(private val root: File) {
     fun file(asset: ProjectAsset): File = File(root, asset.hash)
     fun contains(asset: ProjectAsset): Boolean = file(asset).let { it.isFile && it.length() == asset.size }
 
+    fun stagingDirectory(): File {
+        val parent = checkNotNull(root.parentFile)
+        check(parent.isDirectory || parent.mkdirs())
+        val directory = File.createTempFile("asset-restore-", ".tmp", parent)
+        check(directory.delete() && directory.mkdir())
+        return directory
+    }
+
+    @Synchronized
+    fun commitStaged(staged: AssetStorage, assets: Collection<ProjectAsset>) {
+        val created = mutableListOf<File>()
+        try {
+            assets.distinctBy { it.hash }.forEach { asset ->
+                if (!contains(asset)) {
+                    val saved = staged.file(asset).inputStream().use { put(it, asset.mime, asset.hash) }
+                    check(saved.size == asset.size)
+                    created += file(asset)
+                }
+            }
+        } catch (error: Exception) {
+            created.forEach { it.delete() }
+            throw error
+        }
+    }
+
     @Synchronized
     fun prune(keep: Set<String>) {
         root.listFiles().orEmpty().filter { assetHashPattern.matches(it.name) && it.name !in keep }
@@ -109,41 +134,49 @@ internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId:
 }
 
 internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBackup {
-    var works: String? = null
-    var settings: String? = null
-    val seen = mutableSetOf<String>()
-    val blobs = mutableMapOf<String, ProjectAsset>()
-    var total = 0L
-    ZipInputStream(input.buffered()).use { zip ->
-        while (true) {
-            val entry = zip.nextEntry ?: break
-            require(seen.add(entry.name) && seen.size <= 2000)
-            when {
-                entry.name == "works.json" || entry.name == "settings.json" -> {
-                    val output = java.io.ByteArrayOutputStream()
-                    total += copyBounded(zip, output, 16L * 1024 * 1024)
-                    val text = output.toString("UTF-8")
-                    if (entry.name == "works.json") works = text else settings = text
+    val stagingDirectory = storage.stagingDirectory()
+    val staged = AssetStorage(stagingDirectory)
+    try {
+        var works: String? = null
+        var settings: String? = null
+        val seen = mutableSetOf<String>()
+        val blobs = mutableMapOf<String, ProjectAsset>()
+        var total = 0L
+        ZipInputStream(input.buffered()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                require(seen.add(entry.name) && seen.size <= 2000)
+                when {
+                    entry.name == "works.json" || entry.name == "settings.json" -> {
+                        val output = java.io.ByteArrayOutputStream()
+                        total += copyBounded(zip, output, 16L * 1024 * 1024)
+                        val text = output.toString("UTF-8")
+                        if (entry.name == "works.json") works = text else settings = text
+                    }
+                    backupAssetPattern.matches(entry.name) -> {
+                        val hash = entry.name.substringAfter('/')
+                        val asset = staged.put(zip, "application/octet-stream", hash)
+                        blobs[hash] = asset
+                        total += asset.size
+                    }
+                    entry.isDirectory && entry.name == "assets/" -> Unit
+                    else -> error("Unsupported backup entry")
                 }
-                backupAssetPattern.matches(entry.name) -> {
-                    val hash = entry.name.substringAfter('/')
-                    val asset = storage.put(zip, "application/octet-stream", hash)
-                    blobs[hash] = asset
-                    total += asset.size
-                }
-                entry.isDirectory && entry.name == "assets/" -> Unit
-                else -> error("Unsupported backup entry")
+                require(total <= MAX_BACKUP_BYTES)
+                zip.closeEntry()
             }
-            require(total <= MAX_BACKUP_BYTES)
-            zip.closeEntry()
         }
+        val store = works?.let(::parseWorkStoreJson) ?: error("Invalid works")
+        require(store.works.isNotEmpty())
+        val referencedAssets = store.works.flatMap { it.assets.values }
+        referencedAssets.forEach { asset ->
+            require(blobs[asset.hash]?.size == asset.size) { "Missing asset in backup" }
+        }
+        storage.commitStaged(staged, referencedAssets)
+        return AssetBackup(store, settings)
+    } finally {
+        stagingDirectory.deleteRecursively()
     }
-    val store = works?.let(::parseWorkStoreJson) ?: error("Invalid works")
-    require(store.works.isNotEmpty())
-    store.works.flatMap { it.assets.values }.forEach { asset ->
-        require(blobs[asset.hash]?.size == asset.size) { "Missing asset in backup" }
-    }
-    return AssetBackup(store, settings)
 }
 
 internal fun assetByteRange(header: String?, size: Long): LongRange? {
@@ -164,6 +197,7 @@ internal fun snapshotWork(work: Work, assets: Map<String, ProjectAsset> = work.a
     revisions = work.revisions.toMutableList(), previewAspectRatio = work.previewAspectRatio,
     p5Version = work.p5Version, p5SoundEnabled = work.p5SoundEnabled,
     libraries = work.libraries.toMap(),
+    parameterValues = work.parameterValues.toMap(),
     createdAt = work.createdAt, updatedAt = work.updatedAt
 )
 

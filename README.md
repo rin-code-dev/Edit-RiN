@@ -1,4 +1,21 @@
-# Edit:RiN ver1.0.8
+# Edit:RiN ver1.0.9
+
+### Live parameters
+
+Add these comments to `sketch.js` or another JavaScript file, then open Parameters from the preview actions. Values are available through `rinParams` and are saved with the work and its backup:
+
+```js
+// @rin number speed "Speed" 0 3 1 0.1
+// @rin number strokeSize "Stroke size" 1 16 4 1
+// @rin color ink "Color" #BA90E2
+
+function draw() {
+  background(20);
+  stroke(rinParams.ink);
+  strokeWeight(rinParams.strokeSize);
+  circle(width / 2, height / 2, 80 + sin(frameCount * 0.02 * rinParams.speed) * 40);
+}
+```
 
 A p5.js editor for making art on Android.
 
@@ -15,6 +32,8 @@ A p5.js editor for making art on Android.
 - p5.sound playback, synthesis and analysis
 - Custom themes and fonts
 - Japanese, English and Chinese UI
+- In-app user guide in English, Japanese and Simplified Chinese
+- Live numeric and color controls for each work
 
 Requires Android 6.0 or later.
 Checks for stable updates silently at startup and only notifies when an update is available.
@@ -45,6 +64,6 @@ Modification, reuse or redistribution requires prior contact, permission and att
 ## 日本語
 
 Androidでp5.jsの作品を書いて、その場で動かせるアプリです。
-ver1.0.8。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応しています。
+ver1.0.9。作品ごとにp5.js 2.3.3 / 1.11.5を選択でき、p5.soundにも対応しています。
 
 © 2026 rin-code-dev · Made with p5.js and Jetpack Compose.

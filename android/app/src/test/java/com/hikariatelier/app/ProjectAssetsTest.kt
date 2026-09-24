@@ -46,6 +46,16 @@ class ProjectAssetsTest {
         assertTrue(runCatching { readAssetBackup(ByteArrayInputStream(zip("works.json" to manifest)), target) }.isFailure)
         assertTrue(runCatching { readAssetBackup(ByteArrayInputStream(zip("works.json" to manifest, "assets/${asset.hash}" to byteArrayOf(4,5,6))), target) }.isFailure)
     }
+    @Test fun rejectedBackupDoesNotPublishStagedAssets() {
+        val target = storage()
+        val bytes = byteArrayOf(7, 8, 9)
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val asset = ProjectAsset(hash, bytes.size.toLong(), "image/png")
+        val invalid = zip("assets/$hash" to bytes, "works.json" to "{broken".toByteArray())
+        assertTrue(runCatching { readAssetBackup(ByteArrayInputStream(invalid), target) }.isFailure)
+        assertFalse(target.contains(asset))
+    }
     @Test fun rejectsUnsafeArchivePathsAndOversizedStreams() {
         assertTrue(runCatching { readAssetBackup(ByteArrayInputStream(zip("../escape" to byteArrayOf(1))), storage()) }.isFailure)
         assertTrue(runCatching { copyBounded(ByteArrayInputStream(ByteArray(11)), ByteArrayOutputStream(), 10) }.isFailure)

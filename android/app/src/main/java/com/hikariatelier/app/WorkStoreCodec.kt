@@ -37,6 +37,7 @@ internal fun serializeWorkStore(
                 .put("p5Version", work.p5Version)
                 .put("p5SoundEnabled", work.p5SoundEnabled)
                 .put("libraries", JSONObject(work.libraries))
+                .put("parameterValues", JSONObject(work.parameterValues as Map<*, *>))
                 .put("createdAt", work.createdAt)
                 .put("updatedAt", work.updatedAt)
         )
@@ -102,6 +103,9 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
             p5SoundEnabled = item.optBoolean("p5SoundEnabled", false),
             libraries = item.optJSONObject("libraries")?.let { libs ->
                 libs.keys().asSequence().associateWith { libs.optString(it) }
+            }.orEmpty(),
+            parameterValues = item.optJSONObject("parameterValues")?.let { values ->
+                values.keys().asSequence().take(16).associateWith { values.optString(it) }
             }.orEmpty(),
             createdAt = item.optLong("createdAt", now),
             updatedAt = item.optLong("updatedAt", now)

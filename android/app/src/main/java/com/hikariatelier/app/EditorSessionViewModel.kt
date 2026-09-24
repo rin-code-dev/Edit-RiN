@@ -33,6 +33,7 @@ class Work(
     p5Version: String = P5_VERSION_CURRENT,
     p5SoundEnabled: Boolean = false,
     libraries: Map<String, String> = emptyMap(),
+    parameterValues: Map<String, String> = emptyMap(),
     val createdAt: Long = System.currentTimeMillis(),
     updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -42,6 +43,7 @@ class Work(
     var p5Version by mutableStateOf(normalizedP5Version(p5Version))
     var p5SoundEnabled by mutableStateOf(p5SoundEnabled)
     var libraries by mutableStateOf(normalizedWorkLibraries(libraries))
+    val parameterValues = parameterValues.toList().toMutableStateMap()
     var updatedAt by mutableStateOf(updatedAt)
     val files = files.toList().toMutableStateMap()
     val revisions = revisions.toMutableStateList()
