@@ -10,6 +10,25 @@ internal data class CodeFoldState(val source: String, val collapsed: Set<Int>)
 /** Braces in comments, strings, templates and regular expressions are not block delimiters. */
 internal fun codeFolds(source: String): List<CodeFold> = FoldScanner(source).scan()
 
+/** Keep only folds whose delimiters are untouched while the next scan is pending. */
+internal fun rebaseCodeFoldRegions(before: String, folds: List<CodeFold>, after: String): List<CodeFold> {
+    if (before == after) return folds
+    var prefix = 0
+    while (prefix < minOf(before.length, after.length) && before[prefix] == after[prefix]) prefix++
+    var suffix = 0
+    while (suffix < minOf(before.length, after.length) - prefix &&
+        before[before.lastIndex - suffix] == after[after.lastIndex - suffix]) suffix++
+    val oldEnd = before.length - suffix
+    val delta = after.length - before.length
+    return folds.mapNotNull { fold ->
+        when {
+            fold.close < prefix -> fold
+            fold.open >= oldEnd -> CodeFold(fold.open + delta, fold.close + delta)
+            else -> null
+        }
+    }
+}
+
 private val FOLD_CONTROL_WORDS = setOf("if", "while", "for", "with", "switch", "catch")
 private val FOLD_EXPRESSION_WORDS = setOf("return", "throw", "case", "delete", "void", "typeof", "yield", "await", "in", "of", "else", "do")
 

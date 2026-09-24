@@ -66,6 +66,15 @@ class CodeFoldingTest {
         assertTrue(rebasedFolds(state, "").isEmpty())
     }
 
+    @Test fun pendingScanRetainsOnlyFoldsOutsideTheEditedRegion() {
+        val before = "function a() {\n a();\n}\nfunction b() {\n b();\n}"
+        val original = codeFolds(before)
+        val inserted = before.replace("function b", "other();\nfunction b")
+        assertEquals(codeFolds(inserted), rebaseCodeFoldRegions(before, original, inserted))
+        val changed = before.replace("a();", "other();")
+        assertEquals(listOf(codeFolds(changed).last()), rebaseCodeFoldRegions(before, original, changed))
+    }
+
     @Test fun accidentalDeletionInsideFoldIsDetectedButVisibleEditsAreAllowed() {
         val source = "function a() {\n abc();\n}"
         val folds = codeFolds(source)

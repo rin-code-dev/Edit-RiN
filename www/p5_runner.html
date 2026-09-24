@@ -107,6 +107,21 @@
 
   <script>
     (() => {
+      let initial = {};
+      try { initial = JSON.parse(window.Android?.getWorkParameters?.() || '{}'); } catch (_) {}
+      window.rinParams = Object.assign(Object.create(null), initial);
+      window.__editRinSetParameter = (name, value) => {
+        if (Object.prototype.hasOwnProperty.call(window.rinParams, name) &&
+            (typeof value === 'number' && Number.isFinite(value) ||
+             typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value))) {
+          window.rinParams[name] = value;
+        }
+      };
+    })();
+  </script>
+
+  <script>
+    (() => {
       try {
         const code = window.Android?.getSketchCode?.() || '';
         const script = document.createElement('script');

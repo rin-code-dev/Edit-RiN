@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.9 — 2026-09-24
+
+- Complete names declared in the current work's JavaScript files, with the current file first.
+- Defer full-document highlighting, folding and project symbol scans during continuous typing in large works.
+- Add per-work live numeric and color parameters declared in JavaScript comments, with saved values and backup support.
+- Add an in-app user guide for the complete workflow in English, Japanese and Simplified Chinese.
+
 ## 1.0.8 — 2026-09-22
 
 - Add offline p5.brush support with per-work selection and backup support.
@@ -11,6 +18,9 @@
 - Improve editor responsiveness, transitions, and support for high-refresh-rate displays.
 - Reduce memory use when importing assets and improve saving and restoring works.
 - Fix JavaScript tabs after restoring works and support reloading locally saved works.
+- Protect external-folder work files with a verified pending copy and a recoverable previous copy.
+- Validate backup assets in temporary storage before adding them to the app's asset library.
+- Separate work persistence and preview run state from the main activity.
 
 ## 1.0.7 — 2026-09-13
 
