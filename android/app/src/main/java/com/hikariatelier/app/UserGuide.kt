@@ -21,62 +21,64 @@ internal data class GuideSection(
 
 /** English is the source text for the in-app user guide. */
 internal val userGuideSections = listOf(
-    GuideSection("Start a work", "Edit:RiN is a p5.js editor for Android. A work holds its sketch, additional JavaScript files, assets and runtime settings.", listOf(
-        "Open the work selector to create a work, choose a saved work, or browse the gallery. Search and sort the gallery to find a work.",
-        "Edit sketch.js and tap Run to see the result. Save your changes when you want to keep a revision.",
-        "Open Work settings for files, assets and runtime options. The work menu contains rename, duplicate, export and delete actions."
+    GuideSection("Getting Started", "Edit:RiN is a p5.js creative coding editor for Android. A work contains your sketch, additional JavaScript files, assets, and settings.", listOf(
+        "Use the work picker to create a new work, switch between saved works, or browse the gallery with search and sorting.",
+        "Edit sketch.js and tap Run to instantly see your generative art in action.",
+        "Use the work menu to rename, duplicate, export, or delete works, or open Work settings to configure assets and runtimes."
     )),
-    GuideSection("Edit code", "The editor uses the same editing tools for sketch.js and additional .js files.", listOf(
-        "Use the file tabs to switch JavaScript files. Add or remove files from Work settings → Project files.",
-        "Use Undo and Redo, search and replace, go to line, code formatting, and code folding from the editor controls.",
-        "Project search finds text across the work's JavaScript files. Completion suggests p5.js names and names declared in your work; the current file is shown first.",
-        "The console shows runtime messages. Tap a linked error to open its source file and line.",
-        "Saved revisions can be compared with the current code before you restore one."
+    GuideSection("Code Editor", "The editor provides modern programming tools for sketch.js and all additional JavaScript files.", listOf(
+        "Switch between files using the file tabs. Add or manage files in Work settings → Project files.",
+        "Take advantage of undo/redo, search and replace, go to line, auto-formatting, and code folding directly from the editor bar.",
+        "Use project search to find text across all scripts. Intelligent code completion suggests p5.js APIs and your own variables and functions.",
+        "Check the interactive console for logs and errors. Tap an error message to jump directly to the relevant file and line number.",
+        "Review previous saves and inspect side-by-side diffs before restoring earlier revisions."
     )),
-    GuideSection("Run and preview", "Run reloads the work in the preview. Changes to code take effect after you run it again.", listOf(
-        "The portrait editor can hide the preview while you type. Show it again to inspect the work; hiding it does not discard the running WebView.",
-        "Use the preview controls for fullscreen, orientation, screenshots, recording and parameters. Fullscreen keeps the work's logical canvas size.",
-        "Set the preview aspect ratio from the work menu. A syntax or runtime error appears in the console."
+    GuideSection("Run & Preview", "Run compiles and reloads your sketch in the live canvas. Changes take effect each time you run.", listOf(
+        "In portrait mode, hide the preview while typing to maximize your coding space; showing it again preserves your running canvas.",
+        "Use the preview overlay controls to toggle fullscreen, rotate canvas orientation, capture screenshots, record, or tweak parameters.",
+        "Set your canvas aspect ratio (1:1, 4:3, 16:9, or responsive) from the work menu. Syntax and runtime errors appear in the console."
     )),
-    GuideSection("Live parameters", "Declare controls in JavaScript comments, then run the work and open Parameters from the preview controls.", listOf(
-        "Number: // @rin number speed \"Speed\" 0 3 1 0.1 — name, label, minimum, maximum, initial value and step.",
-        "Color: // @rin color ink \"Color\" #BA90E2 — name, label and initial six-digit color.",
-        "Read values in your sketch as rinParams.speed or rinParams.ink. Controls update the running preview without editing your source code.",
-        "Values are saved per work and included in work and full backups. Up to 16 distinct parameters are shown. Run again after changing a declaration."
+    GuideSection("Live Parameters", "Create dynamic UI sliders and color pickers directly from comments in your code, without manual UI coding.", listOf(
+        "Numbers: // @rin number speed \"Speed\" 0 3 1 0.1 (name, label, min, max, default, step).",
+        "Colors: // @rin color ink \"Ink Color\" #BA90E2 (name, label, default hex color).",
+        "Access values in your sketch through rinParams.speed and rinParams.ink. Adjusting sliders updates the canvas in real time.",
+        "Parameters are saved per work and included in backups. Up to 16 parameters can be displayed at once."
     )),
-    GuideSection("Files and assets", "Each work can contain additional JavaScript files and its own images, audio, video, fonts and data files.", listOf(
-        "Open Work settings → Project files to manage .js files. Additional files run with sketch.js and use the same editor tools.",
-        "Open Work settings → Work assets to add, preview, rename or remove assets. You can insert a loading statement into the editor.",
-        "Use the displayed assets/ path in your sketch, for example loadImage('assets/photo.png'). Keep code paths in sync when you rename an asset.",
-        "A single asset can be up to 50 MB; a work can hold up to 100 assets and 200 MB of assets."
+    GuideSection("Assets & Media", "Bundle images, audio, video, custom fonts, and data files directly with each work.", listOf(
+        "Go to Work settings → Work assets to add files from your device. Tap any asset to preview it.",
+        "Tap 'Insert loading code' in the asset preview to automatically place the required loading code at your editor cursor.",
+        "Reference assets in your sketch using relative paths, such as loadImage('assets/photo.png').",
+        "Files up to 50 MB each are supported, with up to 100 assets and 200 MB total per work."
     )),
-    GuideSection("p5.js and libraries", "Runtime choices belong to each work.", listOf(
-        "In Work settings → Runtime, choose p5.js 2.3.3 or 1.11.5. Existing works retain their saved choice.",
-        "Enable p5.sound when a work uses audio playback, synthesis or analysis. Audio starts after the first interaction with the preview.",
-        "The bundled p5.brush library is available for p5.js 2.3.3 works. Choose it in the work's library settings before running the sketch."
+    GuideSection("Runtime & Libraries", "Choose the right environment and libraries for your creative project.", listOf(
+        "In Work settings → Runtime, switch between modern p5.js 2.3.3 (recommended for new works) and p5.js 1.11.5 (for legacy sketches).",
+        "Enable p5.sound for audio playback, synthesis, and FFT frequency analysis. Audio starts upon first user interaction with the preview.",
+        "The bundled p5.brush library is available for p5.js 2.3.3 to create expressive watercolor and sketch effects."
     )),
-    GuideSection("Capture and share", "The preview controls can save a still image or record the running work.", listOf(
-        "Use Screenshot for a still image. Recording offers MP4 and GIF; MP4 can record up to 60 seconds and GIF up to 15 seconds.",
-        "Open Settings → Save & backup to set MP4 bitrate, a recording countdown and optional X share text.",
-        "After saving a recording, use the share action to send that saved file to another app. Check the selected format before sharing."
+    GuideSection("Capture & Share", "Record animations or save high-resolution stills of your creations.", listOf(
+        "Tap Screenshot to save a still image of the current canvas.",
+        "Tap Record to capture animations as MP4 (up to 60 seconds) or animated GIF (up to 15 seconds).",
+        "Configure MP4 bitrate and recording countdown timers in Settings → Save & backup.",
+        "Once captured, use the share dialog to send your creations directly to social media or other apps."
     )),
-    GuideSection("Import and export", "Choose the format that matches what you want to move.", listOf(
-        "Use Settings → Save & backup to import a .js file as a work or export the current code as .js.",
-        "Use the work menu to export one work as a ZIP, including its JavaScript files, assets and runtime settings. Import a work ZIP to add it as a separate work.",
-        "Use Full backup to save or restore all works and editor settings in one ZIP. Keep a copy outside the device before replacing or resetting it.",
-        "The p5.js Web Editor import can fetch public works by account name. It does not use your account password."
+    GuideSection("Sharing & Import", "Easily share sketches with friends or import projects from the web.", listOf(
+        "Export work ZIP: Package your sketch, assets, and settings into a single file to share with other Edit:RiN users.",
+        "Import work ZIP: Add a shared work ZIP as a new project without affecting your existing works.",
+        "p5.js Web Editor: Import public sketches directly by entering any public username (no password needed).",
+        "Single .js files can also be imported or exported via Settings → Save & backup."
     )),
-    GuideSection("Save and restore", "Local works are stored on the device. You can also choose an external work folder in Settings → Save & backup.", listOf(
-        "Save the current work to record a revision. Review changes before restoring an older revision.",
-        "If an external folder becomes unavailable, reconnect or reselect it before saving. Keep a full backup for device moves.",
-        "A full backup includes works and editor settings. A single-work ZIP is intended for one work and its files."
+    GuideSection("Backup & History", "Safeguard your creative work with flexible local and cloud-friendly backups.", listOf(
+        "Every time you save, a revision is created so you can review changes and safely restore previous versions.",
+        "Create a Full Backup ZIP from Settings to back up all works and editor configurations in a single file before switching devices.",
+        "Choose an external folder in Settings → Save & backup if you prefer to sync your works to cloud storage."
     )),
-    GuideSection("Appearance and editor settings", "Settings are grouped into Appearance, Editor, Save & backup, and About.", listOf(
-        "Appearance controls language, theme, custom background and accent colors, and imported interface fonts.",
-        "Editor controls text appearance and editing behavior, including preview visibility while editing.",
-        "About shows the app version, update check, license notices and developer links. Automatic update checks are silent until a newer stable release is found."
+    GuideSection("Settings & Customization", "Personalize the editor to match your creative workflow.", listOf(
+        "Appearance: Customize themes (System, Dark, Light, Terminal), custom colors, app language, and custom editor fonts (TTF/OTF).",
+        "Editor: Adjust typography, font sizes, line wrapping, code ligatures, and auto-indent behavior.",
+        "About: Check the current version, view open-source licenses, and check for updates silently in the background."
     ))
 )
+
 
 @Composable
 internal fun UserGuideScreen(language: String, onClose: () -> Unit) {

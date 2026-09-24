@@ -1,0 +1,745 @@
+Edit:RiN 現行実装仕様
+======================
+
+作成基準日: 2026-09-14
+対象: /home/rintomita/Documents/Edit-KIRO の現行ソース
+アプリ表示バージョン: 1.0.7
+versionCode: 13
+
+注記:
+- この文書は利用者向けの操作説明ではなく、現行実装を保守・再実装するための技術仕様である。
+- build.gradle 上の公開バージョンは1.0.7。
+- 現在の作業ツリーには、次期版向けのターミナルテーマ実装も含まれている。
+- JavaScriptブリッジ名に残る「editKiro」は内部互換用の名称であり、アプリ表示名はEdit:RiNである。
+
+
+1. 製品概要
+-----------
+
+Edit:RiNは、Android端末上でp5.js作品を作成、保存、実行、管理する単一Activity構成のエディターである。
+
+主な機能:
+- JavaScriptコード編集とWebViewによるライブプレビュー
+- 作品ごとのp5.jsランタイム選択
+- p5.soundの作品単位での有効化
+- 複数JavaScriptファイル編集
+- 作品ごとの画像、音声、動画、フォント、データ等の素材管理
+- 作品一覧、サムネイル、検索、並び替え
+- 保存履歴、差分表示、復元
+- JS単体、作品ZIP、全体バックアップの入出力
+- p5.js Web Editor公開作品の取り込み
+- スクリーンショット、MP4、GIF記録と共有
+- 日本語、英語、中国語UI
+- システム、ダーク、ライト、ターミナルのテーマ
+- 起動時および手動の更新確認
+
+
+2. 対応環境とビルド構成
+-----------------------
+
+Android:
+- applicationId: com.hikariatelier.app
+- デバッグ版applicationId: com.hikariatelier.app.debug
+- デバッグ版表示名: Edit:RiN Dev
+- minSdk: 23（Android 6.0）
+- compileSdk: 35
+- targetSdk: 35
+- INTERNET権限のみを宣言
+- FileProviderを共有ファイル用に使用
+
+開発環境:
+- JDKツールチェーン: 25
+- Android Java sourceCompatibility / targetCompatibility: 17
+- Gradle Wrapper: 9.5.0
+- Android Gradle Plugin: 9.3.2
+- Kotlin / Compose Compiler: 2.2.10
+
+主要技術:
+- Kotlin
+- Jetpack Compose
+- Material 3
+- Android WebView
+- AndroidX ViewModel
+- Storage Access Framework / DocumentFile
+- MediaStore
+- org.json
+
+リリースビルド:
+- R8最適化とリソース縮小を有効化
+- android/release-signing.propertiesが存在する場合のみ、その設定で署名する
+- 秘密鍵、署名設定、local.propertiesは配布物へ含めない
+
+
+3. アプリ構造
+-------------
+
+MainActivity.kt:
+- 画面全体と主要状態の統合
+- 作品、エディター、プレビュー、設定、保存、入出力、録画の連携
+- WebViewの生成とJavaScriptブリッジ登録
+
+EditorSessionViewModel.kt:
+- Activity再生成をまたいで維持する編集セッション
+- 作品一覧、選択中作品、編集中テキスト、下書き、Undo/Redoを保持
+- sketch.jsと追加JSファイルに別々の編集状態とUndo/Redo履歴を持つ
+
+主要な補助コンポーネント:
+- WorkStoreCodec.kt: works.jsonの読み書き
+- ProjectAssets.kt: 素材保存、ハッシュ検証、ZIPバックアップ
+- AssetWebClient.kt: プレビュー用ローカルHTTPS配信
+- PreviewWebViewHost.kt: 論理キャンバスと表示領域の拡大縮小
+- PreviewGeometry.kt: プレビュー比率と領域計算
+- www/p5_runner.html: p5.js起動、表示調整、キャプチャ、録画
+- WorkGallery.kt: 作品一覧とサムネイルキャッシュ
+- P5WebEditor.kt: p5.js Web Editor公開作品の取得と変換
+- UpdateChecker.kt / UpdateViewModel.kt: 更新確認
+- AppLanguage.kt: 日本語を基準キーとした英語、中国語翻訳
+- ui/theme/Theme.kt: 配色、フォント、角形状を含むテーマ
+
+
+4. 作品データモデル
+-------------------
+
+1作品は次の情報を持つ:
+- id: 一意の文字列
+- title: 作品名
+- code: メインのsketch.js
+- files: 追加JavaScriptファイル名とコードのMap
+- assets: 素材名とProjectAssetのMap
+- revisions: 保存履歴。最大30件
+- previewAspectRatio: 16:9 / 4:3 / 1:1 / 9:16 / device
+- p5Version: 2.3.3または1.11.5
+- p5SoundEnabled: p5.soundの有効状態
+- createdAt / updatedAt: Unix時刻ミリ秒
+
+works.json:
+- format: "hikari-atelier"
+- version: 6
+- activeWorkId: 選択中作品ID
+- savedAt: 保存時刻
+- works: 作品配列
+
+互換方針:
+- version 1以上のデータから、現行版が理解できる項目を読み取る。
+- version 6未満の作品はp5.js 1.11.5として扱う。
+- 不明または無効なプレビュー比率は1:1へ正規化する。
+- 不明または無効なp5.jsバージョンは1.11.5へ正規化する。
+- 空ID、重複ID、不正な素材情報は読み込み失敗とする。
+
+
+5. 保存仕様
+-----------
+
+端末内保存:
+- filesDir/local-works.jsonへAtomicFileで保存する。
+- 書き込み失敗時はAtomicFileのバックアップ機構で破損を避ける。
+
+外部作品フォルダー:
+- Storage Access Frameworkでユーザーが選んだフォルダーを使用する。
+- 作品データ名はhikari_atelier_works.json。
+- 素材は選択フォルダー内のassets/へSHA-256名で保存する。
+- 読み込み不能になったフォルダーへは、安全のため自動上書きしない。
+- URI権限はAndroidの永続URIアクセスとして維持する。
+
+未保存コードの復元:
+- filesDir/editkiro_draft.jsonへAtomicFileで下書きを保存する。
+- 編集変更から700ms後に遅延保存する。
+- sketch.jsと追加JSファイルの下書きを含む。
+- 設定で無効化可能。既定値は有効。
+- 次回起動時、保存済みコードとの差がある場合に復元する。
+
+保存履歴:
+- 明示保存時、直前の保存コードを履歴へ追加する。
+- 最大30件。
+- 現在コードとの差分を行単位で表示してから復元できる。
+
+
+6. エディター仕様
+-----------------
+
+編集対象:
+- メインファイルはsketch.js。
+- 作品内に追加の.jsファイルを作成、編集、削除できる。
+- タブで編集ファイルを切り替える。
+- 実行時は追加JSファイルをファイル名順に連結し、最後にsketch.jsを連結する。
+- 各ファイル末尾へsourceURLを付け、コンソールの発生元を識別する。
+
+編集支援:
+- JavaScript構文色分け
+- エラー行の強調
+- 50,000文字以上の色分け処理はバックグラウンドで実行
+- Undo / Redoはファイル単位
+- Undo履歴は最大100件、かつ概算合計2,000,000文字以内
+- 自動インデント
+- 行番号
+- 検索、次/前の一致、置換、全置換、大文字小文字の一致指定
+- 簡易コード整形
+- p5.js関数名の入力候補。2文字以上で最大8件
+- 一部候補には引数例と短い説明を表示
+- エディター文字サイズ変更
+- TTF / OTF / TTCのカスタムフォント取り込み。最大20MB
+- フォント連字のON/OFF
+
+編集キーバー:
+- Undo / Redo
+- 検索と置換
+- コード整形
+- インデント / 逆インデント
+- カーソル上下左右移動
+- {}, (), [], 引用符、セミコロン、イコール、カンマ、ピリオド、コメント入力
+- 移動キー、記号キー、コンパクト表示を個別設定可能
+
+コンソール:
+- console.log等のWebViewコンソール出力を表示
+- LOG / WARNING / ERRORを区別
+- 同一の連続メッセージは回数表示へ集約
+- 最大200件
+- sketch.jsの行番号が判明したエラーは、タップして該当行へ移動可能
+- 高さ調整、拡大表示、閉じる操作に対応
+
+
+7. 新規作品と作品管理
+---------------------
+
+新規作品:
+- 固定サイズまたは画面追従サイズを選択する。
+- 固定サイズのテンプレート:
+  - 16:9 = 960 x 540
+  - 4:3 = 800 x 600
+  - 1:1 = 800 x 800
+  - 9:16 = 540 x 960
+- device比率は画面追従を使用する。
+- 初期コードは中央に円を描く最小テンプレート。
+
+作品操作:
+- 実行
+- 保存
+- 保存済み状態へ戻す
+- Undo / Redo
+- 検索と置換
+- コード整形
+- 保存履歴の表示と復元
+- 名前変更
+- 複製
+- 作品素材管理
+- p5.js実行設定
+- JS単体の読み込み / 書き出し
+- 作品ZIPの読み込み / 書き出し
+- 削除。ただし最後の1作品は削除不可
+
+作品一覧:
+- ボトムシート内のグリッド表示
+- 作品名検索
+- 更新順または名前順
+- p5.js世代、JSファイル数、sound有効状態を表示
+- 選択中および未保存状態を表示
+- お気に入り機能は現行版には存在しない
+
+サムネイル:
+- WebViewのキャンバスを状態変更せず最大480pxへ縮小コピーする。
+- cacheDir/work-previewsへ作品IDのSHA-256名でPNG保存する。
+- メモリキャッシュ上限は12MB。
+- ディスクキャッシュは最大120件、合計32MBを目安に古いものから削除する。
+- サムネイルは作品データおよびZIPには含めない。
+
+初期作品:
+- Axis（1:1）
+- Halo（1:1）
+- Gravity（1:1）
+- dvd（4:3）
+
+
+8. プレビュー実装
+-----------------
+
+8.1 基本構成
+
+- Android WebView内でp5.jsを実行する。
+- WebViewは画面構成変更時も可能な範囲で同一インスタンスを保持する。
+- JavaScriptとDOM Storageを有効化する。
+- WebViewの直接ファイルアクセスとContent Providerアクセスは無効化する。
+- 背景色は黒。
+- タッチ開始時はエディターのフォーカスを外し、WebViewへフォーカスを渡す。
+- ActivityのonPause / onResumeとWebViewのライフサイクルを同期する。
+- Activity破棄時は録画を中止し、JavaScriptブリッジを外し、WebViewを破棄する。
+
+8.2 ローカル配信
+
+プレビューURL:
+https://appassets.androidplatform.net/project/{実行ごとのtoken}/p5_runner.html
+
+配信対象:
+- p5_runner.html
+- p5-v1.min.js
+- p5-v2.min.js
+- p5.min.js（互換用同梱）
+- p5.sound.min.js
+- assets/{作品内の素材名}
+
+安全制約:
+- https、appassets.androidplatform.net、現在のtokenに一致するパスだけを配信する。
+- メインフレームの別URL遷移を拒否する。
+- 不正な素材名、未登録素材、不一致ハッシュは404。
+- 素材応答はCache-Control: no-store。
+- 音声・動画用のRangeリクエストへ206で対応。不正Rangeは416。
+- 実行ごとにtokenを作り直し、別作品や以前の素材URLとの混在を防ぐ。
+
+8.3 p5.jsランタイム
+
+作品ごとに次のどちらかを選択する:
+- p5.js 2.3.3（現行）
+- p5.js 1.11.5（互換）
+
+p5.sound:
+- 作品ごとに有効または無効を保存する。
+- 有効時だけp5.sound.min.jsをp5.js本体の後に読み込む。
+- 初回のpointerdownでuserStartAudio()とAudioContext.resume()を試行する。
+- 一時停止時はAudioContextをsuspend、再開時はresumeする。
+
+作品コード:
+- Android側から文字列として受け取り、script要素へ挿入する。
+- 最後に//# sourceURL=sketch.jsを付ける。
+- setup()またはdraw()のどちらも存在しない場合はエラーにする。
+- window.onerrorとunhandledrejectionをアプリのコンソールへ通知する。
+
+作品から利用できるAPI:
+- 選択したバージョンに含まれる通常のp5.jsグローバルモードAPIを利用できる。
+- 例: setup, preload, draw, createCanvas, resizeCanvas, background, shape描画、画像、
+  テキスト、WebGL、マウス、タッチ、時刻、noise、random等。
+- p5.soundを有効にした作品はloadSound、Oscillator、FFT等のp5.sound APIを利用できる。
+- 作品素材は相対パス assets/ファイル名 で読み込む。
+- 外部ライブラリを任意に追加するHTML編集機能はない。
+- p5_runner.html自体やDOM構造はアプリ内部実装であり、作品向けの安定公開APIとはしない。
+
+8.4 キャンバス表示とサイズ
+
+- p5.jsが生成した論理width / heightと描画バッファは通常変更しない。
+- 表示領域へ収まる最大倍率で縦横比を保ち、CSS表示サイズと中央位置だけを調整する。
+- Android側のPreviewWebViewHostも論理サイズを測定し、同じ比率で中央配置する。
+- この二層構成により、表示とAndroidのタッチ配送座標を一致させる。
+- ResizeObserver、visualViewport resize、window resize、canvas属性変更を監視して再配置する。
+- preload()完了後のsetup実行を待ってから初回フィットする。
+- noLoop中の作品は必要時にredrawする。
+- setupのみの2D作品を回転する場合は、既存キャンバスを一時コピーして描画を維持する。
+- 全画面では描画の縦横入れ替えに対応する。
+- 設定により、全画面でも元の論理描画サイズを維持できる。
+- 対応プレビュー比率は16:9、4:3、1:1、9:16、端末比率。
+- 横画面はエディターとプレビューの分割幅を35%、50%、65%から選択可能。
+- 縦画面では編集時プレビュー非表示を既定で有効化している。
+
+8.5 プレビュー操作
+
+- 実行 / 再読み込み
+- 一時停止 / 再開
+- 全画面表示 / 終了
+- 全画面時の描画縦横切り替え
+- スクリーンショット
+- 録画開始 / 停止
+- 録画中またはカウントダウン中は再実行を拒否する
+- 録画中は全画面終了を拒否する
+
+自動実行:
+- 既定で有効。
+- 保存済み状態への復元やバックアップ復元後、設定が有効なら再実行する。
+
+
+9. プレビュー内部JavaScript API
+-------------------------------
+
+以下はwww/p5_runner.htmlとAndroid間の内部APIである。
+通常の作品コードが直接呼び出すための公開APIではない。
+
+AndroidからJavaScriptへ:
+- window.pauseSketch()
+  p5.jsのnoLoop()とAudioContext.suspend()を実行する。
+- window.resumeSketch()
+  p5.jsのloop()とAudioContext.resume()を実行する。
+- window.__editKiroCaptureScreenshot()
+  canvas.toDataURL("image/png")をAndroidへ返す。
+- window.__editKiroStartRecording(format, bitrate)
+  formatはmp4 / webm / gif。キャンバス録画を開始する。
+- window.__editKiroStopRecording()
+  録画を終了し、保存処理へ移る。
+- window.__editKiroSetCanvasSwapped(swapped)
+  全画面表示中の論理キャンバス縦横を切り替える。
+
+JavaScriptからAndroidへ。window.Androidとして公開:
+- getSketchCode(): String
+  連結済み作品コードを返す。
+- getP5Version(): String
+  1.11.5または2.3.3を返す。
+- isP5SoundEnabled(): Boolean
+  p5.sound設定を返す。
+- onError(message)
+  行番号不明の実行エラーを通知する。
+- onRuntimeError(message, line)
+  sketch.js上の行番号付き実行エラーを通知する。
+- onStatusChanged(status)
+  「実行中」「一時停止中」の状態を通知する。
+- onScreenshotReady(dataUrl)
+  PNG Data URLをAndroidへ渡す。
+- onRecordingStatusChanged(recording)
+  録画状態を通知する。
+- beginRecordingTransfer(token): Boolean
+  一時録画ファイルを作成する。
+- appendRecordingChunk(token, base64): Boolean
+  Base64化した録画チャンクを追記する。
+- finishRecordingTransfer(token, mimeType)
+  一時録画を閉じ、MediaStore保存へ渡す。
+- abortRecordingTransfer(token)
+  転送を破棄する。
+- onRecordingSaving()
+  保存処理中状態へ移行する。
+- onCaptureError(message)
+  キャプチャエラーをユーザーへ表示する。
+
+互換上の注意:
+- __editKiro*、window.Android、runnerのDOMは内部実装名である。
+- 将来変更可能なため、一般のp5.js作品は通常のp5.js APIだけを使う。
+
+
+10. スクリーンショットと録画
+----------------------------
+
+スクリーンショット:
+- 現在のp5 CanvasをPNG Data URLへ変換する。
+- Pictures/EditRiNへ保存する。
+- ファイル名はEditRiN_{時刻}.png。
+
+動画録画:
+- Canvas.captureStream(30)とMediaRecorderを使用する。
+- MP4候補: AVC Baseline系、一般MP4の順に端末対応を確認する。
+- 現行UIで選択できる録画形式はMP4とGIF。
+- 内部runnerはWebMにも対応し、WebM指定時はVP9、VP8、一般WebMの順に端末対応を確認する。
+- MP4は端末が対応しない場合、明示的にエラー表示する。
+- 30fps、最大60秒。
+- MP4ビットレートは2 / 5 / 10 Mbps。既定値5 Mbps。
+- 録画開始カウントダウンは0 / 3 / 5秒。既定値3秒。
+
+GIF録画:
+- 30fps、最大15秒。
+- Worker内でフレームごとの適応パレットとGIF圧縮を行う。
+- GIFはPictures/EditRiN、動画はMovies/EditRiNへ保存する。
+
+録画転送:
+- JavaScriptからAndroidへ小分けのBase64チャンクで送る。
+- 1チャンクのBase64文字列は最大350,000文字。
+- 転送全体は最大256MB。
+- Web側の未転送キューが16MBを超えた場合は停止する。
+- 一時ファイルはcacheDir/recording-transferに置き、完了または中止時に整理する。
+
+録画後:
+- サムネイル、形式、容量、時間を表示する。
+- 開く、通常共有、X共有に対応する。
+- X共有では設定された本文と、対象録画専用に複製した添付ファイルを使用する。
+- 共有用一時ファイルは最大512MBの範囲で保持し、48時間を超えた古いものを削除する。
+
+
+11. 素材管理
+------------
+
+保存方式:
+- 実体はfilesDir/project-assetsへSHA-256をファイル名として保存する。
+- 同一内容は同じblobを共有可能。
+- 作品側は表示用の素材名からhash、size、mimeを参照する。
+- 不要になったblobは、端末内作品、外部作品、実行中プレビューからの参照を確認して削除する。
+
+制限:
+- 1ファイル最大50MB
+- 1作品最大200MB
+- 1作品最大100素材
+- 全体ZIPの素材合計最大512MB
+- 素材名は最大160文字
+- 先頭ドット、スラッシュ、バックスラッシュ、?、#、%、制御文字は禁止
+
+対応例:
+- 画像: PNG、JPEG、GIF、WebP、SVG
+- 音声: MP3、WAV、OGG、M4A
+- 動画: MP4、WebM
+- フォント: TTF、OTF、WOFF、WOFF2
+- データ: JSON、CSV、TXT
+- 3D / Shader: OBJ、MTL、VERT、FRAG、GLSL
+
+機能:
+- 複数素材追加
+- 同名時の自動連番
+- 名前変更
+- 削除
+- パスをコピー
+- 読み込みコードをカーソル位置へ挿入
+- 画像プレビュー
+- 音声再生
+- text / JSONの先頭4,096文字表示
+- その他はMIME、サイズ等の情報表示
+
+自動挿入するローダー:
+- image/* -> loadImage
+- audio/* -> loadSound
+- font/* -> loadFont
+- .json -> loadJSON
+- .csv -> loadTable
+- video/* -> createVideo
+- その他 -> loadStrings
+
+
+12. 入出力とバックアップ
+-------------------------
+
+JS単体:
+- 端末の.jsファイルを新しい作品として取り込む。
+- 現在のsketch.jsを書き出す。
+
+作品ZIP:
+- 1作品のコード、追加JS、素材、p5.js設定、プレビュー比率を含める。
+- インポート時は新しいUUIDを付け、既存作品と設定を維持したまま追加する。
+- ZIP内部はworks.json、settings.json、assets/{SHA-256}。
+
+全体バックアップZIP:
+- 全作品、全素材、対応するエディター設定を保存・復元する。
+- ZIP内部はworks.json、settings.json、assets/{SHA-256}。
+- 不明なZIPエントリー、重複エントリー、欠落素材、hash不一致を拒否する。
+- 展開するのではなくZipInputStreamから検証しながら読み込むため、パストラバーサルを許さない。
+
+
+13. p5.js Web Editor取り込み
+---------------------------
+
+- 対象: editor.p5js.org上のアカウント公開作品。
+- ユーザー名は1〜64文字、英数字、ピリオド、アンダースコア、ハイフンのみ。
+- 公開作品一覧APIから最大500作品、各作品最大500ファイルを解析する。
+- sketch.jsをメインコードとする。見つからない場合は最初のJSを使用する。
+- その他のJSは追加ファイルとして取り込む。
+- index.htmlからp5.js 2系の記述とp5.sound使用を推定する。
+- 外部素材はHTTPSのみ許可する。
+- リダイレクトは最大3回、HTTPSから外れる遷移は拒否する。
+- 素材パスをassets/名前へ置換する。
+- CSSおよび任意HTML構造は作品実行環境として取り込まない。
+
+
+14. 設定
+--------
+
+表示と言語:
+- 言語: システム / 日本語 / English / 中文
+- テーマ: システム / ダーク / ライト / ターミナル
+- カスタムフォント取り込みと削除
+- フォント連字
+- ステータスバー表示
+- 画面回転制御
+- 横画面でノッチ部分まで使用
+
+エディターとプレビュー:
+- 自動実行
+- 編集時にプレビューを隠す
+- コンパクトプレビュー
+- サイズ調整バー
+- 横画面のプレビュー幅
+- 全画面でも描画サイズを維持
+- 自動インデント
+- 行番号
+- 編集キーバー
+- 入力候補
+- 移動キー
+- 記号キー
+- 編集キーのコンパクト表示
+- 文字サイズ
+- 未保存コード復元
+
+保存、録画、共有:
+- 作品フォルダー選択と解除
+- JS読み込み / 書き出し
+- 全体バックアップ / 復元
+- MP4ビットレート
+- 録画開始カウントダウン
+- X共有本文
+
+About:
+- アプリ名Edit:RiN
+- BuildConfig.VERSION_NAMEによる現在バージョン表示
+- 手動更新確認
+- 開発者X: https://x.com/rincodedev
+- 任意支援OFUSE: https://ofuse.me/rincode
+- オープンソースライセンス表示
+- 外部URLはACTION_VIEWでアプリまたはブラウザーへ渡す
+
+
+15. テーマとレイアウト
+---------------------
+
+テーマ:
+- SYSTEM: Android 12以降はDynamic Color。端末の明暗に追従
+- DARK: 黒基調
+- LIGHT: 白基調
+- TERMINAL: 黒と緑、等幅フォント、角丸なし
+
+ターミナルテーマ:
+- primaryは明るい緑
+- 背景は黒
+- surfaceは黒に近い緑系
+- MaterialThemeの全Shapesを角0へ変更
+- 独自コンポーネントもterminalAwareShapeでRectangleShapeへ切り替える
+- 全タイポグラフィをFontFamily.Monospaceへ切り替える
+
+レスポンシブ構成:
+- 縦画面はプレビューとエディターの上下構成。
+- 横画面はプレビューとエディターの左右分割。
+- 大きい画面では設定や作品操作を複数列にする。
+- 小さい画面、横画面、大きい文字倍率でも主要操作へ到達できるようスクロール領域を持つ。
+- safe drawing、IME、display cutout、system barsを考慮する。
+- 横画面の没入表示ではシステムバーをスワイプ時だけ一時表示する。
+
+
+16. 多言語
+----------
+
+- 対応言語: 日本語、英語、中国語簡体字。
+- 日本語の表示文字列をAppLanguage.ktの変換キーとして使用する。
+- 選択がsystemの場合、端末言語がjaなら日本語、zhなら中国語、それ以外は英語。
+- strings.xmlはアプリ名等のAndroidリソースに使用し、Compose内の主要UI文言はAppLanguage.ktで変換する。
+
+
+17. 更新確認
+------------
+
+- 起動時にバックグラウンドで自動確認する。
+- 起動時確認は、新しい安定版がある場合だけ通知する。
+- Aboutから手動確認できる。手動時は最新、更新なし、失敗も通知する。
+- GitHub Releases APIを使用する。
+- draft、prerelease、バージョンサフィックス付きタグを除外する。
+- SemVer形式vX.Y.Zを比較する。
+- 接続タイムアウト10秒、読み込みタイムアウト10秒。
+- 応答上限4MB。
+- リダイレクトは自動追従しない。
+- 更新先はGitHubのEdit:RiN Releasesページ。
+
+
+18. セキュリティとデータ保護
+---------------------------
+
+- プレビューは任意インターネットURLではなく、限定されたローカルHTTPS originから読み込む。
+- WebViewのfileアクセスとcontentアクセスを無効化する。
+- 素材URLは現在実行中の作品tokenと登録済み素材だけに限定する。
+- 素材とバックアップに個数、名称、サイズ、総容量、hash検証を設ける。
+- 外部素材取得はHTTPS限定。
+- 読み込み不能な外部作品フォルダーは上書きしない。
+- AtomicFileで作品と下書きの途中破損を抑止する。
+- Android共有はFileProviderまたはMediaStore URIを使用し、一時的な読み取り権限を付与する。
+- 秘密鍵、署名パスワード、Android SDKローカルパスをアプリデータや公開ソースへ含めない。
+
+注意:
+- p5.js作品コード自体はJavaScriptとしてWebView内で実行される。
+- Edit:RiNは作品コードを信頼できない外部Webページへ送信しない。
+- p5.js Web Editor取り込みと更新確認だけが明示的なネットワーク機能である。
+
+
+19. 主要な永続設定キー
+----------------------
+
+SharedPreferences名: ugoku_atelier_prefs
+
+主なキー:
+- setting_auto_run
+- setting_compact_preview
+- hide_editing_preview
+- setting_preserve_expanded_preview
+- setting_landscape_preview_split
+- setting_resize_handles_visible
+- setting_editor_font
+- setting_auto_indent
+- setting_line_numbers
+- setting_editor_accessory_bar
+- setting_code_completion
+- setting_accessory_navigation
+- setting_accessory_symbols
+- setting_compact_accessory_keys
+- setting_mp4_bitrate_mbps
+- setting_x_share_text
+- setting_recording_countdown_seconds
+- works_folder_uri
+- theme_mode
+- setting_status_bar
+- setting_landscape_use_cutout
+- setting_app_language
+- setting_manual_rotation
+- setting_draft_recovery
+- p5_web_editor_username
+- custom_font_file
+- custom_font_name
+- font_ligatures
+- work_sort
+
+これらの名称は既存利用者の設定互換に関わるため、変更時は移行処理が必要になる。
+
+
+20. 主要ファイル対応表
+----------------------
+
+- android/app/build.gradle
+  バージョン、SDK、署名、依存関係、Webアセット同期
+- android/app/src/main/AndroidManifest.xml
+  権限、Activity、FileProvider
+- android/app/src/main/java/com/hikariatelier/app/MainActivity.kt
+  アプリ本体の画面と統合ロジック
+- android/app/src/main/java/com/hikariatelier/app/EditorSessionViewModel.kt
+  作品モデルと編集セッション
+- android/app/src/main/java/com/hikariatelier/app/WorkStoreCodec.kt
+  works.json形式
+- android/app/src/main/java/com/hikariatelier/app/ProjectAssets.kt
+  素材、ZIP、hash、容量制限
+- android/app/src/main/java/com/hikariatelier/app/AssetWebClient.kt
+  プレビューへのローカル配信
+- android/app/src/main/java/com/hikariatelier/app/PreviewWebViewHost.kt
+  WebView論理サイズと表示変換
+- android/app/src/main/java/com/hikariatelier/app/PreviewGeometry.kt
+  プレビュー寸法計算
+- android/app/src/main/java/com/hikariatelier/app/WorkGallery.kt
+  作品一覧とサムネイル
+- android/app/src/main/java/com/hikariatelier/app/P5WebEditor.kt
+  p5.js Web Editor取り込み
+- android/app/src/main/java/com/hikariatelier/app/RecordingTransfer.kt
+  WebからAndroidへの録画チャンク転送
+- android/app/src/main/java/com/hikariatelier/app/RecordingShareFile.kt
+  録画共有用一時ファイル
+- android/app/src/main/java/com/hikariatelier/app/UpdateChecker.kt
+  GitHub Releases更新確認
+- android/app/src/main/java/com/hikariatelier/app/AppLanguage.kt
+  UI翻訳
+- android/app/src/main/java/com/hikariatelier/app/ui/theme/Theme.kt
+  テーマ、配色、フォント、形状
+- www/p5_runner.html
+  p5.js実行、表示調整、エラー、スクリーンショット、録画
+- www/p5-v1.min.js
+  p5.js 1.11.5
+- www/p5-v2.min.js
+  p5.js 2.3.3
+- www/p5.sound.min.js
+  p5.sound 0.4.1
+- www/samples/*.js
+  初期作品コード
+
+
+21. 変更時に維持すべき互換点
+-----------------------------
+
+- applicationIdとデバッグsuffix
+- 既存署名ID
+- SharedPreferencesのキー
+- local-works.jsonとhikari_atelier_works.json
+- works.jsonの既存フィールドと読み込み互換
+- 作品ID、保存日時、履歴
+- 素材のSHA-256参照方式
+- assets/ファイル名という作品側パス
+- バックアップZIPの構造
+- p5.js 2.3.3と1.11.5の両方
+- p5.sound 0.4.1
+- プレビュー非表示中も含むWebViewの寿命
+- 論理キャンバスサイズ、全画面、回転、タッチ座標の対応
+- 日本語、英語、中国語の表示構成
+
+
+22. 現時点での確認範囲
+----------------------
+
+- 本文は現行ソース、Gradle設定、Manifest、README、素材ガイドを読み取って作成した。
+- この文書作成のためのビルド、端末試験、ネットワーク通信は行っていない。
+- 実装を変更した場合は、この仕様書も同じ変更単位で更新する。

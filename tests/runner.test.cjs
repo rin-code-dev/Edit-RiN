@@ -328,28 +328,54 @@ test('orientation repaints paused drawings and preserves setup-only 2D content',
   assert.equal(staticWork.stats().painted, 2);
 });
 
-test('bundled DVD logo moves, bounces, changes color and stays inside resized canvases', () => {
-  const source = readFileSync(`${__dirname}/../www/samples/dvd.js`, 'utf8');
-  let size = 12, lastColor;
-  const c = { BOLD: 1, LEFT: 2, TOP: 3, deltaTime: 16, windowWidth: 800, windowHeight: 600, pixelDensity() {},
-    min: Math.min, max: Math.max, constrain: (x, a, b) => Math.max(a, Math.min(b, x)),
-    createCanvas(w, h) { c.width = w; c.height = h; },
-    textSize(v) { if (v !== undefined) size = v; return size; },
-    textWidth: s => s.length * size * .6, textAscent: () => size * .8, textDescent: () => size * .2,
-    textFont() {}, textStyle() {}, textAlign() {}, noStroke() {}, background() {},
-    fill(v) { lastColor = v; }, text() {}
+test('bundled Parameters.js parses declarations and draws with rinParams', () => {
+  const source = readFileSync(`${__dirname}/../www/samples/Parameters.js`, 'utf8');
+  assert.ok(source.includes('// @rin number speed'));
+  assert.ok(source.includes('// @rin boolean glow'));
+  assert.ok(source.includes('// @rin color theme'));
+  const c = {
+    TWO_PI: Math.PI * 2, CLOSE: 1, width: 600, height: 600, frameCount: 1,
+    createCanvas() {}, background() {}, translate() {}, push() {}, pop() {},
+    rotate() {}, beginShape() {}, endShape() {}, vertex() {}, bezierVertex() {},
+    circle() {}, stroke() {}, noStroke() {}, strokeWeight() {}, fill() {}, noFill() {},
+    sin: Math.sin, cos: Math.cos, red: () => 0, green: () => 229, blue: () => 255,
+    color: () => ({}),
+    rinParams: { speed: 2, petals: 6, theme: '#00e5ff', bg: '#000000', glow: true, filled: true }
   };
-  vm.createContext(c); vm.runInContext(source + '\nsetup(); updateLogo();', c);
-  const first = vm.runInContext('x', c), color = vm.runInContext('colorIndex', c);
-  vm.runInContext('updateLogo()', c); assert.ok(vm.runInContext('x', c) > first);
-  vm.runInContext('x = width - logoWidth; updateLogo();', c);
-  assert.equal(vm.runInContext('directionX', c), -1);
-  assert.notEqual(vm.runInContext('colorIndex', c), color);
-  for (const [w, h] of [[540, 960], [100, 60], [1, 1]]) {
-    c.width = w; c.height = h;
-    vm.runInContext('measureLogo(); for (let i = 0; i < 1000; i++) updateLogo();', c);
-    assert.equal(vm.runInContext('x >= 0 && y >= 0 && x + logoWidth <= width && y + logoHeight <= height', c), true);
-  }
+  vm.createContext(c);
+  vm.runInContext(source + '\nsetup(); draw();', c);
+  assert.ok(vm.runInContext('angle', c) > 0);
+});
+
+test('bundled Sound.js parses and initializes with p5.sound APIs', () => {
+  const source = readFileSync(`${__dirname}/../www/samples/Sound.js`, 'utf8');
+  assert.ok(source.includes('p5.Oscillator'));
+  assert.ok(source.includes('p5.FFT'));
+  const c = {
+    TWO_PI: Math.PI * 2, width: 600, height: 600, frameCount: 1,
+    HSB: 1, CLOSE: 2, CENTER: 3, mouseIsPressed: false, mouseX: 0, mouseY: 0,
+    createCanvas() {}, colorMode() {}, background() {}, translate() {}, push() {}, pop() {},
+    line() {}, stroke() {}, noStroke() {}, strokeWeight() {}, fill() {}, noFill() {},
+    beginShape() {}, endShape() {}, curveVertex() {}, textAlign() {}, textSize() {}, text() {},
+    min: Math.min, map: (v, a, b, c, d) => c + ((v - a) / (b - a)) * (d - c),
+    cos: Math.cos, sin: Math.sin, floor: Math.floor,
+    midiToFreq: (m) => 440 * Math.pow(2, (m - 69) / 12),
+    p5: {
+      Oscillator: function() {
+        return { start() {}, amp() {}, freq() {} };
+      },
+      FFT: function() {
+        return {
+          waveform: () => new Float32Array(128),
+          analyze: () => new Uint8Array(64)
+        };
+      }
+    }
+  };
+  vm.createContext(c);
+  vm.runInContext(source + '\nsetup(); draw();', c);
+  assert.ok(vm.runInContext('osc', c));
+  assert.ok(vm.runInContext('fft', c));
 });
 
 test('hiding and restoring portrait preview preserves artwork and paused pixels', () => {
