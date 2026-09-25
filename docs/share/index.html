@@ -9,18 +9,19 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      -webkit-tap-highlight-color: transparent;
     }
     html, body {
       width: 100vw;
       height: 100vh;
       background-color: #0F111A;
       color: #E2E8F0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      touch-action: none;
+      user-select: none;
     }
     #top-bar {
       position: fixed;
@@ -30,14 +31,13 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      pointer-events: none;
       z-index: 1000;
+      transition: opacity 0.3s ease;
     }
     .badge {
-      pointer-events: auto;
-      background: rgba(15, 17, 26, 0.75);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: rgba(15, 17, 26, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 20px;
       padding: 6px 14px;
@@ -45,10 +45,14 @@
       font-weight: 500;
       color: #A8C7FA;
       text-decoration: none;
-      transition: background 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: background 0.2s, transform 0.1s;
     }
-    .badge:hover {
-      background: rgba(255, 255, 255, 0.15);
+    .badge:active {
+      transform: scale(0.96);
     }
     canvas {
       display: block !important;
@@ -65,7 +69,231 @@
       font-size: 13px;
       color: #7E8294;
       letter-spacing: 0.08em;
+      font-family: monospace;
       pointer-events: none;
+    }
+
+    /* Floating Bottom Control Bar */
+    #control-bar {
+      position: fixed;
+      bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(22, 24, 34, 0.82);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 6px 10px;
+      border-radius: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .ctrl-btn {
+      background: none;
+      border: none;
+      color: #D4D7E2;
+      cursor: pointer;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, color 0.2s, transform 0.1s;
+    }
+    .ctrl-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #FFFFFF;
+    }
+    .ctrl-btn:active {
+      transform: scale(0.92);
+    }
+    .ctrl-btn.active {
+      color: #A8C7FA;
+      background: rgba(168, 199, 250, 0.15);
+    }
+    .ctrl-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+    .divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(255, 255, 255, 0.15);
+      margin: 0 2px;
+    }
+
+    /* Parameters Drawer */
+    #params-panel {
+      position: fixed;
+      bottom: 84px;
+      right: 20px;
+      width: 310px;
+      max-width: calc(100vw - 40px);
+      max-height: 60vh;
+      background: rgba(20, 22, 32, 0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+      z-index: 1100;
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+    }
+    #params-panel.visible {
+      display: flex;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #FFFFFF;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .param-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .param-title-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #C5C9D6;
+    }
+    .param-val {
+      font-family: monospace;
+      color: #A8C7FA;
+    }
+    input[type=range] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #A8C7FA;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider-toggle {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: rgba(255, 255, 255, 0.2);
+      transition: .2s;
+      border-radius: 22px;
+    }
+    .slider-toggle:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider-toggle {
+      background-color: #669df6;
+    }
+    input:checked + .slider-toggle:before {
+      transform: translateX(18px);
+    }
+
+    /* Modal Code Viewer */
+    #code-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      padding: 20px;
+    }
+    #code-modal.visible {
+      display: flex;
+    }
+    .modal-card {
+      width: 100%;
+      max-width: 640px;
+      max-height: 80vh;
+      background: #141622;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: #10121C;
+    }
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #E2E8F0;
+      font-family: monospace;
+    }
+    .copy-btn {
+      background: rgba(168, 199, 250, 0.15);
+      border: 1px solid rgba(168, 199, 250, 0.3);
+      color: #A8C7FA;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover { background: rgba(168, 199, 250, 0.25); }
+    .code-body {
+      flex: 1;
+      padding: 16px;
+      overflow: auto;
+      font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #D4D7E2;
+      white-space: pre;
+      user-select: text;
     }
     #error-msg {
       display: none;
@@ -75,7 +303,7 @@
       transform: translate(-50%, -50%);
       width: 90%;
       max-width: 500px;
-      background: rgba(239, 68, 68, 0.15);
+      background: rgba(239, 68, 68, 0.18);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid #EF4444;
@@ -86,26 +314,79 @@
       font-size: 13px;
       line-height: 1.5;
       white-space: pre-wrap;
-      z-index: 2000;
+      z-index: 3000;
       box-shadow: 0 20px 40px rgba(0,0,0,0.6);
     }
   </style>
 
-  <!-- pako for universal zero-dependency inflate support -->
+  <!-- pako for fast inflate -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
   <!-- p5.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.5/p5.min.js"></script>
 </head>
 <body>
   <div id="top-bar">
-    <span class="badge">Edit:RiN</span>
-    <a class="badge" href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener">GitHub</a>
+    <a class="badge" href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener">
+      <span>Edit:RiN</span>
+    </a>
+    <a class="badge" href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener">
+      <span>Get App</span>
+    </a>
   </div>
 
   <div id="loading-indicator">LOADING SKETCH...</div>
   <div id="error-msg"></div>
 
+  <!-- Floating Control Bar -->
+  <div id="control-bar" style="display:none;">
+    <button class="ctrl-btn" id="btn-playpause" title="Play / Pause">
+      <svg id="icon-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      <svg id="icon-play" viewBox="0 0 24 24" style="display:none;"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="ctrl-btn" id="btn-restart" title="Restart">
+      <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+    </button>
+    <div class="divider"></div>
+    <button class="ctrl-btn" id="btn-params" title="Live Parameters" style="display:none;">
+      <svg viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+    </button>
+    <button class="ctrl-btn" id="btn-code" title="View Source Code">
+      <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+    </button>
+  </div>
+
+  <!-- Parameters Floating Panel -->
+  <div id="params-panel">
+    <div class="panel-header">
+      <span>Parameters</span>
+      <button class="ctrl-btn" id="btn-close-params" style="width:28px; height:28px;">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div id="params-list" style="display:flex; flex-direction:column; gap:12px;"></div>
+  </div>
+
+  <!-- Code Modal -->
+  <div id="code-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">sketch.js</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="copy-btn" id="btn-copy">Copy Code</button>
+          <button class="ctrl-btn" id="btn-close-code" style="width:32px; height:32px;">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="code-body" id="code-display"></div>
+    </div>
+  </div>
+
   <script>
+    let globalCode = '';
+    let isRunning = true;
+    let autoHideTimer = null;
+
     function base64UrlToBytes(base64url) {
       let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
       while (base64.length % 4) base64 += '=';
@@ -118,27 +399,23 @@
     }
 
     async function decompress(bytes) {
-      // 1. Try pako inflate (works everywhere, synchronous & fast)
       if (typeof pako !== 'undefined' && typeof pako.inflate === 'function') {
         try {
           return pako.inflate(bytes, { to: 'string' });
-        } catch (e) {
-          // If zlib header is missing, try raw inflate
+        } catch (_) {
           return pako.inflateRaw(bytes, { to: 'string' });
         }
       }
-
-      // 2. Fallback to native DecompressionStream
       if (typeof DecompressionStream !== 'undefined') {
         const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
         return new Response(stream).text();
       }
-
       throw new Error('No decompression method available.');
     }
 
     function parseRinParams(code) {
-      const params = Object.create(null);
+      const values = Object.create(null);
+      const descriptors = [];
       const regex = /\/\/\s*@rin\s+(number|boolean|color)\s+([a-zA-Z0-9_]+)(?:\s+([^\n\r]+))?/g;
       let match;
       while ((match = regex.exec(code)) !== null) {
@@ -146,14 +423,161 @@
         const name = match[2];
         const rest = (match[3] || '').trim().split(/\s+/);
         if (type === 'number') {
-          params[name] = Number(rest[0]) || 0;
+          const val = Number(rest[0]) || 0;
+          const min = rest[1] !== undefined ? Number(rest[1]) : (val > 0 ? 0 : val * 2);
+          const max = rest[2] !== undefined ? Number(rest[2]) : (val > 0 ? val * 2 : 100);
+          const step = rest[3] !== undefined ? Number(rest[3]) : ((max - min) > 10 ? 1 : 0.1);
+          values[name] = val;
+          descriptors.push({ type, name, default: val, min, max, step });
         } else if (type === 'boolean') {
-          params[name] = rest[0] !== 'false';
+          const val = rest[0] !== 'false';
+          values[name] = val;
+          descriptors.push({ type, name, default: val });
         } else if (type === 'color') {
-          params[name] = rest[0] || '#ffffff';
+          const val = rest[0] || '#ffffff';
+          values[name] = val;
+          descriptors.push({ type, name, default: val });
         }
       }
-      return params;
+      return { values, descriptors };
+    }
+
+    function setupParamsUi(descriptors) {
+      if (!descriptors || descriptors.length === 0) return;
+      const btnParams = document.getElementById('btn-params');
+      const paramsList = document.getElementById('params-list');
+      btnParams.style.display = 'flex';
+
+      paramsList.innerHTML = '';
+      descriptors.forEach(desc => {
+        const item = document.createElement('div');
+        item.className = 'param-item';
+
+        if (desc.type === 'number') {
+          item.innerHTML = `
+            <div class="param-title-row">
+              <span>${desc.name}</span>
+              <span class="param-val" id="val-${desc.name}">${desc.default}</span>
+            </div>
+            <input type="range" min="${desc.min}" max="${desc.max}" step="${desc.step}" value="${desc.default}" id="input-${desc.name}">
+          `;
+          paramsList.appendChild(item);
+          const slider = item.querySelector(`#input-${desc.name}`);
+          const valDisplay = item.querySelector(`#val-${desc.name}`);
+          slider.addEventListener('input', () => {
+            const num = Number(slider.value);
+            valDisplay.textContent = num;
+            window.rinParams[desc.name] = num;
+            if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
+          });
+        } else if (desc.type === 'boolean') {
+          item.innerHTML = `
+            <div class="toggle-row">
+              <span class="param-title-row">${desc.name}</span>
+              <label class="switch">
+                <input type="checkbox" ${desc.default ? 'checked' : ''} id="input-${desc.name}">
+                <span class="slider-toggle"></span>
+              </label>
+            </div>
+          `;
+          paramsList.appendChild(item);
+          const toggle = item.querySelector(`#input-${desc.name}`);
+          toggle.addEventListener('change', () => {
+            window.rinParams[desc.name] = toggle.checked;
+            if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
+          });
+        }
+      });
+    }
+
+    function setupControls() {
+      const bar = document.getElementById('control-bar');
+      bar.style.display = 'flex';
+
+      const btnPlayPause = document.getElementById('btn-playpause');
+      const iconPause = document.getElementById('icon-pause');
+      const iconPlay = document.getElementById('icon-play');
+      const btnRestart = document.getElementById('btn-restart');
+      const btnParams = document.getElementById('btn-params');
+      const paramsPanel = document.getElementById('params-panel');
+      const btnCloseParams = document.getElementById('btn-close-params');
+      const btnCode = document.getElementById('btn-code');
+      const codeModal = document.getElementById('code-modal');
+      const btnCloseCode = document.getElementById('btn-close-code');
+      const btnCopy = document.getElementById('btn-copy');
+      const codeDisplay = document.getElementById('code-display');
+
+      btnPlayPause.addEventListener('click', () => {
+        if (isRunning) {
+          if (typeof noLoop === 'function') noLoop();
+          isRunning = false;
+          iconPause.style.display = 'none';
+          iconPlay.style.display = 'block';
+        } else {
+          if (typeof loop === 'function') loop();
+          isRunning = true;
+          iconPause.style.display = 'block';
+          iconPlay.style.display = 'none';
+        }
+      });
+
+      btnRestart.addEventListener('click', () => {
+        if (typeof window.setup === 'function') {
+          window.setup();
+          if (!isRunning) {
+            if (typeof loop === 'function') loop();
+            isRunning = true;
+            iconPause.style.display = 'block';
+            iconPlay.style.display = 'none';
+          }
+        }
+      });
+
+      btnParams.addEventListener('click', () => {
+        const visible = paramsPanel.classList.toggle('visible');
+        btnParams.classList.toggle('active', visible);
+      });
+      btnCloseParams.addEventListener('click', () => {
+        paramsPanel.classList.remove('visible');
+        btnParams.classList.remove('active');
+      });
+
+      btnCode.addEventListener('click', () => {
+        codeDisplay.textContent = globalCode;
+        codeModal.classList.add('visible');
+      });
+      btnCloseCode.addEventListener('click', () => {
+        codeModal.classList.remove('visible');
+      });
+      codeModal.addEventListener('click', (e) => {
+        if (e.target === codeModal) codeModal.classList.remove('visible');
+      });
+
+      btnCopy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(globalCode);
+          btnCopy.textContent = 'Copied!';
+          setTimeout(() => { btnCopy.textContent = 'Copy Code'; }, 1800);
+        } catch (_) {
+          btnCopy.textContent = 'Failed';
+        }
+      });
+
+      // Auto-hide controls on inactivity
+      function resetActivityTimer() {
+        bar.style.opacity = '1';
+        document.getElementById('top-bar').style.opacity = '1';
+        clearTimeout(autoHideTimer);
+        autoHideTimer = setTimeout(() => {
+          if (!paramsPanel.classList.contains('visible') && !codeModal.classList.contains('visible')) {
+            bar.style.opacity = '0';
+            document.getElementById('top-bar').style.opacity = '0';
+          }
+        }, 3200);
+      }
+      window.addEventListener('mousemove', resetActivityTimer);
+      window.addEventListener('touchstart', resetActivityTimer);
+      resetActivityTimer();
     }
 
     async function startViewer() {
@@ -171,21 +595,26 @@
       try {
         const bytes = base64UrlToBytes(encodedCode);
         const code = await decompress(bytes);
+        globalCode = code;
 
         if (loading) loading.style.display = 'none';
 
-        // Provide default rinParams support
-        window.rinParams = parseRinParams(code);
+        const parsed = parseRinParams(code);
+        window.rinParams = parsed.values;
 
-        // Inject sketch code into page
+        // Inject sketch
         const script = document.createElement('script');
         script.textContent = `${code}\n//# sourceURL=sketch.js`;
         document.body.appendChild(script);
 
-        // Explicitly start p5 in global mode if not already started
+        // Start p5 in global mode
         if (typeof p5 !== 'undefined') {
           new p5();
         }
+
+        setupControls();
+        setupParamsUi(parsed.descriptors);
+
       } catch (err) {
         if (loading) loading.style.display = 'none';
         showError('Failed to load sketch:\n' + (err.message || String(err)));
@@ -200,7 +629,6 @@
       }
     }
 
-    // Start on DOM ready or immediate if already loaded
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', startViewer);
     } else {
