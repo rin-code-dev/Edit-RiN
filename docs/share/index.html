@@ -830,27 +830,36 @@
     function parseRinParams(code) {
       const values = Object.create(null);
       const descriptors = [];
-      const regex = /\/\/\s*@rin\s+(number|boolean|color)\s+([a-zA-Z0-9_]+)(?:\s+([^\n\r]+))?/g;
+      const regex = /^\s*\/\/\s*@rin\s+(number|color|boolean)\s+([A-Za-z_$][\w$]*)(?:\s+"([^"]{1,40})")?\s*(.*?)\s*$/gm;
       let match;
       while ((match = regex.exec(code)) !== null) {
         const type = match[1];
         const name = match[2];
-        const rest = (match[3] || '').trim().split(/\s+/);
+        const label = match[3] || name;
+        const rest = (match[4] || '').trim().split(/\s+/);
         if (type === 'number') {
-          const val = Number(rest[0]) || 0;
-          const min = rest[1] !== undefined ? Number(rest[1]) : (val > 0 ? 0 : val * 2);
-          const max = rest[2] !== undefined ? Number(rest[2]) : (val > 0 ? val * 2 : 100);
-          const step = rest[3] !== undefined ? Number(rest[3]) : ((max - min) > 10 ? 1 : 0.1);
-          values[name] = val;
-          descriptors.push({ type, name, default: val, min, max, step });
+          let min = 0, max = 100, def = 0, step = 1;
+          if (rest.length >= 4) {
+            min = Number(rest[0]);
+            max = Number(rest[1]);
+            def = Number(rest[2]);
+            step = Number(rest[3]);
+          } else if (rest.length === 1 && rest[0] !== '') {
+            def = Number(rest[0]);
+            max = def > 0 ? def * 2 : 100;
+          }
+          if (!isNaN(def) && isFinite(def)) {
+            values[name] = def;
+            descriptors.push({ type, name, label, default: def, min, max, step });
+          }
         } else if (type === 'boolean') {
-          const val = rest[0] !== 'false';
+          const val = rest[0]?.toLowerCase() === 'true';
           values[name] = val;
-          descriptors.push({ type, name, default: val });
+          descriptors.push({ type, name, label, default: val });
         } else if (type === 'color') {
-          const val = rest[0] || '#ffffff';
+          const val = rest[0] || '#00E5FF';
           values[name] = val;
-          descriptors.push({ type, name, default: val });
+          descriptors.push({ type, name, label, default: val });
         }
       }
       return { values, descriptors };
@@ -873,24 +882,49 @@
         if (desc.type === 'number') {
           item.innerHTML = `
             <div class="param-title-row">
-              <span>${desc.name}</span>
+              <div>
+                <div style="font-weight:600; color:#fff;">${desc.label}</div>
+                <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-dim);">rinParams.${desc.name}</div>
+              </div>
               <span class="param-val" id="val-${desc.name}">${desc.default}</span>
             </div>
-            <input type="range" min="${desc.min}" max="${desc.max}" step="${desc.step}" value="${desc.default}" id="input-${desc.name}">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="panel-btn" id="dec-${desc.name}" style="padding:2px 8px; font-weight:bold;">−</button>
+              <input type="range" min="${desc.min}" max="${desc.max}" step="${desc.step}" value="${desc.default}" id="input-${desc.name}" style="flex:1;">
+              <button class="panel-btn" id="inc-${desc.name}" style="padding:2px 8px; font-weight:bold;">+</button>
+            </div>
+            <div style="font-size:11px; color:var(--text-dim); display:flex; justify-content:space-between;">
+              <span>${desc.min} .. ${desc.max}</span>
+              <span>step: ${desc.step}</span>
+            </div>
           `;
           paramsList.appendChild(item);
           const slider = item.querySelector(`#input-${desc.name}`);
           const valDisplay = item.querySelector(`#val-${desc.name}`);
-          slider.addEventListener('input', () => {
-            const num = Number(slider.value);
-            valDisplay.textContent = num;
-            window.rinParams[desc.name] = num;
+          const btnDec = item.querySelector(`#dec-${desc.name}`);
+          const btnInc = item.querySelector(`#inc-${desc.name}`);
+
+          const updateNum = (val) => {
+            const clamped = Math.max(desc.min, Math.min(desc.max, val));
+            const decimals = String(desc.step).includes('.') ? String(desc.step).split('.')[1].length : 0;
+            const formatted = decimals > 0 ? Number(clamped.toFixed(decimals)) : Math.round(clamped);
+            slider.value = formatted;
+            valDisplay.textContent = formatted;
+            window.rinParams[desc.name] = formatted;
             if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
-          });
+          };
+
+          slider.addEventListener('input', () => updateNum(Number(slider.value)));
+          btnDec.addEventListener('click', () => updateNum(Number(slider.value) - desc.step));
+          btnInc.addEventListener('click', () => updateNum(Number(slider.value) + desc.step));
+
         } else if (desc.type === 'boolean') {
           item.innerHTML = `
             <div class="toggle-row">
-              <span class="param-title-row">${desc.name}</span>
+              <div>
+                <div style="font-weight:600; color:#fff;">${desc.label}</div>
+                <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-dim);">rinParams.${desc.name}</div>
+              </div>
               <label class="switch">
                 <input type="checkbox" ${desc.default ? 'checked' : ''} id="input-${desc.name}">
                 <span class="slider-toggle"></span>
@@ -903,6 +937,29 @@
             window.rinParams[desc.name] = toggle.checked;
             if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
           });
+
+        } else if (desc.type === 'color') {
+          item.innerHTML = `
+            <div class="toggle-row">
+              <div>
+                <div style="font-weight:600; color:#fff;">${desc.label}</div>
+                <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-dim);">rinParams.${desc.name}</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="param-val" id="val-${desc.name}">${desc.default}</span>
+                <input type="color" value="${desc.default}" id="input-${desc.name}" style="width:30px; height:30px; border-radius:8px; border:1px solid var(--border-glass); cursor:pointer; background:none; padding:0;">
+              </div>
+            </div>
+          `;
+          paramsList.appendChild(item);
+          const colorInput = item.querySelector(`#input-${desc.name}`);
+          const valDisplay = item.querySelector(`#val-${desc.name}`);
+          colorInput.addEventListener('input', () => {
+            const hex = colorInput.value.toUpperCase();
+            valDisplay.textContent = hex;
+            window.rinParams[desc.name] = hex;
+            if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
+          });
         }
       });
 
@@ -912,13 +969,16 @@
           descriptors.forEach(desc => {
             window.rinParams[desc.name] = desc.default;
             const input = document.getElementById(`input-${desc.name}`);
+            const valDisplay = document.getElementById(`val-${desc.name}`);
             if (input) {
               if (desc.type === 'number') {
                 input.value = desc.default;
-                const valDisplay = document.getElementById(`val-${desc.name}`);
                 if (valDisplay) valDisplay.textContent = desc.default;
               } else if (desc.type === 'boolean') {
                 input.checked = desc.default;
+              } else if (desc.type === 'color') {
+                input.value = desc.default;
+                if (valDisplay) valDisplay.textContent = desc.default;
               }
             }
           });

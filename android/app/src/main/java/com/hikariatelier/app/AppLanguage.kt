@@ -14,6 +14,11 @@ internal fun translateUi(source: String, language: String): String {
 internal val uiTranslations = mapOf(
     "使い方ガイド" to ("User Guide" to "使用指南"),
     "パラメータ" to ("Parameters" to "参数"),
+    "ライブパラメータ" to ("Live Parameters" to "实时参数"),
+    "初期値" to ("Default" to "默认值"),
+    "全て初期値に戻す" to ("Reset all" to "全部恢复默认"),
+    "テンプレートをコピー" to ("Copy template" to "复制模板"),
+    "テンプレートをコピーしました" to ("Template copied to clipboard" to "已复制模板到剪贴板"),
     "コードにパラメータ宣言を追加してください" to ("Add parameter declarations to your code" to "请在代码中添加参数声明"),
     "コードでは rinParams.speed と rinParams.ink を使います" to
         ("Use rinParams.speed and rinParams.ink in your code" to "在代码中使用 rinParams.speed 和 rinParams.ink"),

@@ -6445,7 +6445,38 @@ class MainActivity : ComponentActivity() {
                                 Toast.LENGTH_LONG).show()
                         }
                     },
-                    text = ::uiText
+                    text = ::uiText,
+                    onResetParameter = { parameter ->
+                        parameterWork?.parameterValues?.remove(parameter.name)
+                        val jsonValue = when (parameter) {
+                            is WorkParameter.Number, is WorkParameter.Boolean -> parameter.defaultValue
+                            is WorkParameter.Color -> JSONObject.quote(parameter.defaultValue)
+                        }
+                        webView?.evaluateJavascript(
+                            "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
+                        )
+                        if (parameterWork != null) {
+                            parameterWork.updatedAt = System.currentTimeMillis()
+                            saveStore()
+                        }
+                    },
+                    onResetAll = {
+                        declarations.forEach { parameter ->
+                            parameterWork?.parameterValues?.remove(parameter.name)
+                            val jsonValue = when (parameter) {
+                                is WorkParameter.Number, is WorkParameter.Boolean -> parameter.defaultValue
+                                is WorkParameter.Color -> JSONObject.quote(parameter.defaultValue)
+                            }
+                            webView?.evaluateJavascript(
+                                "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
+                            )
+                        }
+                        if (parameterWork != null) {
+                            parameterWork.updatedAt = System.currentTimeMillis()
+                            saveStore()
+                        }
+                    },
+                    onDismiss = { showParameterSheet = false }
                 )
             }
         }
