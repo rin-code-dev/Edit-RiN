@@ -39,12 +39,28 @@ internal object ShareCardGenerator {
     private const val WEB_VIEWER_BASE_URL = "https://rin-code-dev.github.io/Edit-RiN/share/#c="
 
     /**
+     * Cleans code of non-functional overhead (comments, extra empty lines, sourceURL)
+     * to minimize data payload and maximize QR module size, preserving // @rin declarations.
+     */
+    private fun cleanCodeForQr(code: String): String {
+        return code
+            .replace(Regex("""//#\s*sourceURL=[^\r\n]*"""), "")
+            .lines()
+            .map { it.trim() }
+            .filter { line ->
+                line.isNotEmpty() && (!line.startsWith("//") || line.startsWith("// @rin"))
+            }
+            .joinToString("\n")
+    }
+
+    /**
      * Checks if a QR code can be generated for this sketch.
      */
     fun checkQrStatus(code: String, hasAssets: Boolean): QrStatus {
         if (hasAssets) return QrStatus.CONTAINS_ASSETS
+        val cleaned = cleanCodeForQr(code)
         return try {
-            val compressed = compressCodeForUrl(code)
+            val compressed = compressCodeForUrl(cleaned)
             val url = WEB_VIEWER_BASE_URL + compressed
             val hints = mapOf(
                 EncodeHintType.MARGIN to 1,
@@ -75,7 +91,7 @@ internal object ShareCardGenerator {
     }
 
     /**
-     * Generates a QR code bitmap for the given URL.
+     * Generates a high-contrast QR code bitmap using ErrorCorrectionLevel.L to maximize module size.
      */
     fun generateQrBitmap(url: String, size: Int): Bitmap {
         val hints = mapOf(
@@ -120,14 +136,14 @@ internal object ShareCardGenerator {
     }
 
     /**
-     * Renders a customizable 16:9 share card (1280x720).
+     * Renders a high-resolution 1920x1080 (16:9 Full HD) share card with enlarged QR code for instant scanning.
      */
     fun renderShareCard(
         artwork: Bitmap,
         config: ShareCardConfig
     ): Bitmap {
-        val width = 1280
-        val height = 720
+        val width = 1920
+        val height = 1080
         val card = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(card)
 
@@ -138,28 +154,28 @@ internal object ShareCardGenerator {
         }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
-        // 2. Artwork (Left area: 580x580 at x=50, y=70)
-        val artSize = 580
-        val artX = 50f
-        val artY = 70f
-        val roundedArt = getRoundedCornerBitmap(artwork, 24f, artSize, artSize)
+        // 2. Artwork (Left area: 880x880 at x=80, y=100)
+        val artSize = 880
+        val artX = 80f
+        val artY = 100f
+        val roundedArt = getRoundedCornerBitmap(artwork, 32f, artSize, artSize)
         canvas.drawBitmap(roundedArt, artX, artY, null)
 
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#262833")
             style = Paint.Style.STROKE
-            strokeWidth = 2f
+            strokeWidth = 3f
         }
-        canvas.drawRoundRect(artX, artY, artX + artSize, artY + artSize, 24f, 24f, borderPaint)
+        canvas.drawRoundRect(artX, artY, artX + artSize, artY + artSize, 32f, 32f, borderPaint)
 
         // 3. Right Area Layout
-        val rightX = 660f
-        val contentWidth = width - rightX - 50f
+        val rightX = 1020f
+        val contentWidth = width - rightX - 80f
 
         // Title
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 38f
+            textSize = 54f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val safeTitle = config.title.trim().ifBlank { "Untitled" }
@@ -169,97 +185,98 @@ internal object ShareCardGenerator {
             contentWidth,
             TextUtils.TruncateAt.END
         ).toString()
-        canvas.drawText(displayTitle, rightX, 110f, titlePaint)
+        canvas.drawText(displayTitle, rightX, 160f, titlePaint)
 
         // Subtitle / Credit
         val creditPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#8E919A")
-            textSize = 19f
+            textSize = 26f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
-        canvas.drawText("Created with Edit:RiN", rightX, 142f, creditPaint)
+        canvas.drawText("Created with Edit:RiN", rightX, 206f, creditPaint)
 
         // Divider
         val dividerPaint = Paint().apply {
             color = Color.parseColor("#262833")
-            strokeWidth = 1.5f
+            strokeWidth = 2f
         }
-        canvas.drawLine(rightX, 162f, rightX + contentWidth, 162f, dividerPaint)
+        canvas.drawLine(rightX, 236f, rightX + contentWidth, 236f, dividerPaint)
 
         val hasQr = config.includeQr && config.qrStatus == QrStatus.AVAILABLE
         val hasCode = config.includeCode && config.snippetCode.isNotBlank()
+        val cleanedQrCode = cleanCodeForQr(config.fullCode)
 
         if (hasCode && hasQr) {
-            // Layout A: Both Code and QR
-            val qrCardSize = 170f
+            // Layout A: Both Code and QR (Enlarged 280x280 QR with generous white quiet-zone)
+            val qrCardSize = 280f
             val qrX = rightX + contentWidth - qrCardSize
-            val qrY = 720f - 70f - qrCardSize
+            val qrY = height - 100f - qrCardSize
 
             // Code Box above QR
-            val codeBoxH = qrY - 180f - 16f
-            drawCodeBox(canvas, rightX, 180f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
+            val codeBoxH = qrY - 260f - 24f
+            drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
 
-            // QR Area at Bottom Right
-            drawQrCard(canvas, qrX, qrY, qrCardSize, config.fullCode)
+            // Large QR Card at Bottom Right
+            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = 20f)
 
-            // Info beside QR
+            // Scan Info to the left of the QR
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
-                textSize = 21f
+                textSize = 30f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", rightX, qrY + 45f, hintTitlePaint)
+            canvas.drawText("Scan to run sketch", rightX, qrY + 80f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#8E919A")
-                textSize = 16f
+                textSize = 22f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs in browser with p5.js", rightX, qrY + 76f, hintSubPaint)
+            canvas.drawText("Runs in browser with p5.js", rightX, qrY + 125f, hintSubPaint)
 
             val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#5A5E70")
-                textSize = 14f
+                textSize = 20f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
-            canvas.drawText("rin-code-dev.github.io/Edit-RiN", rightX, qrY + 104f, urlPaint)
+            canvas.drawText("rin-code-dev.github.io/Edit-RiN", rightX, qrY + 165f, urlPaint)
 
         } else if (hasCode) {
             // Layout B: Code only (Full height)
-            val codeBoxH = (720f - 70f) - 180f
-            drawCodeBox(canvas, rightX, 180f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
+            val codeBoxH = (height - 100f) - 260f
+            drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
 
         } else if (hasQr) {
-            // Layout C: QR only (Minimal spacious layout)
-            val qrCardSize = 250f
-            val qrPadding = 14f
+            // Layout C: QR only (Extra large 380x380 QR)
+            val qrCardSize = 380f
+            val qrPadding = 24f
             val qrX = rightX
-            val qrY = 240f
+            val qrY = 320f
 
-            drawQrCard(canvas, qrX, qrY, qrCardSize, config.fullCode, qrPadding)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, qrPadding)
 
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
-                textSize = 24f
+                textSize = 36f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", qrX + qrCardSize + 30f, qrY + 80f, hintTitlePaint)
+            canvas.drawText("Scan to run sketch", qrX + qrCardSize + 40f, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#8E919A")
-                textSize = 18f
+                textSize = 26f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs live in browser with p5.js", qrX + qrCardSize + 30f, qrY + 115f, hintSubPaint)
+            canvas.drawText("Runs live in browser with p5.js", qrX + qrCardSize + 40f, qrY + 175f, hintSubPaint)
 
         } else {
-            // Layout D: Ultra-minimal
+            // Layout D: Minimal
             val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#636675")
-                textSize = 20f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                textSize = 28f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
-            canvas.drawText("Creative Coding with p5.js", rightX, 260f, emptyPaint)
+            canvas.drawText("Creative Coding with p5.js", rightX, 360f, emptyPaint)
         }
 
         return card
@@ -271,13 +288,13 @@ internal object ShareCardGenerator {
         y: Float,
         size: Float,
         code: String,
-        padding: Float = 10f
+        padding: Float = 20f
     ) {
         val qrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.FILL
         }
-        canvas.drawRoundRect(x, y, x + size, y + size, 18f, 18f, qrBgPaint)
+        canvas.drawRoundRect(x, y, x + size, y + size, 24f, 24f, qrBgPaint)
 
         val qrUrl = WEB_VIEWER_BASE_URL + compressCodeForUrl(code)
         val rawQrSize = (size - padding * 2).toInt()
@@ -299,19 +316,19 @@ internal object ShareCardGenerator {
             color = Color.parseColor("#14141B")
             style = Paint.Style.FILL
         }
-        canvas.drawRoundRect(x, y, x + w, y + h, 16f, 16f, boxBg)
+        canvas.drawRoundRect(x, y, x + w, y + h, 20f, 20f, boxBg)
 
         val boxBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#262833")
             style = Paint.Style.STROKE
-            strokeWidth = 1.5f
+            strokeWidth = 2f
         }
-        canvas.drawRoundRect(x, y, x + w, y + h, 16f, 16f, boxBorder)
+        canvas.drawRoundRect(x, y, x + w, y + h, 20f, 20f, boxBorder)
 
         // 2. Header bar with window dots
-        val headerH = 34f
-        val dotRadius = 4f
-        val dotY = y + 17f
+        val headerH = 46f
+        val dotRadius = 6f
+        val dotY = y + 23f
 
         val dotColors = listOf("#FF5F56", "#FFBD2E", "#27C93F")
         dotColors.forEachIndexed { i, hex ->
@@ -319,60 +336,60 @@ internal object ShareCardGenerator {
                 color = Color.parseColor(hex)
                 style = Paint.Style.FILL
             }
-            canvas.drawCircle(x + 18f + (i * 14f), dotY, dotRadius, dotPaint)
+            canvas.drawCircle(x + 24f + (i * 20f), dotY, dotRadius, dotPaint)
         }
 
         val tabTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#8E919A")
-            textSize = 14f
+            textSize = 20f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
-        canvas.drawText("sketch.js", x + 68f, dotY + 5f, tabTitlePaint)
+        canvas.drawText("sketch.js", x + 96f, dotY + 7f, tabTitlePaint)
 
         val lines = snippet.lines()
         val endLine = startLine + lines.size - 1
         val rangeText = if (lines.size > 1) "lines $startLine–$endLine" else "line $startLine"
         val rangePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#5A5E70")
-            textSize = 13f
+            textSize = 18f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
         val rangeW = rangePaint.measureText(rangeText)
-        canvas.drawText(rangeText, x + w - rangeW - 16f, dotY + 5f, rangePaint)
+        canvas.drawText(rangeText, x + w - rangeW - 24f, dotY + 7f, rangePaint)
 
         // Header divider
         val hDividerPaint = Paint().apply {
             color = Color.parseColor("#1F212B")
-            strokeWidth = 1f
+            strokeWidth = 1.5f
         }
         canvas.drawLine(x, y + headerH, x + w, y + headerH, hDividerPaint)
 
         // 3. Code Lines
-        val lineH = 25f
-        val contentTop = y + headerH + 20f
-        val maxLines = ((h - headerH - 24f) / lineH).toInt().coerceAtLeast(1)
+        val lineH = 34f
+        val contentTop = y + headerH + 28f
+        val maxLines = ((h - headerH - 32f) / lineH).toInt().coerceAtLeast(1)
         val visibleLines = lines.take(maxLines)
 
         val lineNumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#494C5C")
-            textSize = 16f
+            textSize = 21f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
 
         val codePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#D4D7E2")
-            textSize = 16f
+            textSize = 21f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
 
         val textPaint = TextPaint(codePaint)
-        val maxCodeW = w - 75f
+        val maxCodeW = w - 100f
 
         visibleLines.forEachIndexed { i, line ->
             val curLineY = contentTop + (i * lineH)
             val lineNum = (startLine + i).toString()
             val numW = lineNumPaint.measureText(lineNum)
-            canvas.drawText(lineNum, x + 44f - numW, curLineY, lineNumPaint)
+            canvas.drawText(lineNum, x + 58f - numW, curLineY, lineNumPaint)
 
             val displayLine = TextUtils.ellipsize(
                 line,
@@ -380,7 +397,7 @@ internal object ShareCardGenerator {
                 maxCodeW,
                 TextUtils.TruncateAt.END
             ).toString()
-            canvas.drawText(displayLine, x + 56f, curLineY, codePaint)
+            canvas.drawText(displayLine, x + 74f, curLineY, codePaint)
         }
     }
 }
