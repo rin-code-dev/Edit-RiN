@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.1 — 2026-09-26
+
+- Introduce **Snapshots (Checkpoints)**: Quick-save intentional code states with one tap right from the editor, compare diffs, and restore full multi-file projects and parameters anytime.
+- Storage Optimization: Drastically reduce `works.json` size and eliminate work switching delays by isolating snapshots into dedicated storage and pruning legacy revision bloat.
+- Landscape Customization: Add setting to swap left/right placement of the editor and preview in landscape mode, with matching parameter sheets and unified toolbar button styling.
+- Editor Customization: Add setting to toggle between soft word-wrapping and single-line display with horizontal scrolling.
+- Experimental Multi-file Shaders & Physics: Support editing supporting `.frag` and `.vert` shader files alongside JavaScript, with bundled Matter.js 2D physics engine.
+- Complete full internationalization audit across all preview controls, editor options, and system alerts.
+
 ## 2.0.0 — 2026-09-25
 
 - Introduce **Share Cards**: Generate sleek, social-ready shareable image cards featuring live sketch preview snapshots, optional customizable code snippets, and QR codes that run instantly on the Web Player.
