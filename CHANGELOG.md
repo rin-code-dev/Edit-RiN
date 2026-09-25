@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — 2026-09-25
+
+- Expand Live Parameters to support boolean toggle switches declared with `// @rin boolean`.
+- Add interactive `Sound` synthesizer sample work utilizing `p5.sound` with audio-reactive circular FFT visualizer.
+- Add `Parameters` generative art showcase work demonstrating real-time numeric, color, and boolean live parameter adjustments.
+- Remove legacy `Axis` and `dvd` samples and standardize sample comments in English.
+- Modularize and optimize editor UI dialogs and components.
+- Add works folder onboarding prompt when launching without an active storage folder.
+- Add update prompt and Settings action to import new official sample works into existing work folders.
+- Default `Gravity`, `Parameters`, and `Sound` samples to p5.js 1.11.5 and auto-repair existing `Gravity` works.
+- Fix audio oscillator frequency calculation in the `Sound` sample sketch.
+
 ## 1.0.9 — 2026-09-24
 
 - Complete names declared in the current work's JavaScript files, with the current file first.

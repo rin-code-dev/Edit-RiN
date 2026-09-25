@@ -1,8 +1,8 @@
 # Release & Build Guide / リリース・ビルド手順
 
 - **Application ID**: `com.hikariatelier.app`
-- **Current Version**: `1.0.9` (Version Code: `15`)
-- **Git Tag**: `v1.0.9`
+- **Current Version**: `1.1.0` (Version Code: `16`)
+- **Git Tag**: `v1.1.0`
 
 ---
 
