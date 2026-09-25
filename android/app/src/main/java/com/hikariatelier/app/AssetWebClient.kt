@@ -13,7 +13,11 @@ import java.io.InputStream
 internal const val PREVIEW_ORIGIN = "https://appassets.androidplatform.net"
 internal fun previewUrl(token: String) = "$PREVIEW_ORIGIN/project/$token/p5_runner.html"
 
-internal data class PreviewAssets(val token: String, val assets: Map<String, ProjectAsset>)
+internal data class PreviewAssets(
+    val token: String,
+    val assets: Map<String, ProjectAsset>,
+    val virtualFiles: Map<String, String> = emptyMap()
+)
 
 /** Serves only the active preview's files under a local HTTPS origin. */
 internal class AssetWebClient(
@@ -45,9 +49,18 @@ internal class AssetWebClient(
             when (relative) {
                 "p5_runner.html" -> WebResourceResponse("text/html", "UTF-8", bundled.open("public/p5_runner.html"))
                 "p5.min.js", "p5-v1.min.js", "p5-v2.min.js", "p5.sound.min.js",
-                "p5.brush-2.2.1.js" ->
+                "p5.brush-2.2.1.js", "matter-0.20.0.min.js" ->
                     WebResourceResponse("application/javascript", "UTF-8", bundled.open("public/$relative"))
                 else -> {
+                    val virtualContent = state.virtualFiles[relative]
+                        ?: if (relative.startsWith("assets/")) state.virtualFiles[relative.removePrefix("assets/")] else null
+                    if (virtualContent != null) {
+                        val bytes = virtualContent.toByteArray(Charsets.UTF_8)
+                        val mime = assetMimeType(relative, "text/plain")
+                        return WebResourceResponse(mime, "UTF-8", 200, "OK",
+                            mapOf("Content-Length" to bytes.size.toString(), "Cache-Control" to "no-store"),
+                            ByteArrayInputStream(bytes))
+                    }
                     if (!relative.startsWith("assets/")) return missing()
                     val name = relative.removePrefix("assets/")
                     if (!validAssetName(name)) return missing()

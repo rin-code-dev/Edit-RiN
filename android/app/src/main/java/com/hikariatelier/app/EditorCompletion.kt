@@ -37,7 +37,7 @@ internal data class CompletionCandidate(val name: String, val file: String? = nu
 /** Collect declarations without treating words in comments and literals as code. */
 internal fun projectSymbols(sources: Map<String, String>): List<ProjectSymbol> = buildList {
     val seen = HashSet<Pair<String, String>>()
-    for ((file, source) in sources) {
+    for ((file, source) in sources.filter { it.key.endsWith(".js", ignoreCase = true) }) {
         var index = 0
         var expectedName = false
         var previousToken = ""

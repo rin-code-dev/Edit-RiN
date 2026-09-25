@@ -407,3 +407,15 @@ test('runtime errors preserve combined source lines and find user frames in Prom
   assert.deepEqual(locations, [['helper failed', 3], ['async failed', 12], ['library failed', 17]]);
   assert.equal(r.errors.at(-1), 'external');
 });
+
+test('bundled matter.js and rinShaders are available in runner environment', () => {
+  const fs = require('fs');
+  assert.ok(fs.existsSync('www/matter-0.20.0.min.js'), 'matter-0.20.0.min.js should exist in www/');
+  const matterContent = fs.readFileSync('www/matter-0.20.0.min.js', 'utf8');
+  assert.ok(matterContent.includes('matter-js'), 'matter-js header should be present');
+
+  const runnerHtml = fs.readFileSync('www/p5_runner.html', 'utf8');
+  assert.ok(runnerHtml.includes("libraries['matter-js'] === '0.20.0'"), 'runner should support matter-js library loading');
+  assert.ok(runnerHtml.includes('window.rinShaders ='), 'runner should expose window.rinShaders');
+});
+

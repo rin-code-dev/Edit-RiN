@@ -7,7 +7,7 @@ internal data class PreviewSourceLocation(val file: String, val line: Int)
 internal fun previewSourceFiles(main: String, files: Map<String, String>): List<PreviewSourceFile> {
     var start = 1
     return buildList {
-        files.toSortedMap().forEach { (name, code) ->
+        files.filter { it.key.endsWith(".js", ignoreCase = true) }.toSortedMap().forEach { (name, code) ->
             val count = code.count { it == '\n' } + 1
             add(PreviewSourceFile(name, start, count))
             start += count + 1
