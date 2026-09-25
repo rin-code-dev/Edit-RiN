@@ -2,6 +2,7 @@ package com.hikariatelier.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.graphics.Bitmap
 import android.content.ClipData
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -162,6 +163,7 @@ class MainActivity : ComponentActivity() {
     private val assetStorage by lazy { AssetStorage(File(filesDir, "project-assets")) }
     private val previewSession = PreviewSession()
     private var webView: WebView? = null
+    @Volatile private var isCapturingForShareCard: Boolean = false
     private val unreadableWorkFolders get() = sessionViewModel.unreadableFolderUris
     private val workRepository by lazy {
         WorkStoreRepository(this, assetStorage, unreadableWorkFolders, { previewSession.assets }, worksFileName)
@@ -1279,6 +1281,7 @@ class MainActivity : ComponentActivity() {
         var recordingLimitMillis by remember { mutableLongStateOf(0L) }
         var recordingElapsedMillis by remember { mutableLongStateOf(0L) }
         var savedPreviewMedia by remember { mutableStateOf<SavedPreviewMedia?>(null) }
+        var shareCardArtwork by remember { mutableStateOf<Bitmap?>(null) }
         var isRecordingSaving by remember { mutableStateOf(false) }
         var mp4BitrateMbps by remember {
             mutableIntStateOf(
@@ -3573,22 +3576,46 @@ class MainActivity : ComponentActivity() {
 
                                         @JavascriptInterface
                                         fun onScreenshotReady(dataUrl: String) {
-                                            Thread {
-                                                val saved = savePreviewMedia(
-                                                    dataUrl = dataUrl,
-                                                    mimeType = "image/png",
-                                                    displayName = "EditRiN_${System.currentTimeMillis()}.png",
-                                                    video = false
-                                                )
-                                                runOnUiThread {
-                                                    Toast.makeText(
-                                                        this@MainActivity,
-                                                        if (saved != null) uiText("スクリーンショットをPictures/EditRiNへ保存しました")
-                                                        else uiText("スクリーンショットを保存できませんでした"),
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                            if (isCapturingForShareCard) {
+                                                isCapturingForShareCard = false
+                                                lifecycleScope.launch {
+                                                    val bitmap = withContext(Dispatchers.IO) {
+                                                        try {
+                                                            val base64Data = dataUrl.substringAfter(',', dataUrl)
+                                                            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+                                                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                                        } catch (e: Exception) {
+                                                            null
+                                                        }
+                                                    }
+                                                    if (bitmap != null) {
+                                                        shareCardArtwork = bitmap
+                                                    } else {
+                                                        Toast.makeText(
+                                                            this@MainActivity,
+                                                            uiText("スクリーンショットを保存できませんでした"),
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
                                                 }
-                                            }.start()
+                                            } else {
+                                                Thread {
+                                                    val saved = savePreviewMedia(
+                                                        dataUrl = dataUrl,
+                                                        mimeType = "image/png",
+                                                        displayName = "EditRiN_${System.currentTimeMillis()}.png",
+                                                        video = false
+                                                    )
+                                                    runOnUiThread {
+                                                        Toast.makeText(
+                                                            this@MainActivity,
+                                                            if (saved != null) uiText("スクリーンショットをPictures/EditRiNへ保存しました")
+                                                            else uiText("スクリーンショットを保存できませんでした"),
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }.start()
+                                            }
                                         }
 
                                         @JavascriptInterface
@@ -3828,6 +3855,19 @@ class MainActivity : ComponentActivity() {
                                     iconRes = R.drawable.ic_camera,
                                     description = uiText("プレビューをスクリーンショット"),
                                     onClick = {
+                                        webView?.evaluateJavascript(
+                                            "window.__editKiroCaptureScreenshot?.()",
+                                            null
+                                        )
+                                        previewActionsExpanded = false
+                                    }
+                                )
+
+                                PreviewOverlayButton(
+                                    iconRes = R.drawable.ic_share_card,
+                                    description = uiText("シェアカードを作成"),
+                                    onClick = {
+                                        isCapturingForShareCard = true
                                         webView?.evaluateJavascript(
                                             "window.__editKiroCaptureScreenshot?.()",
                                             null
@@ -6425,6 +6465,107 @@ class MainActivity : ComponentActivity() {
                     showRecordingFormatDialog = false
                     requestPreviewRecording(format)
                 }
+            )
+        }
+
+        shareCardArtwork?.let { artwork ->
+            val fullCode = if (previewSession.sketchCode.isNotBlank()) {
+                previewSession.sketchCode
+            } else {
+                editorText
+            }
+            val hasAssets = activeWork?.assets?.isNotEmpty() == true
+            val initialRange = if (!editorValue.selection.collapsed) {
+                val startChar = editorValue.selection.min
+                val endChar = editorValue.selection.max
+                val sLine = editorText.take(startChar).count { it == '\n' } + 1
+                val eLine = editorText.take(endChar).count { it == '\n' } + 1
+                sLine to eLine
+            } else null
+
+            ShareCardSheet(
+                artwork = artwork,
+                workTitle = activeWork?.title ?: "",
+                fullCode = fullCode,
+                hasAssets = hasAssets,
+                initialSelectedRange = initialRange,
+                text = ::uiText,
+                onSave = { cardBmp ->
+                    lifecycleScope.launch {
+                        val name = "EditRiN_Card_${System.currentTimeMillis()}.png"
+                        val tempFile = File(cacheDir, name)
+                        val uri = withContext(Dispatchers.IO) {
+                            try {
+                                tempFile.outputStream().use { out ->
+                                    cardBmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                }
+                                savePreviewMedia(
+                                    mimeType = "image/png",
+                                    displayName = name,
+                                    video = false,
+                                    sourceFile = tempFile
+                                )
+                            } finally {
+                                tempFile.delete()
+                            }
+                        }
+                        shareCardArtwork = null
+                        if (uri != null) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                uiText("シェアカードをPictures/EditRiNへ保存しました"),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                this@MainActivity,
+                                uiText("シェアカードを保存できませんでした"),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                onShare = { cardBmp, xOnly ->
+                    lifecycleScope.launch {
+                        val name = "EditRiN_Card_${System.currentTimeMillis()}.png"
+                        val tempFile = File(cacheDir, name)
+                        val media = withContext(Dispatchers.IO) {
+                            try {
+                                tempFile.outputStream().use { out ->
+                                    cardBmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                }
+                                val uri = savePreviewMedia(
+                                    mimeType = "image/png",
+                                    displayName = name,
+                                    video = false,
+                                    sourceFile = tempFile
+                                )
+                                uri?.let {
+                                    SavedPreviewMedia(
+                                        uri = it,
+                                        mimeType = "image/png",
+                                        displayName = name,
+                                        sizeBytes = tempFile.length(),
+                                        thumbnail = cardBmp
+                                    )
+                                }
+                            } finally {
+                                tempFile.delete()
+                            }
+                        }
+                        shareCardArtwork = null
+                        if (media != null) {
+                            sharePreviewMedia(media, xOnly, xShareText)
+                        } else {
+                            Toast.makeText(
+                                this@MainActivity,
+                                uiText("シェアカードを保存できませんでした"),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                onDismiss = { shareCardArtwork = null }
             )
         }
 
