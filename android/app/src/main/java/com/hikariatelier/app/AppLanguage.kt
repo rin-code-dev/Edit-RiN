@@ -224,6 +224,10 @@ internal val uiTranslations = mapOf(
         ("⚠️ QR code cannot be included because the code size exceeds the capacity limit. Creating a card with preview and code only." to
         "⚠️ 代码量超过二维码容量上限，无法包含二维码。将仅生成包含预览与代码的卡片。"),
     "ソースコードを掲載" to ("Include source code" to "包含源代码"),
+    "カード内にコードスニペットを表示します" to ("Display code snippet on the card" to "在卡片内展示代码片段"),
+    "掲載範囲: %d 〜 %d 行目 (全 %d 行)" to ("Lines: %d - %d (Total: %d lines)" to "展示范围：%d ~ %d 行（共 %d 行）"),
+    "開始:" to ("Start:" to "起始:"),
+    "終了:" to ("End:" to "结束:"),
     "カードを端末に保存" to ("Save card to device" to "保存卡片到设备"),
     "テーマ" to ("Theme" to "主题"),
     "ダーク" to ("Dark" to "深色"),

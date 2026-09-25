@@ -17,6 +17,7 @@
   - Per-work asset support (images, audio, video, fonts, JSON/CSV) with instant loading-code insertion.
   - Single-work ZIP export and import for easy sharing.
   - Import public sketches directly from your p5.js Web Editor account.
+- **Share Cards & Web Player**: Generate beautiful social-ready share cards with sketch snapshots, optional code snippets, and QR codes that instantly run in any web browser via client-side decompression.
 - **Capture & Export**: Record animations (video/GIF) and capture high-resolution screenshots.
 - **Customizable Environment**: Custom editor themes, fonts (TTF/OTF/TTC), ligature support, and canvas orientation toggle.
 - **Multilingual Support**: Fully localized in English, Japanese (日本語), and Simplified Chinese (简体中文).
@@ -93,6 +94,7 @@ For signed release builds and configuration, refer to [RELEASE.md](RELEASE.md).
 - **ライブパラメータ**: コード内に `// @rin number ...` や `// @rin color ...` のように注釈を書くだけで、スライダーやカラーピッカーが自動生成され、リアルタイムに数値を調整可能。
 - **ランタイム切り替え**: 作品ごとに `p5.js 2.3.3` と `1.11.5` を選択可能。`p5.sound` によるサウンドの再生・合成・解析にも対応。
 - **素材（アセット）管理**: 画像・音声・フォント・JSON などを作品内に取り込み、ワンタップで読み込みコードを挿入。単一作品の ZIP 書き出し・取り込みによる共有も可能。
+- **シェアカード＆Web Player**: スケッチのプレビュー画像、コードスニペット、QRコードを美しくレイアウトした画像カードを生成。QRを読み取るだけでブラウザ上で即座に作品を再現・実行可能。
 - **p5.js Web Editor 連携**: ユーザー名を入力するだけで公開作品を直接インポート。
 - **プライバシー重視**: 完全オフライン動作。広告やトラッキングは一切ありません。
 
