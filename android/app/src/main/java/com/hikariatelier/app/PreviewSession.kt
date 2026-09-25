@@ -19,6 +19,8 @@ internal class PreviewSession {
         private set
     @Volatile var parameters = "{}"
         private set
+    @Volatile var shaders = "{}"
+        private set
     @Volatile var sourceFiles: List<PreviewSourceFile> = emptyList()
         private set
 
@@ -36,17 +38,19 @@ internal class PreviewSession {
         p5Version = normalizedP5Version(work?.p5Version)
         soundEnabled = work?.p5SoundEnabled == true
         libraries = JSONObject(work?.libraries.orEmpty()).toString()
+        val nonJsFiles = runningFiles.filter { !it.key.endsWith(".js", ignoreCase = true) }
+        shaders = JSONObject(nonJsFiles as Map<*, *>).toString()
         val declarations = workParameters(runningFiles.toSortedMap() + ("sketch.js" to source))
         parameters = parameterValuesJson(declarations, work?.parameterValues.orEmpty())
         sketchCode = composeProjectSource(source, runningFiles)
         sourceFiles = previewSourceFiles(source, runningFiles)
-        assets = PreviewAssets(UUID.randomUUID().toString(), sourceAssets.toMap())
+        assets = PreviewAssets(UUID.randomUUID().toString(), sourceAssets.toMap(), runningFiles)
         return assets.token
     }
 }
 
 internal fun composeProjectSource(mainCode: String, files: Map<String, String>): String = buildString {
-    files.toSortedMap().forEach { (name, code) ->
+    files.filter { it.key.endsWith(".js", ignoreCase = true) }.toSortedMap().forEach { (name, code) ->
         append(code)
         append("\n//# sourceURL=")
         append(name)

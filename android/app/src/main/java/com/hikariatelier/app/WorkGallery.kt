@@ -226,7 +226,10 @@ internal fun WorkGallery(
                             val info = buildList {
                                 add(if (work.p5Version == P5_VERSION_LEGACY) "1.x" else "2.x")
                                 add("${1 + work.files.keys.count { it.endsWith(".js", ignoreCase = true) }} JS")
+                                val shaderCount = work.files.keys.count { !it.endsWith(".js", ignoreCase = true) }
+                                if (shaderCount > 0) add("$shaderCount SHADER")
                                 if (work.p5SoundEnabled) add("SOUND")
+                                if (work.libraries.containsKey("matter-js")) add("PHYSICS")
                             }.joinToString(" · ")
                             Text(info, color = colors.onSurfaceVariant, fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace)

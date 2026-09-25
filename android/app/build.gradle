@@ -95,6 +95,7 @@ def syncWebAssets = tasks.register("syncWebAssets", Sync) {
         include 'p5-v2.min.js'
         include 'p5.sound.min.js'
         include 'p5.brush-2.2.1.js'
+        include 'matter-0.20.0.min.js'
         include 'samples/*.js'
     }
     into new File(generatedWebAssetsDir, "public")

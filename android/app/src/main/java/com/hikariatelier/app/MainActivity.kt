@@ -3514,6 +3514,9 @@ class MainActivity : ComponentActivity() {
                                         fun getWorkParameters(): String = previewSession.parameters
 
                                         @JavascriptInterface
+                                        fun getWorkShaders(): String = previewSession.shaders
+
+                                        @JavascriptInterface
                                         fun onError(
                                             message:
                                             String
@@ -6918,18 +6921,21 @@ class MainActivity : ComponentActivity() {
 
         if (showAuxiliaryFileEditor) {
             val normalizedName = auxiliaryFileName.trim()
-            val validName = normalizedName.matches(Regex("[A-Za-z0-9._-]+\\.js")) &&
+            val isShader = normalizedName.endsWith(".frag", ignoreCase = true) ||
+                normalizedName.endsWith(".vert", ignoreCase = true) ||
+                normalizedName.endsWith(".glsl", ignoreCase = true)
+            val validName = normalizedName.matches(Regex("[A-Za-z0-9._-]+\\.(js|frag|vert|glsl)", RegexOption.IGNORE_CASE)) &&
                 normalizedName != "sketch.js"
             EditSettingsDialog(
                 onDismissRequest = { showAuxiliaryFileEditor = false },
-                title = { Text(if (originalAuxiliaryFileName == null) uiText("JSファイルを追加") else uiText("JSファイルを編集")) },
+                title = { Text(if (originalAuxiliaryFileName == null) uiText("ファイルを追加") else uiText("ファイルを編集")) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
                             value = auxiliaryFileName,
                             onValueChange = { auxiliaryFileName = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text(uiText("ファイル名（.js）")) },
+                            label = { Text(uiText("ファイル名（.js / .frag / .vert）")) },
                             isError = auxiliaryFileName.isNotBlank() && !validName,
                             singleLine = true
                         )
@@ -6937,11 +6943,12 @@ class MainActivity : ComponentActivity() {
                             value = auxiliaryFileContent,
                             onValueChange = { auxiliaryFileContent = it },
                             modifier = Modifier.fillMaxWidth().height(260.dp),
-                            label = { Text(uiText("JavaScriptコード")) },
+                            label = { Text(if (isShader) uiText("シェーダーコード") else uiText("JavaScriptコード")) },
                             textStyle = TextStyle(fontFeatureSettings = fontFeatures, fontFamily = codeFontFamily, fontSize = 13.sp)
                         )
                         Text(
-                            uiText("追加ファイルは名前順にsketch.jsより先に実行されます。"),
+                            if (isShader) uiText("シェーダーは loadShader() や rinShaders で読み込み可能です。")
+                            else uiText("追加ファイルは名前順にsketch.jsより先に実行されます。"),
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant
                         )

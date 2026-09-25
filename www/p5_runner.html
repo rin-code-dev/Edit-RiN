@@ -102,6 +102,9 @@
         if (window.Android?.getP5Version?.() === '2.3.3') load('p5.brush-2.2.1.js');
         else window.__editKiroReportError('p5.brush 2.2.1 requires p5.js 2.3.3');
       }
+      if (libraries['matter-js'] === '0.20.0') {
+        load('matter-0.20.0.min.js');
+      }
     })();
   </script>
 
@@ -118,6 +121,14 @@
           window.rinParams[name] = value;
         }
       };
+    })();
+  </script>
+
+  <script>
+    (() => {
+      let shaders = {};
+      try { shaders = JSON.parse(window.Android?.getWorkShaders?.() || '{}'); } catch (_) {}
+      window.rinShaders = Object.assign(Object.create(null), shaders);
     })();
   </script>
 
