@@ -5340,13 +5340,16 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                     .semantics {
+                                        // Compose permits at most 32 custom actions on one semantics node.
+                                        // Leave room for actions contributed by merged semantics.
+                                        // Touch folding remains available for every line.
                                         customActions = foldsByLine.mapNotNull { (line, fold) ->
                                             if (projection.hidden.any { fold.open > it.open && fold.close <= it.close }) null
                                             else CustomAccessibilityAction(uiText(
                                                 if (fold.open in collapsedFolds) "%s行目を展開" else "%s行目を折りたたむ", line + 1)) {
                                                 toggleFold(fold); true
                                             }
-                                        }
+                                        }.take(24)
                                     }
                                     .heightIn(min = contentMinHeight)
                                     .drawBehind {
