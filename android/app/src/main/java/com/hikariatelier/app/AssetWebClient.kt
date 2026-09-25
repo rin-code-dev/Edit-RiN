@@ -19,8 +19,18 @@ internal data class PreviewAssets(val token: String, val assets: Map<String, Pro
 internal class AssetWebClient(
     private val bundled: AssetManager,
     private val storage: AssetStorage,
+    private val onRendererCrash: ((Boolean) -> Unit)? = null,
     private val snapshot: () -> PreviewAssets
 ) : WebViewClient() {
+    override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+        try {
+            (view?.parent as? android.view.ViewGroup)?.removeView(view)
+            view?.destroy()
+        } catch (_: Exception) {}
+        onRendererCrash?.invoke(detail?.didCrash() == true)
+        return true
+    }
+
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
         request?.isForMainFrame == true && request.url.toString() != previewUrl(snapshot().token)
 
