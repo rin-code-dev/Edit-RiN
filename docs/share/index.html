@@ -490,7 +490,7 @@
       });
     }
 
-    function setupControls() {
+    function setupControls(allowCodeView = true) {
       const bar = document.getElementById('control-bar');
       bar.style.display = 'flex';
 
@@ -542,26 +542,31 @@
         btnParams.classList.remove('active');
       });
 
-      btnCode.addEventListener('click', () => {
-        codeDisplay.textContent = globalCode;
-        codeModal.classList.add('visible');
-      });
-      btnCloseCode.addEventListener('click', () => {
-        codeModal.classList.remove('visible');
-      });
-      codeModal.addEventListener('click', (e) => {
-        if (e.target === codeModal) codeModal.classList.remove('visible');
-      });
+      if (!allowCodeView) {
+        if (btnCode) btnCode.style.display = 'none';
+        if (codeModal) codeModal.remove();
+      } else {
+        btnCode.addEventListener('click', () => {
+          codeDisplay.textContent = globalCode;
+          codeModal.classList.add('visible');
+        });
+        btnCloseCode.addEventListener('click', () => {
+          codeModal.classList.remove('visible');
+        });
+        codeModal.addEventListener('click', (e) => {
+          if (e.target === codeModal) codeModal.classList.remove('visible');
+        });
 
-      btnCopy.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(globalCode);
-          btnCopy.textContent = 'Copied!';
-          setTimeout(() => { btnCopy.textContent = 'Copy Code'; }, 1800);
-        } catch (_) {
-          btnCopy.textContent = 'Failed';
-        }
-      });
+        btnCopy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(globalCode);
+            btnCopy.textContent = 'Copied!';
+            setTimeout(() => { btnCopy.textContent = 'Copy Code'; }, 1800);
+          } catch (_) {
+            btnCopy.textContent = 'Failed';
+          }
+        });
+      }
 
       // Auto-hide controls on inactivity
       function resetActivityTimer() {
@@ -569,7 +574,8 @@
         document.getElementById('top-bar').style.opacity = '1';
         clearTimeout(autoHideTimer);
         autoHideTimer = setTimeout(() => {
-          if (!paramsPanel.classList.contains('visible') && !codeModal.classList.contains('visible')) {
+          const isCodeModalVisible = codeModal && codeModal.parentElement && codeModal.classList.contains('visible');
+          if (!paramsPanel.classList.contains('visible') && !isCodeModalVisible) {
             bar.style.opacity = '0';
             document.getElementById('top-bar').style.opacity = '0';
           }
@@ -585,6 +591,7 @@
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash || window.location.search);
       const encodedCode = params.get('c') || params.get('code');
+      const allowCodeView = params.get('src') !== '0';
 
       if (!encodedCode) {
         if (loading) loading.style.display = 'none';
@@ -612,7 +619,7 @@
           new p5();
         }
 
-        setupControls();
+        setupControls(allowCodeView);
         setupParamsUi(parsed.descriptors);
 
       } catch (err) {

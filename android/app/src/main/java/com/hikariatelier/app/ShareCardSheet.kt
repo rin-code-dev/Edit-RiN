@@ -51,6 +51,8 @@ internal fun ShareCardSheet(
         mutableStateOf(qrStatus == QrStatus.AVAILABLE)
     }
 
+    var allowWebCodeView by remember { mutableStateOf(true) }
+
     var includeCode by remember { mutableStateOf(true) }
 
     var startLine by remember(initialSelectedRange, totalLines) {
@@ -75,7 +77,8 @@ internal fun ShareCardSheet(
         startLine,
         endLine,
         includeQr,
-        qrStatus
+        qrStatus,
+        allowWebCodeView
     ) {
         value = withContext(Dispatchers.Default) {
             val snippet = if (includeCode && lines.isNotEmpty()) {
@@ -95,7 +98,8 @@ internal fun ShareCardSheet(
                     snippetCode = snippet,
                     snippetStartLine = startLine,
                     includeQr = includeQr,
-                    qrStatus = qrStatus
+                    qrStatus = qrStatus,
+                    allowWebCodeView = allowWebCodeView
                 )
             )
         }
@@ -255,6 +259,35 @@ internal fun ShareCardSheet(
                                     checked = includeQr,
                                     onCheckedChange = { includeQr = it }
                                 )
+                            }
+
+                            if (includeQr) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text("Webでコードの閲覧・コピーを許可"),
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        Text(
+                                            text("OFFにすると、Web閲覧者はコードを見たりコピーしたりできなくなります"),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = allowWebCodeView,
+                                        onCheckedChange = { allowWebCodeView = it }
+                                    )
+                                }
                             }
                         }
                         QrStatus.CONTAINS_ASSETS -> {

@@ -100,7 +100,8 @@ internal data class ShareCardConfig(
     val snippetCode: String = "",
     val snippetStartLine: Int = 1,
     val includeQr: Boolean = true,
-    val qrStatus: QrStatus = QrStatus.AVAILABLE
+    val qrStatus: QrStatus = QrStatus.AVAILABLE,
+    val allowWebCodeView: Boolean = true
 )
 
 internal object ShareCardGenerator {
@@ -125,12 +126,13 @@ internal object ShareCardGenerator {
     /**
      * Checks if a QR code can be generated for this sketch.
      */
-    fun checkQrStatus(code: String, hasAssets: Boolean): QrStatus {
+    fun checkQrStatus(code: String, hasAssets: Boolean, allowWebCodeView: Boolean = true): QrStatus {
         if (hasAssets) return QrStatus.CONTAINS_ASSETS
         val cleaned = cleanCodeForQr(code)
         return try {
             val compressed = compressCodeForUrl(cleaned)
-            val url = WEB_VIEWER_BASE_URL + compressed
+            val suffix = if (!allowWebCodeView) "&src=0" else ""
+            val url = WEB_VIEWER_BASE_URL + compressed + suffix
             val hints = mapOf(
                 EncodeHintType.MARGIN to 1,
                 EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.L
@@ -301,7 +303,7 @@ internal object ShareCardGenerator {
             drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine, theme)
 
             // QR Card at Bottom Right
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = qrPadding)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = qrPadding, allowWebCodeView = config.allowWebCodeView)
 
             // Scan Info to the left of the QR
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -337,7 +339,7 @@ internal object ShareCardGenerator {
             val qrX = rightX
             val qrY = 320f
 
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, qrPadding)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, qrPadding, allowWebCodeView = config.allowWebCodeView)
 
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.titleColor)
@@ -372,7 +374,8 @@ internal object ShareCardGenerator {
         y: Float,
         size: Float,
         code: String,
-        padding: Float = 22f
+        padding: Float = 22f,
+        allowWebCodeView: Boolean = true
     ) {
         val qrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -380,7 +383,8 @@ internal object ShareCardGenerator {
         }
         canvas.drawRoundRect(x, y, x + size, y + size, 28f, 28f, qrBgPaint)
 
-        val qrUrl = WEB_VIEWER_BASE_URL + compressCodeForUrl(code)
+        val suffix = if (!allowWebCodeView) "&src=0" else ""
+        val qrUrl = WEB_VIEWER_BASE_URL + compressCodeForUrl(code) + suffix
         val rawQrSize = (size - padding * 2).toInt()
         val qrBitmap = generateQrBitmap(qrUrl, rawQrSize)
         canvas.drawBitmap(qrBitmap, x + padding, y + padding, null)
