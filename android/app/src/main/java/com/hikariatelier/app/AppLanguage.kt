@@ -208,6 +208,9 @@ internal val uiTranslations = mapOf(
     "シェアカードを保存できませんでした" to ("Could not save share card" to "无法保存分享卡片"),
     "QRコードを含める" to ("Include QR code" to "包含二维码"),
     "カメラ等でスキャンしてブラウザで作品を実行できます" to ("Scan to run this sketch live in browser" to "可通过扫描二维码在浏览器中运行作品"),
+    "Webでコードの閲覧・コピーを許可" to ("Allow viewing & copying code on Web" to "允许在网页上查看与复制代码"),
+    "OFFにすると、Web閲覧者はコードを見たりコピーしたりできなくなります" to
+        ("When OFF, web viewers cannot view or copy the code" to "关闭后，网页访问者将无法查看或复制代码"),
     "⚠️ 作品に画像・音声などの外部素材が含まれているため、QRコードでのWeb実行は利用できません。プレビューとコードのみのカードを作成します。" to
         ("⚠️ QR code execution is unavailable because external assets (images, audio, etc.) are used. Creating a card with preview and code only." to
         "⚠️ 由于作品包含图片、音频等外部素材，无法通过二维码在网页运行。将仅生成包含预览与代码的卡片。"),
