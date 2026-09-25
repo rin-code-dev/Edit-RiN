@@ -19,7 +19,9 @@ import android.util.Base64
 import android.util.Log
 import android.util.AtomicFile
 import android.view.MotionEvent
+import android.view.ViewParent
 import android.view.ViewGroup
+import android.view.Window
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
@@ -119,6 +121,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -186,7 +189,7 @@ class MainActivity : ComponentActivity() {
         "setting_preserve_expanded_preview"
 
     private val landscapePreviewSplitKey =
-        "setting_landscape_preview_split"
+        "setting_landscape_preview_split_v2"
 
     private val resizeHandlesVisibleKey =
         "setting_resize_handles_visible"
@@ -219,6 +222,8 @@ class MainActivity : ComponentActivity() {
     private val xShareTextKey = "setting_x_share_text"
     private val recordingCountdownKey = "setting_recording_countdown_seconds"
     private val shareCardAuthorKey = "setting_share_card_author"
+    private val editorWordWrapKey = "setting_editor_word_wrap"
+    private val landscapeEditorOnLeftKey = "setting_landscape_editor_on_left"
 
     private val folderUriKey =
         "works_folder_uri"
@@ -749,14 +754,25 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun KeepLandscapeDialogImmersive(
-        enabled: Boolean
+        enabled: Boolean = true
     ) {
 
         val localView =
             LocalView.current
 
+        fun findDialogWindow(): Window? {
+            var current: ViewParent? = localView.parent
+            while (current != null) {
+                if (current is DialogWindowProvider) {
+                    return current.window
+                }
+                current = current.parent
+            }
+            return (localView.context as? Activity)?.window
+        }
+
         DisposableEffect(localView) {
-            val window = (localView.parent as? DialogWindowProvider)?.window
+            val window = findDialogWindow()
             val previousRate = window?.attributes?.preferredRefreshRate
             window?.preferHighRefreshRate()
             onDispose {
@@ -776,9 +792,7 @@ class MainActivity : ComponentActivity() {
                     enabled &&
                     !localView.isInEditMode
                 ) {
-                    (localView.parent as?
-                        DialogWindowProvider)
-                        ?.window
+                    findDialogWindow()
                 } else {
                     null
                 }
@@ -872,7 +886,6 @@ class MainActivity : ComponentActivity() {
                             )
                     }
                 }
-
             }
         }
     }
@@ -1035,43 +1048,20 @@ class MainActivity : ComponentActivity() {
                     WindowInsetsControllerCompat
                         .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
-                if (isLandscape) {
+                if (isLandscape || !showStatusBar) {
 
                     controller.hide(
                         WindowInsetsCompat
                             .Type
-                            .statusBars()
-                    )
-
-                    controller.hide(
-                        WindowInsetsCompat
-                            .Type
-                            .navigationBars()
+                            .systemBars()
                     )
 
                 } else {
 
-                    if (showStatusBar) {
-
-                        controller.show(
-                            WindowInsetsCompat
-                                .Type
-                                .statusBars()
-                        )
-
-                    } else {
-
-                        controller.hide(
-                            WindowInsetsCompat
-                                .Type
-                                .statusBars()
-                        )
-                    }
-
                     controller.show(
                         WindowInsetsCompat
                             .Type
-                            .navigationBars()
+                            .systemBars()
                     )
                 }
             }
@@ -1227,6 +1217,18 @@ class MainActivity : ComponentActivity() {
 
         var showHistoryDialog by remember {
             mutableStateOf(false)
+        }
+
+        var showSnapshotSheet by remember {
+            mutableStateOf(false)
+        }
+
+        var currentSnapshots by remember(activeWorkId) {
+            mutableStateOf(
+                activeWork?.let { work ->
+                    WorkSnapshotStore.loadSnapshots(filesDir, work.id, work.revisions)
+                } ?: emptyList()
+            )
         }
 
         var showAspectRatioDialog by remember {
@@ -1593,6 +1595,24 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        var editorWordWrap by remember {
+            mutableStateOf(
+                preferences.getBoolean(
+                    editorWordWrapKey,
+                    true
+                )
+            )
+        }
+
+        var landscapeEditorOnLeft by remember {
+            mutableStateOf(
+                preferences.getBoolean(
+                    landscapeEditorOnLeftKey,
+                    true
+                )
+            )
+        }
+
         var showEditorAccessoryBar by remember {
             mutableStateOf(
                 preferences.getBoolean(
@@ -1884,22 +1904,21 @@ class MainActivity : ComponentActivity() {
             return false
         }
 
-        fun updateActiveWorkPreviewRatio(value: String) {
+        fun updateActiveWorkPreviewRatio(value: String, persist: Boolean = true) {
             val normalized = normalizedPreviewAspectRatio(value)
             val work = works.find { it.id == activeWorkId } ?: return
             if (work.previewAspectRatio == normalized) return
-            val previousRatio = work.previewAspectRatio
-            val previousUpdatedAt = work.updatedAt
             work.previewAspectRatio = normalized
             work.updatedAt = System.currentTimeMillis()
-            if (selectedFolderUri != null && !saveStore()) {
-                work.previewAspectRatio = previousRatio
-                work.updatedAt = previousUpdatedAt
-                Toast.makeText(this@MainActivity, uiText("比率を保存できませんでした。保存先を確認してください"), Toast.LENGTH_SHORT).show()
+            works = works.toList()
+            if (persist && selectedFolderUri != null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    saveStore()
+                }
             }
         }
 
-        val currentRatioChange = rememberUpdatedState<(String) -> Unit>(::updateActiveWorkPreviewRatio)
+        val currentRatioChange = rememberUpdatedState<(String) -> Unit> { updateActiveWorkPreviewRatio(it) }
 
         fun runSketch(
             source: String = editorText,
@@ -2343,10 +2362,10 @@ class MainActivity : ComponentActivity() {
                     p5Sketches = sketches
                     preferences.edit().putString(p5UsernameKey, username).apply()
                     p5Username = username
-                    if (sketches.isEmpty()) p5Error = "公開作品がありません"
+                    if (sketches.isEmpty()) p5Error = uiText("公開作品がありません")
                 }.onFailure { error ->
                     if (error is kotlinx.coroutines.CancellationException) throw error
-                    p5Error = "p5.jsの作品を取得できませんでした"
+                    p5Error = uiText("p5.jsの作品を取得できませんでした")
                 }
                 p5Busy = false
             }
@@ -2394,7 +2413,7 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(this@MainActivity, uiText("p5.jsの作品を取り込みました"), Toast.LENGTH_SHORT).show()
                 }.onFailure { error ->
                     if (error is kotlinx.coroutines.CancellationException) throw error
-                    p5Error = "作品を取り込めませんでした。ファイル数・容量・通信環境を確認してください"
+                    p5Error = uiText("作品を取り込めませんでした。ファイル数・容量・通信環境を確認してください")
                 }
                 p5Busy = false
             }
@@ -2735,28 +2754,63 @@ class MainActivity : ComponentActivity() {
         fun WorkSelector(modifier: Modifier = Modifier) {
             Surface(
                 onClick = { workMenuExpanded = true },
-                modifier = modifier,
-                shape = RoundedCornerShape(16.dp),
+                modifier = if (isLandscape) modifier.height(34.dp) else modifier,
+                shape = RoundedCornerShape(if (isLandscape) 10.dp else 16.dp),
                 color = colors.surface,
                 border = BorderStroke(1.dp, colors.outlineVariant)
             ) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Column(
-                        Modifier
-                            .weight(1f, fill = false)
-                            .widthIn(max = if (manualRotation) 128.dp else 180.dp)
-                    ) {
-                        Text(
-                            if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (hasUnsavedChanges) colors.tertiary else colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(activeWork?.title ?: uiText("作品を選択"), color = colors.onSurface,
-                            fontWeight = FontWeight.SemiBold, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis)
+                Row(
+                    Modifier
+                        .then(if (isLandscape) Modifier.fillMaxHeight() else Modifier)
+                        .padding(
+                            horizontal = 10.dp,
+                            vertical = if (isLandscape) 0.dp else 6.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isLandscape) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (hasUnsavedChanges) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(colors.tertiary)
+                                )
+                            }
+                            Text(
+                                activeWork?.title ?: uiText("作品を選択"),
+                                color = colors.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        Column(
+                            Modifier
+                                .weight(1f, fill = false)
+                                .widthIn(max = if (manualRotation) 128.dp else 180.dp)
+                        ) {
+                            Text(
+                                if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (hasUnsavedChanges) colors.tertiary else colors.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                activeWork?.title ?: uiText("作品を選択"),
+                                color = colors.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -2789,33 +2843,29 @@ class MainActivity : ComponentActivity() {
                     text = ::uiText,
                     onSort = { sort = it; preferences.edit().putString("work_sort", it).apply() },
                     onOpen = selectWork@{ work, openMenu ->
-                        if (workSaving || assetBusy) return@selectWork
+                        if (assetBusy) return@selectWork
                         if (work.id != activeWorkId) {
                             updateCurrentWork()
                             val snapshots = works.map { snapshotWork(it) }
                             val folder = selectedFolderUri
-                            workSaving = true
-                            assetBusy = true
+
+                            activeWorkId = work.id
+                            editorValue = TextFieldValue(work.code)
+                            clearDraftSnapshot()
+                            if (autoRun) runSketch(work.code, work.files)
+                            workMenuExpanded = false
+                            if (openMenu) workActionsMenuExpanded = true
+
                             lifecycleScope.launch {
-                                try {
-                                    val saved = withContext(Dispatchers.IO) {
-                                        saveWorkStore(folder, snapshots, work.id)
-                                    }
-                                    if (saved) {
-                                        activeWorkId = work.id
-                                        editorValue = TextFieldValue(work.code)
-                                        clearDraftSnapshot()
-                                        if (autoRun) runSketch(work.code, work.files)
-                                        workMenuExpanded = false
-                                        if (openMenu) workActionsMenuExpanded = true
-                                    } else {
-                                        Toast.makeText(this@MainActivity,
-                                            uiText("保存できませんでした。保存先を確認して再試行してください"),
-                                            Toast.LENGTH_LONG).show()
-                                    }
-                                } finally {
-                                    workSaving = false
-                                    assetBusy = false
+                                val saved = withContext(Dispatchers.IO) {
+                                    saveWorkStore(folder, snapshots, work.id)
+                                }
+                                if (!saved) {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        uiText("保存できませんでした。保存先を確認して再試行してください"),
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
                             }
                             return@selectWork
@@ -2959,8 +3009,21 @@ class MainActivity : ComponentActivity() {
 
                 ActionRow(
                     iconRes = R.drawable.ic_restore,
+                    title = uiText("スナップショット"),
+                    subtitle = uiText("状態の記録・復元"),
+                    onClick = {
+                        workActionsMenuExpanded = false
+                        activeWork?.let { work ->
+                            currentSnapshots = WorkSnapshotStore.loadSnapshots(filesDir, work.id, work.revisions)
+                        }
+                        showSnapshotSheet = true
+                    }
+                )
+
+                ActionRow(
+                    iconRes = R.drawable.ic_restore,
                     title = uiText("変更履歴"),
-                    subtitle = uiText("過去30回の保存状態を表示・復元"),
+                    subtitle = uiText("過去の保存状態を表示・復元"),
                     enabled = activeWork?.revisions?.isNotEmpty() == true,
                     onClick = {
                         workActionsMenuExpanded = false
@@ -3180,7 +3243,8 @@ class MainActivity : ComponentActivity() {
                                     ActivityInfo
                                         .SCREEN_ORIENTATION_LANDSCAPE
                                 }
-                        }
+                        },
+                        modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
                     ) {
 
                         Icon(
@@ -3193,23 +3257,28 @@ class MainActivity : ComponentActivity() {
                             tint =
                                 colors.onSurface,
                             modifier =
-                                Modifier.size(20.dp)
+                                Modifier.size(if (isLandscape) 18.dp else 20.dp)
                         )
                     }
                 }
 
                 IconButton(
                     onClick = {
-
                         updateCurrentWork()
-                        if (saveStore()) {
-                            lastSavedText = editorText
+                        val currentText = editorText
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            if (saveStore()) {
+                                withContext(Dispatchers.Main) {
+                                    lastSavedText = currentText
+                                }
+                            }
                         }
                         clearDraftSnapshot()
 
                         showSettings =
                             true
-                    }
+                    },
+                    modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
                 ) {
 
                     Icon(
@@ -3222,7 +3291,7 @@ class MainActivity : ComponentActivity() {
                         tint =
                             colors.onSurface,
                         modifier =
-                            Modifier.size(20.dp)
+                            Modifier.size(if (isLandscape) 18.dp else 20.dp)
                     )
                 }
 
@@ -3231,13 +3300,14 @@ class MainActivity : ComponentActivity() {
                     onClick = {
                         workActionsMenuExpanded = false
                         workSettingsMenuExpanded = true
-                    }
+                    },
+                    modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_folder_code),
                         contentDescription = uiText("作品設定"),
                         tint = colors.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
                     )
                 }
 
@@ -3245,7 +3315,8 @@ class MainActivity : ComponentActivity() {
                     onClick = {
                         workActionsMenuExpanded =
                             true
-                    }
+                    },
+                    modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
                 ) {
 
                     Icon(
@@ -3258,7 +3329,7 @@ class MainActivity : ComponentActivity() {
                         tint =
                             colors.onSurface,
                         modifier =
-                            Modifier.size(20.dp)
+                            Modifier.size(if (isLandscape) 18.dp else 20.dp)
                     )
                 }
             }
@@ -3374,6 +3445,369 @@ class MainActivity : ComponentActivity() {
         }
 
         @Composable
+        fun PreviewActionsToggleButton(
+            modifier: Modifier = Modifier
+        ) {
+            val borderColor = when {
+                isRecordingOrCountingDown -> colors.error
+                previewActionsExpanded -> colors.primary
+                else -> colors.outlineVariant
+            }
+            val contentColor = when {
+                isRecordingOrCountingDown -> colors.error
+                previewActionsExpanded -> colors.primary
+                else -> colors.onSurfaceVariant
+            }
+
+            Box(
+                modifier = modifier
+                    .height(if (isLandscape) 34.dp else 38.dp)
+                    .widthIn(min = if (isLandscape) 36.dp else 42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(
+                        width = 1.dp,
+                        color = borderColor,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .clickable { previewActionsExpanded = !previewActionsExpanded }
+                    .padding(horizontal = 7.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            if (isRecordingOrCountingDown) R.drawable.ic_stop else R.drawable.ic_camera
+                        ),
+                        contentDescription = uiText("プレビュー操作"),
+                        tint = contentColor,
+                        modifier = Modifier.size(if (isLandscape) 16.dp else 17.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Icon(
+                        painter = painterResource(
+                            if (previewActionsExpanded) R.drawable.ic_close else R.drawable.ic_chevron_down
+                        ),
+                        contentDescription = null,
+                        tint = contentColor.copy(alpha = 0.7f),
+                        modifier = Modifier.size(if (isLandscape) 11.dp else 13.dp)
+                    )
+                }
+            }
+        }
+
+        @Composable
+        fun PreviewActionsTray(
+            modifier: Modifier = Modifier
+        ) {
+            Surface(
+                modifier = modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.outlineVariant),
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    @Composable
+                    fun ActionChip(
+                        iconRes: Int,
+                        label: String,
+                        active: Boolean = false,
+                        destructive: Boolean = false,
+                        onClick: () -> Unit
+                    ) {
+                        val chipBg = when {
+                            destructive -> colors.errorContainer.copy(alpha = 0.85f)
+                            active -> colors.primaryContainer.copy(alpha = 0.85f)
+                            else -> colors.surfaceVariant.copy(alpha = 0.5f)
+                        }
+                        val chipContent = when {
+                            destructive -> colors.onErrorContainer
+                            active -> colors.onPrimaryContainer
+                            else -> colors.onSurface
+                        }
+                        Surface(
+                            onClick = onClick,
+                            shape = RoundedCornerShape(9.dp),
+                            color = chipBg,
+                            border = BorderStroke(
+                                1.dp,
+                                when {
+                                    destructive -> colors.error
+                                    active -> colors.primary
+                                    else -> colors.outlineVariant.copy(alpha = 0.5f)
+                                }
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(iconRes),
+                                    contentDescription = label,
+                                    tint = chipContent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = chipContent,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // 1. Parameters
+                    ActionChip(
+                        iconRes = R.drawable.ic_settings,
+                        label = uiText("パラメータ"),
+                        onClick = {
+                            previewActionsExpanded = false
+                            showExpandedPreview = false
+                            showParameterSheet = true
+                        }
+                    )
+
+                    // 2. Screenshot
+                    ActionChip(
+                        iconRes = R.drawable.ic_camera,
+                        label = uiText("スクショ"),
+                        onClick = {
+                            webView?.evaluateJavascript(
+                                "window.__editKiroCaptureScreenshot?.()",
+                                null
+                            )
+                            previewActionsExpanded = false
+                        }
+                    )
+
+                    // 3. Share card
+                    ActionChip(
+                        iconRes = R.drawable.ic_share_card,
+                        label = uiText("シェアカード"),
+                        onClick = {
+                            isCapturingForShareCard = true
+                            webView?.evaluateJavascript(
+                                "window.__editKiroCaptureScreenshot?.()",
+                                null
+                            )
+                            previewActionsExpanded = false
+                        }
+                    )
+
+                    // 4. Record
+                    ActionChip(
+                        iconRes = if (isRecordingOrCountingDown) R.drawable.ic_stop else R.drawable.ic_record,
+                        label = when {
+                            pendingRecordingFormat != null -> uiText("録画中止")
+                            isPreviewRecording -> uiText("録画停止")
+                            else -> uiText("録画")
+                        },
+                        active = isRecordingOrCountingDown,
+                        destructive = isRecordingOrCountingDown,
+                        onClick = {
+                            if (pendingRecordingFormat != null) {
+                                cancelRecordingCountdown()
+                            } else if (isRecordingSaving) {
+                                // wait
+                            } else if (isPreviewRecording) {
+                                webView?.evaluateJavascript(
+                                    "window.__editKiroStopRecording?.()",
+                                    null
+                                )
+                            } else {
+                                showRecordingFormatDialog = true
+                            }
+                            previewActionsExpanded = false
+                        }
+                    )
+
+                    // 5. Fullscreen
+                    ActionChip(
+                        iconRes = R.drawable.ic_fullscreen,
+                        label = uiText("全画面"),
+                        onClick = {
+                            previewActionsExpanded = false
+                            focusManager.clearFocus(force = true)
+                            showExpandedPreview = true
+                        }
+                    )
+                }
+            }
+        }
+
+        @Composable
+        fun LandscapeUnifiedBar() {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                WorkSelector(
+                    modifier = Modifier.widthIn(min = 90.dp, max = 180.dp)
+                )
+
+                // Run / Pause / Reload
+                Row(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .border(
+                            width = 1.dp,
+                            color = if (isError) colors.error else colors.outlineVariant,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(start = 8.dp, end = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    isError -> colors.error
+                                    isPaused -> colors.outline
+                                    else -> colors.primary
+                                }
+                            )
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = when {
+                            isError -> "ERR"
+                            isPaused -> "PAUSE"
+                            else -> "RUN"
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isError) colors.error else colors.onSurfaceVariant,
+                        letterSpacing = 0.6.sp
+                    )
+                    IconButton(
+                        onClick = {
+                            isPaused = !isPaused
+                            webView?.evaluateJavascript(
+                                if (isPaused) "pauseSketch()" else "resumeSketch()", null
+                            )
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(if (isPaused) R.drawable.ic_play else R.drawable.ic_pause),
+                            contentDescription = uiText(if (isPaused) "再生" else "一時停止"),
+                            tint = colors.onSurface,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { runSketch() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_reload),
+                            contentDescription = uiText("再読み込み"),
+                            tint = colors.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Log console button
+                val consoleHasError = consoleEntries.any { it.level == ConsoleLevel.ERROR }
+                Box(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .widthIn(min = 38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (consoleHasError) colors.error else colors.outlineVariant,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .clickable { showConsole = !showConsole }
+                        .padding(horizontal = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_log),
+                            contentDescription = uiText("ログ"),
+                            tint = if (consoleHasError) colors.error else colors.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        if (consoleEntries.isNotEmpty()) {
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = if (consoleEntries.size > 99) "99+" else consoleEntries.size.toString(),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (consoleHasError) colors.error else colors.outline
+                            )
+                        }
+                    }
+                }
+
+                // Preview actions toggle button
+                PreviewActionsToggleButton()
+
+                // Restore & Save
+                Row(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .border(1.dp, colors.outlineVariant, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { restoreCurrentWork() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_restore),
+                            contentDescription = uiText("保存済み状態に戻す"),
+                            tint = colors.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { saveCurrentWork() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save),
+                            contentDescription = uiText("保存"),
+                            tint = if (hasUnsavedChanges) colors.primary else colors.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Rotate, Settings, WorkSettings, More
+                WorkActions()
+            }
+        }
+
+        @Composable
         fun PreviewOverlayButton(
             iconRes: Int,
             description: String,
@@ -3383,7 +3817,7 @@ class MainActivity : ComponentActivity() {
         ) {
             Surface(
                 onClick = onClick,
-                modifier = modifier.size(40.dp),
+                modifier = modifier.requiredSize(40.dp),
                 shape = RoundedCornerShape(11.dp),
                 color = if (active) {
                     colors.errorContainer.copy(alpha = 0.96f)
@@ -3795,9 +4229,9 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             isError = true
                                             val message = if (didCrash) {
-                                                "描画プロセスが異常終了しました（メモリまたはGPU負荷が高すぎる可能性があります）"
+                                                uiText("描画プロセスが異常終了しました（メモリまたはGPU負荷が高すぎる可能性があります）")
                                             } else {
-                                                "描画プロセスがメモリ不足等により終了されました"
+                                                uiText("描画プロセスがメモリ不足等により終了されました")
                                             }
                                             appendConsole(ConsoleLevel.ERROR, message)
                                             showConsole = true
@@ -3975,7 +4409,9 @@ class MainActivity : ComponentActivity() {
                             WindowInsets.safeDrawing.getRight(density, direction)).toDp()
                     } else 0.dp
                     // A separate popup can extend outside a narrow preview without squeezing buttons.
-                    val usePopup = availableWidth < (if (fullscreen) 248.dp else 201.dp) || maxHeight < 60.dp
+                    val requiredInlineWidth = (if (fullscreen) 345.dp else 298.dp) +
+                        (if (isPreviewRecording || isRecordingSaving) 120.dp else 0.dp)
+                    val usePopup = availableWidth < requiredInlineWidth || maxHeight < 60.dp
                     if (recordingCountdownRemaining > 0) {
                         Surface(
                             modifier = Modifier.align(Alignment.Center),
@@ -3999,77 +4435,86 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .then(
-                                if (fullscreen) {
-                                    Modifier.windowInsetsPadding(
-                                        WindowInsets.safeDrawing.only(
-                                            WindowInsetsSides.Top +
-                                                WindowInsetsSides.Horizontal
-                                        )
+                    if (fullscreen) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(
+                                        WindowInsetsSides.Top +
+                                            WindowInsetsSides.Horizontal
                                     )
-                                } else {
-                                    Modifier
+                                )
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            if (isPreviewRecording || isRecordingSaving) {
+                                RecordingStatus(
+                                    format = recordingFormatLabel, elapsed = recordingElapsedMillis,
+                                    remaining = (recordingLimitMillis - recordingElapsedMillis).coerceAtLeast(0),
+                                    saving = isRecordingSaving, text = ::uiText,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    onStop = { webView?.evaluateJavascript("window.__editKiroStopRecording?.()", null) }
+                                )
+                            }
+                            AnimatedVisibility(
+                                visible = previewActionsExpanded && !usePopup,
+                                enter = fadeIn(tween(130)) + expandHorizontally(
+                                    animationSpec = tween(210, easing = FastOutSlowInEasing),
+                                    expandFrom = Alignment.End
+                                ),
+                                exit = fadeOut(tween(100)) + shrinkHorizontally(
+                                    animationSpec = tween(170, easing = FastOutSlowInEasing),
+                                    shrinkTowards = Alignment.End
+                                )
+                            ) {
+                                PreviewActionButtons()
+                            }
+
+                            if (previewActionsExpanded && usePopup) {
+                                androidx.compose.ui.window.Popup(
+                                    alignment = Alignment.TopEnd,
+                                    offset = androidx.compose.ui.unit.IntOffset(0, with(density) { 48.dp.roundToPx() }),
+                                    onDismissRequest = { previewActionsExpanded = false },
+                                    properties = androidx.compose.ui.window.PopupProperties(focusable = true)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = colors.surface,
+                                        border = BorderStroke(1.dp, colors.outlineVariant),
+                                        shadowElevation = 6.dp,
+                                        modifier = Modifier.widthIn(max = 300.dp)
+                                    ) {
+                                        Row(Modifier.horizontalScroll(rememberScrollState()).padding(8.dp)) {
+                                            PreviewActionButtons()
+                                        }
+                                    }
+                                }
+                            }
+
+                            PreviewOverlayButton(
+                                iconRes = R.drawable.ic_more_horizontal,
+                                description = if (previewActionsExpanded) uiText("プレビュー操作を閉じる") else uiText("プレビュー操作を開く"),
+                                active = isRecordingOrCountingDown,
+                                onClick = {
+                                    previewActionsExpanded = !previewActionsExpanded
                                 }
                             )
-                            .padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        if (isPreviewRecording || isRecordingSaving) {
+                        }
+                    } else if (isPreviewRecording || isRecordingSaving) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(10.dp)
+                        ) {
                             RecordingStatus(
                                 format = recordingFormatLabel, elapsed = recordingElapsedMillis,
                                 remaining = (recordingLimitMillis - recordingElapsedMillis).coerceAtLeast(0),
                                 saving = isRecordingSaving, text = ::uiText,
-                                modifier = Modifier.weight(1f, fill = false),
                                 onStop = { webView?.evaluateJavascript("window.__editKiroStopRecording?.()", null) }
                             )
                         }
-                        AnimatedVisibility(
-                            visible = previewActionsExpanded && !usePopup,
-                            enter = fadeIn(tween(130)) + expandHorizontally(
-                                animationSpec = tween(210, easing = FastOutSlowInEasing),
-                                expandFrom = Alignment.End
-                            ),
-                            exit = fadeOut(tween(100)) + shrinkHorizontally(
-                                animationSpec = tween(170, easing = FastOutSlowInEasing),
-                                shrinkTowards = Alignment.End
-                            )
-                        ) {
-                            PreviewActionButtons()
-                        }
-
-                        if (previewActionsExpanded && usePopup) {
-                            androidx.compose.ui.window.Popup(
-                                alignment = Alignment.TopEnd,
-                                offset = androidx.compose.ui.unit.IntOffset(0, with(density) { 48.dp.roundToPx() }),
-                                onDismissRequest = { previewActionsExpanded = false },
-                                properties = androidx.compose.ui.window.PopupProperties(focusable = true)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = colors.surface,
-                                    border = BorderStroke(1.dp, colors.outlineVariant),
-                                    shadowElevation = 6.dp,
-                                    modifier = Modifier.widthIn(max = 300.dp)
-                                ) {
-                                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(8.dp)) {
-                                        PreviewActionButtons()
-                                    }
-                                }
-                            }
-                        }
-
-                        PreviewOverlayButton(
-                            iconRes = R.drawable.ic_more_horizontal,
-                            description = if (previewActionsExpanded) uiText("プレビュー操作を閉じる") else uiText("プレビュー操作を開く"),
-                            active = isRecordingOrCountingDown,
-                            onClick = {
-                                previewActionsExpanded = !previewActionsExpanded
-                            }
-                        )
                     }
                 }
             }
@@ -4100,11 +4545,11 @@ class MainActivity : ComponentActivity() {
                     Modifier
                         .fillMaxWidth()
                         .height(
-                            50.dp
+                            if (isLandscape) 40.dp else 50.dp
                         )
                         .padding(
                             vertical =
-                                6.dp
+                                if (isLandscape) 2.dp else 6.dp
                         ),
 
                 verticalAlignment =
@@ -4115,7 +4560,7 @@ class MainActivity : ComponentActivity() {
                     modifier =
                         Modifier
                             .height(
-                                38.dp
+                                if (isLandscape) 34.dp else 38.dp
                             )
                             .border(
                                 width =
@@ -4295,11 +4740,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Spacer(
-                    Modifier.width(
-                        6.dp
-                    )
-                )
+                Spacer(Modifier.width(6.dp))
 
                 val consoleHasError =
                     consoleEntries.any {
@@ -4311,7 +4752,7 @@ class MainActivity : ComponentActivity() {
                     modifier =
                         Modifier
                             .height(
-                                34.dp
+                                if (isLandscape) 34.dp else 38.dp
                             )
                             .widthIn(
                                 min =
@@ -4411,17 +4852,17 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Spacer(
-                    Modifier.weight(
-                        1f
-                    )
-                )
+                Spacer(Modifier.width(6.dp))
+
+                PreviewActionsToggleButton()
+
+                Spacer(Modifier.weight(1f))
 
                 Row(
                     modifier =
                         Modifier
                             .height(
-                                38.dp
+                                if (isLandscape) 34.dp else 38.dp
                             )
                             .border(
                                 width =
@@ -5289,17 +5730,41 @@ class MainActivity : ComponentActivity() {
             ) {
 
                 Column(Modifier.fillMaxSize()) {
-                FileTabs(listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted(), selectedEditorFile) {
-                    if (selectedEditorFile != it) {
-                        focusManager.clearFocus(force = true)
-                        editorFocused = false
-                        selectedEditorFile = it
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            FileTabs(listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted(), selectedEditorFile) {
+                                if (selectedEditorFile != it) {
+                                    focusManager.clearFocus(force = true)
+                                    editorFocused = false
+                                    selectedEditorFile = it
+                                }
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                activeWork?.let { work ->
+                                    currentSnapshots = WorkSnapshotStore.loadSnapshots(filesDir, work.id, work.revisions)
+                                }
+                                showSnapshotSheet = true
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_restore),
+                                contentDescription = uiText("スナップショット"),
+                                tint = colors.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                }
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     val editorScrollState = rememberScrollState()
+                    val editorHorizontalScrollState = rememberScrollState()
                     LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                         val target = navigationTarget ?: return@LaunchedEffect
                         val layout = editorTextLayout ?: return@LaunchedEffect
@@ -5376,51 +5841,67 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        BasicTextField(
-                            value = editingValue,
-                            onValueChange = {
-                                if (editingValue.selection.collapsed &&
-                                    deletesFoldedCode(editingText, it.text, projection.hidden)) {
-                                    sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
-                                } else applyEditorChange(
-                                    if (autoIndent && editingValue.composition == null && it.composition == null) {
-                                        applyAutomaticIndent(editingValue, it)
-                                    } else {
-                                        it
-                                    }
-                                )
-                            },
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = contentMinHeight)
-                                .padding(
-                                    start = if (showLineNumbers) 12.dp else 16.dp,
-                                    end = 16.dp
+                                .then(
+                                    if (!editorWordWrap) Modifier.horizontalScroll(editorHorizontalScrollState)
+                                    else Modifier
                                 )
-                                .focusRequester(editorFocusRequester)
-                                .onFocusChanged {
-                                    editorFocused = it.isFocused
+                        ) {
+                            BasicTextField(
+                                value = editingValue,
+                                onValueChange = {
+                                    if (editingValue.selection.collapsed &&
+                                        deletesFoldedCode(editingText, it.text, projection.hidden)) {
+                                        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
+                                    } else applyEditorChange(
+                                        if (autoIndent && editingValue.composition == null && it.composition == null) {
+                                            applyAutomaticIndent(editingValue, it)
+                                        } else {
+                                            it
+                                        }
+                                    )
                                 },
-                            textStyle = TextStyle(fontFeatureSettings = fontFeatures,
-                                fontFamily = codeFontFamily,
-                                fontSize = editorFontSize.sp,
-                                lineHeight = (editorFontSize * 1.55f).sp,
-                                color = colors.onSurface
-                            ),
-                            visualTransformation = foldedHighlighter,
-                            onTextLayout = { if (!it.hasSameEditorLines(editorTextLayout)) editorTextLayout = it },
-                            cursorBrush = SolidColor(colors.primary)
-                        )
+                                modifier = Modifier
+                                    .then(
+                                        if (editorWordWrap) Modifier.fillMaxWidth()
+                                        else Modifier.wrapContentWidth()
+                                    )
+                                    .heightIn(min = contentMinHeight)
+                                    .padding(
+                                        start = if (showLineNumbers) 12.dp else 16.dp,
+                                        end = 16.dp
+                                    )
+                                    .focusRequester(editorFocusRequester)
+                                    .onFocusChanged {
+                                        editorFocused = it.isFocused
+                                    },
+                                textStyle = TextStyle(fontFeatureSettings = fontFeatures,
+                                    fontFamily = codeFontFamily,
+                                    fontSize = editorFontSize.sp,
+                                    lineHeight = (editorFontSize * 1.55f).sp,
+                                    color = colors.onSurface
+                                ),
+                                visualTransformation = foldedHighlighter,
+                                onTextLayout = { if (!it.hasSameEditorLines(editorTextLayout)) editorTextLayout = it },
+                                cursorBrush = SolidColor(colors.primary)
+                            )
+                        }
                     }
                 }
                 }
             }
         }
 
-        val selectedFolderName by produceState("", selectedFolderUri, appLanguage, showSettings) {
-            value = if (showSettings) withContext(Dispatchers.IO) {
+        val selectedFolderName by produceState(
+            initialValue = if (selectedFolderUri == null) uiText("端末内") else uiText("選択済みフォルダー"),
+            selectedFolderUri,
+            appLanguage
+        ) {
+            value = withContext(Dispatchers.IO) {
                 getFolderName(selectedFolderUri)
-            } else ""
+            }
         }
 
         Scaffold(
@@ -5585,6 +6066,12 @@ class MainActivity : ComponentActivity() {
                         preferences.edit().putBoolean(landscapeCutoutKey, it).apply()
                     },
 
+                    landscapeEditorOnLeft = landscapeEditorOnLeft,
+                    onLandscapeEditorOnLeftChange = {
+                        landscapeEditorOnLeft = it
+                        preferences.edit().putBoolean(landscapeEditorOnLeftKey, it).apply()
+                    },
+
                     onShowStatusBarChange = {
 
                         showStatusBar =
@@ -5628,6 +6115,12 @@ class MainActivity : ComponentActivity() {
                                 it
                             )
                             .apply()
+                    },
+
+                    editorWordWrap = editorWordWrap,
+                    onEditorWordWrapChange = {
+                        editorWordWrap = it
+                        preferences.edit().putBoolean(editorWordWrapKey, it).apply()
                     },
 
                     autoIndent = autoIndent,
@@ -5772,8 +6265,10 @@ class MainActivity : ComponentActivity() {
                     (if (hasVisibleCompletions) 48.dp else 0.dp)
                 val availableForEditing = (maxHeight - chromeHeight).coerceAtLeast(0.dp)
                 // Editing uses a shallow, full-width viewport, without changing the saved work ratio.
-                val useWideEditingPreview = editorFocused && compactPreview
-                val previewHeightLimit = if (editorFocused && compactPreview) {
+                val useWideEditingPreview = (editorFocused && compactPreview) || (keyboardVisible && !hideEditingPreview)
+                val previewHeightLimit = if (keyboardVisible) {
+                    availableForEditing * 0.35f
+                } else if (editorFocused && compactPreview) {
                     availableForEditing * 0.5f
                 } else {
                     availableForEditing * 0.65f
@@ -5860,301 +6355,250 @@ class MainActivity : ComponentActivity() {
 
                             horizontalArrangement = Arrangement.Start
                         ) {
-
-                            BoxWithConstraints(
-                                modifier =
-                                    Modifier
-                                        .weight(
-                                            animatedLandscapePreviewFraction
-                                        )
+                            val editorPane: @Composable RowScope.() -> Unit = {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f - animatedLandscapePreviewFraction)
                                         .fillMaxHeight()
-                            ) {
+                                ) {
+                                    AnimatedVisibility(
+                                        visible = !editorFocused,
+                                        enter = fadeIn(tween(180)) +
+                                                expandVertically(
+                                                    animationSpec = tween(
+                                                        220,
+                                                        easing = FastOutSlowInEasing
+                                                    ),
+                                                    expandFrom = Alignment.Top
+                                                ),
+                                        exit = fadeOut(tween(140)) +
+                                                shrinkVertically(
+                                                    animationSpec = tween(
+                                                        220,
+                                                        easing = FastOutSlowInEasing
+                                                    ),
+                                                    shrinkTowards = Alignment.Top
+                                                )
+                                    ) {
+                                        LandscapeUnifiedBar()
+                                    }
 
-                                val previewSize = fitPreviewSize(maxWidth.value, maxHeight.value, workPreviewRatio)
+                                    AnimatedVisibility(
+                                        visible = showConsole,
+                                        enter = fadeIn(tween(140)) + expandVertically(tween(180)),
+                                        exit = fadeOut(tween(110)) + shrinkVertically(tween(160))
+                                    ) {
+                                        ConsolePanel(
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        )
+                                    }
 
-                                MainPreviewArea(
-                                    modifier =
-                                        Modifier
-                                            .size(previewSize.width.dp, previewSize.height.dp)
-                                            .align(
-                                                Alignment.Center
-                                            )
-                                )
+                                    AnimatedVisibility(
+                                        visible = previewActionsExpanded,
+                                        enter = fadeIn(tween(140)) + expandVertically(tween(180)),
+                                        exit = fadeOut(tween(110)) + shrinkVertically(tween(160))
+                                    ) {
+                                        PreviewActionsTray(
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        )
+                                    }
+
+                                    EditorArea(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth()
+                                    )
+
+                                    CompletionBar(
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+
+                                    AnimatedVisibility(
+                                        visible = editorFocused && showEditorAccessoryBar,
+                                        enter = fadeIn(tween(120)) + expandVertically(tween(160)),
+                                        exit = fadeOut(tween(90)) + shrinkVertically(tween(130))
+                                    ) {
+                                        EditorAccessoryBar(
+                                            modifier = Modifier.padding(top = 6.dp)
+                                        )
+                                    }
+                                }
                             }
 
-                            if (showResizeHandles) {
-                            Box(
-                                modifier = Modifier
-                                    .width(24.dp)
-                                    .fillMaxHeight()
-                                    .pointerInput(Unit) {
-                                        var accumulated = 0f
-                                        var splitIndex = 1
-                                        val threshold = 44.dp.toPx()
-                                        detectHorizontalDragGestures(
-                                            onDragStart = {
-                                                accumulated = 0f
-                                                splitIndex = LANDSCAPE_PREVIEW_SPLITS
-                                                    .indices
-                                                    .minByOrNull { index ->
-                                                        kotlin.math.abs(
-                                                            LANDSCAPE_PREVIEW_SPLITS[index] -
-                                                                currentLandscapePreviewFraction.value
-                                                        )
-                                                    } ?: 1
-                                                showLandscapeSplitLabel = true
-                                            },
-                                            onDragEnd = {
-                                                showLandscapeSplitLabel = false
-                                                preferences.edit()
-                                                    .putFloat(
-                                                        landscapePreviewSplitKey,
-                                                        currentLandscapePreviewFraction.value
-                                                    )
-                                                    .apply()
-                                            },
-                                            onDragCancel = {
-                                                showLandscapeSplitLabel = false
-                                            },
-                                            onHorizontalDrag = { change, dragAmount ->
-                                                change.consume()
-                                                accumulated += dragAmount
-                                                if (kotlin.math.abs(accumulated) >= threshold) {
-                                                    val nextIndex = (
-                                                        splitIndex + if (accumulated > 0f) 1 else -1
-                                                    ).coerceIn(0, LANDSCAPE_PREVIEW_SPLITS.lastIndex)
-                                                    if (nextIndex != splitIndex) {
-                                                        splitIndex = nextIndex
-                                                        landscapePreviewFraction =
-                                                            LANDSCAPE_PREVIEW_SPLITS[splitIndex]
+                            val dividerHandle: @Composable RowScope.() -> Unit = {
+                                if (showResizeHandles) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(24.dp)
+                                            .fillMaxHeight()
+                                            .pointerInput(landscapeEditorOnLeft) {
+                                                var accumulated = 0f
+                                                var splitIndex = 1
+                                                val threshold = 44.dp.toPx()
+                                                detectHorizontalDragGestures(
+                                                    onDragStart = {
+                                                        accumulated = 0f
+                                                        splitIndex = LANDSCAPE_PREVIEW_SPLITS
+                                                            .indices
+                                                            .minByOrNull { index ->
+                                                                kotlin.math.abs(
+                                                                    LANDSCAPE_PREVIEW_SPLITS[index] -
+                                                                        currentLandscapePreviewFraction.value
+                                                                )
+                                                            } ?: 1
+                                                        showLandscapeSplitLabel = true
+                                                    },
+                                                    onDragEnd = {
+                                                        showLandscapeSplitLabel = false
                                                         preferences.edit()
                                                             .putFloat(
                                                                 landscapePreviewSplitKey,
-                                                                LANDSCAPE_PREVIEW_SPLITS[splitIndex]
+                                                                currentLandscapePreviewFraction.value
                                                             )
+                                                            .apply()
+                                                    },
+                                                    onDragCancel = {
+                                                        showLandscapeSplitLabel = false
+                                                    },
+                                                    onHorizontalDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        accumulated += dragAmount
+                                                        if (kotlin.math.abs(accumulated) >= threshold) {
+                                                            val step = if (accumulated > 0f) 1 else -1
+                                                            val delta = if (landscapeEditorOnLeft) -step else step
+                                                            val nextIndex = (
+                                                                splitIndex + delta
+                                                            ).coerceIn(0, LANDSCAPE_PREVIEW_SPLITS.lastIndex)
+                                                            if (nextIndex != splitIndex) {
+                                                                splitIndex = nextIndex
+                                                                landscapePreviewFraction =
+                                                                    LANDSCAPE_PREVIEW_SPLITS[splitIndex]
+                                                                preferences.edit()
+                                                                    .putFloat(
+                                                                        landscapePreviewSplitKey,
+                                                                        LANDSCAPE_PREVIEW_SPLITS[splitIndex]
+                                                                    )
+                                                                    .apply()
+                                                                hapticFeedback.performHapticFeedback(
+                                                                    HapticFeedbackType.LongPress
+                                                                )
+                                                            }
+                                                            accumulated = 0f
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(
+                                                    onDoubleTap = {
+                                                        landscapePreviewFraction = 0.5f
+                                                        preferences.edit()
+                                                            .putFloat(landscapePreviewSplitKey, 0.5f)
                                                             .apply()
                                                         hapticFeedback.performHapticFeedback(
                                                             HapticFeedbackType.LongPress
                                                         )
                                                     }
-                                                    accumulated = 0f
-                                                }
-                                            }
-                                        )
-                                    }
-                                    .pointerInput(Unit) {
-                                        detectTapGestures(
-                                            onDoubleTap = {
-                                                landscapePreviewFraction = 0.5f
-                                                preferences.edit()
-                                                    .putFloat(landscapePreviewSplitKey, 0.5f)
-                                                    .apply()
-                                                hapticFeedback.performHapticFeedback(
-                                                    HapticFeedbackType.LongPress
                                                 )
                                             }
-                                        )
-                                    }
-                                    .semantics {
-                                        contentDescription = uiText("プレビューとエディターの分割を調整")
-                                        customActions = listOf(
-                                            CustomAccessibilityAction(uiText("プレビューを広げる")) {
-                                                val index = LANDSCAPE_PREVIEW_SPLITS.indexOf(landscapePreviewFraction)
-                                                val next = LANDSCAPE_PREVIEW_SPLITS[(index + 1).coerceIn(0, 2)]
-                                                landscapePreviewFraction = next
-                                                preferences.edit().putFloat(landscapePreviewSplitKey, next).apply()
-                                                true
+                                            .semantics {
+                                                contentDescription = uiText("プレビューとエディターの分割を調整")
+                                                customActions = listOf(
+                                                    CustomAccessibilityAction(uiText("プレビューを広げる")) {
+                                                        val index = LANDSCAPE_PREVIEW_SPLITS.indexOf(landscapePreviewFraction)
+                                                        val next = LANDSCAPE_PREVIEW_SPLITS[(index + 1).coerceIn(0, 2)]
+                                                        landscapePreviewFraction = next
+                                                        preferences.edit().putFloat(landscapePreviewSplitKey, next).apply()
+                                                        true
+                                                    },
+                                                    CustomAccessibilityAction(uiText("エディターを広げる")) {
+                                                        val index = LANDSCAPE_PREVIEW_SPLITS.indexOf(landscapePreviewFraction)
+                                                        val next = LANDSCAPE_PREVIEW_SPLITS[(index - 1).coerceIn(0, 2)]
+                                                        landscapePreviewFraction = next
+                                                        preferences.edit().putFloat(landscapePreviewSplitKey, next).apply()
+                                                        true
+                                                    }
+                                                )
                                             },
-                                            CustomAccessibilityAction(uiText("エディターを広げる")) {
-                                                val index = LANDSCAPE_PREVIEW_SPLITS.indexOf(landscapePreviewFraction)
-                                                val next = LANDSCAPE_PREVIEW_SPLITS[(index - 1).coerceIn(0, 2)]
-                                                landscapePreviewFraction = next
-                                                preferences.edit().putFloat(landscapePreviewSplitKey, next).apply()
-                                                true
-                                            }
-                                        )
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Surface(
-                                        modifier = Modifier
-                                            .width(if (showLandscapeSplitLabel) 12.dp else 2.dp)
-                                            .height(if (showLandscapeSplitLabel) 64.dp else 48.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (showLandscapeSplitLabel) {
-                                            colors.primaryContainer
-                                        } else {
-                                            colors.outlineVariant
-                                        },
-                                        border = if (showLandscapeSplitLabel) {
-                                            BorderStroke(
-                                                1.dp,
-                                                colors.primary.copy(alpha = 0.6f)
-                                            )
-                                        } else null,
-                                        tonalElevation = if (showLandscapeSplitLabel) 2.dp else 0.dp
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        if (showLandscapeSplitLabel) {
-                                            Column(
-                                                modifier = Modifier.fillMaxSize(),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.spacedBy(
-                                                    4.dp,
-                                                    Alignment.CenterVertically
-                                                )
-                                            ) {
-                                                repeat(3) {
-                                                    Box(
-                                                        Modifier
-                                                            .width(6.dp)
-                                                            .height(1.dp)
-                                                            .background(
-                                                                colors.onPrimaryContainer,
-                                                                RoundedCornerShape(1.dp)
-                                                            )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .width(if (showLandscapeSplitLabel) 12.dp else 2.dp)
+                                                    .height(if (showLandscapeSplitLabel) 64.dp else 48.dp),
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (showLandscapeSplitLabel) {
+                                                    colors.primaryContainer
+                                                } else {
+                                                    colors.outlineVariant
+                                                },
+                                                border = if (showLandscapeSplitLabel) {
+                                                    BorderStroke(
+                                                        1.dp,
+                                                        colors.primary.copy(alpha = 0.6f)
                                                     )
+                                                } else null,
+                                                tonalElevation = if (showLandscapeSplitLabel) 2.dp else 0.dp
+                                            ) {
+                                                if (showLandscapeSplitLabel) {
+                                                    Column(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.spacedBy(
+                                                            4.dp,
+                                                            Alignment.CenterVertically
+                                                        )
+                                                    ) {
+                                                        repeat(3) {
+                                                            Box(
+                                                                Modifier
+                                                                    .width(6.dp)
+                                                                    .height(1.dp)
+                                                                    .background(
+                                                                        colors.onPrimaryContainer,
+                                                                        RoundedCornerShape(1.dp)
+                                                                    )
+                                                            )
+                                                        }
+                                                    }
+                                                } else {
+                                                    Box(Modifier.fillMaxSize())
                                                 }
                                             }
-                                        } else {
-                                            Box(Modifier.fillMaxSize())
                                         }
                                     }
+                                } else {
+                                    Spacer(Modifier.width(8.dp))
                                 }
                             }
-                            } else {
-                                Spacer(Modifier.width(8.dp))
-                            }
 
-                            Column(
-                                modifier =
-                                    Modifier
-                                        .weight(
-                                            1f - animatedLandscapePreviewFraction
-                                        )
+                            val previewPane: @Composable RowScope.() -> Unit = {
+                                BoxWithConstraints(
+                                    modifier = Modifier
+                                        .weight(animatedLandscapePreviewFraction)
                                         .fillMaxHeight()
-                            ) {
-
-                                AnimatedVisibility(
-                                    visible =
-                                        !editorFocused,
-
-                                    enter =
-                                        fadeIn(
-                                            tween(180)
-                                        ) +
-                                                expandVertically(
-                                                    animationSpec =
-                                                        tween(
-                                                            220,
-                                                            easing =
-                                                                FastOutSlowInEasing
-                                                        ),
-
-                                                    expandFrom =
-                                                        Alignment.Top
-                                                ),
-
-                                    exit =
-                                        fadeOut(
-                                            tween(140)
-                                        ) +
-                                                shrinkVertically(
-                                                    animationSpec =
-                                                        tween(
-                                                            220,
-                                                            easing =
-                                                                FastOutSlowInEasing
-                                                        ),
-
-                                                    shrinkTowards =
-                                                        Alignment.Top
-                                                )
                                 ) {
-
-                                    Column {
-
-                                        Row(
-                                            modifier =
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .height(
-                                                        48.dp
-                                                    ),
-
-                                            verticalAlignment =
-                                                Alignment.CenterVertically
-                                        ) {
-
-                                            Box(
-                                                modifier =
-                                                    Modifier
-                                                        .weight(1f)
-                                                        .padding(end = 8.dp)
-                                            ) {
-                                                WorkSelector()
-                                            }
-
-                                            WorkActions()
-                                        }
-
-                                        ControlBar()
-                                    }
-                                }
-
-                                AnimatedVisibility(
-                                    visible =
-                                        showConsole,
-                                    enter =
-                                        fadeIn(
-                                            tween(140)
-                                        ) +
-                                            expandVertically(
-                                                tween(180)
-                                            ),
-                                    exit =
-                                        fadeOut(
-                                            tween(110)
-                                        ) +
-                                            shrinkVertically(
-                                                tween(160)
-                                            )
-                                ) {
-
-                                    ConsolePanel(
-                                        modifier =
-                                            Modifier.padding(
-                                                bottom =
-                                                    6.dp
-                                            )
+                                    val previewSize = fitPreviewSize(maxWidth.value, maxHeight.value, workPreviewRatio)
+                                    MainPreviewArea(
+                                        modifier = Modifier
+                                            .size(previewSize.width.dp, previewSize.height.dp)
+                                            .align(Alignment.Center)
                                     )
                                 }
+                            }
 
-                                EditorArea(
-                                    modifier =
-                                        Modifier
-                                            .weight(
-                                                1f
-                                            )
-                                            .fillMaxWidth()
-                                )
-
-                                CompletionBar(
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
-
-                                AnimatedVisibility(
-                                    visible = editorFocused && showEditorAccessoryBar,
-                                    enter = fadeIn(tween(120)) + expandVertically(tween(160)),
-                                    exit = fadeOut(tween(90)) + shrinkVertically(tween(130))
-                                ) {
-                                    EditorAccessoryBar(
-                                        modifier = Modifier.padding(top = 6.dp)
-                                    )
-                                }
+                            if (landscapeEditorOnLeft) {
+                                editorPane()
+                                dividerHandle()
+                                previewPane()
+                            } else {
+                                previewPane()
+                                dividerHandle()
+                                editorPane()
                             }
                         }
 
@@ -6164,7 +6608,7 @@ class MainActivity : ComponentActivity() {
                             availableWidth = availablePreviewWidth.dp,
                             heightLimit = previewHeightLimit,
                             ratio = workPreviewRatio,
-                            hidden = hideEditingPreview && editorFocused,
+                            hidden = hideEditingPreview && (editorFocused || keyboardVisible),
                             compact = useWideEditingPreview
                         ) { previewModifier -> MainPreviewArea(previewModifier) }
 
@@ -6189,6 +6633,11 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onDragEnd = {
                                             portraitRatioDragging = false
+                                            if (selectedFolderUri != null) {
+                                                lifecycleScope.launch(Dispatchers.IO) {
+                                                    saveStore()
+                                                }
+                                            }
                                         },
                                         onDragCancel = {
                                             portraitRatioDragging = false
@@ -6203,7 +6652,7 @@ class MainActivity : ComponentActivity() {
                                                 if (nextIndex != ratioIndex) {
                                                     ratioIndex = nextIndex
                                                     val selectedRatio = PREVIEW_ASPECT_RATIOS[ratioIndex]
-                                                    currentRatioChange.value(selectedRatio)
+                                                    updateActiveWorkPreviewRatio(selectedRatio, persist = false)
                                                     hapticFeedback.performHapticFeedback(
                                                         HapticFeedbackType.LongPress
                                                     )
@@ -6361,6 +6810,39 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        AnimatedVisibility(
+                            visible =
+                                previewActionsExpanded,
+                            enter =
+                                fadeIn(
+                                    tween(140)
+                                ) +
+                                    expandVertically(
+                                        tween(180)
+                                    ),
+                            exit =
+                                fadeOut(
+                                    tween(110)
+                                ) +
+                                    shrinkVertically(
+                                        tween(160)
+                                    )
+                        ) {
+
+                            PreviewActionsTray(
+                                modifier =
+                                    Modifier
+                                        .padding(
+                                            horizontal =
+                                                12.dp
+                                        )
+                                        .padding(
+                                            bottom =
+                                                6.dp
+                                        )
+                            )
+                        }
+
                         EditorArea(
                             modifier =
                                 Modifier
@@ -6444,11 +6926,34 @@ class MainActivity : ComponentActivity() {
                 sessionViewModel.fileDrafts["${parameterWork?.id}/$name"] ?: code
             } + ("sketch.js" to editorText)
             val declarations = workParameters(sources)
-            ModalBottomSheet(
-                onDismissRequest = { showParameterSheet = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = colors.surface
-            ) {
+            val coroutineScope = rememberCoroutineScope()
+            var parameterSaveJob by remember { mutableStateOf<Job?>(null) }
+            val scheduleSave = {
+                parameterSaveJob?.cancel()
+                parameterSaveJob = coroutineScope.launch {
+                    delay(500)
+                    if (parameterWork != null) {
+                        parameterWork.updatedAt = System.currentTimeMillis()
+                        val success = withContext(Dispatchers.IO) { saveStore() }
+                        if (!success) {
+                            Toast.makeText(this@MainActivity,
+                                uiText("保存できませんでした。保存先を確認して再試行してください"),
+                                Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            val flushSaveAndDismiss = {
+                parameterSaveJob?.cancel()
+                if (parameterWork != null) {
+                    parameterWork.updatedAt = System.currentTimeMillis()
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        saveStore()
+                    }
+                }
+                showParameterSheet = false
+            }
+            val panelContent = @Composable {
                 WorkParameterPanel(
                     parameters = declarations,
                     values = parameterWork?.parameterValues.orEmpty(),
@@ -6462,14 +6967,7 @@ class MainActivity : ComponentActivity() {
                             "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
                         )
                     },
-                    onCommit = {
-                        if (parameterWork != null) {
-                            parameterWork.updatedAt = System.currentTimeMillis()
-                            if (!saveStore()) Toast.makeText(this@MainActivity,
-                                uiText("保存できませんでした。保存先を確認して再試行してください"),
-                                Toast.LENGTH_LONG).show()
-                        }
-                    },
+                    onCommit = scheduleSave,
                     text = ::uiText,
                     onResetParameter = { parameter ->
                         parameterWork?.parameterValues?.remove(parameter.name)
@@ -6480,10 +6978,7 @@ class MainActivity : ComponentActivity() {
                         webView?.evaluateJavascript(
                             "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
                         )
-                        if (parameterWork != null) {
-                            parameterWork.updatedAt = System.currentTimeMillis()
-                            saveStore()
-                        }
+                        scheduleSave()
                     },
                     onResetAll = {
                         declarations.forEach { parameter ->
@@ -6496,13 +6991,44 @@ class MainActivity : ComponentActivity() {
                                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
                             )
                         }
-                        if (parameterWork != null) {
-                            parameterWork.updatedAt = System.currentTimeMillis()
-                            saveStore()
-                        }
+                        scheduleSave()
                     },
-                    onDismiss = { showParameterSheet = false }
+                    onDismiss = flushSaveAndDismiss
                 )
+            }
+            ModalBottomSheet(
+                onDismissRequest = flushSaveAndDismiss,
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = if (isLandscape) Color.Transparent else colors.surface,
+                scrimColor = if (isLandscape) Color.Black.copy(alpha = 0.28f) else BottomSheetDefaults.ScrimColor,
+                dragHandle = if (isLandscape) null else { { BottomSheetDefaults.DragHandle() } }
+            ) {
+                KeepLandscapeDialogImmersive(enabled = isLandscape || !showStatusBar)
+                if (isLandscape) {
+                    val editorWidthFraction = (1f - animatedLandscapePreviewFraction)
+                    Box(
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                        contentAlignment = if (landscapeEditorOnLeft) Alignment.CenterStart else Alignment.CenterEnd
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(editorWidthFraction)
+                                .widthIn(min = 360.dp, max = 560.dp)
+                                .fillMaxHeight(),
+                            shape = if (landscapeEditorOnLeft)
+                                RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+                            else
+                                RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+                            color = colors.surface,
+                            border = BorderStroke(1.dp, colors.outlineVariant),
+                            tonalElevation = 6.dp
+                        ) {
+                            panelContent()
+                        }
+                    }
+                } else {
+                    panelContent()
+                }
             }
         }
 
@@ -6642,6 +7168,71 @@ class MainActivity : ComponentActivity() {
                 onX = { sharePreviewMedia(media, true, xShareText) },
                 onDismiss = { savedPreviewMedia = null }
             )
+        }
+
+        if (showSnapshotSheet) {
+            WorkSheet(
+                title = uiText("スナップショット"),
+                subtitle = activeWork?.title ?: uiText("作品未選択"),
+                onDismiss = { showSnapshotSheet = false }
+            ) {
+                SnapshotSheet(
+                    snapshots = currentSnapshots,
+                    currentCode = editorText,
+                    codeFontFamily = codeFontFamily,
+                    onCreateSnapshot = {
+                        val work = activeWork
+                        if (work != null) {
+                            val supportingFiles = work.files.toMap()
+                            val params = work.parameterValues.toMap()
+                            currentSnapshots = WorkSnapshotStore.addSnapshot(
+                                filesDir = filesDir,
+                                workId = work.id,
+                                code = editorText,
+                                files = supportingFiles,
+                                parameterValues = params
+                            )
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            Toast.makeText(this@MainActivity, uiText("スナップショットを記録しました"), Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onRestoreSnapshot = { snapshot ->
+                        val work = activeWork
+                        if (work != null) {
+                            editorValue = TextFieldValue(snapshot.code)
+                            lastSavedText = snapshot.code
+                            work.code = snapshot.code
+                            work.updatedAt = System.currentTimeMillis()
+                            work.files.clear()
+                            work.files.putAll(snapshot.files)
+                            work.parameterValues.clear()
+                            work.parameterValues.putAll(snapshot.parameterValues)
+                            if (selectedEditorFile != "sketch.js" && selectedEditorFile !in work.files) {
+                                selectedEditorFile = "sketch.js"
+                            }
+                            sessionViewModel.clearAuxiliaryEditors(work.id)
+                            clearEditHistory()
+                            clearDraftSnapshot()
+                            lifecycleScope.launch(Dispatchers.IO) { saveStore() }
+                            runSketch(snapshot.code, snapshot.files)
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            Toast.makeText(this@MainActivity, uiText("スナップショットに復元しました"), Toast.LENGTH_SHORT).show()
+                            showSnapshotSheet = false
+                        }
+                    },
+                    onDeleteSnapshot = { snapshot ->
+                        val work = activeWork
+                        if (work != null) {
+                            currentSnapshots = WorkSnapshotStore.deleteSnapshot(
+                                filesDir = filesDir,
+                                workId = work.id,
+                                snapshotId = snapshot.id
+                            )
+                        }
+                    },
+                    text = ::uiText
+                )
+            }
         }
 
         if (showHistoryDialog) {
@@ -7733,6 +8324,8 @@ class MainActivity : ComponentActivity() {
         statusBarForcedHidden: Boolean,
         landscapeUseCutout: Boolean,
         onLandscapeUseCutoutChange: (Boolean) -> Unit,
+        landscapeEditorOnLeft: Boolean,
+        onLandscapeEditorOnLeftChange: (Boolean) -> Unit,
         onShowStatusBarChange:
             (Boolean) -> Unit,
         manualRotation: Boolean,
@@ -7741,6 +8334,8 @@ class MainActivity : ComponentActivity() {
         editorFontSize: Float,
         onEditorFontSizeChange:
             (Float) -> Unit,
+        editorWordWrap: Boolean,
+        onEditorWordWrapChange: (Boolean) -> Unit,
         autoIndent: Boolean,
         onAutoIndentChange:
             (Boolean) -> Unit,
@@ -8231,20 +8826,20 @@ class MainActivity : ComponentActivity() {
 
                 SettingSwitchRow(
                     title =
-                        uiText("ステータスバー"),
+                        uiText("ステータスバーとナビゲーションバーを非表示"),
                     description =
                         if (statusBarForcedHidden) {
-                            uiText("横画面では自動的に非表示になります")
+                            uiText("横画面では常に全画面（非表示）になります")
                         } else {
-                            uiText("時刻や通知アイコンを表示します")
+                            uiText("時刻、通知アイコン、OSナビゲーションバーを非表示にして画面を広く使います")
                         },
                     checked =
-                        showStatusBar &&
-                            !statusBarForcedHidden,
+                        !showStatusBar || statusBarForcedHidden,
                     enabled =
                         !statusBarForcedHidden,
-                    onCheckedChange =
-                        onShowStatusBarChange
+                    onCheckedChange = { hide ->
+                        onShowStatusBarChange(!hide)
+                    }
                 )
 
                 SettingsDivider()
@@ -8375,6 +8970,17 @@ class MainActivity : ComponentActivity() {
                 SettingsDivider()
 
                 SettingSwitchRow(
+                    title = uiText("横画面の配置（エディターを左）"),
+                    description = if (landscapeEditorOnLeft)
+                        uiText("左にエディター、右にプレビューを表示します")
+                    else uiText("左にプレビュー、右にエディターを表示します（従来）"),
+                    checked = landscapeEditorOnLeft,
+                    onCheckedChange = onLandscapeEditorOnLeftChange
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
                     title = uiText("全画面でも描画サイズを維持"),
                     description = uiText("通常プレビューと同じ座標・縦横比で実行し、表示だけを拡大します"),
                     checked = preserveExpandedPreview,
@@ -8397,6 +9003,17 @@ class MainActivity : ComponentActivity() {
                     description = uiText("コードの各行に番号を表示します"),
                     checked = showLineNumbers,
                     onCheckedChange = onShowLineNumbersChange
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    title = uiText("コードを画面幅で折り返す"),
+                    description = if (editorWordWrap)
+                        uiText("長い行を画面幅に合わせて下段に折り返します")
+                    else uiText("折り返さずに1行で表示し、横スクロールできるようにします"),
+                    checked = editorWordWrap,
+                    onCheckedChange = onEditorWordWrapChange
                 )
 
                 SettingsDivider()
