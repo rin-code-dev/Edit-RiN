@@ -24,9 +24,78 @@ internal enum class QrStatus {
     TOO_LARGE
 }
 
+internal enum class ShareCardTheme(
+    val id: String,
+    val bgColor: String,
+    val artBorderColor: String,
+    val titleColor: String,
+    val subtitleColor: String,
+    val dividerColor: String,
+    val codeBoxBg: String,
+    val codeBoxBorder: String,
+    val codeTextColor: String,
+    val codeLineNumColor: String,
+    val urlColor: String
+) {
+    DARK(
+        id = "dark",
+        bgColor = "#101014",
+        artBorderColor = "#262833",
+        titleColor = "#FFFFFF",
+        subtitleColor = "#8E919A",
+        dividerColor = "#262833",
+        codeBoxBg = "#14141B",
+        codeBoxBorder = "#262833",
+        codeTextColor = "#D4D7E2",
+        codeLineNumColor = "#494C5C",
+        urlColor = "#5A5E70"
+    ),
+    MIDNIGHT(
+        id = "midnight",
+        bgColor = "#0A0E1A",
+        artBorderColor = "#1E283D",
+        titleColor = "#FFFFFF",
+        subtitleColor = "#7E8B9F",
+        dividerColor = "#1E283D",
+        codeBoxBg = "#0F1626",
+        codeBoxBorder = "#1E283D",
+        codeTextColor = "#D6E0F0",
+        codeLineNumColor = "#43526E",
+        urlColor = "#50617F"
+    ),
+    CYBER(
+        id = "cyber",
+        bgColor = "#130D22",
+        artBorderColor = "#311F54",
+        titleColor = "#FFFFFF",
+        subtitleColor = "#A685D4",
+        dividerColor = "#311F54",
+        codeBoxBg = "#1A122E",
+        codeBoxBorder = "#311F54",
+        codeTextColor = "#E5DAF7",
+        codeLineNumColor = "#624B82",
+        urlColor = "#795B9E"
+    ),
+    LIGHT(
+        id = "light",
+        bgColor = "#F3F4F8",
+        artBorderColor = "#D5D8E2",
+        titleColor = "#12151F",
+        subtitleColor = "#606677",
+        dividerColor = "#D5D8E2",
+        codeBoxBg = "#FFFFFF",
+        codeBoxBorder = "#D5D8E2",
+        codeTextColor = "#1E2333",
+        codeLineNumColor = "#9FA5B5",
+        urlColor = "#7E8496"
+    )
+}
+
 internal data class ShareCardConfig(
     val title: String,
+    val author: String = "",
     val fullCode: String,
+    val theme: ShareCardTheme = ShareCardTheme.DARK,
     val includeCode: Boolean = true,
     val snippetCode: String = "",
     val snippetStartLine: Int = 1,
@@ -136,7 +205,7 @@ internal object ShareCardGenerator {
     }
 
     /**
-     * Renders a high-resolution 1920x1080 (16:9 Full HD) share card with enlarged QR code for instant scanning.
+     * Renders a high-resolution 1920x1080 (16:9 Full HD) share card with themes and author credit.
      */
     fun renderShareCard(
         artwork: Bitmap,
@@ -146,10 +215,11 @@ internal object ShareCardGenerator {
         val height = 1080
         val card = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(card)
+        val theme = config.theme
 
-        // 1. Background (Edit:RiN dark theme #101014)
+        // 1. Background
         val bgPaint = Paint().apply {
-            color = Color.parseColor("#101014")
+            color = Color.parseColor(theme.bgColor)
             style = Paint.Style.FILL
         }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
@@ -162,7 +232,7 @@ internal object ShareCardGenerator {
         canvas.drawBitmap(roundedArt, artX, artY, null)
 
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#262833")
+            color = Color.parseColor(theme.artBorderColor)
             style = Paint.Style.STROKE
             strokeWidth = 3f
         }
@@ -174,7 +244,7 @@ internal object ShareCardGenerator {
 
         // Title
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+            color = Color.parseColor(theme.titleColor)
             textSize = 54f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
@@ -187,17 +257,30 @@ internal object ShareCardGenerator {
         ).toString()
         canvas.drawText(displayTitle, rightX, 160f, titlePaint)
 
-        // Subtitle / Credit
+        // Subtitle / Author Credit
         val creditPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#8E919A")
+            color = Color.parseColor(theme.subtitleColor)
             textSize = 26f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
-        canvas.drawText("Created with Edit:RiN", rightX, 206f, creditPaint)
+        val creditText = if (config.author.isNotBlank()) {
+            val clean = config.author.trim()
+            val handle = if (clean.startsWith("@")) clean else "@$clean"
+            "by $handle  ·  Created with Edit:RiN"
+        } else {
+            "Created with Edit:RiN"
+        }
+        val displayCredit = TextUtils.ellipsize(
+            creditText,
+            TextPaint(creditPaint),
+            contentWidth,
+            TextUtils.TruncateAt.END
+        ).toString()
+        canvas.drawText(displayCredit, rightX, 206f, creditPaint)
 
         // Divider
         val dividerPaint = Paint().apply {
-            color = Color.parseColor("#262833")
+            color = Color.parseColor(theme.dividerColor)
             strokeWidth = 2f
         }
         canvas.drawLine(rightX, 236f, rightX + contentWidth, 236f, dividerPaint)
@@ -207,7 +290,7 @@ internal object ShareCardGenerator {
         val cleanedQrCode = cleanCodeForQr(config.fullCode)
 
         if (hasCode && hasQr) {
-            // Layout A: Both Code and QR (Expanded 390x390 QR filling bottom-right space)
+            // Layout A: Both Code and QR (Expanded 390x390 QR)
             val qrCardSize = 390f
             val qrPadding = 22f
             val qrX = rightX + contentWidth - qrCardSize
@@ -215,28 +298,28 @@ internal object ShareCardGenerator {
 
             // Code Box above QR
             val codeBoxH = qrY - 260f - 20f
-            drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
+            drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine, theme)
 
-            // Giant QR Card filling the entire bottom-right area
+            // QR Card at Bottom Right
             drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = qrPadding)
 
             // Scan Info to the left of the QR
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
+                color = Color.parseColor(theme.titleColor)
                 textSize = 30f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             canvas.drawText("Scan to run sketch", rightX, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#8E919A")
+                color = Color.parseColor(theme.subtitleColor)
                 textSize = 22f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
             canvas.drawText("Runs in browser with p5.js", rightX, qrY + 165f, hintSubPaint)
 
             val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#5A5E70")
+                color = Color.parseColor(theme.urlColor)
                 textSize = 19f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
@@ -245,7 +328,7 @@ internal object ShareCardGenerator {
         } else if (hasCode) {
             // Layout B: Code only (Full height)
             val codeBoxH = (height - 100f) - 260f
-            drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
+            drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine, theme)
 
         } else if (hasQr) {
             // Layout C: QR only (Extra large 380x380 QR)
@@ -257,14 +340,14 @@ internal object ShareCardGenerator {
             drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, qrPadding)
 
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
+                color = Color.parseColor(theme.titleColor)
                 textSize = 36f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             canvas.drawText("Scan to run sketch", qrX + qrCardSize + 40f, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#8E919A")
+                color = Color.parseColor(theme.subtitleColor)
                 textSize = 26f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
@@ -273,7 +356,7 @@ internal object ShareCardGenerator {
         } else {
             // Layout D: Minimal
             val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#636675")
+                color = Color.parseColor(theme.subtitleColor)
                 textSize = 28f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
@@ -289,13 +372,13 @@ internal object ShareCardGenerator {
         y: Float,
         size: Float,
         code: String,
-        padding: Float = 20f
+        padding: Float = 22f
     ) {
         val qrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.FILL
         }
-        canvas.drawRoundRect(x, y, x + size, y + size, 24f, 24f, qrBgPaint)
+        canvas.drawRoundRect(x, y, x + size, y + size, 28f, 28f, qrBgPaint)
 
         val qrUrl = WEB_VIEWER_BASE_URL + compressCodeForUrl(code)
         val rawQrSize = (size - padding * 2).toInt()
@@ -310,17 +393,18 @@ internal object ShareCardGenerator {
         w: Float,
         h: Float,
         snippet: String,
-        startLine: Int
+        startLine: Int,
+        theme: ShareCardTheme
     ) {
         // 1. Box background & border
         val boxBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#14141B")
+            color = Color.parseColor(theme.codeBoxBg)
             style = Paint.Style.FILL
         }
         canvas.drawRoundRect(x, y, x + w, y + h, 20f, 20f, boxBg)
 
         val boxBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#262833")
+            color = Color.parseColor(theme.codeBoxBorder)
             style = Paint.Style.STROKE
             strokeWidth = 2f
         }
@@ -341,7 +425,7 @@ internal object ShareCardGenerator {
         }
 
         val tabTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#8E919A")
+            color = Color.parseColor(theme.subtitleColor)
             textSize = 20f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
@@ -351,7 +435,7 @@ internal object ShareCardGenerator {
         val endLine = startLine + lines.size - 1
         val rangeText = if (lines.size > 1) "lines $startLine–$endLine" else "line $startLine"
         val rangePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#5A5E70")
+            color = Color.parseColor(theme.urlColor)
             textSize = 18f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
@@ -360,7 +444,7 @@ internal object ShareCardGenerator {
 
         // Header divider
         val hDividerPaint = Paint().apply {
-            color = Color.parseColor("#1F212B")
+            color = Color.parseColor(theme.codeBoxBorder)
             strokeWidth = 1.5f
         }
         canvas.drawLine(x, y + headerH, x + w, y + headerH, hDividerPaint)
@@ -372,13 +456,13 @@ internal object ShareCardGenerator {
         val visibleLines = lines.take(maxLines)
 
         val lineNumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#494C5C")
+            color = Color.parseColor(theme.codeLineNumColor)
             textSize = 21f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
 
         val codePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#D4D7E2")
+            color = Color.parseColor(theme.codeTextColor)
             textSize = 21f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
