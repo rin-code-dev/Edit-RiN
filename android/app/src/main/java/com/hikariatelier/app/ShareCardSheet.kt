@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +29,8 @@ internal fun ShareCardSheet(
     workTitle: String,
     fullCode: String,
     hasAssets: Boolean,
+    initialAuthor: String = "",
+    onAuthorChange: (String) -> Unit = {},
     initialSelectedRange: Pair<Int, Int>? = null,
     text: (String) -> String,
     onSave: (Bitmap) -> Unit,
@@ -36,6 +39,9 @@ internal fun ShareCardSheet(
 ) {
     val lines = remember(fullCode) { fullCode.lines() }
     val totalLines = lines.size.coerceAtLeast(1)
+
+    var author by remember(initialAuthor) { mutableStateOf(initialAuthor) }
+    var selectedTheme by remember { mutableStateOf(ShareCardTheme.DARK) }
 
     val qrStatus = remember(fullCode, hasAssets) {
         ShareCardGenerator.checkQrStatus(fullCode, hasAssets)
@@ -62,6 +68,8 @@ internal fun ShareCardSheet(
         initialValue = null,
         artwork,
         workTitle,
+        author,
+        selectedTheme,
         fullCode,
         includeCode,
         startLine,
@@ -80,7 +88,9 @@ internal fun ShareCardSheet(
                 artwork = artwork,
                 config = ShareCardConfig(
                     title = workTitle,
+                    author = author,
                     fullCode = fullCode,
+                    theme = selectedTheme,
                     includeCode = includeCode,
                     snippetCode = snippet,
                     snippetStartLine = startLine,
@@ -133,6 +143,77 @@ internal fun ShareCardSheet(
                         contentScale = ContentScale.Fit
                     )
                 } ?: CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+            }
+
+            // Theme Selection
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(text("テーマ"), style = MaterialTheme.typography.titleSmall)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ShareCardTheme.values().forEach { theme ->
+                            val isSelected = selectedTheme == theme
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedTheme = theme },
+                                label = {
+                                    Text(
+                                        when (theme) {
+                                            ShareCardTheme.DARK -> text("ダーク")
+                                            ShareCardTheme.MIDNIGHT -> text("ミッドナイト")
+                                            ShareCardTheme.CYBER -> text("サイバー")
+                                            ShareCardTheme.LIGHT -> text("ライト")
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Author Credit Input
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(text("作者クレジット（任意）"), style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = author,
+                        onValueChange = {
+                            author = it
+                            onAuthorChange(it)
+                        },
+                        placeholder = { Text(text("例: @username")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
             }
 
             // QR Code Setting / Status Banner

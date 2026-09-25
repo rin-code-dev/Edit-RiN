@@ -218,6 +218,7 @@ class MainActivity : ComponentActivity() {
     private val mp4BitrateKey = "setting_mp4_bitrate_mbps"
     private val xShareTextKey = "setting_x_share_text"
     private val recordingCountdownKey = "setting_recording_countdown_seconds"
+    private val shareCardAuthorKey = "setting_share_card_author"
 
     private val folderUriKey =
         "works_folder_uri"
@@ -1282,6 +1283,7 @@ class MainActivity : ComponentActivity() {
         var recordingElapsedMillis by remember { mutableLongStateOf(0L) }
         var savedPreviewMedia by remember { mutableStateOf<SavedPreviewMedia?>(null) }
         var shareCardArtwork by remember { mutableStateOf<Bitmap?>(null) }
+        var shareCardAuthor by remember { mutableStateOf(preferences.getString(shareCardAuthorKey, "") ?: "") }
         var isRecordingSaving by remember { mutableStateOf(false) }
         var mp4BitrateMbps by remember {
             mutableIntStateOf(
@@ -6488,6 +6490,11 @@ class MainActivity : ComponentActivity() {
                 workTitle = activeWork?.title ?: "",
                 fullCode = fullCode,
                 hasAssets = hasAssets,
+                initialAuthor = shareCardAuthor,
+                onAuthorChange = { newAuthor ->
+                    shareCardAuthor = newAuthor
+                    preferences.edit().putString(shareCardAuthorKey, newAuthor).apply()
+                },
                 initialSelectedRange = initialRange,
                 text = ::uiText,
                 onSave = { cardBmp ->
