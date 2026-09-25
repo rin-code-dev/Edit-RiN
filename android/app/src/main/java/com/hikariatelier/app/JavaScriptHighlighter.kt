@@ -65,6 +65,7 @@ class JavaScriptHighlighter(
                     commentStyle
                 }
                 character == '\'' || character == '"' || character == '`' -> {
+                    val contentStart = index + 1
                     index++
                     while (index < source.length) {
                         val current = source[index]
@@ -75,7 +76,17 @@ class JavaScriptHighlighter(
                             ) 3 else 2
                             index = (index + escapedLength).coerceAtMost(source.length)
                         } else if (current == character) {
+                            val content = source.substring(contentStart, index)
                             index++
+                            if (content.startsWith('#') && (content.length in listOf(4, 5, 7, 9))) {
+                                parseHexColor(content)?.let { hexCol ->
+                                    builder.addStyle(
+                                        SpanStyle(background = hexCol.copy(alpha = 0.28f)),
+                                        start,
+                                        index
+                                    )
+                                }
+                            }
                             break
                         } else if (character != '`' && (current == '\n' || current == '\r')) {
                             break

@@ -1223,6 +1223,19 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(false)
         }
 
+        var showColorPickerDialog by remember {
+            mutableStateOf(false)
+        }
+        var activeColorTarget by remember {
+            mutableStateOf<EditorColorTarget?>(null)
+        }
+        var colorPickerInitial by remember {
+            mutableStateOf(Color(0xFFE91E63))
+        }
+        var lastColorPickerColor by remember {
+            mutableStateOf(Color(0xFFE91E63))
+        }
+
         var currentSnapshots by remember(activeWorkId) {
             mutableStateOf(
                 activeWork?.let { work ->
@@ -5444,6 +5457,63 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val detectedColorTarget = remember(editingValue.text, editingValue.selection) {
+                        findColorAtSelection(editingValue.text, editingValue.selection)
+                    }
+
+                    Surface(
+                        onClick = {
+                            activeColorTarget = detectedColorTarget
+                            colorPickerInitial = detectedColorTarget?.color ?: lastColorPickerColor
+                            showColorPickerDialog = true
+                        },
+                        modifier = Modifier
+                            .width(
+                                (if (compactAccessoryKeys) {
+                                    (40 - 6).coerceAtLeast(34)
+                                } else {
+                                    40
+                                }).dp
+                            )
+                            .height(if (compactAccessoryKeys) 32.dp else 38.dp)
+                            .semantics {
+                                contentDescription = uiText(if (detectedColorTarget != null) "カラーを編集" else "カラーピッカー")
+                            },
+                        shape = RoundedCornerShape(8.dp),
+                        color = detectedColorTarget?.color ?: colors.surface,
+                        contentColor = if (detectedColorTarget != null) {
+                            if (detectedColorTarget.color.luminance() > 0.5f) Color.Black else Color.White
+                        } else colors.onSurface,
+                        border = BorderStroke(
+                            1.dp,
+                            if (detectedColorTarget != null) Color.White.copy(alpha = 0.85f) else colors.outlineVariant
+                        ),
+                        shadowElevation = 1.dp
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (detectedColorTarget == null) {
+                                Text(
+                                    text = "🎨",
+                                    fontSize = if (compactAccessoryKeys) 12.sp else 14.sp
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (compactAccessoryKeys) 14.dp else 16.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            1.dp,
+                                            if (detectedColorTarget.color.luminance() > 0.5f) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.75f),
+                                            CircleShape
+                                        )
+                                )
+                            }
+                        }
+                    }
+
                     if (showAccessoryNavigation) {
                         KeyDivider()
                         AccessoryKey("TAB", uiText("インデント"), 54, true) {
@@ -5628,10 +5698,12 @@ class MainActivity : ComponentActivity() {
                     logicalLineStarts.binarySearch(fold.open).let { if (it >= 0) it else -it - 2 }
                 }.mapValues { (_, regions) -> regions.first() }
             }
-            val lineNumberDigits = logicalLineStarts.size.toString().length
+            val lineNumberDigits = maxOf(1, logicalLineStarts.size.toString().length)
+            val hasFolds = foldRegions.isNotEmpty()
 
             val gutterText = remember(
                 showLineNumbers,
+                hasFolds,
                 projection,
                 foldsByLine,
                 editorTextLayout,
@@ -5657,16 +5729,18 @@ class MainActivity : ComponentActivity() {
                             logicalLineStarts.getOrNull(logicalIndex) == offset
 
                         if (startsLogicalLine) {
-                            val fold = foldsByLine[logicalIndex]
-                            append(when {
-                                fold == null -> "  "
-                                fold.open in collapsedFolds -> "▸ "
-                                else -> "▾ "
-                            })
+                            if (hasFolds) {
+                                val fold = foldsByLine[logicalIndex]
+                                append(when {
+                                    fold == null -> " "
+                                    fold.open in collapsedFolds -> "▸"
+                                    else -> "▾"
+                                })
+                            }
                             val numberStart = length
-                            append(
-                                if (showLineNumbers) (logicalIndex + 1).toString().padStart(lineNumberDigits) else ""
-                            )
+                            if (showLineNumbers) {
+                                append((logicalIndex + 1).toString().padStart(lineNumberDigits))
+                            }
                             if (logicalIndex + 1 in editorErrorLines) {
                                 addStyle(
                                     SpanStyle(
@@ -5678,7 +5752,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         } else {
-                            append(" ".repeat(2 + if (showLineNumbers) lineNumberDigits else 0))
+                            append(" ".repeat((if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)))
                         }
 
                         if (visualIndex < visualStarts.lastIndex) {
@@ -5781,8 +5855,9 @@ class MainActivity : ComponentActivity() {
                         navigationTarget = null
                     }
                     val contentMinHeight = (maxHeight - 32.dp).coerceAtLeast(0.dp)
+                    val gutterChars = (if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)
                     val gutterWidth = (
-                        ((if (showLineNumbers) lineNumberDigits else 0) + 2) * editorFontSize * LocalDensity.current.fontScale * 0.72f + 18f
+                        gutterChars * editorFontSize * LocalDensity.current.fontScale * 0.60f + 10f
                     ).dp
                     val gutterDividerColor = colors.outlineVariant
 
@@ -5832,7 +5907,7 @@ class MainActivity : ComponentActivity() {
                                             strokeWidth = 1.dp.toPx()
                                         )
                                     }
-                                    .padding(end = 9.dp),
+                                    .padding(end = 5.dp),
                                 color = colors.onSurfaceVariant.copy(alpha = 0.72f),
                                 fontFamily = codeFontFamily,
                                 fontSize = editorFontSize.sp,
@@ -5870,7 +5945,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                     .heightIn(min = contentMinHeight)
                                     .padding(
-                                        start = if (showLineNumbers) 12.dp else 16.dp,
+                                        start = if (showLineNumbers || foldRegions.isNotEmpty()) 6.dp else 12.dp,
                                         end = 16.dp
                                     )
                                     .focusRequester(editorFocusRequester)
@@ -7783,6 +7858,27 @@ class MainActivity : ComponentActivity() {
                         Text(uiText("閉じる"))
                     }
                 }
+            )
+        }
+
+        if (showColorPickerDialog) {
+            EditorColorPickerDialog(
+                initialColor = colorPickerInitial,
+                target = activeColorTarget,
+                onDismiss = {
+                    showColorPickerDialog = false
+                },
+                onApply = { newColor ->
+                    lastColorPickerColor = newColor
+                    val target = activeColorTarget
+                    if (target != null) {
+                        applyEditorChange(replaceColorTarget(editingValue, target, newColor))
+                    } else {
+                        applyEditorChange(insertColorAtCursor(editingValue, newColor))
+                    }
+                    editorFocusRequester.requestFocus()
+                },
+                text = ::uiText
             )
         }
 
