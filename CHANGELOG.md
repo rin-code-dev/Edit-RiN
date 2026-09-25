@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0 — 2026-09-25
+
+- Introduce **Share Cards**: Generate sleek, social-ready shareable image cards featuring live sketch preview snapshots, optional customizable code snippets, and QR codes that run instantly on the Web Player.
+- Introduce **Web Player**: Run and play shared sketches directly in any web browser without server storage, powered by client-side URL fragment decompression.
+- Fix MIME type handling when sharing captured images and recordings directly to X (Twitter).
+- Fix Jetpack Compose crash on large sketches by capping custom accessibility actions.
+- Redesign User Guide with modern theme cards, interactive code snippet copying, and comprehensive Japanese, English, and Simplified Chinese translations.
+- Complete full internationalization across all Share Card configuration dialogues and preview controls.
+
 ## 1.1.0 — 2026-09-25
 
 - Expand Live Parameters to support boolean toggle switches declared with `// @rin boolean`.

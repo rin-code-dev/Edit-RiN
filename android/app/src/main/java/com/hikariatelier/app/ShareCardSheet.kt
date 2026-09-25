@@ -353,7 +353,10 @@ internal fun ShareCardSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text("掲載範囲: $startLine 〜 $endLine 行目 (全 $totalLines 行)"),
+                                String.format(
+                                    text("掲載範囲: %d 〜 %d 行目 (全 %d 行)"),
+                                    startLine, endLine, totalLines
+                                ),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
