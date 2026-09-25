@@ -29,6 +29,11 @@ class RecordingShareFileTest {
         }
         assertTrue(gif.name.endsWith(".gif"))
         assertEquals("GIF89a", gif.readText())
+        val png = createRecordingShareFile(directory, "image/png", 8) {
+            ByteArrayInputStream(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
+        }
+        assertTrue(png.name.endsWith(".png"))
+        assertEquals(8, png.length())
     }
 
     @Test fun truncatedRecordingCannotBeSharedAndDoesNotReplacePreviousAttachment() {

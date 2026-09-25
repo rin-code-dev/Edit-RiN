@@ -16,12 +16,14 @@ internal fun createRecordingShareFile(
         "video/mp4" -> "mp4"
         "image/gif" -> "gif"
         "video/webm" -> "webm"
-        else -> throw IOException("Unsupported recording type")
+        "image/png" -> "png"
+        "image/jpeg" -> "jpg"
+        else -> throw IOException("Unsupported recording type: $mimeType")
     }
     if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Cannot create share directory")
     val now = System.currentTimeMillis()
     val previous = directory.listFiles().orEmpty().filter {
-        it.isFile && it.name.matches(Regex("EditRiN_share_[a-f0-9-]+\\.(mp4|gif|webm)"))
+        it.isFile && it.name.matches(Regex("EditRiN_share_[a-f0-9-]+\\.(mp4|gif|webm|png|jpg)"))
     }
     // Keep recent attachments available to X, including after returning to the editor.
     previous.filter { now - it.lastModified() > 48L * 60 * 60 * 1000 }.forEach { it.delete() }
