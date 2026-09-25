@@ -25,7 +25,9 @@ internal fun CustomColorSetting(
         if (input.toIntOrNull(16) != (value and 0xFFFFFF)) input = hex(value)
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.titleSmall)
+        if (label.isNotBlank()) {
+            Text(label, style = MaterialTheme.typography.titleSmall)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.padding(top = 8.dp).size(48.dp)
                 .background(Color(value), RoundedCornerShape(8.dp))
