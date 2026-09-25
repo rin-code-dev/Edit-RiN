@@ -207,17 +207,18 @@ internal object ShareCardGenerator {
         val cleanedQrCode = cleanCodeForQr(config.fullCode)
 
         if (hasCode && hasQr) {
-            // Layout A: Both Code and QR (Enlarged 280x280 QR with generous white quiet-zone)
-            val qrCardSize = 280f
+            // Layout A: Both Code and QR (Expanded 390x390 QR filling bottom-right space)
+            val qrCardSize = 390f
+            val qrPadding = 22f
             val qrX = rightX + contentWidth - qrCardSize
-            val qrY = height - 100f - qrCardSize
+            val qrY = height - 50f - qrCardSize
 
             // Code Box above QR
-            val codeBoxH = qrY - 260f - 24f
+            val codeBoxH = qrY - 260f - 20f
             drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine)
 
-            // Large QR Card at Bottom Right
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = 20f)
+            // Giant QR Card filling the entire bottom-right area
+            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = qrPadding)
 
             // Scan Info to the left of the QR
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -225,21 +226,21 @@ internal object ShareCardGenerator {
                 textSize = 30f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", rightX, qrY + 80f, hintTitlePaint)
+            canvas.drawText("Scan to run sketch", rightX, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#8E919A")
                 textSize = 22f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs in browser with p5.js", rightX, qrY + 125f, hintSubPaint)
+            canvas.drawText("Runs in browser with p5.js", rightX, qrY + 165f, hintSubPaint)
 
             val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#5A5E70")
-                textSize = 20f
+                textSize = 19f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
-            canvas.drawText("rin-code-dev.github.io/Edit-RiN", rightX, qrY + 165f, urlPaint)
+            canvas.drawText("rin-code-dev.github.io/Edit-RiN", rightX, qrY + 205f, urlPaint)
 
         } else if (hasCode) {
             // Layout B: Code only (Full height)
