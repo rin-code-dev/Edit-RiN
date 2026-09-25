@@ -1,53 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Edit:RiN Web Viewer</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     html, body {
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       background-color: #0F111A;
       color: #E2E8F0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
       overflow: hidden;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-    }
-    #canvas-container {
-      flex: 1;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    canvas {
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-      border-radius: 8px;
-      max-width: 100vw;
-      max-height: 100vh;
-      object-fit: contain;
+      touch-action: none;
     }
     #top-bar {
-      position: absolute;
+      position: fixed;
       top: 16px;
-      left: 20px;
-      right: 20px;
+      left: 16px;
+      right: 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       pointer-events: none;
-      z-index: 100;
+      z-index: 1000;
     }
     .badge {
       pointer-events: auto;
       background: rgba(15, 17, 26, 0.75);
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 20px;
       padding: 6px 14px;
@@ -60,19 +50,50 @@
     .badge:hover {
       background: rgba(255, 255, 255, 0.15);
     }
+    canvas {
+      display: block !important;
+      max-width: 95vw !important;
+      max-height: 90vh !important;
+      width: auto !important;
+      height: auto !important;
+      object-fit: contain;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+      border-radius: 12px;
+    }
+    #loading-indicator {
+      position: fixed;
+      font-size: 13px;
+      color: #7E8294;
+      letter-spacing: 0.08em;
+      pointer-events: none;
+    }
     #error-msg {
       display: none;
-      max-width: 80%;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      max-width: 500px;
       background: rgba(239, 68, 68, 0.15);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border: 1px solid #EF4444;
       color: #FCA5A5;
-      padding: 16px 24px;
-      border-radius: 8px;
+      padding: 16px 20px;
+      border-radius: 12px;
       font-family: monospace;
-      font-size: 14px;
+      font-size: 13px;
+      line-height: 1.5;
       white-space: pre-wrap;
+      z-index: 2000;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
     }
   </style>
+
+  <!-- pako for universal zero-dependency inflate support -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <!-- p5.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.5/p5.min.js"></script>
 </head>
 <body>
@@ -81,19 +102,10 @@
     <a class="badge" href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener">GitHub</a>
   </div>
 
-  <div id="canvas-container">
-    <div id="error-msg"></div>
-  </div>
+  <div id="loading-indicator">LOADING SKETCH...</div>
+  <div id="error-msg"></div>
 
   <script>
-    async function decompressDeflate(bytes) {
-      if (typeof DecompressionStream !== 'undefined') {
-        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
-        return new Response(stream).text();
-      }
-      throw new Error('DecompressionStream not supported in this browser.');
-    }
-
     function base64UrlToBytes(base64url) {
       let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
       while (base64.length % 4) base64 += '=';
@@ -105,36 +117,95 @@
       return bytes;
     }
 
-    async function init() {
+    async function decompress(bytes) {
+      // 1. Try pako inflate (works everywhere, synchronous & fast)
+      if (typeof pako !== 'undefined' && typeof pako.inflate === 'function') {
+        try {
+          return pako.inflate(bytes, { to: 'string' });
+        } catch (e) {
+          // If zlib header is missing, try raw inflate
+          return pako.inflateRaw(bytes, { to: 'string' });
+        }
+      }
+
+      // 2. Fallback to native DecompressionStream
+      if (typeof DecompressionStream !== 'undefined') {
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
+        return new Response(stream).text();
+      }
+
+      throw new Error('No decompression method available.');
+    }
+
+    function parseRinParams(code) {
+      const params = Object.create(null);
+      const regex = /\/\/\s*@rin\s+(number|boolean|color)\s+([a-zA-Z0-9_]+)(?:\s+([^\n\r]+))?/g;
+      let match;
+      while ((match = regex.exec(code)) !== null) {
+        const type = match[1];
+        const name = match[2];
+        const rest = (match[3] || '').trim().split(/\s+/);
+        if (type === 'number') {
+          params[name] = Number(rest[0]) || 0;
+        } else if (type === 'boolean') {
+          params[name] = rest[0] !== 'false';
+        } else if (type === 'color') {
+          params[name] = rest[0] || '#ffffff';
+        }
+      }
+      return params;
+    }
+
+    async function startViewer() {
+      const loading = document.getElementById('loading-indicator');
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash || window.location.search);
       const encodedCode = params.get('c') || params.get('code');
 
       if (!encodedCode) {
-        showError('No code specified in URL.\nUsage: .../share/#c=<compressed_base64_code>');
+        if (loading) loading.style.display = 'none';
+        showError('No sketch code found in URL.\nUsage: .../share/#c=<code_data>');
         return;
       }
 
       try {
         const bytes = base64UrlToBytes(encodedCode);
-        const code = await decompressDeflate(bytes);
+        const code = await decompress(bytes);
 
-        // Execute sketch
+        if (loading) loading.style.display = 'none';
+
+        // Provide default rinParams support
+        window.rinParams = parseRinParams(code);
+
+        // Inject sketch code into page
         const script = document.createElement('script');
-        script.textContent = code;
+        script.textContent = `${code}\n//# sourceURL=sketch.js`;
         document.body.appendChild(script);
+
+        // Explicitly start p5 in global mode if not already started
+        if (typeof p5 !== 'undefined') {
+          new p5();
+        }
       } catch (err) {
-        showError('Failed to decode or run sketch:\n' + (err.message || String(err)));
+        if (loading) loading.style.display = 'none';
+        showError('Failed to load sketch:\n' + (err.message || String(err)));
       }
     }
 
     function showError(msg) {
       const el = document.getElementById('error-msg');
-      el.textContent = msg;
-      el.style.display = 'block';
+      if (el) {
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
     }
 
-    window.addEventListener('DOMContentLoaded', init);
+    // Start on DOM ready or immediate if already loaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startViewer);
+    } else {
+      startViewer();
+    }
   </script>
 </body>
 </html>
