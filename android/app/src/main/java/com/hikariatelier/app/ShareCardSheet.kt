@@ -1,5 +1,6 @@
 package com.hikariatelier.app
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -105,50 +107,72 @@ internal fun ShareCardSheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column(
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    @Composable
+    fun PreviewCard() {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF101014))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
         ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            cardBitmap?.let { bmp ->
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = text("プレビュー"),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+            } ?: CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+        }
+    }
+
+    @Composable
+    fun ActionButtons() {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                shape = ButtonDefaults.outlinedShape,
+                onClick = { cardBitmap?.let(onSave) },
+                enabled = cardBitmap != null,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text("シェアカード設定"), style = MaterialTheme.typography.titleLarge)
-                IconButton(onClick = onDismiss) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = text("全画面表示を閉じる"))
-                }
+                Text(text("カードを端末に保存"))
             }
 
-            // Live Preview Card
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF101014))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
+            OutlinedButton(
+                shape = ButtonDefaults.outlinedShape,
+                onClick = { cardBitmap?.let { onShare(it, false) } },
+                enabled = cardBitmap != null,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                cardBitmap?.let { bmp ->
-                    Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = text("プレビュー"),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
-                } ?: CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+                Text(text("共有"))
             }
 
+            Button(
+                shape = ButtonDefaults.shape,
+                onClick = { cardBitmap?.let { onShare(it, true) } },
+                enabled = cardBitmap != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text("Xで共有"))
+            }
+        }
+    }
+
+    @Composable
+    fun SettingsControls() {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
             // Theme Selection
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -417,33 +441,90 @@ internal fun ShareCardSheet(
                     }
                 }
             }
+        }
+    }
 
-            // Action Buttons
-            OutlinedButton(
-                shape = ButtonDefaults.outlinedShape,
-                onClick = { cardBitmap?.let(onSave) },
-                enabled = cardBitmap != null,
-                modifier = Modifier.fillMaxWidth()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        val localView = androidx.compose.ui.platform.LocalView.current
+        DisposableEffect(localView, isLandscape) {
+            if (isLandscape && !localView.isInEditMode) {
+                var current: android.view.ViewParent? = localView.parent
+                var dialogWindow: android.view.Window? = null
+                while (current != null) {
+                    if (current is androidx.compose.ui.window.DialogWindowProvider) {
+                        dialogWindow = current.window
+                        break
+                    }
+                    current = current.parent
+                }
+                if (dialogWindow != null) {
+                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+                    val controller = androidx.core.view.WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView)
+                    controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                }
+            }
+            onDispose {}
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text("カードを端末に保存"))
+                Text(text("シェアカード設定"), style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = text("全画面表示を閉じる"))
+                }
             }
 
-            OutlinedButton(
-                shape = ButtonDefaults.outlinedShape,
-                onClick = { cardBitmap?.let { onShare(it, false) } },
-                enabled = cardBitmap != null,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text("共有"))
-            }
-
-            Button(
-                shape = ButtonDefaults.shape,
-                onClick = { cardBitmap?.let { onShare(it, true) } },
-                enabled = cardBitmap != null,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text("Xで共有"))
+            if (isLandscape) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.82f).dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        PreviewCard()
+                        ActionButtons()
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1.15f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        SettingsControls()
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    PreviewCard()
+                    SettingsControls()
+                    ActionButtons()
+                }
             }
         }
     }

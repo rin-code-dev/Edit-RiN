@@ -67,9 +67,42 @@ internal fun revisionDifference(current: String, revision: String): String {
 
 @Composable
 internal fun FileTabs(names: List<String>, selected: String, onSelect: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        names.forEach { name -> FilterChip(selected = name == selected,
-            onClick = { onSelect(name) }, label = { Text(name, maxLines = 1) }) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        names.forEach { name ->
+            val ext = name.substringAfterLast('.', "").lowercase()
+            val isShader = ext in setOf("frag", "vert", "glsl")
+            FilterChip(
+                selected = name == selected,
+                onClick = { onSelect(name) },
+                label = {
+                    Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(name, maxLines = 1)
+                        if (isShader) {
+                            Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            ) {
+                                Text(
+                                    ext.uppercase(),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    fontSize = androidx.compose.ui.unit.TextUnit(9f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            )
+        }
     }
 }

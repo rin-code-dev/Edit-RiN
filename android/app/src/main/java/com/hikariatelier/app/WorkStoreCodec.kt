@@ -24,7 +24,7 @@ internal fun serializeWorkStore(
                 .put(
                     "revisions",
                     JSONArray().apply {
-                        work.revisions.takeLast(30).forEach { revision ->
+                        work.revisions.takeLast(3).forEach { revision ->
                             put(
                                 JSONObject()
                                     .put("code", revision.code)

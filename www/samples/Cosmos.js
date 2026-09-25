@@ -42,5 +42,6 @@ function draw() {
   cosmosShader.setUniform('u_nebulaColor', [nebR, nebG, nebB]);
   cosmosShader.setUniform('u_coreColor', [coreR, coreG, coreB]);
 
-  rect(-width / 2, -height / 2, width, height);
+  // p5.js WebGL標準の全画面プレーン描画
+  plane(width, height);
 }
