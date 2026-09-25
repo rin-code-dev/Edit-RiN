@@ -379,5 +379,21 @@ internal val uiTranslations = mapOf(
     "保存先フォルダーを読み込めません" to ("Cannot read the folder" to "无法读取文件夹"),
     "作品ファイルを読み込めません" to ("Cannot read the work file" to "无法读取作品文件"),
     "作品ファイルの形式を読み取れません" to ("Invalid work file format" to "作品文件格式无效"),
-    "作品ファイルが空です" to ("Work file is empty" to "作品文件为空")
+    "作品ファイルが空です" to ("Work file is empty" to "作品文件为空"),
+    "Edit:RiN へようこそ" to ("Welcome to Edit:RiN" to "欢迎使用 Edit:RiN"),
+    "作品コードや画像・音声アセットを安全に保存し、バックアップや外部ファイル管理アプリと連携するために、作品の保存先フォルダーを選択してください。" to
+        ("Please choose a works folder to safely store your code, images, and audio assets, and to easily backup or sync with external file apps." to "请选择作品保存文件夹，以便安全存储代码、图像和音频素材，并方便备份或与外部文件管理应用同步。"),
+    "※「Documents」などに「Edit-RiN」フォルダーを新規作成して選択するのがおすすめです。既存の作品フォルダーがある場合はそれを選択すると復元されます。" to
+        ("※ We recommend creating a new 'Edit-RiN' folder in 'Documents'. If you already have an existing works folder, selecting it will restore your works." to "※ 建议在“Documents”中新建“Edit-RiN”文件夹并选择。如果您已有作品文件夹，选择它即可恢复作品。"),
+    "保存先フォルダーを選択" to ("Choose works folder" to "选择作品文件夹"),
+    "あとで設定（端末内に保存）" to ("Set up later (save on device)" to "稍后设置（保存在设备内）"),
+    "新しいサンプル作品の追加" to ("Add new sample works" to "添加新样例作品"),
+    "v1.1.0 で追加された新しい公式サンプル（%s）を現在の作品フォルダーに追加しますか？\n\n※既存の作品はそのまま保持されます。" to
+        ("Would you like to add the new official samples (%s) introduced in v1.1.0 to your works folder?\n\n※ Existing works will be kept unchanged." to "是否将 v1.1.0 新增的官方样例（%s）添加到当前作品文件夹？\n\n※ 现有作品将完整保留。"),
+    "作品一覧に追加" to ("Add to works" to "添加到作品列表"),
+    "あとで" to ("Later" to "稍后"),
+    "サンプル作品を追加しました" to ("Sample works added" to "已添加样例作品"),
+    "公式サンプル作品を追加" to ("Add official sample works" to "添加官方样例作品"),
+    "すべての公式サンプル作品は既に追加されています" to ("All official sample works are already added" to "所有官方样例作品已添加"),
+    "公式サンプル作品（%s件）を追加しました" to ("Added %s official sample work(s)" to "已添加 %s 个官方样例作品")
 )

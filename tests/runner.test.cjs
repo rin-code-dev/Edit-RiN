@@ -359,7 +359,6 @@ test('bundled Sound.js parses and initializes with p5.sound APIs', () => {
     beginShape() {}, endShape() {}, curveVertex() {}, textAlign() {}, textSize() {}, text() {},
     min: Math.min, map: (v, a, b, c, d) => c + ((v - a) / (b - a)) * (d - c),
     cos: Math.cos, sin: Math.sin, floor: Math.floor,
-    midiToFreq: (m) => 440 * Math.pow(2, (m - 69) / 12),
     p5: {
       Oscillator: function() {
         return { start() {}, amp() {}, freq() {} };

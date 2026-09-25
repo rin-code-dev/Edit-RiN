@@ -219,6 +219,8 @@ class MainActivity : ComponentActivity() {
 
     private val folderUriKey =
         "works_folder_uri"
+    private val samplePromptVersionKey =
+        "dismissed_sample_prompt_version"
 
     private var customBackground by mutableIntStateOf(0xFF101014.toInt())
     private var customAccent by mutableIntStateOf(0xFFA8C7FA.toInt())
@@ -345,18 +347,28 @@ class MainActivity : ComponentActivity() {
     private fun initializeSessionIfNeeded() {
         if (sessionViewModel.initialized) return
 
-        val folderUri =
-            preferences.getString(folderUriKey, null)?.let { value ->
-                runCatching { Uri.parse(value) }.getOrNull()
-            }
+        val folderUri = getValidFolderUri()
 
         val store = if (folderUri != null) loadWorkStore(folderUri) else loadLocalWorkStore()
         val initialWorks =
             store?.works?.takeIf { it.isNotEmpty() } ?: defaultWorks(assets)
+        var gravityMigrated = false
+        initialWorks.forEach { work ->
+            if (work.id == "gravity" && work.p5Version == P5_VERSION_CURRENT) {
+                work.p5Version = P5_VERSION_LEGACY
+                gravityMigrated = true
+            }
+        }
         val initialActiveId =
             store?.activeWorkId?.takeIf { id ->
                 initialWorks.any { it.id == id }
             } ?: initialWorks.firstOrNull()?.id.orEmpty()
+
+        if (gravityMigrated && folderUri != null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                saveWorkStore(folderUri, initialWorks, initialActiveId)
+            }
+        }
 
         val draft =
             if (
@@ -1129,17 +1141,7 @@ class MainActivity : ComponentActivity() {
         }
 
         var selectedFolderUri by remember {
-            mutableStateOf(
-                preferences.getString(
-                    folderUriKey,
-                    null
-                )?.let {
-
-                    runCatching {
-                        Uri.parse(it)
-                    }.getOrNull()
-                }
-            )
+            mutableStateOf(getValidFolderUri())
         }
 
         var works by sessionViewModel.worksState
@@ -2065,6 +2067,18 @@ class MainActivity : ComponentActivity() {
                         stored != null &&
                         stored.works.isNotEmpty()
                     ) {
+                        var gravityMigrated = false
+                        stored.works.forEach { work ->
+                            if (work.id == "gravity" && work.p5Version == P5_VERSION_CURRENT) {
+                                work.p5Version = P5_VERSION_LEGACY
+                                gravityMigrated = true
+                            }
+                        }
+                        if (gravityMigrated) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                saveWorkStore(uri, stored.works, stored.activeWorkId)
+                            }
+                        }
 
                         sessionViewModel.clearAuxiliaryEditors()
                         works =
@@ -5383,6 +5397,34 @@ class MainActivity : ComponentActivity() {
                         )
                     },
 
+                    onImportOfficialSamples = {
+                        val existingIds = works.map { it.id }.toSet()
+                        val existingTitles = works.map { it.title.lowercase() }.toSet()
+                        val missing = defaultWorks(assets).filter { sample ->
+                            sample.id !in existingIds && sample.title.lowercase() !in existingTitles
+                        }
+                        if (missing.isEmpty()) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                uiText("すべての公式サンプル作品は既に追加されています"),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            val updatedWorks = works + missing
+                            works = updatedWorks
+                            lifecycleScope.launch {
+                                withContext(Dispatchers.IO) {
+                                    saveWorkStore(selectedFolderUri, updatedWorks, activeWorkId)
+                                }
+                            }
+                            Toast.makeText(
+                                this@MainActivity,
+                                uiText("公式サンプル作品（%s件）を追加しました", missing.size),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+
                     autoRun =
                         autoRun,
 
@@ -6345,7 +6387,10 @@ class MainActivity : ComponentActivity() {
                     values = parameterWork?.parameterValues.orEmpty(),
                     onChange = { parameter, value ->
                         parameterWork?.parameterValues?.set(parameter.name, value)
-                        val jsonValue = if (parameter is WorkParameter.Number) value else JSONObject.quote(value)
+                        val jsonValue = when (parameter) {
+                            is WorkParameter.Number, is WorkParameter.Boolean -> value
+                            is WorkParameter.Color -> JSONObject.quote(value)
+                        }
                         webView?.evaluateJavascript(
                             "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)", null
                         )
@@ -6942,47 +6987,98 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        if (
-            selectedFolderUri ==
-            null
-        ) {
-
+        if (selectedFolderUri == null) {
             AlertDialog(
                 onDismissRequest = {},
-
                 title = {
-
-                    KeepLandscapeDialogImmersive(
-                        enabled =
-                            isLandscape
-                    )
-
-                    Text(
-                        uiText("作品フォルダーを選択")
-                    )
+                    KeepLandscapeDialogImmersive(enabled = isLandscape)
+                    Text(uiText("作品フォルダーを選択"))
                 },
-
                 text = {
-
-                    Text(
-                        uiText("作品は選択したフォルダーに保存されます。再インストール後も同じフォルダーを選択すれば復元できます。")
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            uiText("作品コードや画像・音声アセットを安全に保存し、バックアップや外部ファイル管理アプリと連携するために、作品の保存先フォルダーを選択してください。")
+                        )
+                        Text(
+                            uiText("※「Documents」などに「Edit-RiN」フォルダーを新規作成して選択するのがおすすめです。既存の作品フォルダーがある場合はそれを選択すると復元されます。"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
                 },
-
                 confirmButton = {
-
-                    Button(shape = ButtonDefaults.shape,
+                    Button(
+                        shape = ButtonDefaults.shape,
                         onClick = {
-
-                            folderLauncher.launch(
-                                null
-                            )
+                            folderLauncher.launch(null)
                         }
                     ) {
+                        Text(uiText("フォルダーを選択"))
+                    }
+                }
+            )
+        }
 
-                        Text(
-                            uiText("フォルダーを選択")
+        val missingOfficialSamples = remember(works) {
+            val existingIds = works.map { it.id }.toSet()
+            val existingTitles = works.map { it.title.lowercase() }.toSet()
+            defaultWorks(assets).filter { sample ->
+                sample.id !in existingIds && sample.title.lowercase() !in existingTitles
+            }
+        }
+        var showSampleUpdateDialog by rememberSaveable {
+            mutableStateOf(
+                missingOfficialSamples.isNotEmpty() &&
+                preferences.getInt(samplePromptVersionKey, 0) < BuildConfig.VERSION_CODE
+            )
+        }
+
+        if (showSampleUpdateDialog && missingOfficialSamples.isNotEmpty() && selectedFolderUri != null) {
+            val sampleNames = missingOfficialSamples.joinToString(", ") { it.title }
+            AlertDialog(
+                onDismissRequest = {
+                    preferences.edit().putInt(samplePromptVersionKey, BuildConfig.VERSION_CODE).apply()
+                    showSampleUpdateDialog = false
+                },
+                title = {
+                    KeepLandscapeDialogImmersive(enabled = isLandscape)
+                    Text(uiText("新しいサンプル作品の追加"))
+                },
+                text = {
+                    Text(
+                        uiText(
+                            "v1.1.0 で追加された新しい公式サンプル（%s）を現在の作品フォルダーに追加しますか？\n\n※既存の作品はそのまま保持されます。",
+                            sampleNames
                         )
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        shape = ButtonDefaults.shape,
+                        onClick = {
+                            val updatedWorks = works + missingOfficialSamples
+                            works = updatedWorks
+                            lifecycleScope.launch {
+                                withContext(Dispatchers.IO) {
+                                    saveWorkStore(selectedFolderUri, updatedWorks, activeWorkId)
+                                }
+                            }
+                            preferences.edit().putInt(samplePromptVersionKey, BuildConfig.VERSION_CODE).apply()
+                            showSampleUpdateDialog = false
+                            Toast.makeText(this@MainActivity, uiText("サンプル作品を追加しました"), Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text(uiText("作品一覧に追加"))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            preferences.edit().putInt(samplePromptVersionKey, BuildConfig.VERSION_CODE).apply()
+                            showSampleUpdateDialog = false
+                        }
+                    ) {
+                        Text(uiText("あとで"))
                     }
                 }
             )
@@ -7407,6 +7503,7 @@ class MainActivity : ComponentActivity() {
             (AppThemeMode) -> Unit,
         folderName: String,
         onChooseFolder: () -> Unit,
+        onImportOfficialSamples: () -> Unit,
         autoRun: Boolean,
         onAutoRunChange:
             (Boolean) -> Unit,
@@ -8411,6 +8508,34 @@ class MainActivity : ComponentActivity() {
                             uiText("保存先を変更")
                         )
                     }
+
+                    Spacer(
+                        Modifier.height(
+                            8.dp
+                        )
+                    )
+
+                    OutlinedButton(shape = ButtonDefaults.outlinedShape,
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        onClick =
+                            onImportOfficialSamples
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    R.drawable.ic_snippet
+                                ),
+                            contentDescription =
+                                null,
+                            modifier =
+                                Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            uiText("公式サンプル作品を追加")
+                        )
+                    }
                 }
 
                 SettingsDivider()
@@ -8684,6 +8809,27 @@ class MainActivity : ComponentActivity() {
 
     private fun saveWorkStore(folderUri: Uri?, works: List<Work>, activeWorkId: String): Boolean =
         workRepository.save(folderUri, works, activeWorkId)
+
+    private fun getValidFolderUri(): Uri? {
+        val uriString = preferences.getString(folderUriKey, null) ?: return null
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return null
+        val hasPermission = contentResolver.persistedUriPermissions.any {
+            it.uri == uri && (it.isReadPermission && it.isWritePermission)
+        }
+        if (!hasPermission) {
+            preferences.edit().remove(folderUriKey).apply()
+            return null
+        }
+        val isAccessible = runCatching {
+            val doc = DocumentFile.fromTreeUri(this, uri)
+            doc != null && doc.exists() && doc.canRead() && doc.canWrite()
+        }.getOrDefault(false)
+        if (!isAccessible) {
+            preferences.edit().remove(folderUriKey).apply()
+            return null
+        }
+        return uri
+    }
 
     private fun getFolderName(
         uri: Uri?

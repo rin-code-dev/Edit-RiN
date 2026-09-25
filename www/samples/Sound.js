@@ -5,6 +5,11 @@ let osc;
 let fft;
 let isPlaying = false;
 
+// p5.sound does not provide midiToFreq globally in all builds
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
 function setup() {
   createCanvas(600, 600);
   colorMode(HSB, 360, 100, 100, 100);
@@ -13,7 +18,8 @@ function setup() {
   osc.amp(0);
   osc.start();
 
-  fft = new p5.FFT(0.8, 128);
+  // p5.sound takes fftSize (power of 2 between 32 and 32768)
+  fft = new p5.FFT(128);
 }
 
 function draw() {
@@ -55,7 +61,8 @@ function draw() {
   noStroke();
   for (let i = 0; i < barCount; i++) {
     const angle = map(i, 0, barCount, 0, TWO_PI);
-    const amp = spectrum[i];
+    const rawAmp = spectrum[i];
+    const amp = (rawAmp <= 1.0) ? rawAmp * 255 : rawAmp;
     const r = map(amp, 0, 255, 60, 220);
     const hue = (i * 5 + frameCount * 0.5) % 360;
 

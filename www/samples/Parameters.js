@@ -11,27 +11,32 @@
 
 let angle = 0;
 
+function hexToRgb(hex) {
+  if (typeof hex !== 'string') return [0, 229, 255];
+  const c = hex.replace('#', '');
+  const n = parseInt(c.length === 3 ? c.split('').map(x => x + x).join('') : c, 16);
+  if (isNaN(n)) return [0, 229, 255];
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 function setup() {
   createCanvas(600, 600);
 }
 
 function draw() {
-  // Read live parameters from Edit:RiN runtime with fallbacks
   const p = (typeof rinParams !== 'undefined') ? rinParams : {};
   const speed = Number(p.speed ?? 1.0);
-  const petalCount = Math.round(Number(p.petals ?? 8));
-  const themeColor = p.theme || '#00E5FF';
-  const bgColor = p.bg || '#0F111A';
+  const petalCount = Math.max(3, Math.min(16, Math.round(Number(p.petals ?? 8))));
+  const themeHex = (typeof p.theme === 'string' && p.theme) ? p.theme : '#00E5FF';
+  const bgHex = (typeof p.bg === 'string' && p.bg) ? p.bg : '#0F111A';
   const glow = Boolean(p.glow ?? true);
   const fillShape = Boolean(p.filled ?? false);
 
-  background(bgColor);
-  translate(width * 0.5, height * 0.5);
+  const [bgR, bgG, bgB] = hexToRgb(bgHex);
+  const [r, g, b] = hexToRgb(themeHex);
 
-  const mainColor = color(themeColor);
-  const r = red(mainColor);
-  const g = green(mainColor);
-  const b = blue(mainColor);
+  background(bgR, bgG, bgB);
+  translate(width * 0.5, height * 0.5);
 
   angle += 0.015 * speed;
 
