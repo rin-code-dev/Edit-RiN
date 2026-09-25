@@ -734,8 +734,12 @@ class MainActivity : ComponentActivity() {
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                Toast.makeText(this@MainActivity, uiText("録画を共有できませんでした。空き容量と録画ファイルを確認してください"),
-                    Toast.LENGTH_LONG).show()
+                val errorMsg = if (media.mimeType.startsWith("image/")) {
+                    uiText("画像を共有できませんでした。空き容量とファイルを確認してください")
+                } else {
+                    uiText("録画を共有できませんでした。空き容量と録画ファイルを確認してください")
+                }
+                Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
             } finally {
                 if (!handedOff) attachment?.delete()
                 recordingShareBusy = false

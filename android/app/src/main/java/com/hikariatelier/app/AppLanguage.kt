@@ -43,6 +43,7 @@ internal val uiTranslations = mapOf(
     "p5.jsとライブラリを作品ごとに設定" to ("Set p5.js and libraries per work" to "为每个作品设置 p5.js 和库"),
     "共有の準備中" to ("Preparing to share" to "正在准备分享"),
     "録画を共有できませんでした。空き容量と録画ファイルを確認してください" to ("Could not share the recording. Check free storage and the recording file." to "无法分享录制文件。请检查可用空间和录制文件。"),
+    "画像を共有できませんでした。空き容量とファイルを確認してください" to ("Could not share the image. Check free storage and the file." to "无法分享图像。请检查可用空间和文件。"),
     "録画設定" to ("Recording settings" to "录制设置"),
     "最大60秒の推定容量" to ("Estimated size for 60 seconds" to "60秒预计大小"),
     "容量は映像の内容や端末により変わります" to ("Size varies with content and device" to "大小因内容和设备而异"),
