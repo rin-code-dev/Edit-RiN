@@ -200,6 +200,23 @@ internal val uiTranslations = mapOf(
     "管理" to ("Manage" to "管理"),
     "スクリーンショットをPictures/EditRiNへ保存しました" to ("Screenshot saved to Pictures/EditRiN" to "截图已保存到 Pictures/EditRiN"),
     "スクリーンショットを保存できませんでした" to ("Could not save the screenshot" to "无法保存截图"),
+    "シェアカードを作成" to ("Create share card" to "创建分享卡片"),
+    "シェアカード設定" to ("Share Card Settings" to "分享卡片设置"),
+    "シェアカード" to ("Share Card" to "分享卡片"),
+    "スクリーンショット" to ("Screenshot" to "截图"),
+    "シェアカードをPictures/EditRiNへ保存しました" to ("Share card saved to Pictures/EditRiN" to "分享卡片已保存到 Pictures/EditRiN"),
+    "シェアカードを保存できませんでした" to ("Could not save share card" to "无法保存分享卡片"),
+    "QRコードを含める" to ("Include QR code" to "包含二维码"),
+    "カメラ等でスキャンしてブラウザで作品を実行できます" to ("Scan to run this sketch live in browser" to "可通过扫描二维码在浏览器中运行作品"),
+    "⚠️ 作品に画像・音声などの外部素材が含まれているため、QRコードでのWeb実行は利用できません。プレビューとコードのみのカードを作成します。" to
+        ("⚠️ QR code execution is unavailable because external assets (images, audio, etc.) are used. Creating a card with preview and code only." to
+        "⚠️ 由于作品包含图片、音频等外部素材，无法通过二维码在网页运行。将仅生成包含预览与代码的卡片。"),
+    "⚠️ コード容量がQRコードの上限を超えているため、QRコードを含められません。プレビューとコードのみのカードを作成します。" to
+        ("⚠️ QR code cannot be included because the code size exceeds the capacity limit. Creating a card with preview and code only." to
+        "⚠️ 代码量超过二维码容量上限，无法包含二维码。将仅生成包含预览与代码的卡片。"),
+    "ソースコードを掲載" to ("Include source code" to "包含源代码"),
+    "カード内にコードスニペットを表示します" to ("Display a code snippet on the card" to "在卡片中显示代码片段"),
+    "カードを端末に保存" to ("Save card to device" to "保存卡片到设备"),
     "MP4をMovies/EditRiNへ保存しました" to ("MP4 saved to Movies/EditRiN" to "MP4 已保存到 Movies/EditRiN"),
     "GIFをPictures/EditRiNへ保存しました" to ("GIF saved to Pictures/EditRiN" to "GIF 已保存到 Pictures/EditRiN"),
     "録画をMovies/EditRiNへ保存しました" to ("Recording saved to Movies/EditRiN" to "录屏已保存到 Movies/EditRiN"),

@@ -106,7 +106,9 @@ internal fun SavedRecordingSheet(
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(text("保存した録画"), style = MaterialTheme.typography.titleLarge)
+            val isImage = mimeType.startsWith("image/") && mimeType != "image/gif"
+            val titleText = if (name.contains("Card")) text("シェアカード") else if (isImage) text("スクリーンショット") else text("保存した録画")
+            Text(titleText, style = MaterialTheme.typography.titleLarge)
             thumbnail?.let {
                 Image(it.asImageBitmap(), text("プレビュー"), Modifier.fillMaxWidth().height(160.dp),
                     contentScale = ContentScale.Fit)
@@ -114,7 +116,9 @@ internal fun SavedRecordingSheet(
             Text(name, style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(mimeType.substringAfter('/').uppercase())
-                Text(formatRecordingDuration(durationMillis))
+                if (!isImage) {
+                    Text(formatRecordingDuration(durationMillis))
+                }
                 Text(recordingSize(sizeBytes))
             }
             OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(text("開く")) }

@@ -1,0 +1,333 @@
+package com.hikariatelier.app
+
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ShareCardSheet(
+    artwork: Bitmap,
+    workTitle: String,
+    fullCode: String,
+    hasAssets: Boolean,
+    initialSelectedRange: Pair<Int, Int>? = null,
+    text: (String) -> String,
+    onSave: (Bitmap) -> Unit,
+    onShare: (Bitmap, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val lines = remember(fullCode) { fullCode.lines() }
+    val totalLines = lines.size.coerceAtLeast(1)
+
+    val qrStatus = remember(fullCode, hasAssets) {
+        ShareCardGenerator.checkQrStatus(fullCode, hasAssets)
+    }
+
+    var includeQr by remember(qrStatus) {
+        mutableStateOf(qrStatus == QrStatus.AVAILABLE)
+    }
+
+    var includeCode by remember { mutableStateOf(true) }
+
+    var startLine by remember(initialSelectedRange, totalLines) {
+        mutableIntStateOf(initialSelectedRange?.first?.coerceIn(1, totalLines) ?: 1)
+    }
+    var endLine by remember(initialSelectedRange, totalLines) {
+        mutableIntStateOf(
+            initialSelectedRange?.second?.coerceIn(startLine, totalLines)
+                ?: minOf(12, totalLines)
+        )
+    }
+
+    // Reactive card bitmap generated on background thread
+    val cardBitmap by produceState<Bitmap?>(
+        initialValue = null,
+        artwork,
+        workTitle,
+        fullCode,
+        includeCode,
+        startLine,
+        endLine,
+        includeQr,
+        qrStatus
+    ) {
+        value = withContext(Dispatchers.Default) {
+            val snippet = if (includeCode && lines.isNotEmpty()) {
+                val sIdx = (startLine - 1).coerceIn(0, lines.size - 1)
+                val eIdx = endLine.coerceIn(sIdx + 1, lines.size)
+                lines.subList(sIdx, eIdx).joinToString("\n")
+            } else ""
+
+            ShareCardGenerator.renderShareCard(
+                artwork = artwork,
+                config = ShareCardConfig(
+                    title = workTitle,
+                    fullCode = fullCode,
+                    includeCode = includeCode,
+                    snippetCode = snippet,
+                    snippetStartLine = startLine,
+                    includeQr = includeQr,
+                    qrStatus = qrStatus
+                )
+            )
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text("シェアカード設定"), style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = text("全画面表示を閉じる"))
+                }
+            }
+
+            // Live Preview Card
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF101014))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                cardBitmap?.let { bmp ->
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = text("プレビュー"),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+                } ?: CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+            }
+
+            // QR Code Setting / Status Banner
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = when (qrStatus) {
+                        QrStatus.AVAILABLE -> MaterialTheme.colorScheme.surfaceContainerHigh
+                        else -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    when (qrStatus) {
+                        QrStatus.AVAILABLE -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text("QRコードを含める"),
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        text("カメラ等でスキャンしてブラウザで作品を実行できます"),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = includeQr,
+                                    onCheckedChange = { includeQr = it }
+                                )
+                            }
+                        }
+                        QrStatus.CONTAINS_ASSETS -> {
+                            Text(
+                                text("⚠️ 作品に画像・音声などの外部素材が含まれているため、QRコードでのWeb実行は利用できません。プレビューとコードのみのカードを作成します。"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        QrStatus.TOO_LARGE -> {
+                            Text(
+                                text("⚠️ コード容量がQRコードの上限を超えているため、QRコードを含められません。プレビューとコードのみのカードを作成します。"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Source Code Toggle & Range Settings
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text("ソースコードを掲載"),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text("カード内にコードスニペットを表示します"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = includeCode,
+                            onCheckedChange = { includeCode = it }
+                        )
+                    }
+
+                    if (includeCode) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text("掲載範囲: $startLine 〜 $endLine 行目 (全 $totalLines 行)"),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+
+                        if (totalLines > 1) {
+                            RangeSlider(
+                                value = startLine.toFloat()..endLine.toFloat(),
+                                onValueChange = { range ->
+                                    val s = range.start.toInt().coerceIn(1, totalLines)
+                                    val e = range.endInclusive.toInt().coerceIn(s, totalLines)
+                                    startLine = s
+                                    endLine = e
+                                },
+                                valueRange = 1f..totalLines.toFloat(),
+                                steps = (totalLines - 2).coerceAtLeast(0)
+                            )
+                        }
+
+                        // Fine adjustment buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(text("開始:"), style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(
+                                    onClick = { if (startLine > 1) startLine-- },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp)
+                                ) { Text("-") }
+                                OutlinedButton(
+                                    onClick = { if (startLine < endLine) startLine++ },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp)
+                                ) { Text("+") }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(text("終了:"), style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(
+                                    onClick = { if (endLine > startLine) endLine-- },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp)
+                                ) { Text("-") }
+                                OutlinedButton(
+                                    onClick = { if (endLine < totalLines) endLine++ },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp)
+                                ) { Text("+") }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Action Buttons
+            OutlinedButton(
+                shape = ButtonDefaults.outlinedShape,
+                onClick = { cardBitmap?.let(onSave) },
+                enabled = cardBitmap != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text("カードを端末に保存"))
+            }
+
+            OutlinedButton(
+                shape = ButtonDefaults.outlinedShape,
+                onClick = { cardBitmap?.let { onShare(it, false) } },
+                enabled = cardBitmap != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text("共有"))
+            }
+
+            Button(
+                shape = ButtonDefaults.shape,
+                onClick = { cardBitmap?.let { onShare(it, true) } },
+                enabled = cardBitmap != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text("Xで共有"))
+            }
+        }
+    }
+}
