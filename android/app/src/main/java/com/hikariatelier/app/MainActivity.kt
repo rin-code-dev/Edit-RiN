@@ -3781,7 +3781,22 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
-                                webViewClient = AssetWebClient(assets, assetStorage) { previewSession.assets }
+                                webViewClient = AssetWebClient(
+                                    assets,
+                                    assetStorage,
+                                    onRendererCrash = { didCrash ->
+                                        runOnUiThread {
+                                            isError = true
+                                            val message = if (didCrash) {
+                                                "描画プロセスが異常終了しました（メモリまたはGPU負荷が高すぎる可能性があります）"
+                                            } else {
+                                                "描画プロセスがメモリ不足等により終了されました"
+                                            }
+                                            appendConsole(ConsoleLevel.ERROR, message)
+                                            showConsole = true
+                                        }
+                                    }
+                                ) { previewSession.assets }
 
                                 setOnTouchListener {
                                         currentView,
