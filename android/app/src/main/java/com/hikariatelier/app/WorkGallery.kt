@@ -8,8 +8,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -115,6 +118,9 @@ internal fun WorkGallery(
     text: (String) -> String,
     onSort: (String) -> Unit,
     onOpen: (Work, Boolean) -> Unit, onAdd: () -> Unit, onDismiss: () -> Unit,
+    onTogglePin: ((Work) -> Unit)? = null,
+    onEditTags: ((Work) -> Unit)? = null,
+    onDeleteGlobalTag: ((String) -> Unit)? = null,
     windowSetup: @Composable () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
@@ -125,10 +131,35 @@ internal fun WorkGallery(
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var sorting by remember { mutableStateOf(false) }
-    val visibleWorks = remember(works, sort, query) {
+    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var cardMenuWorkId by remember { mutableStateOf<String?>(null) }
+    var showManageAllTagsDialog by remember { mutableStateOf(false) }
+
+    val allTags = remember(works) {
+        works.flatMap { it.tags }.distinct().sorted()
+    }
+
+    val visibleWorks = remember(works, sort, query, selectedTag) {
         val trimmed = query.trim()
-        val filtered = if (trimmed.isEmpty()) works else works.filter { it.title.contains(trimmed, ignoreCase = true) }
-        if (sort == "名前順") filtered.sortedBy { it.title.lowercase() } else filtered.sortedByDescending { it.updatedAt }
+        val byTag = if (selectedTag != null) {
+            works.filter { work -> work.tags.any { it.equals(selectedTag, ignoreCase = true) } }
+        } else works
+        val filtered = if (trimmed.isEmpty()) byTag else byTag.filter { work ->
+            work.title.contains(trimmed, ignoreCase = true) ||
+            work.tags.any { it.contains(trimmed.removePrefix("#"), ignoreCase = true) }
+        }
+        val baseComparator: Comparator<Work> = if (sort == "名前順") {
+            Comparator { a, b -> a.title.lowercase().compareTo(b.title.lowercase()) }
+        } else {
+            Comparator { a, b -> b.updatedAt.compareTo(a.updatedAt) }
+        }
+        filtered.sortedWith(Comparator { a, b ->
+            if (a.isPinned != b.isPinned) {
+                if (a.isPinned) -1 else 1
+            } else {
+                baseComparator.compare(a, b)
+            }
+        })
     }
 
     ModalBottomSheet(
@@ -147,6 +178,9 @@ internal fun WorkGallery(
                 Spacer(Modifier.width(10.dp))
                 Text(works.size.toString(), color = colors.onSurfaceVariant, fontSize = 13.sp)
                 Spacer(Modifier.weight(1f))
+                IconButton(onClick = { showManageAllTagsDialog = true }) {
+                    Icon(painterResource(R.drawable.ic_tag), text("タグの管理"), Modifier.size(20.dp))
+                }
                 IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                     Icon(painterResource(R.drawable.ic_search), text("作品名で検索"), Modifier.size(20.dp))
                 }
@@ -176,6 +210,47 @@ internal fun WorkGallery(
                     trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) {
                         Icon(painterResource(R.drawable.ic_close), text("検索をクリア"), Modifier.size(18.dp))
                     } })
+            }
+            if (allTags.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = selectedTag == null,
+                        onClick = { selectedTag = null },
+                        label = { Text(text("すべて"), fontSize = 12.sp) },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = colors.primaryContainer,
+                            selectedLabelColor = colors.onPrimaryContainer
+                        )
+                    )
+                    allTags.forEach { tag ->
+                        FilterChip(
+                            selected = selectedTag == tag,
+                            onClick = { selectedTag = if (selectedTag == tag) null else tag },
+                            label = { Text("#$tag", fontSize = 12.sp) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = colors.primaryContainer,
+                                selectedLabelColor = colors.onPrimaryContainer
+                            )
+                        )
+                    }
+                    AssistChip(
+                        onClick = { showManageAllTagsDialog = true },
+                        label = { Text(text("タグの管理"), fontSize = 11.sp) },
+                        leadingIcon = {
+                            Icon(painterResource(R.drawable.ic_tag), null, Modifier.size(13.dp), tint = colors.primary)
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
             }
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 if (visibleWorks.isEmpty()) {
@@ -207,8 +282,11 @@ internal fun WorkGallery(
                             }
                         }
                         Column(Modifier.clip(RoundedCornerShape(6.dp))
-                            .combinedClickable(onClick = { onOpen(work, false) },
-                                onLongClickLabel = text("作品メニュー"), onLongClick = { onOpen(work, true) })
+                            .combinedClickable(
+                                onClick = { onOpen(work, false) },
+                                onLongClickLabel = text("作品メニュー"),
+                                onLongClick = { cardMenuWorkId = work.id }
+                            )
                             .semantics { selected = isSelected }) {
                             Box(Modifier.fillMaxWidth().aspectRatio(1f)
                                 .clip(RoundedCornerShape(6.dp))
@@ -220,9 +298,139 @@ internal fun WorkGallery(
                                         Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                                 } ?: Text(text("プレビュー未作成"), fontSize = 11.sp,
                                     color = colors.onSurfaceVariant, modifier = Modifier.padding(12.dp))
+                                if (work.isPinned) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color.Black.copy(alpha = 0.65f),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                            .size(24.dp)
+                                            .then(if (onTogglePin != null) Modifier.clickable { onTogglePin(work) } else Modifier)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_pin_filled),
+                                                text("ピン留め済み"),
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            Text(work.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 8.dp), fontSize = 14.sp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    work.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box {
+                                    IconButton(
+                                        onClick = { cardMenuWorkId = work.id },
+                                        modifier = Modifier.size(22.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_more_vertical),
+                                            contentDescription = text("作品メニュー"),
+                                            modifier = Modifier.size(15.dp),
+                                            tint = colors.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = cardMenuWorkId == work.id,
+                                        onDismissRequest = { cardMenuWorkId = null }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(if (work.isPinned) text("ピン留め解除") else text("ピン留め")) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    painterResource(if (work.isPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin),
+                                                    null,
+                                                    tint = colors.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            onClick = {
+                                                cardMenuWorkId = null
+                                                onTogglePin?.invoke(work)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(text("タグを編集")) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    painterResource(R.drawable.ic_tag),
+                                                    null,
+                                                    tint = colors.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            onClick = {
+                                                cardMenuWorkId = null
+                                                onEditTags?.invoke(work)
+                                            }
+                                        )
+                                        HorizontalDivider()
+                                        DropdownMenuItem(
+                                            text = { Text(text("開く")) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    painterResource(R.drawable.ic_code),
+                                                    null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            onClick = {
+                                                cardMenuWorkId = null
+                                                onOpen(work, false)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(text("作品メニュー")) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    painterResource(R.drawable.ic_settings),
+                                                    null,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            },
+                                            onClick = {
+                                                cardMenuWorkId = null
+                                                onOpen(work, true)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (work.tags.isNotEmpty()) {
+                                Text(
+                                    text = work.tags.joinToString(" ") { "#$it" },
+                                    color = colors.primary.copy(alpha = 0.9f),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable { onEditTags?.invoke(work) }
+                                )
+                            } else {
+                                Text(
+                                    text = "+ " + text("タグを追加"),
+                                    color = colors.onSurfaceVariant.copy(alpha = 0.45f),
+                                    fontSize = 10.sp,
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable { onEditTags?.invoke(work) }
+                                )
+                            }
                             val info = buildList {
                                 add(if (work.p5Version == P5_VERSION_LEGACY) "1.x" else "2.x")
                                 add("${1 + work.files.keys.count { it.endsWith(".js", ignoreCase = true) }} JS")
@@ -246,6 +454,19 @@ internal fun WorkGallery(
                     }
                 }
             }
+        }
+        if (showManageAllTagsDialog) {
+            val tagCounts = remember(works) {
+                works.flatMap { it.tags }.groupingBy { it }.eachCount()
+            }
+            AllTagsManageDialog(
+                tagCounts = tagCounts,
+                text = text,
+                onDeleteTag = { tag ->
+                    onDeleteGlobalTag?.invoke(tag)
+                },
+                onDismiss = { showManageAllTagsDialog = false }
+            )
         }
     }
 }
