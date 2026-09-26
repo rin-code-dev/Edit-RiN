@@ -26,6 +26,7 @@ internal class AssetWebClient(
     private val onRendererCrash: ((Boolean) -> Unit)? = null,
     private val snapshot: () -> PreviewAssets
 ) : WebViewClient() {
+    @androidx.annotation.RequiresApi(26)
     override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
         try {
             (view?.parent as? android.view.ViewGroup)?.removeView(view)

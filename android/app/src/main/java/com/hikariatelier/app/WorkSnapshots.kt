@@ -19,132 +19,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
-import java.util.UUID
-
-data class WorkSnapshot(
-    val id: String = UUID.randomUUID().toString(),
-    val savedAt: Long = System.currentTimeMillis(),
-    val code: String,
-    val files: Map<String, String> = emptyMap(),
-    val parameterValues: Map<String, String> = emptyMap(),
-    val note: String? = null
-)
-
-internal object WorkSnapshotStore {
-    private fun snapshotFile(filesDir: File, workId: String): File {
-        val dir = File(filesDir, "snapshots").apply { if (!exists()) mkdirs() }
-        return File(dir, "$workId.json")
-    }
-
-    fun loadSnapshots(
-        filesDir: File,
-        workId: String,
-        fallbackRevisions: List<WorkRevision> = emptyList()
-    ): List<WorkSnapshot> {
-        if (workId.isBlank()) return emptyList()
-        val file = snapshotFile(filesDir, workId)
-        if (file.exists()) {
-            return runCatching {
-                val array = JSONArray(file.readText())
-                val list = mutableListOf<WorkSnapshot>()
-                for (idx in 0 until array.length()) {
-                    val obj = array.getJSONObject(idx)
-                    val filesObj = obj.optJSONObject("files")
-                    val filesMap = filesObj?.let { fo ->
-                        fo.keys().asSequence().associateWith { fo.getString(it) }
-                    } ?: emptyMap()
-                    val paramsObj = obj.optJSONObject("parameterValues")
-                    val paramsMap = paramsObj?.let { po ->
-                        po.keys().asSequence().associateWith { po.getString(it) }
-                    } ?: emptyMap()
-                    list.add(
-                        WorkSnapshot(
-                            id = obj.optString("id", idx.toString()),
-                            savedAt = obj.optLong("savedAt", System.currentTimeMillis()),
-                            code = obj.getString("code"),
-                            files = filesMap,
-                            parameterValues = paramsMap,
-                            note = obj.optString("note").takeIf { !it.isNullOrBlank() }
-                        )
-                    )
-                }
-                list.sortedByDescending { it.savedAt }
-            }.getOrDefault(emptyList())
-        }
-
-        // Migrate from fallbackRevisions if available
-        if (fallbackRevisions.isNotEmpty()) {
-            val migrated = fallbackRevisions.takeLast(10).mapIndexed { idx, rev ->
-                WorkSnapshot(
-                    id = "migrated_$idx",
-                    savedAt = rev.savedAt,
-                    code = rev.code
-                )
-            }.sortedByDescending { it.savedAt }
-            saveSnapshots(filesDir, workId, migrated)
-            return migrated
-        }
-
-        return emptyList()
-    }
-
-    fun saveSnapshots(filesDir: File, workId: String, snapshots: List<WorkSnapshot>) {
-        if (workId.isBlank()) return
-        val file = snapshotFile(filesDir, workId)
-        runCatching {
-            val array = JSONArray()
-            // Keep up to 15 snapshots per work
-            snapshots.take(15).reversed().forEach { snapshot ->
-                array.put(JSONObject().apply {
-                    put("id", snapshot.id)
-                    put("savedAt", snapshot.savedAt)
-                    put("code", snapshot.code)
-                    put("files", JSONObject(snapshot.files))
-                    put("parameterValues", JSONObject(snapshot.parameterValues))
-                    if (!snapshot.note.isNullOrBlank()) {
-                        put("note", snapshot.note)
-                    }
-                })
-            }
-            file.writeText(array.toString(2))
-        }
-    }
-
-    fun addSnapshot(
-        filesDir: File,
-        workId: String,
-        code: String,
-        files: Map<String, String>,
-        parameterValues: Map<String, String>,
-        note: String? = null
-    ): List<WorkSnapshot> {
-        val current = loadSnapshots(filesDir, workId)
-        val newSnapshot = WorkSnapshot(
-            code = code,
-            files = files,
-            parameterValues = parameterValues,
-            note = note
-        )
-        val updated = (listOf(newSnapshot) + current).take(15)
-        saveSnapshots(filesDir, workId, updated)
-        return updated
-    }
-
-    fun deleteSnapshot(filesDir: File, workId: String, snapshotId: String): List<WorkSnapshot> {
-        val current = loadSnapshots(filesDir, workId)
-        val updated = current.filterNot { it.id == snapshotId }
-        saveSnapshots(filesDir, workId, updated)
-        return updated
-    }
-}
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun SnapshotSheet(
     snapshots: List<WorkSnapshot>,
-    currentCode: String,
+    current: SnapshotContent,
+    loading: Boolean,
+    busy: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
     codeFontFamily: FontFamily,
     onCreateSnapshot: () -> Unit,
     onRestoreSnapshot: (WorkSnapshot) -> Unit,
@@ -163,6 +48,7 @@ internal fun SnapshotSheet(
         // Create Snapshot Action
         FilledTonalButton(
             onClick = onCreateSnapshot,
+            enabled = !loading && !busy && error == null,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
@@ -177,7 +63,16 @@ internal fun SnapshotSheet(
             Text(text("現在の状態をスナップショット（保存）"), fontWeight = FontWeight.SemiBold)
         }
 
-        if (snapshots.isEmpty()) {
+        if (loading || busy) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(text(if (loading) "スナップショットを読み込み中…" else "スナップショットを処理中…"),
+                modifier = Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
+        }
+        if (error != null) {
+            Text(error, color = colors.error)
+            TextButton(onClick = onRetry, enabled = !busy && !loading) { Text(text("再試行")) }
+        }
+        if (snapshots.isEmpty() && !loading && error == null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -198,7 +93,7 @@ internal fun SnapshotSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(snapshots, key = { it.id }) { snapshot ->
-                    val isCurrent = snapshot.code == currentCode
+                    val isCurrent = snapshot.matches(current)
                     val lineCount = remember(snapshot.code) { snapshot.code.lines().size }
                     val dateFormatted = remember(snapshot.savedAt) {
                         android.text.format.DateFormat.format("MM/dd HH:mm", snapshot.savedAt).toString()
@@ -249,6 +144,7 @@ internal fun SnapshotSheet(
                                 Spacer(Modifier.weight(1f))
                                 IconButton(
                                     onClick = { snapshotToDelete = snapshot },
+                                    enabled = !busy && !loading && error == null,
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
@@ -290,7 +186,7 @@ internal fun SnapshotSheet(
                                 Spacer(Modifier.width(6.dp))
                                 Button(
                                     onClick = { onRestoreSnapshot(snapshot) },
-                                    enabled = !isCurrent,
+                                    enabled = !isCurrent && !busy && !loading && error == null,
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                     modifier = Modifier.height(32.dp),
                                     shape = RoundedCornerShape(8.dp)
@@ -306,6 +202,10 @@ internal fun SnapshotSheet(
     }
 
     diffTarget?.let { target ->
+        val difference by produceState<String?>(null, target, current) {
+            value = null
+            value = withContext(Dispatchers.Default) { snapshotDifference(current, target) }
+        }
         AlertDialog(
             onDismissRequest = { diffTarget = null },
             title = { Text(text("変更内容を確認")) },
@@ -318,7 +218,7 @@ internal fun SnapshotSheet(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = revisionDifference(currentCode, target.code),
+                        text = difference ?: text("スナップショットを読み込み中…"),
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 300.dp)
@@ -336,7 +236,7 @@ internal fun SnapshotSheet(
                         diffTarget = null
                         onRestoreSnapshot(toRestore)
                     },
-                    enabled = target.code != currentCode
+                    enabled = !target.matches(current) && !busy && !loading && error == null
                 ) {
                     Text(text("この状態に復元"))
                 }
@@ -360,7 +260,8 @@ internal fun SnapshotSheet(
                         val toDelete = target
                         snapshotToDelete = null
                         onDeleteSnapshot(toDelete)
-                    }
+                    },
+                    enabled = !busy && !loading && error == null
                 ) {
                     Text(text("削除"), color = colors.error)
                 }
