@@ -1180,6 +1180,10 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(false)
         }
 
+        var editingTagsWork by remember {
+            mutableStateOf<Work?>(null)
+        }
+
         var workMenuExpanded by rememberSaveable {
             mutableStateOf(false)
         }
@@ -1306,10 +1310,10 @@ class MainActivity : ComponentActivity() {
 
         val currentLandscapePreviewFraction = rememberUpdatedState(landscapePreviewFraction)
 
-        var showExpandedPreview by remember {
+        var showExpandedPreview by rememberSaveable {
             mutableStateOf(false)
         }
-        var expandedCanvasSwapped by remember { mutableStateOf(false) }
+        var expandedCanvasSwapped by rememberSaveable { mutableStateOf(false) }
 
         var isPreviewRecording by remember {
             mutableStateOf(false)
@@ -2053,7 +2057,8 @@ class MainActivity : ComponentActivity() {
                 p5SoundEnabled = current.p5SoundEnabled,
                 libraries = current.libraries.toMap(),
                 parameterValues = current.parameterValues.toMap(),
-                createdAt = current.createdAt, updatedAt = System.currentTimeMillis()
+                createdAt = current.createdAt, updatedAt = System.currentTimeMillis(),
+                isPinned = current.isPinned, tags = current.tags.toList()
             )
             val updatedWorks = works.map { if (it.id == current.id) saved else snapshotWork(it) }
             val folder = selectedFolderUri
@@ -2709,7 +2714,8 @@ class MainActivity : ComponentActivity() {
                             code = original.code, files = original.files.toMutableMap(), assets = original.assets.toMap(),
                             previewAspectRatio = original.previewAspectRatio, p5Version = original.p5Version,
                             p5SoundEnabled = original.p5SoundEnabled, libraries = original.libraries.toMap(),
-                            parameterValues = original.parameterValues.toMap())
+                            parameterValues = original.parameterValues.toMap(),
+                            isPinned = original.isPinned, tags = original.tags.toList())
                         imported to backup.snapshots[original.id].orEmpty()
                     }
                     val next = works.map { snapshotWork(it) } + imported
@@ -2923,6 +2929,32 @@ class MainActivity : ComponentActivity() {
                     },
                     onAdd = { workMenuExpanded = false; showAddDialog = true },
                     onDismiss = { workMenuExpanded = false },
+                    onTogglePin = togglePin@{ target ->
+                        target.isPinned = !target.isPinned
+                        target.updatedAt = System.currentTimeMillis()
+                        val newWorks = works.map { if (it.id == target.id) target else snapshotWork(it) }
+                        updateCurrentWork()
+                        persistWorkChange(newWorks, activeWorkId)
+                    },
+                    onEditTags = { target ->
+                        editingTagsWork = target
+                    },
+                    onDeleteGlobalTag = { tag ->
+                        var changed = false
+                        val nextWorks = works.map { work ->
+                            if (work.tags.any { it.equals(tag, ignoreCase = true) }) {
+                                changed = true
+                                work.tags.removeAll { it.equals(tag, ignoreCase = true) }
+                                work.updatedAt = System.currentTimeMillis()
+                                work
+                            } else {
+                                snapshotWork(work)
+                            }
+                        }
+                        if (changed) {
+                            persistWorkChange(nextWorks, activeWorkId)
+                        }
+                    },
                     windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
                 )
             }
@@ -3086,7 +3118,31 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
+                val currentIsPinned = activeWork?.isPinned == true
+                ActionRow(
+                    iconRes = if (currentIsPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin,
+                    title = if (currentIsPinned) uiText("ピン留め解除") else uiText("ピン留め"),
+                    subtitle = if (currentIsPinned) uiText("ピン留めを解除して通常の並び順に戻す") else uiText("作品をピン留めして上部に固定"),
+                    onClick = toggleMenuPin@{
+                        workActionsMenuExpanded = false
+                        val current = activeWork ?: return@toggleMenuPin
+                        current.isPinned = !current.isPinned
+                        current.updatedAt = System.currentTimeMillis()
+                        val newWorks = works.map { if (it.id == current.id) current else snapshotWork(it) }
+                        updateCurrentWork()
+                        persistWorkChange(newWorks, current.id)
+                    }
+                )
 
+                ActionRow(
+                    iconRes = R.drawable.ic_tag,
+                    title = uiText("タグを編集"),
+                    subtitle = uiText("作品の分類タグを管理"),
+                    onClick = {
+                        workActionsMenuExpanded = false
+                        editingTagsWork = activeWork
+                    }
+                )
 
                 ActionRow(
                     iconRes =
@@ -3143,7 +3199,11 @@ class MainActivity : ComponentActivity() {
                                     createdAt =
                                         now,
                                     updatedAt =
-                                        now
+                                        now,
+                                    isPinned =
+                                        current.isPinned,
+                                    tags =
+                                        current.tags.toList()
                                 )
 
                             val newWorks =
@@ -4332,22 +4392,18 @@ class MainActivity : ComponentActivity() {
                                 if (fullscreen) {
                                     PreviewOverlayButton(
                                         iconRes = R.drawable.ic_rotate,
-                                        description = uiText("描画の縦横を切り替える"),
-                                        active = expandedCanvasSwapped,
+                                        description = uiText("画面を回転"),
                                         onClick = {
                                             if (isRecordingOrCountingDown) {
                                                 Toast.makeText(this@MainActivity,
                                                     uiText("録画を停止してから描画の向きを変更してください"),
                                                     Toast.LENGTH_SHORT).show()
                                             } else {
-                                                val swapped = !expandedCanvasSwapped
-                                                webView?.evaluateJavascript(
-                                                    "window.__editKiroSetCanvasSwapped?.($swapped)"
-                                                ) { result ->
-                                                    if (result == "true") expandedCanvasSwapped = swapped
-                                                    else Toast.makeText(this@MainActivity,
-                                                        uiText("描画の向きを変更できませんでした"),
-                                                        Toast.LENGTH_SHORT).show()
+                                                val activity = view.context as Activity
+                                                activity.requestedOrientation = if (isLandscape) {
+                                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                                } else {
+                                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                                                 }
                                             }
                                             previewActionsExpanded = false
@@ -8337,6 +8393,30 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            )
+        }
+
+        editingTagsWork?.let { targetWork ->
+            WorkTagsDialog(
+                workTitle = targetWork.title,
+                currentTags = targetWork.tags.toList(),
+                allKnownTags = remember(works) { works.flatMap { it.tags }.distinct().sorted() },
+                text = ::uiText,
+                onAddTag = { tag ->
+                    if (!targetWork.tags.any { it.equals(tag, ignoreCase = true) }) {
+                        targetWork.tags.add(tag)
+                        targetWork.updatedAt = System.currentTimeMillis()
+                        val newWorks = works.map { if (it.id == targetWork.id) targetWork else snapshotWork(it) }
+                        persistWorkChange(newWorks, activeWorkId)
+                    }
+                },
+                onRemoveTag = { tag ->
+                    targetWork.tags.removeAll { it.equals(tag, ignoreCase = true) }
+                    targetWork.updatedAt = System.currentTimeMillis()
+                    val newWorks = works.map { if (it.id == targetWork.id) targetWork else snapshotWork(it) }
+                    persistWorkChange(newWorks, activeWorkId)
+                },
+                onDismiss = { editingTagsWork = null }
             )
         }
 

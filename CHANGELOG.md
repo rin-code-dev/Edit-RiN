@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.4 — 2026-09-27
+
+### English
+- **Work Pinning & Tag Management**:
+  - Pin important works to the top of the gallery with a persistent indicator and quick toggle.
+  - Add, edit, and filter works by tags (`#tag`) with tag suggestions and an inline tag editor.
+  - Perform quick actions (pinning, editing tags, opening) directly from the Works gallery without leaving the view.
+  - Introduce an All-Tags management dialog to review tag usage counts and delete unused tags across all works.
+  - Fully integrated with work backups and ZIP import/export to preserve pins and tags across devices.
+- **Fullscreen Screen Rotation Fix**:
+  - Fixed an issue where the rotation button in fullscreen mode did not rotate the screen orientation. It now properly toggles between portrait and landscape modes.
+  - Retain fullscreen preview state seamlessly across device and screen orientation changes.
+
+### 日本語
+- **作品のピン留め・タグ付け・タグ管理**:
+  - 重要な作品を一覧の最上部に固定できる「ピン留め」機能を新設。プレビュー上のピンバッジやメニューから手軽に切り替え可能。
+  - 作品の分類タグ（`#tag`）に対応。タグ編集ダイアログ、候補サジェスト、ギャラリー上部のチップバーによる絞り込みを搭載。
+  - 作品選択画面（Works ギャラリー）を開いたまま、カードごとの「︙」メニューや長押し、タグ部分のタップからその場でピン付け・タグ編集・オープンが可能。
+  - 全作品で使用されているタグの使用数確認や一括削除ができる「タグの管理」ダイアログを新設。
+  - 単体・全体の作品 ZIP 書き出し・取り込みに対応し、他端末への移行時もピン留めやタグ情報を保持。
+- **フルスクリーン時の画面回転修正**:
+  - フルスクリーン表示時にローテーションボタンを押しても画面が回転しなかった不具合を修正。画面全体の縦横（ポートレート／ランドスケープ）を確実にトグル切り替え可能に。
+  - 画面回転に伴う Activity 再生成時も、フルスクリーン表示が勝手に閉じずに維持されるよう状態保持を改善。
+
 ## 2.0.3 — 2026-09-26
 
 - **スナップショットの信頼性・データ保護の強化 (Snapshot Reliability & Data Protection)**:

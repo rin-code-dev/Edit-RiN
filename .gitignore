@@ -65,3 +65,5 @@ agents.md
 /replay_pid*.log
 Thumbs.db
 Desktop.ini
+__pycache__/
+*.pyc

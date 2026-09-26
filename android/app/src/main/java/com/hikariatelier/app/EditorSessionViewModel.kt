@@ -35,7 +35,9 @@ class Work(
     libraries: Map<String, String> = emptyMap(),
     parameterValues: Map<String, String> = emptyMap(),
     val createdAt: Long = System.currentTimeMillis(),
-    updatedAt: Long = System.currentTimeMillis()
+    updatedAt: Long = System.currentTimeMillis(),
+    isPinned: Boolean = false,
+    tags: List<String> = emptyList()
 ) {
     var title by mutableStateOf(title)
     var code by mutableStateOf(code)
@@ -45,6 +47,8 @@ class Work(
     var libraries by mutableStateOf(normalizedWorkLibraries(libraries))
     val parameterValues = parameterValues.toList().toMutableStateMap()
     var updatedAt by mutableStateOf(updatedAt)
+    var isPinned by mutableStateOf(isPinned)
+    val tags = tags.distinct().filter { it.isNotBlank() }.toMutableStateList()
     val files = files.toList().toMutableStateMap()
     val revisions = revisions.toMutableStateList()
     val assets = assets.toList().toMutableStateMap()

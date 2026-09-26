@@ -40,6 +40,8 @@ internal fun serializeWorkStore(
                 .put("parameterValues", JSONObject(work.parameterValues as Map<*, *>))
                 .put("createdAt", work.createdAt)
                 .put("updatedAt", work.updatedAt)
+                .put("isPinned", work.isPinned)
+                .put("tags", JSONArray(work.tags))
         )
     }
     return JSONObject()
@@ -108,7 +110,11 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
                 values.keys().asSequence().take(16).associateWith { values.optString(it) }
             }.orEmpty(),
             createdAt = item.optLong("createdAt", now),
-            updatedAt = item.optLong("updatedAt", now)
+            updatedAt = item.optLong("updatedAt", now),
+            isPinned = item.optBoolean("isPinned", false),
+            tags = item.optJSONArray("tags")?.let { tagsArray ->
+                List(tagsArray.length()) { tagsArray.optString(it) }.filter { it.isNotBlank() }
+            } ?: emptyList()
         )
     }
     WorkStore(

@@ -226,7 +226,8 @@ internal fun snapshotWork(work: Work, assets: Map<String, ProjectAsset> = work.a
     p5Version = work.p5Version, p5SoundEnabled = work.p5SoundEnabled,
     libraries = work.libraries.toMap(),
     parameterValues = work.parameterValues.toMap(),
-    createdAt = work.createdAt, updatedAt = work.updatedAt
+    createdAt = work.createdAt, updatedAt = work.updatedAt,
+    isPinned = work.isPinned, tags = work.tags.toList()
 )
 
 private val knownAssetMimeTypes = mapOf("png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif",
