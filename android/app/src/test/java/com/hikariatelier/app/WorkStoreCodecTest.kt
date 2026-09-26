@@ -40,8 +40,9 @@ class WorkStoreCodecTest {
     fun serializationBoundsHistoryWithoutMutatingSession() {
         val work = Work("a", "A", "", revisions = MutableList(50) { WorkRevision("code $it", it.toLong()) })
         val parsed = parseWorkStoreJson(serializeWorkStore(listOf(work), "a"))!!
-        assertEquals(30, parsed.works.single().revisions.size)
-        assertEquals("code 20", parsed.works.single().revisions.first().code)
+        // v2.0.1 moved checkpoints to separate storage; keep works.json bounded to three legacy revisions.
+        assertEquals(3, parsed.works.single().revisions.size)
+        assertEquals("code 47", parsed.works.single().revisions.first().code)
         assertEquals(50, work.revisions.size)
     }
 

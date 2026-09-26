@@ -113,17 +113,30 @@ internal class AssetStorage(private val root: File) {
     }
 }
 
-internal data class AssetBackup(val store: WorkStore, val settings: String?)
+internal data class AssetBackup(val store: WorkStore, val settings: String?,
+    val snapshots: Map<String, List<WorkSnapshot>> = emptyMap())
 
-internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId: String, settings: String, storage: AssetStorage) {
+internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId: String, settings: String, storage: AssetStorage,
+    snapshots: Map<String, List<WorkSnapshot>>? = null) {
     val assets = works.flatMap { it.assets.values }.distinctBy { it.hash }
     require(assets.sumOf { it.size } <= MAX_BACKUP_BYTES)
     ZipOutputStream(output.buffered()).use { zip ->
+        var totalBytes = assets.sumOf { it.size }
         fun text(name: String, value: String) {
-            zip.putNextEntry(ZipEntry(name)); zip.write(value.toByteArray(Charsets.UTF_8)); zip.closeEntry()
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            if (name != "snapshots.json") require(bytes.size <= 16L * 1024 * 1024) { "Backup metadata too large" }
+            totalBytes += bytes.size
+            require(totalBytes <= MAX_BACKUP_BYTES) { "Backup too large" }
+            zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry()
         }
         text("works.json", serializeWorkStore(works, activeId))
         text("settings.json", settings)
+        snapshots?.let { histories ->
+            require(histories.keys.all { id -> works.any { it.id == id } })
+            text("snapshots.json", org.json.JSONObject().put("version", 1).put("works",
+                org.json.JSONObject().apply { histories.forEach { (id, history) -> put(id, encodeSnapshots(history)) } }
+            ).toString())
+        }
         assets.forEach { asset ->
             check(storage.contains(asset)) { "Missing asset" }
             zip.putNextEntry(ZipEntry("assets/${asset.hash}"))
@@ -139,6 +152,7 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
     try {
         var works: String? = null
         var settings: String? = null
+        var snapshotsJson: String? = null
         val seen = mutableSetOf<String>()
         val blobs = mutableMapOf<String, ProjectAsset>()
         var total = 0L
@@ -147,11 +161,15 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
                 val entry = zip.nextEntry ?: break
                 require(seen.add(entry.name) && seen.size <= 2000)
                 when {
-                    entry.name == "works.json" || entry.name == "settings.json" -> {
+                    entry.name in setOf("works.json", "settings.json", "snapshots.json") -> {
                         val output = java.io.ByteArrayOutputStream()
-                        total += copyBounded(zip, output, 16L * 1024 * 1024)
+                        total += copyBounded(zip, output, if (entry.name == "snapshots.json") MAX_BACKUP_BYTES - total else 16L * 1024 * 1024)
                         val text = output.toString("UTF-8")
-                        if (entry.name == "works.json") works = text else settings = text
+                        when (entry.name) {
+                            "works.json" -> works = text
+                            "settings.json" -> settings = text
+                            "snapshots.json" -> snapshotsJson = text
+                        }
                     }
                     backupAssetPattern.matches(entry.name) -> {
                         val hash = entry.name.substringAfter('/')
@@ -168,12 +186,22 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
         }
         val store = works?.let(::parseWorkStoreJson) ?: error("Invalid works")
         require(store.works.isNotEmpty())
+        val snapshots = snapshotsJson?.let { json ->
+            val root = org.json.JSONObject(json)
+            require(root.getInt("version") == 1)
+            val histories = root.getJSONObject("works")
+            val ids = store.works.map { it.id }.toSet()
+            histories.keys().asSequence().associateWith { id ->
+                require(id in ids) { "Snapshot refers to an unknown work" }
+                decodeSnapshots(histories.getJSONArray(id))
+            }
+        }.orEmpty()
         val referencedAssets = store.works.flatMap { it.assets.values }
         referencedAssets.forEach { asset ->
             require(blobs[asset.hash]?.size == asset.size) { "Missing asset in backup" }
         }
         storage.commitStaged(staged, referencedAssets)
-        return AssetBackup(store, settings)
+        return AssetBackup(store, settings, snapshots)
     } finally {
         stagingDirectory.deleteRecursively()
     }

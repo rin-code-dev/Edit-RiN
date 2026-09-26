@@ -1219,7 +1219,7 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(false)
         }
 
-        var showSnapshotSheet by remember {
+        var showSnapshotSheet by rememberSaveable {
             mutableStateOf(false)
         }
 
@@ -1236,12 +1236,33 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(Color(0xFFE91E63))
         }
 
-        var currentSnapshots by remember(activeWorkId) {
-            mutableStateOf(
-                activeWork?.let { work ->
-                    WorkSnapshotStore.loadSnapshots(filesDir, work.id, work.revisions)
-                } ?: emptyList()
-            )
+        var currentSnapshots by remember(activeWorkId) { mutableStateOf(emptyList<WorkSnapshot>()) }
+        var snapshotsLoading by remember(activeWorkId) { mutableStateOf(false) }
+        var snapshotError by remember(activeWorkId) { mutableStateOf<String?>(null) }
+        var snapshotRefresh by remember { mutableIntStateOf(0) }
+        val snapshotBusy = sessionViewModel.snapshotOperationWorkId != null
+        LaunchedEffect(activeWorkId) {
+            val work = activeWork ?: return@LaunchedEffect
+            val revisions = work.revisions.toList()
+            if (revisions.isNotEmpty()) withContext(Dispatchers.IO) {
+                runCatching { WorkSnapshotStore.ensureLegacyMigrated(filesDir, work.id, revisions) }
+                    .onFailure { Log.w("EditKIRO", "Could not migrate legacy snapshots; preserving revisions", it) }
+            }
+        }
+        LaunchedEffect(showSnapshotSheet, activeWorkId, snapshotRefresh, sessionViewModel.snapshotOperationWorkId) {
+            if (!showSnapshotSheet || activeWork == null || snapshotBusy) return@LaunchedEffect
+            val workId = activeWork.id
+            val revisions = activeWork.revisions.toList()
+            snapshotsLoading = true
+            snapshotError = null
+            try {
+                currentSnapshots = withContext(Dispatchers.IO) {
+                    WorkSnapshotStore.loadSnapshots(filesDir, workId, revisions)
+                }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                snapshotError = uiText("スナップショットを読み込めませんでした。既存の記録は上書きしません。")
+            } finally { snapshotsLoading = false }
         }
 
         var showAspectRatioDialog by remember {
@@ -2522,7 +2543,8 @@ class MainActivity : ComponentActivity() {
                         val exported = withContext(Dispatchers.IO) {
                             runCatching {
                                 val output = contentResolver.openOutputStream(uri, "wt") ?: error("Cannot open backup")
-                                writeAssetBackup(output, backupWorks, backupActiveId, settings.toString(2), assetStorage)
+                                writeAssetBackup(output, backupWorks, backupActiveId, settings.toString(2), assetStorage,
+                                    WorkSnapshotStore.exportSnapshots(filesDir, backupWorks))
                             }.isSuccess
                         }
                         if (!exported) {
@@ -2554,7 +2576,11 @@ class MainActivity : ComponentActivity() {
                                 store.works.any { it.id == id }
                             } ?: store.works.first().id
                             val restoredFolder = selectedFolderUri
-                            if (!withContext(Dispatchers.IO) { saveWorkStore(restoredFolder, store.works, restoredActiveId) }) {
+                            if (!withContext(Dispatchers.IO) {
+                                WorkSnapshotStore.importWithWorks(filesDir, backup.snapshots) {
+                                    saveWorkStore(restoredFolder, store.works, restoredActiveId)
+                                }
+                            }) {
                                 return@runCatching false
                             }
                             sessionViewModel.clearAuxiliaryEditors()
@@ -2662,7 +2688,8 @@ class MainActivity : ComponentActivity() {
                 if (current != null) lifecycleScope.launch {
                     val success = withContext(Dispatchers.IO) { runCatching {
                         contentResolver.openOutputStream(uri)?.use {
-                            writeAssetBackup(it, listOf(current), current.id, "{}", assetStorage)
+                            writeAssetBackup(it, listOf(current), current.id, "{}", assetStorage,
+                                WorkSnapshotStore.exportSnapshots(filesDir, listOf(current)))
                         } ?: error("Cannot open ZIP")
                     }.isSuccess }
                     Toast.makeText(this@MainActivity, uiText(if (success) "作品ZIPを保存しました" else "作品ZIPを保存できませんでした"), Toast.LENGTH_LONG).show()
@@ -2673,21 +2700,26 @@ class MainActivity : ComponentActivity() {
             if (uri != null && !assetBusy) lifecycleScope.launch {
                 assetBusy = true
                 try {
-                    val imported = withContext(Dispatchers.IO) {
+                    val (imported, importedSnapshots) = withContext(Dispatchers.IO) {
                         val backup = contentResolver.openInputStream(uri)?.use { readAssetBackup(it, assetStorage) }
                             ?: error("Cannot open ZIP")
                         require(backup.store.works.size == 1)
                         val original = backup.store.works.single()
-                        Work(id = java.util.UUID.randomUUID().toString(), title = original.title,
+                        val imported = Work(id = java.util.UUID.randomUUID().toString(), title = original.title,
                             code = original.code, files = original.files.toMutableMap(), assets = original.assets.toMap(),
                             previewAspectRatio = original.previewAspectRatio, p5Version = original.p5Version,
                             p5SoundEnabled = original.p5SoundEnabled, libraries = original.libraries.toMap(),
                             parameterValues = original.parameterValues.toMap())
+                        imported to backup.snapshots[original.id].orEmpty()
                     }
                     val next = works.map { snapshotWork(it) } + imported
                     val folder = selectedFolderUri
                     val selected = activeWorkId
-                    if (withContext(Dispatchers.IO) { saveWorkStore(folder, next, selected) }) {
+                    if (withContext(Dispatchers.IO) {
+                        WorkSnapshotStore.importWithWorks(filesDir, mapOf(imported.id to importedSnapshots)) {
+                            saveWorkStore(folder, next, selected)
+                        }
+                    }) {
                         works = next
                         Toast.makeText(this@MainActivity, uiText("作品ZIPを追加しました"), Toast.LENGTH_SHORT).show()
                     } else error("Save failed")
@@ -2717,9 +2749,12 @@ class MainActivity : ComponentActivity() {
             onDismiss: () -> Unit,
             headerAction: @Composable () -> Unit = {},
             minimal: Boolean = false,
+            dismissEnabled: Boolean = true,
             content: @Composable ColumnScope.() -> Unit
         ) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            val currentDismissEnabled by rememberUpdatedState(dismissEnabled)
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+                confirmValueChange = { currentDismissEnabled || it != SheetValue.Hidden })
             ModalBottomSheet(
                 onDismissRequest = onDismiss,
                 sheetState = sheetState,
@@ -2750,7 +2785,7 @@ class MainActivity : ComponentActivity() {
                                 overflow = TextOverflow.Ellipsis)
                         }
                         headerAction()
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = onDismiss, enabled = dismissEnabled) {
                             Icon(painterResource(R.drawable.ic_close), uiText("閉じる"),
                                 Modifier.size(20.dp), tint = colors.onSurfaceVariant)
                         }
@@ -3026,9 +3061,6 @@ class MainActivity : ComponentActivity() {
                     subtitle = uiText("状態の記録・復元"),
                     onClick = {
                         workActionsMenuExpanded = false
-                        activeWork?.let { work ->
-                            currentSnapshots = WorkSnapshotStore.loadSnapshots(filesDir, work.id, work.revisions)
-                        }
                         showSnapshotSheet = true
                     }
                 )
@@ -5819,9 +5851,6 @@ class MainActivity : ComponentActivity() {
                         }
                         IconButton(
                             onClick = {
-                                activeWork?.let { work ->
-                                    currentSnapshots = WorkSnapshotStore.loadSnapshots(filesDir, work.id, work.revisions)
-                                }
                                 showSnapshotSheet = true
                             },
                             modifier = Modifier.size(34.dp)
@@ -7246,63 +7275,103 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showSnapshotSheet) {
+            val currentContent = activeWork?.let {
+                currentSnapshotContent(it, editorText, sessionViewModel.fileDrafts)
+            } ?: SnapshotContent(editorText, emptyMap(), emptyMap())
             WorkSheet(
                 title = uiText("スナップショット"),
                 subtitle = activeWork?.title ?: uiText("作品未選択"),
-                onDismiss = { showSnapshotSheet = false }
+                onDismiss = { if (!sessionViewModel.snapshotRestoring) showSnapshotSheet = false },
+                dismissEnabled = !sessionViewModel.snapshotRestoring
             ) {
                 SnapshotSheet(
                     snapshots = currentSnapshots,
-                    currentCode = editorText,
+                    current = currentContent,
+                    loading = snapshotsLoading,
+                    busy = snapshotBusy || assetBusy,
+                    error = snapshotError,
+                    onRetry = { snapshotRefresh++ },
                     codeFontFamily = codeFontFamily,
-                    onCreateSnapshot = {
-                        val work = activeWork
-                        if (work != null) {
-                            val supportingFiles = work.files.toMap()
-                            val params = work.parameterValues.toMap()
-                            currentSnapshots = WorkSnapshotStore.addSnapshot(
-                                filesDir = filesDir,
-                                workId = work.id,
-                                code = editorText,
-                                files = supportingFiles,
-                                parameterValues = params
-                            )
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            Toast.makeText(this@MainActivity, uiText("スナップショットを記録しました"), Toast.LENGTH_SHORT).show()
+                    onCreateSnapshot = create@{
+                        val work = activeWork ?: return@create
+                        if (sessionViewModel.snapshotOperationWorkId != null || assetBusy || snapshotsLoading || snapshotError != null) return@create
+                        val workId = work.id
+                        val revisions = work.revisions.toList()
+                        // Capture immutable strings/maps at the tap; subsequent typing stays independent.
+                        val content = currentSnapshotContent(work, editorText, sessionViewModel.fileDrafts)
+                        sessionViewModel.snapshotOperationWorkId = workId
+                        assetScope.launch {
+                            try {
+                                val saved = withContext(Dispatchers.IO) {
+                                    WorkSnapshotStore.addSnapshot(filesDir, workId, content, revisions)
+                                }
+                                if (activeWorkId == workId) currentSnapshots = saved
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                Toast.makeText(this@MainActivity, uiText("スナップショットを記録しました"), Toast.LENGTH_SHORT).show()
+                            } catch (error: Exception) {
+                                if (error is kotlinx.coroutines.CancellationException) throw error
+                                Toast.makeText(this@MainActivity, uiText("スナップショットを保存できませんでした。編集内容は保持されています。"), Toast.LENGTH_LONG).show()
+                            } finally { sessionViewModel.snapshotOperationWorkId = null }
                         }
                     },
-                    onRestoreSnapshot = { snapshot ->
-                        val work = activeWork
-                        if (work != null) {
-                            editorValue = TextFieldValue(snapshot.code)
-                            lastSavedText = snapshot.code
-                            work.code = snapshot.code
-                            work.updatedAt = System.currentTimeMillis()
-                            work.files.clear()
-                            work.files.putAll(snapshot.files)
-                            work.parameterValues.clear()
-                            work.parameterValues.putAll(snapshot.parameterValues)
-                            if (selectedEditorFile != "sketch.js" && selectedEditorFile !in work.files) {
-                                selectedEditorFile = "sketch.js"
+                    onRestoreSnapshot = restore@{ snapshot ->
+                        val work = activeWork ?: return@restore
+                        if (sessionViewModel.snapshotOperationWorkId != null || assetBusy || snapshotsLoading || snapshotError != null) return@restore
+                        val workId = work.id
+                        val restored = restoredSnapshotWork(work, snapshot, currentContent)
+                        val next = works.map { if (it.id == workId) restored else snapshotWork(it) }
+                        val folder = selectedFolderUri
+                        // Keep the sheet scrollable; only this destructive transition holds navigation.
+                        sessionViewModel.snapshotOperationWorkId = workId
+                        sessionViewModel.snapshotRestoring = true
+                        assetBusy = true
+                        assetScope.launch {
+                            try {
+                                val saved = persistSnapshotRestore(
+                                    save = { saveWorkStore(folder, next, workId) }
+                                ) {
+                                    // Commit session state only after persistence succeeds.
+                                    works = next
+                                    editorValue = TextFieldValue(restored.code)
+                                    lastSavedText = restored.code
+                                    if (selectedEditorFile != "sketch.js" && selectedEditorFile !in restored.files) {
+                                        selectedEditorFile = "sketch.js"
+                                    }
+                                    sessionViewModel.clearAuxiliaryEditors(workId)
+                                    clearEditHistory()
+                                    clearDraftSnapshot()
+                                    runSketch(restored.code, restored.files, restored.assets.toMap())
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    Toast.makeText(this@MainActivity, uiText("スナップショットに復元しました"), Toast.LENGTH_SHORT).show()
+                                    showSnapshotSheet = false
+                                }
+                                if (!saved) error("Snapshot restore could not be saved")
+                            } catch (error: Exception) {
+                                if (error is kotlinx.coroutines.CancellationException) throw error
+                                Toast.makeText(this@MainActivity, uiText("復元を保存できませんでした。元の編集内容は保持されています。"), Toast.LENGTH_LONG).show()
+                            } finally {
+                                sessionViewModel.snapshotRestoring = false
+                                sessionViewModel.snapshotOperationWorkId = null
+                                assetBusy = false
                             }
-                            sessionViewModel.clearAuxiliaryEditors(work.id)
-                            clearEditHistory()
-                            clearDraftSnapshot()
-                            lifecycleScope.launch(Dispatchers.IO) { saveStore() }
-                            runSketch(snapshot.code, snapshot.files)
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            Toast.makeText(this@MainActivity, uiText("スナップショットに復元しました"), Toast.LENGTH_SHORT).show()
-                            showSnapshotSheet = false
                         }
                     },
-                    onDeleteSnapshot = { snapshot ->
-                        val work = activeWork
-                        if (work != null) {
-                            currentSnapshots = WorkSnapshotStore.deleteSnapshot(
-                                filesDir = filesDir,
-                                workId = work.id,
-                                snapshotId = snapshot.id
-                            )
+                    onDeleteSnapshot = delete@{ snapshot ->
+                        val work = activeWork ?: return@delete
+                        if (sessionViewModel.snapshotOperationWorkId != null || assetBusy || snapshotsLoading || snapshotError != null) return@delete
+                        val workId = work.id
+                        val revisions = work.revisions.toList()
+                        sessionViewModel.snapshotOperationWorkId = workId
+                        assetScope.launch {
+                            try {
+                                val remaining = withContext(Dispatchers.IO) {
+                                    WorkSnapshotStore.deleteSnapshot(filesDir, workId, snapshot.id, revisions)
+                                }
+                                if (activeWorkId == workId) currentSnapshots = remaining
+                            } catch (error: Exception) {
+                                if (error is kotlinx.coroutines.CancellationException) throw error
+                                Toast.makeText(this@MainActivity, uiText("スナップショットを削除できませんでした。"), Toast.LENGTH_LONG).show()
+                            } finally { sessionViewModel.snapshotOperationWorkId = null }
                         }
                     },
                     text = ::uiText
@@ -7448,7 +7517,7 @@ class MainActivity : ComponentActivity() {
 
 
 
-        if (assetBusy && !showAssets && !workSaving) {
+        if (assetBusy && !showAssets && !workSaving && !sessionViewModel.snapshotRestoring) {
             AlertDialog(onDismissRequest = {}, title = { Text(uiText("ファイルを処理中…")) },
                 text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
         }

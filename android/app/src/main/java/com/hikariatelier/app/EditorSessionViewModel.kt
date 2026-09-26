@@ -57,6 +57,8 @@ data class WorkStore(
 
 class EditorSessionViewModel : ViewModel() {
     var assetBusy by mutableStateOf(false)
+    var snapshotOperationWorkId by mutableStateOf<String?>(null)
+    var snapshotRestoring by mutableStateOf(false)
     val fileDrafts = androidx.compose.runtime.mutableStateMapOf<String, String>()
     val fileEditorValues = mutableMapOf<String, androidx.compose.runtime.MutableState<TextFieldValue>>()
     internal val codeFoldStates = androidx.compose.runtime.mutableStateMapOf<String, CodeFoldState>()
