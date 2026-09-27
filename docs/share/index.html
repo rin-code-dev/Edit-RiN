@@ -6,19 +6,24 @@
   <title>Edit:RiN Web Viewer</title>
   <style>
     :root {
-      --bg-dark: #0a0b10;
-      --surface-glass: rgba(18, 20, 30, 0.72);
-      --surface-glass-active: rgba(26, 29, 44, 0.88);
-      --border-glass: rgba(255, 255, 255, 0.12);
-      --border-glass-bright: rgba(255, 255, 255, 0.22);
-      --accent: #7c4dff;
-      --accent-glow: rgba(124, 77, 255, 0.35);
-      --accent-cyan: #38bdf8;
-      --text-main: #f1f5f9;
+      --bg-base: #08090e;
+      --bg-gradient: radial-gradient(circle at 50% 40%, #141724 0%, #08090e 100%);
+      --surface-glass: rgba(18, 21, 33, 0.72);
+      --surface-glass-heavy: rgba(20, 24, 38, 0.90);
+      --border-glass: rgba(255, 255, 255, 0.10);
+      --border-glass-bright: rgba(255, 255, 255, 0.20);
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-glow: rgba(139, 92, 246, 0.32);
+      --accent-cyan-glow: rgba(6, 182, 212, 0.28);
+      --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
       --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Code", Menlo, Consolas, monospace;
+      --font-mono: ui-monospace, "SF Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+      --safe-bottom: max(20px, env(safe-area-inset-bottom, 20px));
+      --safe-top: max(16px, env(safe-area-inset-top, 16px));
     }
 
     * {
@@ -31,7 +36,7 @@
     html, body {
       width: 100vw;
       height: 100vh;
-      background: radial-gradient(circle at 50% 50%, #151824 0%, var(--bg-dark) 100%);
+      background: var(--bg-gradient);
       color: var(--text-main);
       font-family: var(--font-ui);
       overflow: hidden;
@@ -41,35 +46,42 @@
       user-select: none;
     }
 
-    /* Ambient dynamic glow behind canvas */
+    /* Ambient lighting aura behind canvas */
     #ambient-glow {
       position: fixed;
-      width: 70vw;
-      height: 70vh;
-      background: radial-gradient(circle, rgba(124, 77, 255, 0.08) 0%, rgba(56, 189, 248, 0.04) 45%, transparent 70%);
-      filter: blur(60px);
+      width: 75vw;
+      height: 75vh;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, rgba(6, 182, 212, 0.06) 45%, transparent 70%);
+      filter: blur(80px);
       pointer-events: none;
       z-index: 1;
+      animation: pulse-aura 8s infinite alternate ease-in-out;
+    }
+    @keyframes pulse-aura {
+      0% { transform: scale(0.95); opacity: 0.7; }
+      100% { transform: scale(1.05); opacity: 1; }
     }
 
     /* Canvas styling */
+
     canvas {
       display: block !important;
       max-width: 95vw !important;
-      max-height: 88vh !important;
+      max-height: 86vh !important;
       width: auto !important;
       height: auto !important;
       object-fit: contain;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      z-index: 2;
-      transition: transform 0.2s ease;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 0 1px rgba(255, 255, 255, 0.25);
+      border-radius: 16px;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* Top Navigation Header */
+    /* ==========================================================================
+       Top Navigation Bar
+       ========================================================================== */
     #top-bar {
       position: fixed;
-      top: 16px;
+      top: var(--safe-top);
       left: 16px;
       right: 16px;
       display: flex;
@@ -85,53 +97,54 @@
 
     .brand-pill {
       background: var(--surface-glass);
-      backdrop-filter: blur(20px) saturate(180%);
-      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
       border: 1px solid var(--border-glass);
       border-radius: 9999px;
       padding: 6px 14px;
       display: inline-flex;
       align-items: center;
-      gap: 9px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      gap: 10px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
       text-decoration: none;
       color: inherit;
-      transition: border-color 0.2s, transform 0.15s;
+      transition: border-color 0.2s, transform 0.15s, background 0.2s;
     }
     .brand-pill:hover {
       border-color: var(--border-glass-bright);
+      background: rgba(25, 30, 48, 0.8);
     }
     .brand-pill:active {
       transform: scale(0.97);
     }
 
     .live-dot {
-      width: 7px;
-      height: 7px;
-      background: #22c55e;
+      width: 8px;
+      height: 8px;
+      background: var(--accent-green);
       border-radius: 50%;
-      box-shadow: 0 0 10px #22c55e;
-      animation: pulse-dot 2s infinite ease-in-out;
+      box-shadow: 0 0 10px var(--accent-green);
+      animation: pulse-dot 2.2s infinite ease-in-out;
     }
     @keyframes pulse-dot {
       0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
+      50% { opacity: 0.35; transform: scale(0.8); }
     }
 
     .brand-title {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       letter-spacing: -0.01em;
       color: #ffffff;
     }
-    .brand-tag {
+    .brand-badge {
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--accent-cyan);
-      background: rgba(56, 189, 248, 0.12);
-      padding: 2px 7px;
+      background: rgba(6, 182, 212, 0.14);
+      padding: 2px 8px;
       border-radius: 9999px;
-      border: 1px solid rgba(56, 189, 248, 0.25);
+      border: 1px solid rgba(6, 182, 212, 0.28);
     }
 
     .top-actions {
@@ -142,51 +155,67 @@
 
     .top-btn {
       background: var(--surface-glass);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
       border: 1px solid var(--border-glass);
       color: var(--text-muted);
       border-radius: 9999px;
-      height: 36px;
+      height: 38px;
       padding: 0 14px;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
       display: inline-flex;
       align-items: center;
       gap: 7px;
       text-decoration: none;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .top-btn:hover {
       color: #ffffff;
       border-color: var(--border-glass-bright);
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.10);
+      transform: translateY(-1px);
     }
     .top-btn:active {
-      transform: scale(0.96);
+      transform: scale(0.95);
     }
     .top-btn svg {
-      width: 14px;
-      height: 14px;
+      width: 15px;
+      height: 15px;
       fill: currentColor;
     }
 
-    /* Floating Control Bar */
+    .btn-get-app {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25));
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      color: #ffffff;
+    }
+    .btn-get-app:hover {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(6, 182, 212, 0.4));
+      border-color: rgba(139, 92, 246, 0.7);
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    /* ==========================================================================
+       Floating Control Bar (Preserved & Refined)
+       ========================================================================== */
     #control-bar {
       position: fixed;
-      bottom: 24px;
+      bottom: var(--safe-bottom);
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
       align-items: center;
       gap: 4px;
-      background: rgba(16, 18, 28, 0.8);
-      backdrop-filter: blur(24px) saturate(190%);
-      -webkit-backdrop-filter: blur(24px) saturate(190%);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      padding: 5px 8px;
+      background: var(--surface-glass);
+      backdrop-filter: blur(28px) saturate(200%);
+      -webkit-backdrop-filter: blur(28px) saturate(200%);
+      border: 1px solid var(--border-glass);
+      padding: 6px 10px;
       border-radius: 9999px;
-      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65), 0 0 20px rgba(124, 77, 255, 0.12);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.75), 0 0 24px rgba(139, 92, 246, 0.15);
       z-index: 1000;
       transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
@@ -197,8 +226,8 @@
       border: none;
       color: var(--text-muted);
       cursor: pointer;
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -206,87 +235,101 @@
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .ctrl-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.12);
       color: #ffffff;
-      transform: translateY(-1px);
+      transform: translateY(-2px);
     }
     .ctrl-btn:active {
       transform: scale(0.92);
-      background: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.18);
     }
     .ctrl-btn.active {
       color: #ffffff;
-      background: linear-gradient(135deg, rgba(124, 77, 255, 0.4), rgba(56, 189, 248, 0.3));
-      border: 1px solid rgba(124, 77, 255, 0.4);
-      box-shadow: 0 0 12px var(--accent-glow);
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.45), rgba(6, 182, 212, 0.35));
+      border: 1px solid rgba(139, 92, 246, 0.5);
+      box-shadow: 0 0 14px var(--accent-glow);
     }
+    .ctrl-btn.recording {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      animation: pulse-rec 1.2s infinite ease-in-out;
+    }
+    @keyframes pulse-rec {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { transform: scale(1.05); box-shadow: 0 0 14px rgba(239, 68, 68, 0.6); }
+    }
+
     .ctrl-btn svg {
-      width: 20px;
-      height: 20px;
+      width: 21px;
+      height: 21px;
       fill: currentColor;
       transition: transform 0.2s ease;
     }
     .ctrl-btn:hover svg {
-      transform: scale(1.06);
+      transform: scale(1.08);
     }
 
-    /* Tooltip styling for controls */
+    .badge-dot {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    .divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border-glass);
+      margin: 0 4px;
+    }
+
+    /* Tooltip styling */
     .ctrl-btn[data-tip]:hover::after {
       content: attr(data-tip);
       position: absolute;
-      bottom: calc(100% + 10px);
+      bottom: calc(100% + 12px);
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(15, 17, 26, 0.95);
-      border: 1px solid var(--border-glass);
+      background: rgba(14, 17, 27, 0.96);
+      border: 1px solid var(--border-glass-bright);
       color: #ffffff;
       font-size: 11px;
-      font-weight: 500;
-      padding: 4px 8px;
-      border-radius: 6px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 8px;
       white-space: nowrap;
       pointer-events: none;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
       animation: tip-in 0.15s ease-out;
+      z-index: 2000;
     }
     @keyframes tip-in {
       from { opacity: 0; transform: translate(-50%, 4px); }
       to { opacity: 1; transform: translate(-50%, 0); }
     }
 
-    .badge-dot {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent-cyan);
-      box-shadow: 0 0 6px var(--accent-cyan);
-    }
-
-    .divider {
-      width: 1px;
-      height: 20px;
-      background: rgba(255, 255, 255, 0.14);
-      margin: 0 4px;
-    }
-
-    /* Parameters Drawer / Popover */
+    /* ==========================================================================
+       Parameters Panel (Adaptive: Floating Popover on Desktop, Bottom Sheet on Mobile)
+       ========================================================================== */
     #params-panel {
       position: fixed;
-      bottom: 84px;
-      right: 20px;
-      width: 320px;
-      max-width: calc(100vw - 40px);
-      max-height: 62vh;
-      background: rgba(18, 20, 32, 0.92);
-      backdrop-filter: blur(28px) saturate(190%);
-      -webkit-backdrop-filter: blur(28px) saturate(190%);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 20px;
+      bottom: calc(var(--safe-bottom) + 64px);
+      right: 24px;
+      width: 340px;
+      max-width: calc(100vw - 32px);
+      max-height: 64vh;
+      background: var(--surface-glass-heavy);
+      backdrop-filter: blur(32px) saturate(200%);
+      -webkit-backdrop-filter: blur(32px) saturate(200%);
+      border: 1px solid var(--border-glass-bright);
+      border-radius: 22px;
       padding: 18px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 24px rgba(124, 77, 255, 0.12);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(139, 92, 246, 0.15);
       z-index: 1100;
       display: none;
       flex-direction: column;
@@ -303,12 +346,21 @@
       to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
+    .sheet-handle {
+      display: none;
+      width: 36px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+      margin: 0 auto 8px auto;
+    }
+
     .panel-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding-bottom: 12px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid var(--border-glass);
     }
     .panel-title-wrap {
       display: flex;
@@ -317,17 +369,17 @@
     }
     .panel-title {
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
       color: #ffffff;
     }
     .panel-count {
       font-size: 11px;
+      font-weight: 700;
       color: var(--accent-cyan);
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      background: rgba(6, 182, 212, 0.16);
+      border: 1px solid rgba(6, 182, 212, 0.32);
       padding: 1px 7px;
       border-radius: 12px;
-      font-weight: 600;
     }
     .panel-header-actions {
       display: flex;
@@ -336,12 +388,12 @@
     }
     .panel-btn {
       background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-glass);
       color: var(--text-muted);
       border-radius: 8px;
-      padding: 4px 9px;
+      padding: 5px 10px;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -350,38 +402,47 @@
     }
     .panel-btn:hover {
       color: #ffffff;
-      background: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.16);
+      border-color: var(--border-glass-bright);
     }
 
     .param-item {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      padding: 10px 12px;
-      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-glass);
+      padding: 12px 14px;
+      border-radius: 14px;
       transition: border-color 0.2s;
     }
     .param-item:hover {
-      border-color: rgba(255, 255, 255, 0.14);
+      border-color: var(--border-glass-bright);
     }
     .param-title-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
+    }
+    .param-label {
       font-size: 13px;
-      color: var(--text-main);
-      font-weight: 500;
+      font-weight: 600;
+      color: #ffffff;
+    }
+    .param-var {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
     }
     .param-val {
       font-family: var(--font-mono);
       font-size: 12px;
+      font-weight: 600;
       color: var(--accent-cyan);
-      background: rgba(56, 189, 248, 0.1);
-      padding: 2px 7px;
+      background: rgba(6, 182, 212, 0.12);
+      padding: 2px 8px;
       border-radius: 6px;
-      border: 1px solid rgba(56, 189, 248, 0.2);
+      border: 1px solid rgba(6, 182, 212, 0.24);
     }
 
     input[type=range] {
@@ -392,7 +453,6 @@
       outline: none;
       -webkit-appearance: none;
       cursor: pointer;
-      transition: background 0.2s;
     }
     input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
@@ -400,16 +460,12 @@
       height: 18px;
       border-radius: 50%;
       background: #ffffff;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--accent-cyan);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 0 3px var(--accent-purple);
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      transition: transform 0.15s ease;
     }
     input[type=range]::-webkit-slider-thumb:hover {
-      transform: scale(1.15);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7), 0 0 0 4px var(--accent-cyan);
-    }
-    input[type=range]:active::-webkit-slider-thumb {
-      transform: scale(1.2);
+      transform: scale(1.18);
     }
 
     .toggle-row {
@@ -445,19 +501,21 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.3);
     }
     input:checked + .slider-toggle {
-      background: linear-gradient(135deg, #6366f1, #38bdf8);
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
     }
     input:checked + .slider-toggle:before {
       transform: translateX(20px);
     }
 
-    /* Modal Code Viewer */
+    /* ==========================================================================
+       Code Modal (IDE & Playground)
+       ========================================================================== */
     #code-modal {
       position: fixed;
       inset: 0;
-      background: rgba(6, 8, 14, 0.78);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      background: rgba(6, 8, 14, 0.82);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
       display: none;
       align-items: center;
       justify-content: center;
@@ -475,19 +533,19 @@
 
     .modal-card {
       width: 100%;
-      max-width: 720px;
-      max-height: 84vh;
-      background: #10121c;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 18px;
+      max-width: 800px;
+      max-height: 86vh;
+      background: #0d0f17;
+      border: 1px solid var(--border-glass-bright);
+      border-radius: 20px;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 30px rgba(124, 77, 255, 0.15);
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.9), 0 0 30px rgba(139, 92, 246, 0.18);
       animation: modal-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     @keyframes modal-card-in {
-      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      from { opacity: 0; transform: scale(0.96) translateY(12px); }
       to { opacity: 1; transform: scale(1) translateY(0); }
     }
 
@@ -496,8 +554,13 @@
       justify-content: space-between;
       align-items: center;
       padding: 12px 18px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      background: #0d0f17;
+      border-bottom: 1px solid var(--border-glass);
+      background: #111420;
+    }
+    .modal-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     .modal-dots {
       display: flex;
@@ -520,67 +583,107 @@
       font-family: var(--font-mono);
       font-size: 13px;
       color: var(--text-muted);
-      background: rgba(255, 255, 255, 0.05);
-      padding: 4px 12px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 5px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .modal-tab-badge {
       font-size: 10px;
-      color: #38bdf8;
-      background: rgba(56, 189, 248, 0.15);
-      padding: 1px 5px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.16);
+      padding: 1px 6px;
       border-radius: 4px;
     }
 
-    .copy-btn {
-      background: linear-gradient(135deg, rgba(124, 77, 255, 0.2), rgba(56, 189, 248, 0.2));
-      border: 1px solid rgba(124, 77, 255, 0.4);
+    .modal-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-run-code {
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+      border: none;
       color: #ffffff;
-      padding: 6px 14px;
+      padding: 6px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 0 14px var(--accent-glow);
+      transition: all 0.2s ease;
+    }
+    .btn-run-code:hover {
+      box-shadow: 0 0 20px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+    .btn-run-code:active {
+      transform: scale(0.96);
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-glass);
+      color: #ffffff;
+      padding: 6px 12px;
       border-radius: 8px;
       font-size: 12px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 6px;
       transition: all 0.2s ease;
     }
     .copy-btn:hover {
-      background: linear-gradient(135deg, rgba(124, 77, 255, 0.35), rgba(56, 189, 248, 0.35));
-      box-shadow: 0 0 12px rgba(124, 77, 255, 0.3);
-    }
-    .copy-btn:active {
-      transform: scale(0.96);
+      background: rgba(255, 255, 255, 0.16);
+      border-color: var(--border-glass-bright);
     }
 
-    .code-container {
+    .editor-wrapper {
+      position: relative;
       display: flex;
       flex: 1;
-      overflow: auto;
-      background: #0b0d14;
+      height: 58vh;
+      overflow: hidden;
+      background: #090b12;
       font-family: var(--font-mono);
       font-size: 13px;
       line-height: 1.65;
-      user-select: text;
     }
     .code-lines {
       padding: 16px 12px 16px 16px;
       text-align: right;
       color: #475569;
       user-select: none;
-      border-right: 1px solid rgba(255, 255, 255, 0.06);
+      border-right: 1px solid var(--border-glass);
+      background: #0b0d16;
+      min-width: 44px;
     }
-    .code-content {
+    #code-editor {
+      flex: 1;
       padding: 16px 20px;
       color: #e2e8f0;
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.65;
       white-space: pre;
-      overflow-x: auto;
-      flex: 1;
+      overflow: auto;
+      tab-size: 2;
     }
 
-    /* Loading Indicator */
+    /* ==========================================================================
+       Loading Indicator, Toast, and Notifications
+       ========================================================================== */
     #loading-indicator {
       position: fixed;
       display: flex;
@@ -592,12 +695,12 @@
       transition: opacity 0.3s ease;
     }
     .loader-ring {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
-      border: 3px solid rgba(255, 255, 255, 0.1);
+      border: 3px solid rgba(255, 255, 255, 0.12);
       border-top-color: var(--accent-cyan);
-      border-right-color: var(--accent);
+      border-right-color: var(--accent-purple);
       animation: spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
     }
     @keyframes spin {
@@ -605,29 +708,28 @@
     }
     .loader-text {
       font-size: 12px;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--text-muted);
       font-family: var(--font-mono);
-      font-weight: 500;
+      font-weight: 600;
     }
 
-    /* Toast Notification (e.g. Snapshot Saved, Copied) */
     #toast {
       position: fixed;
       top: 24px;
       left: 50%;
-      transform: translateX(-50%) translateY(-20px);
-      background: rgba(18, 20, 32, 0.92);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      transform: translateX(-50%) translateY(-24px);
+      background: var(--surface-glass-heavy);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
       border: 1px solid var(--border-glass-bright);
       color: #ffffff;
       font-size: 13px;
-      font-weight: 500;
-      padding: 8px 18px;
+      font-weight: 600;
+      padding: 8px 20px;
       border-radius: 9999px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6);
       z-index: 3000;
       opacity: 0;
       pointer-events: none;
@@ -641,40 +743,62 @@
       transform: translateX(-50%) translateY(0);
     }
 
-    /* Error Message Card */
-    #error-msg {
-      display: none;
+    #banner-notice {
       position: fixed;
-      top: 50%;
+      bottom: calc(var(--safe-bottom) + 68px);
       left: 50%;
-      transform: translate(-50%, -50%);
-      width: 90%;
-      max-width: 480px;
-      background: rgba(26, 16, 20, 0.92);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      border: 1px solid rgba(239, 68, 68, 0.35);
-      color: #fca5a5;
-      padding: 22px 24px;
-      border-radius: 18px;
-      font-family: var(--font-ui);
-      font-size: 14px;
-      line-height: 1.6;
-      z-index: 3000;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 20px rgba(239, 68, 68, 0.2);
-    }
-    .error-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: #ef4444;
-      margin-bottom: 8px;
-      display: flex;
+      transform: translateX(-50%);
+      background: rgba(18, 22, 36, 0.85);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glass);
+      color: var(--text-muted);
+      padding: 6px 16px;
+      border-radius: 9999px;
+      font-size: 12px;
+      display: none;
       align-items: center;
       gap: 8px;
+      z-index: 900;
+      pointer-events: none;
+    }
+
+    /* Mobile Adaptations */
+    @media (max-width: 640px) {
+      #params-panel {
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 24px 24px 0 0;
+        max-height: 72vh;
+        padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
+      }
+      .sheet-handle {
+        display: block;
+      }
+      .modal-card {
+        max-height: 92vh;
+        border-radius: 18px;
+      }
+      .top-btn span {
+        display: none;
+      }
+      .top-btn {
+        padding: 0 10px;
+      }
+      #control-bar {
+        padding: 5px 8px;
+        gap: 2px;
+      }
+      .ctrl-btn {
+        width: 40px;
+        height: 40px;
+      }
     }
   </style>
 
-  <!-- pako for fast inflate -->
+  <!-- Pako for fast deflate inflation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
   <!-- p5.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.5/p5.min.js"></script>
@@ -682,25 +806,26 @@
 <body>
   <div id="ambient-glow"></div>
 
-  <!-- Top Navigation Header -->
+  <!-- Top Bar -->
   <div id="top-bar">
     <a class="brand-pill" href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener">
       <div class="live-dot"></div>
       <span class="brand-title">Edit:RiN</span>
-      <span class="brand-tag">p5.js</span>
+      <span class="brand-badge">p5.js</span>
     </a>
 
     <div class="top-actions">
+      <a class="top-btn btn-get-app" href="https://github.com/rin-code-dev/Edit-RiN/releases" target="_blank" rel="noopener" title="Get Edit:RiN for Android">
+        <svg viewBox="0 0 24 24"><path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.5511 0 .9993.4486.9993 1.0003s-.4482 1.0003-.9993 1.0003m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.5511 0 .9993.4486.9993 1.0003s-.4482 1.0003-.9993 1.0003m11.4045-6.02l1.9973-3.4592a.416.416 0 0 0-.1521-.5676.416.416 0 0 0-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.077 12 8.077c-1.8533 0-3.5902.3346-5.1368.8727L4.8409 5.4467a.4161.4161 0 0 0-.5677-.1521.4157.4157 0 0 0-.152 5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/></svg>
+        <span>Get App</span>
+      </a>
       <button class="top-btn" id="btn-fullscreen" title="Toggle Fullscreen">
         <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
         <span>Fullscreen</span>
       </button>
-      <a class="top-btn" href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
-        <span>GitHub</span>
-      </a>
     </div>
   </div>
+
 
   <!-- Loading Indicator -->
   <div id="loading-indicator">
@@ -708,10 +833,10 @@
     <div class="loader-text">Loading Sketch</div>
   </div>
 
-  <div id="error-msg"></div>
   <div id="toast"></div>
+  <div id="banner-notice"></div>
 
-  <!-- Floating Control Bar -->
+  <!-- Floating Control Bar (Preserved & Upgraded) -->
   <div id="control-bar" style="display:none;">
     <button class="ctrl-btn" id="btn-playpause" data-tip="Play / Pause">
       <svg id="icon-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
@@ -723,18 +848,25 @@
     <button class="ctrl-btn" id="btn-snapshot" data-tip="Save Snapshot">
       <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3z"/></svg>
     </button>
+    <button class="ctrl-btn" id="btn-record" data-tip="Record Video (5s)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>
+    </button>
     <div class="divider"></div>
     <button class="ctrl-btn" id="btn-params" data-tip="Parameters" style="display:none;">
       <svg viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
       <span class="badge-dot"></span>
     </button>
-    <button class="ctrl-btn" id="btn-code" data-tip="Source Code">
+    <button class="ctrl-btn" id="btn-code" data-tip="Source & Edit">
       <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+    </button>
+    <button class="ctrl-btn" id="btn-share" data-tip="Share Link">
+      <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg>
     </button>
   </div>
 
-  <!-- Parameters Floating Panel -->
+  <!-- Parameters Panel -->
   <div id="params-panel">
+    <div class="sheet-handle"></div>
     <div class="panel-header">
       <div class="panel-title-wrap">
         <span class="panel-title">Parameters</span>
@@ -753,32 +885,38 @@
     <div id="params-list" style="display:flex; flex-direction:column; gap:10px;"></div>
   </div>
 
-  <!-- Code Modal -->
+  <!-- Code Modal (Playground) -->
   <div id="code-modal">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-dots">
-          <div class="dot red" id="dot-close" style="cursor:pointer;" title="Close"></div>
-          <div class="dot yellow"></div>
-          <div class="dot green"></div>
+        <div class="modal-header-left">
+          <div class="modal-dots">
+            <div class="dot red" id="dot-close" style="cursor:pointer;" title="Close"></div>
+            <div class="dot yellow"></div>
+            <div class="dot green"></div>
+          </div>
+          <div class="modal-tab">
+            <span>sketch.js</span>
+            <span class="modal-tab-badge">p5.js</span>
+          </div>
         </div>
-        <div class="modal-tab">
-          <span>sketch.js</span>
-          <span class="modal-tab-badge">p5.js</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div class="modal-header-actions">
+          <button class="btn-run-code" id="btn-run">
+            <svg viewBox="0 0 24 24" style="width:14px; height:14px; fill:currentColor;"><path d="M8 5v14l11-7z"/></svg>
+            <span>RUN</span>
+          </button>
           <button class="copy-btn" id="btn-copy">
             <svg viewBox="0 0 24 24" style="width:14px; height:14px; fill:currentColor;"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-            <span id="copy-text">Copy Code</span>
+            <span id="copy-text">Copy</span>
           </button>
-          <button class="ctrl-btn" id="btn-close-code" style="width:32px; height:32px;">
+          <button class="ctrl-btn" id="btn-close-code" style="width:34px; height:34px;">
             <svg viewBox="0 0 24 24" style="width:16px; height:16px;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </button>
         </div>
       </div>
-      <div class="code-container">
+      <div class="editor-wrapper">
         <div class="code-lines" id="code-lines"></div>
-        <div class="code-content" id="code-display"></div>
+        <textarea id="code-editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       </div>
     </div>
   </div>
@@ -788,7 +926,62 @@
     let isRunning = true;
     let autoHideTimer = null;
     let toastTimer = null;
-    let cachedDescriptors = [];
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+
+    // Default interactive demo sketch if no #c= parameter is provided
+    const DEMO_SKETCH = `// @rin number particleCount "Particles" 30 180 80 10
+// @rin number speed "Speed" 0.2 3.0 1.0 0.1
+// @rin color tintColor "Glow Color" #38BDF8
+// @rin boolean trails "Motion Blur" true
+
+var points = [];
+
+function setup() {
+  var s = min(windowWidth * 0.9, windowHeight * 0.8, 520);
+  createCanvas(s, s);
+  points = [];
+  for (var i = 0; i < 200; i++) {
+    points.push({
+      x: random(width),
+      y: random(height),
+      vx: random(-1.2, 1.2),
+      vy: random(-1.2, 1.2),
+      size: random(2, 5)
+    });
+  }
+}
+
+function draw() {
+  if (rinParams.trails) {
+    background(8, 9, 14, 25);
+  } else {
+    background(8, 9, 14);
+  }
+
+  stroke(rinParams.tintColor);
+  fill(rinParams.tintColor);
+
+  var n = min(rinParams.particleCount, points.length);
+  for (var i = 0; i < n; i++) {
+    var p = points[i];
+    p.x += p.vx * rinParams.speed;
+    p.y += p.vy * rinParams.speed;
+    if (p.x < 0 || p.x > width) p.vx *= -1;
+    if (p.y < 0 || p.y > height) p.vy *= -1;
+
+    circle(p.x, p.y, p.size);
+    for (var j = i + 1; j < n; j++) {
+      var p2 = points[j];
+      var d = dist(p.x, p.y, p2.x, p2.y);
+      if (d < 70) {
+        strokeWeight(map(d, 0, 70, 1.5, 0));
+        line(p.x, p.y, p2.x, p2.y);
+      }
+    }
+  }
+}`;
 
     function showToast(msg) {
       const el = document.getElementById('toast');
@@ -798,7 +991,7 @@
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {
         el.classList.remove('show');
-      }, 2400);
+      }, 2500);
     }
 
     function base64UrlToBytes(base64url) {
@@ -866,11 +1059,15 @@
     }
 
     function setupParamsUi(descriptors) {
-      if (!descriptors || descriptors.length === 0) return;
-      cachedDescriptors = descriptors;
       const btnParams = document.getElementById('btn-params');
       const paramsList = document.getElementById('params-list');
       const countEl = document.getElementById('params-count');
+
+      if (!descriptors || descriptors.length === 0) {
+        btnParams.style.display = 'none';
+        return;
+      }
+
       btnParams.style.display = 'flex';
       if (countEl) countEl.textContent = descriptors.length;
 
@@ -883,8 +1080,8 @@
           item.innerHTML = `
             <div class="param-title-row">
               <div>
-                <div style="font-weight:600; color:#fff;">${desc.label}</div>
-                <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-dim);">rinParams.${desc.name}</div>
+                <div class="param-label">${desc.label}</div>
+                <div class="param-var">rinParams.${desc.name}</div>
               </div>
               <span class="param-val" id="val-${desc.name}">${desc.default}</span>
             </div>
@@ -899,6 +1096,7 @@
             </div>
           `;
           paramsList.appendChild(item);
+
           const slider = item.querySelector(`#input-${desc.name}`);
           const valDisplay = item.querySelector(`#val-${desc.name}`);
           const btnDec = item.querySelector(`#dec-${desc.name}`);
@@ -922,8 +1120,8 @@
           item.innerHTML = `
             <div class="toggle-row">
               <div>
-                <div style="font-weight:600; color:#fff;">${desc.label}</div>
-                <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-dim);">rinParams.${desc.name}</div>
+                <div class="param-label">${desc.label}</div>
+                <div class="param-var">rinParams.${desc.name}</div>
               </div>
               <label class="switch">
                 <input type="checkbox" ${desc.default ? 'checked' : ''} id="input-${desc.name}">
@@ -942,12 +1140,12 @@
           item.innerHTML = `
             <div class="toggle-row">
               <div>
-                <div style="font-weight:600; color:#fff;">${desc.label}</div>
-                <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-dim);">rinParams.${desc.name}</div>
+                <div class="param-label">${desc.label}</div>
+                <div class="param-var">rinParams.${desc.name}</div>
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span class="param-val" id="val-${desc.name}">${desc.default}</span>
-                <input type="color" value="${desc.default}" id="input-${desc.name}" style="width:30px; height:30px; border-radius:8px; border:1px solid var(--border-glass); cursor:pointer; background:none; padding:0;">
+                <input type="color" value="${desc.default}" id="input-${desc.name}" style="width:32px; height:32px; border-radius:8px; border:1px solid var(--border-glass); cursor:pointer; background:none; padding:0;">
               </div>
             </div>
           `;
@@ -965,7 +1163,7 @@
 
       const btnReset = document.getElementById('btn-reset-params');
       if (btnReset) {
-        btnReset.addEventListener('click', () => {
+        btnReset.onclick = () => {
           descriptors.forEach(desc => {
             window.rinParams[desc.name] = desc.default;
             const input = document.getElementById(`input-${desc.name}`);
@@ -983,8 +1181,49 @@
             }
           });
           if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
-          showToast('Reset all parameters to default');
-        });
+          showToast('Reset all parameters');
+        };
+      }
+    }
+
+    let currentSketchScript = null;
+
+    function runSketch(code, isInitial = false) {
+      const parsed = parseRinParams(code);
+      window.rinParams = parsed.values;
+      setupParamsUi(parsed.descriptors);
+
+      if (isInitial) {
+        currentSketchScript = document.createElement('script');
+        currentSketchScript.id = 'rin-sketch-script';
+        currentSketchScript.textContent = `${code}\n//# sourceURL=sketch.js`;
+        document.body.appendChild(currentSketchScript);
+
+        if (typeof p5 !== 'undefined') {
+          new p5();
+        }
+        isRunning = true;
+      } else {
+        try {
+          (0, eval)(code);
+          if (typeof window.setup === 'function') {
+            window.setup();
+          }
+          if (typeof loop === 'function') {
+            loop();
+          }
+          isRunning = true;
+          const iconPause = document.getElementById('icon-pause');
+          const iconPlay = document.getElementById('icon-play');
+          const btnPlayPause = document.getElementById('btn-playpause');
+          if (iconPause && iconPlay) {
+            iconPause.style.display = 'block';
+            iconPlay.style.display = 'none';
+            btnPlayPause?.classList.remove('active');
+          }
+        } catch (err) {
+          showToast('Error: ' + (err.message || String(err)));
+        }
       }
     }
 
@@ -997,6 +1236,7 @@
       const iconPlay = document.getElementById('icon-play');
       const btnRestart = document.getElementById('btn-restart');
       const btnSnapshot = document.getElementById('btn-snapshot');
+      const btnRecord = document.getElementById('btn-record');
       const btnFullscreen = document.getElementById('btn-fullscreen');
       const btnParams = document.getElementById('btn-params');
       const paramsPanel = document.getElementById('params-panel');
@@ -1007,9 +1247,12 @@
       const dotClose = document.getElementById('dot-close');
       const btnCopy = document.getElementById('btn-copy');
       const copyText = document.getElementById('copy-text');
-      const codeDisplay = document.getElementById('code-display');
+      const btnRun = document.getElementById('btn-run');
+      const codeEditor = document.getElementById('code-editor');
       const codeLines = document.getElementById('code-lines');
+      const btnShare = document.getElementById('btn-share');
 
+      // Play / Pause
       btnPlayPause.addEventListener('click', () => {
         if (isRunning) {
           if (typeof noLoop === 'function') noLoop();
@@ -1026,9 +1269,10 @@
         }
       });
 
+      // Restart
       btnRestart.addEventListener('click', () => {
         btnRestart.style.transform = 'rotate(360deg)';
-        setTimeout(() => { btnRestart.style.transform = ''; }, 300);
+        setTimeout(() => { btnRestart.style.transform = ''; }, 320);
         if (typeof window.setup === 'function') {
           window.setup();
           if (!isRunning) {
@@ -1042,22 +1286,94 @@
         showToast('Restarted sketch');
       });
 
-      // Canvas Snapshot
-      if (btnSnapshot) {
-        btnSnapshot.addEventListener('click', () => {
+      // Snapshot (PNG)
+      btnSnapshot.addEventListener('click', () => {
+        const cvs = document.querySelector('canvas');
+        if (!cvs) {
+          showToast('No canvas available');
+          return;
+        }
+        try {
+          const link = document.createElement('a');
+          link.download = `rin-snapshot-${Date.now()}.png`;
+          link.href = cvs.toDataURL('image/png');
+          link.click();
+          showToast('Snapshot saved');
+        } catch (_) {
+          showToast('Snapshot failed');
+        }
+      });
+
+      // Video Recording (WebM, 5s)
+      if (btnRecord) {
+        btnRecord.addEventListener('click', () => {
           const cvs = document.querySelector('canvas');
           if (!cvs) {
             showToast('No canvas available');
             return;
           }
+          if (isRecording) {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+            isRecording = false;
+            btnRecord.classList.remove('recording');
+            return;
+          }
+
           try {
-            const link = document.createElement('a');
-            link.download = `rin-snapshot-${Date.now()}.png`;
-            link.href = cvs.toDataURL('image/png');
-            link.click();
-            showToast('Snapshot saved');
+            const stream = cvs.captureStream(30);
+            const mimeTypes = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'];
+            let mime = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+            mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+            recordedChunks = [];
+            mediaRecorder.ondataavailable = e => {
+              if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+              const blob = new Blob(recordedChunks, { type: mime || 'video/webm' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `rin-animation-${Date.now()}.webm`;
+              a.click();
+              URL.revokeObjectURL(url);
+              btnRecord.classList.remove('recording');
+              isRecording = false;
+              showToast('Video downloaded');
+            };
+            mediaRecorder.start();
+            isRecording = true;
+            btnRecord.classList.add('recording');
+            showToast('Recording (5 seconds)...');
+            setTimeout(() => {
+              if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+              }
+            }, 5000);
+          } catch (e) {
+            showToast('Video recording not supported');
+          }
+        });
+      }
+
+      // Share Link
+      if (btnShare) {
+        btnShare.addEventListener('click', async () => {
+          const url = window.location.href;
+          if (navigator.share) {
+            try {
+              await navigator.share({
+                title: 'Edit:RiN Web Sketch',
+                text: 'Check out this generative art sketch on Edit:RiN Web Viewer!',
+                url: url
+              });
+              return;
+            } catch (_) {}
+          }
+          try {
+            await navigator.clipboard.writeText(url);
+            showToast('Share link copied');
           } catch (_) {
-            showToast('Snapshot failed');
+            showToast('Failed to copy link');
           }
         });
       }
@@ -1073,6 +1389,7 @@
         });
       }
 
+      // Parameters Panel Toggle
       btnParams.addEventListener('click', () => {
         const visible = paramsPanel.classList.toggle('visible');
         btnParams.classList.toggle('active', visible);
@@ -1082,18 +1399,36 @@
         btnParams.classList.remove('active');
       });
 
+      // Code Editor & Viewer
       if (!allowCodeView) {
         if (btnCode) btnCode.style.display = 'none';
         if (codeModal) codeModal.remove();
       } else {
-        const populateCodeView = () => {
-          codeDisplay.textContent = globalCode;
-          const lineCount = globalCode.split('\n').length;
-          codeLines.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
+        const updateLineNumbers = () => {
+          const count = codeEditor.value.split('\n').length;
+          codeLines.innerHTML = Array.from({ length: count }, (_, i) => i + 1).join('<br>');
         };
 
+        codeEditor.addEventListener('input', updateLineNumbers);
+        codeEditor.addEventListener('scroll', () => {
+          codeLines.scrollTop = codeEditor.scrollTop;
+        });
+
+        // Tab key support in editor
+        codeEditor.addEventListener('keydown', (e) => {
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = codeEditor.selectionStart;
+            const end = codeEditor.selectionEnd;
+            codeEditor.value = codeEditor.value.substring(0, start) + '  ' + codeEditor.value.substring(end);
+            codeEditor.selectionStart = codeEditor.selectionEnd = start + 2;
+            updateLineNumbers();
+          }
+        });
+
         btnCode.addEventListener('click', () => {
-          populateCodeView();
+          codeEditor.value = globalCode;
+          updateLineNumbers();
           codeModal.classList.add('visible');
           btnCode.classList.add('active');
         });
@@ -1109,16 +1444,23 @@
           if (e.target === codeModal) closeModal();
         });
 
+        // Copy Code
         btnCopy.addEventListener('click', async () => {
           try {
-            await navigator.clipboard.writeText(globalCode);
+            await navigator.clipboard.writeText(codeEditor.value);
             copyText.textContent = 'Copied!';
             showToast('Code copied to clipboard');
-            setTimeout(() => { copyText.textContent = 'Copy Code'; }, 1800);
+            setTimeout(() => { copyText.textContent = 'Copy'; }, 1800);
           } catch (_) {
-            copyText.textContent = 'Failed';
             showToast('Failed to copy');
           }
+        });
+
+        // Run Code Button
+        btnRun.addEventListener('click', () => {
+          globalCode = codeEditor.value;
+          runSketch(globalCode, false);
+          showToast('Compiled & running');
         });
       }
 
@@ -1142,14 +1484,14 @@
       // Auto-hide controls on inactivity
       function resetActivityTimer() {
         bar.style.opacity = '1';
-        bar.style.transform = 'translateY(0)';
+        bar.style.transform = 'translateX(-50%) translateY(0)';
         document.getElementById('top-bar').style.opacity = '1';
         clearTimeout(autoHideTimer);
         autoHideTimer = setTimeout(() => {
           const isCodeModalVisible = codeModal && codeModal.parentElement && codeModal.classList.contains('visible');
           if (!paramsPanel.classList.contains('visible') && !isCodeModalVisible) {
             bar.style.opacity = '0';
-            bar.style.transform = 'translateY(12px)';
+            bar.style.transform = 'translateX(-50%) translateY(14px)';
             document.getElementById('top-bar').style.opacity = '0';
           }
         }, 3600);
@@ -1168,7 +1510,15 @@
 
       if (!encodedCode) {
         if (loading) loading.style.display = 'none';
-        showError('No sketch code found in URL.\nUsage: .../share/#c=<code_data>');
+        globalCode = DEMO_SKETCH;
+        runSketch(globalCode, true);
+        setupControls(true);
+        const notice = document.getElementById('banner-notice');
+        if (notice) {
+          notice.textContent = '✨ Interactive Demo Sketch';
+          notice.style.display = 'flex';
+          setTimeout(() => { notice.style.display = 'none'; }, 4000);
+        }
         return;
       }
 
@@ -1178,40 +1528,15 @@
         globalCode = code;
 
         if (loading) loading.style.display = 'none';
-
-        const parsed = parseRinParams(code);
-        window.rinParams = parsed.values;
-
-        // Inject sketch
-        const script = document.createElement('script');
-        script.textContent = `${code}\n//# sourceURL=sketch.js`;
-        document.body.appendChild(script);
-
-        // Start p5 in global mode
-        if (typeof p5 !== 'undefined') {
-          new p5();
-        }
-
+        runSketch(globalCode, true);
         setupControls(allowCodeView);
-        setupParamsUi(parsed.descriptors);
 
       } catch (err) {
         if (loading) loading.style.display = 'none';
-        showError('Failed to load sketch:\n' + (err.message || String(err)));
-      }
-    }
-
-    function showError(msg) {
-      const el = document.getElementById('error-msg');
-      if (el) {
-        el.innerHTML = `
-          <div class="error-title">
-            <svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:currentColor;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-            <span>Error Loading Sketch</span>
-          </div>
-          <div style="font-family:var(--font-mono); font-size:12px; white-space:pre-wrap; opacity:0.9;">${msg}</div>
-        `;
-        el.style.display = 'block';
+        showToast('Error loading sketch: ' + (err.message || String(err)));
+        globalCode = DEMO_SKETCH;
+        runSketch(globalCode, true);
+        setupControls(true);
       }
     }
 
