@@ -1,6 +1,6 @@
 # Third-party software
 
-Edit:RiN's own code and original icons use the root Edit:RiN Source-Available License.
+Edit:RiN's own code and original icons are licensed under the GNU General Public License, version 3 (GPL-3.0-or-later).
 Third-party software retains its own license terms.
 
 ## p5.js 1.11.5
