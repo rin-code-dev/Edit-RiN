@@ -156,6 +156,7 @@ private data class ConsoleEntry(
 
 class MainActivity : ComponentActivity() {
 
+    private var sessionReady by mutableStateOf(false)
     private val recordingTransfer by lazy { RecordingTransfer(File(cacheDir, "recording-transfer")) }
     private val sessionViewModel: EditorSessionViewModel by viewModels()
     private val updateViewModel: UpdateViewModel by viewModels()
@@ -291,7 +292,6 @@ class MainActivity : ComponentActivity() {
         fontLigatures = preferences.getBoolean("font_ligatures", false)
 
         updateViewModel.checkAtStartup()
-        initializeSessionIfNeeded()
         customBackground = preferences.getInt("custom_background", 0xFF101014.toInt())
         customAccent = preferences.getInt("custom_accent", 0xFFA8C7FA.toInt())
         enableEdgeToEdge()
@@ -325,22 +325,24 @@ class MainActivity : ComponentActivity() {
                 UpdateDialog(updateViewModel, ::uiText) {
                     openExternalUrl(RELEASES_URL)
                 }
-                MainScreen(
-                    themeMode = themeMode,
-
-                    onThemeModeChange = {
-
-                        themeMode = it
-
-                        preferences.edit()
-                            .putString(
-                                themeModeKey,
-                                it.name
-                            )
-                            .apply()
+                if (sessionReady) {
+                    MainScreen(
+                        themeMode = themeMode,
+                        onThemeModeChange = {
+                            themeMode = it
+                            preferences.edit().putString(themeModeKey, it.name).apply()
+                        }
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
-                )
+                }
             }
+        }
+        lifecycleScope.launch {
+            initializeSessionIfNeeded()
+            sessionReady = true
         }
     }
 
@@ -352,14 +354,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun initializeSessionIfNeeded() {
+    private suspend fun initializeSessionIfNeeded() {
         if (sessionViewModel.initialized) return
 
-        val folderUri = getValidFolderUri()
-
-        val store = if (folderUri != null) loadWorkStore(folderUri) else loadLocalWorkStore()
-        val initialWorks =
-            store?.works?.takeIf { it.isNotEmpty() } ?: defaultWorks(assets)
+        val (folderUri, loadedSession, loadedDraft) = withContext(Dispatchers.IO) {
+            val uri = getValidFolderUri()
+            val loadedStore = if (uri != null) loadWorkStore(uri) else loadLocalWorkStore()
+            val loadedWorks = loadedStore?.works?.takeIf { it.isNotEmpty() } ?: defaultWorks(assets)
+            val draft = if (preferences.getBoolean(draftRecoveryKey, true)) loadDraftSnapshot() else null
+            Triple(uri, loadedWorks to loadedStore?.activeWorkId, draft)
+        }
+        val (initialWorks, storedActiveId) = loadedSession
         var gravityMigrated = false
         initialWorks.forEach { work ->
             if (work.id == "gravity" && work.p5Version == P5_VERSION_CURRENT) {
@@ -368,7 +373,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         val initialActiveId =
-            store?.activeWorkId?.takeIf { id ->
+            storedActiveId?.takeIf { id ->
                 initialWorks.any { it.id == id }
             } ?: initialWorks.firstOrNull()?.id.orEmpty()
 
@@ -378,17 +383,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val draft =
-            if (
-                preferences.getBoolean(
-                    draftRecoveryKey,
-                    true
-                )
-            ) {
-                loadDraftSnapshot()
-            } else {
-                null
-            }
+        loadedDraft?.second?.let(sessionViewModel.fileDrafts::putAll)
+        val draft = loadedDraft?.first
 
         val draftText =
             draft
@@ -408,8 +404,7 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun loadDraftSnapshot():
-            DraftSnapshot? {
+    private fun loadDraftSnapshot(): Pair<DraftSnapshot, Map<String, String>>? {
 
         return runCatching {
 
@@ -427,11 +422,11 @@ class MainActivity : ComponentActivity() {
                     AtomicFile(file).openRead().bufferedReader().use { it.readText() }
                 )
 
-            root.optJSONObject("fileDrafts")?.let { files ->
-                files.keys().forEach { name -> sessionViewModel.fileDrafts[name] = files.getString(name) }
-            }
+            val fileDrafts = root.optJSONObject("fileDrafts")?.let { files ->
+                files.keys().asSequence().associateWith(files::getString)
+            }.orEmpty()
 
-            DraftSnapshot(
+            val snapshot = DraftSnapshot(
                 workId =
                     root.optString(
                         "workId"
@@ -445,6 +440,7 @@ class MainActivity : ComponentActivity() {
                         "updatedAt"
                     )
             )
+            snapshot to fileDrafts
         }.getOrNull()
     }
 
@@ -2212,111 +2208,64 @@ class MainActivity : ComponentActivity() {
                     ActivityResultContracts
                         .OpenDocument()
             ) { uri ->
+                if (uri != null && !assetBusy && !workSaving) {
+                    workSaving = true
+                    assetBusy = true
+                    lifecycleScope.launch {
+                        try {
+                            val imported = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val code = contentResolver.openInputStream(uri)?.bufferedReader()
+                                        ?.use { it.readText() } ?: error("Cannot read JS file")
+                                    code to displayNameForUri(uri)
+                                }.getOrNull()
+                            }
+                            if (imported == null) {
+                                isError = true
+                                appendConsole(ConsoleLevel.ERROR, uiText("JSファイルを読み込めませんでした"))
+                                showConsole = true
+                                return@launch
+                            }
 
-                if (uri != null) {
-
-                    val importedCode =
-                        runCatching {
-
-                            contentResolver
-                                .openInputStream(
-                                    uri
-                                )
-                                ?.bufferedReader()
-                                ?.use {
-                                    it.readText()
+                            val (importedCode, displayName) = imported
+                            val now = System.currentTimeMillis()
+                            val title = displayName?.removeSuffix(".js")?.removeSuffix(".JS")
+                                ?.ifBlank { null } ?: "Imported sketch"
+                            val newWork = Work(id = now.toString(), title = title, code = importedCode,
+                                createdAt = now, updatedAt = now)
+                            val currentCode = editorText
+                            val selectedId = activeWorkId
+                            val folder = selectedFolderUri
+                            val newWorks = works.map { work ->
+                                snapshotWork(work).also { copy ->
+                                    if (copy.id == selectedId && copy.code != currentCode) {
+                                        copy.code = currentCode
+                                        copy.updatedAt = now
+                                    }
                                 }
-                        }.getOrNull()
+                            } + newWork
+                            val saved = withContext(Dispatchers.IO) {
+                                saveWorkStore(folder, newWorks, newWork.id)
+                            }
+                            if (!saved) {
+                                Toast.makeText(this@MainActivity,
+                                    uiText("保存できませんでした。保存先を確認して再試行してください"),
+                                    Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
 
-                    if (importedCode != null) {
-
-                        updateCurrentWork()
-                        if (saveStore()) {
-                            lastSavedText = editorText
+                            works = newWorks
+                            activeWorkId = newWork.id
+                            editorValue = TextFieldValue(importedCode)
+                            lastSavedText = importedCode
+                            clearEditHistory()
+                            clearDraftSnapshot()
+                            isError = false
+                            if (autoRun) runSketch(importedCode, emptyMap())
+                        } finally {
+                            workSaving = false
+                            assetBusy = false
                         }
-
-                        val now =
-                            System.currentTimeMillis()
-
-                        val importedTitle =
-                            displayNameForUri(
-                                uri
-                            )
-                                ?.removeSuffix(
-                                    ".js"
-                                )
-                                ?.removeSuffix(
-                                    ".JS"
-                                )
-                                ?.ifBlank {
-                                    null
-                                }
-                                ?: "Imported sketch"
-
-                        val newWork =
-                            Work(
-                                id =
-                                    now.toString(),
-                                title =
-                                    importedTitle,
-                                code =
-                                    importedCode,
-                                createdAt =
-                                    now,
-                                updatedAt =
-                                    now
-                            )
-
-                        val newWorks =
-                            works +
-                                newWork
-
-                        works =
-                            newWorks
-
-                        activeWorkId =
-                            newWork.id
-
-                        editorValue =
-                            TextFieldValue(
-                                importedCode
-                            )
-
-                        saveWorkStore(
-                            folderUri =
-                                selectedFolderUri,
-                            works =
-                                newWorks,
-                            activeWorkId =
-                                newWork.id
-                        )
-
-                        clearDraftSnapshot()
-
-                        isError =
-                            false
-
-                        if (autoRun) {
-                            runSketch(
-                                importedCode,
-                                emptyMap()
-                            )
-                        }
-
-                    } else {
-
-                        isError =
-                            true
-
-                        appendConsole(
-                            level =
-                                ConsoleLevel.ERROR,
-                            message =
-                                uiText("JSファイルを読み込めませんでした")
-                        )
-
-                        showConsole =
-                            true
                     }
                 }
             }
@@ -7717,6 +7666,41 @@ class MainActivity : ComponentActivity() {
                 normalizedName.endsWith(".glsl", ignoreCase = true)
             val validName = normalizedName.matches(Regex("[A-Za-z0-9._-]+\\.(js|frag|vert|glsl)", RegexOption.IGNORE_CASE)) &&
                 normalizedName != "sketch.js"
+            fun persistAuxiliaryChange(updatedFiles: Map<String, String>) {
+                if (workSaving || assetBusy) return
+                val current = activeWork ?: return
+                val selectedId = activeWorkId
+                val currentCode = editorText
+                val replacement = snapshotWork(current).also { copy ->
+                    copy.code = currentCode
+                    copy.files.clear()
+                    copy.files.putAll(updatedFiles)
+                    copy.updatedAt = System.currentTimeMillis()
+                }
+                val updatedWorks = works.map { work ->
+                    if (work.id == selectedId) replacement else snapshotWork(work)
+                }
+                val folder = selectedFolderUri
+                workSaving = true
+                assetBusy = true
+                lifecycleScope.launch {
+                    try {
+                        if (withContext(Dispatchers.IO) { saveWorkStore(folder, updatedWorks, selectedId) }) {
+                            works = updatedWorks
+                            lastSavedText = currentCode
+                            runSketch(currentCode, replacement.files)
+                            showAuxiliaryFileEditor = false
+                        } else {
+                            Toast.makeText(this@MainActivity,
+                                uiText("保存できませんでした。保存先を確認して再試行してください"),
+                                Toast.LENGTH_LONG).show()
+                        }
+                    } finally {
+                        workSaving = false
+                        assetBusy = false
+                    }
+                }
+            }
             EditSettingsDialog(
                 onDismissRequest = { showAuxiliaryFileEditor = false },
                 title = { Text(if (originalAuxiliaryFileName == null) uiText("ファイルを追加") else uiText("ファイルを編集")) },
@@ -7748,38 +7732,22 @@ class MainActivity : ComponentActivity() {
                 confirmButton = {
                     Button(shape = ButtonDefaults.shape,
                         onClick = {
-                            updateCurrentWork()
-                            activeWork?.let { work ->
-                                originalAuxiliaryFileName?.takeIf { it != normalizedName }
-                                    ?.let(work.files::remove)
-                                work.files[normalizedName] = auxiliaryFileContent
-                                work.updatedAt = System.currentTimeMillis()
-                                works = works.toList()
-                                if (saveWorkStore(selectedFolderUri, works, activeWorkId)) {
-                                    lastSavedText = editorText
-                                }
-                                runSketch(editorText, work.files)
-                            }
-                            showAuxiliaryFileEditor = false
+                            val updated = activeWork?.files?.toMutableMap() ?: return@Button
+                            originalAuxiliaryFileName?.takeIf { it != normalizedName }?.let(updated::remove)
+                            updated[normalizedName] = auxiliaryFileContent
+                            persistAuxiliaryChange(updated)
                         },
-                        enabled = validName
+                        enabled = validName && !workSaving && !assetBusy
                     ) { Text(uiText("保存")) }
                 },
                 dismissButton = {
                     Row {
                         originalAuxiliaryFileName?.let { existingName ->
                             TextButton(onClick = {
-                                updateCurrentWork()
-                                activeWork?.let { work ->
-                                    work.files.remove(existingName)
-                                    works = works.toList()
-                                    if (saveWorkStore(selectedFolderUri, works, activeWorkId)) {
-                                        lastSavedText = editorText
-                                    }
-                                    runSketch(editorText, work.files)
-                                }
-                                showAuxiliaryFileEditor = false
-                            }) {
+                                val updated = activeWork?.files?.toMutableMap() ?: return@TextButton
+                                updated.remove(existingName)
+                                persistAuxiliaryChange(updated)
+                            }, enabled = !workSaving && !assetBusy) {
                                 Text(uiText("削除"), color = colors.error)
                             }
                         }
@@ -9927,4 +9895,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
