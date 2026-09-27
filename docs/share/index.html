@@ -775,8 +775,40 @@
         display: block;
       }
       .modal-card {
-        max-height: 92vh;
+        height: min(84dvh, 720px);
+        max-height: calc(100dvh - 24px);
         border-radius: 18px;
+      }
+      #code-modal {
+        padding: 12px;
+      }
+      .modal-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+        padding: 10px 12px;
+      }
+      .modal-header-left {
+        min-width: 0;
+      }
+      .modal-header-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+        width: 100%;
+        gap: 6px;
+      }
+      .btn-run-code, .copy-btn {
+        min-width: 0;
+        justify-content: center;
+        padding: 8px;
+      }
+      .editor-wrapper {
+        min-height: 0;
+        height: auto;
+      }
+      #code-editor {
+        min-width: 0;
+        padding: 14px 12px;
       }
       .top-btn span {
         display: none;
@@ -933,6 +965,7 @@
     let runnerFrame = null;
     let runnerPort = null;
     let runnerTimer = null;
+    let showControls = () => {};
 
     // Default interactive demo sketch if no #c= parameter is provided
     const DEMO_SKETCH = `// @rin number particleCount "Particles" 30 180 80 10
@@ -1090,6 +1123,8 @@ function draw() {
       window.addEventListener('error', event => send('error', { message: event.message || 'Sketch error' }));
       window.addEventListener('unhandledrejection', event =>
         send('error', { message: String(event.reason?.message || event.reason || 'Sketch error') }));
+      window.addEventListener('pointerdown', () => send('activity'), { capture: true, passive: true });
+      window.addEventListener('touchstart', () => send('activity'), { capture: true, passive: true });
       window.addEventListener('message', event => {
         if (port || event.source !== window.parent || event.data !== 'rin-connect' || !event.ports[0]) return;
         port = event.ports[0];
@@ -1243,6 +1278,8 @@ function draw() {
         button.setAttribute('aria-label', isRecording ? 'Stop recording' : 'Record five second video');
       } else if (data.type === 'download') {
         downloadBlob(data.blob, data.mediaType, data.kind);
+      } else if (data.type === 'activity') {
+        showControls();
       }
     }
 
@@ -1691,6 +1728,7 @@ function draw() {
       window.addEventListener('mousemove', resetActivityTimer);
       window.addEventListener('touchstart', resetActivityTimer);
       window.addEventListener('focusin', resetActivityTimer);
+      showControls = resetActivityTimer;
       resetActivityTimer();
     }
 
