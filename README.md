@@ -114,6 +114,6 @@ If you enjoy Edit:RiN and would like to support its ongoing development, optiona
 
 ## License
 
-Modification, reuse, or redistribution requires prior contact, permission, and attribution to rin-code-dev. See [LICENSE](LICENSE) for details.
+Edit:RiN is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE) for details.
 
 © 2026 rin-code-dev · Made with p5.js and Jetpack Compose.
