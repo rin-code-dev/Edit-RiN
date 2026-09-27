@@ -4,6 +4,10 @@
 
 [日本語の案内はこちら](#日本語) · [Download](https://github.com/rin-code-dev/Edit-RiN/releases) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/rin-code-dev/Edit-RiN/issues)
 
+<p align="center">
+  <img src="docs/screenshots/editor_gravity.jpg" width="320" alt="Edit:RiN Editor & Live Preview" />
+</p>
+
 ---
 
 ## Features
