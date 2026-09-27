@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Edit:RiN Web Viewer</title>
   <style>
     :root {
@@ -64,16 +64,13 @@
 
     /* Canvas styling */
 
-    canvas {
-      display: block !important;
-      max-width: 95vw !important;
-      max-height: 86vh !important;
-      width: auto !important;
-      height: auto !important;
-      object-fit: contain;
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 0 1px rgba(255, 255, 255, 0.25);
-      border-radius: 16px;
-      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    #sketch-frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      position: absolute;
+      inset: 0;
+      z-index: 2;
     }
 
     /* ==========================================================================
@@ -796,15 +793,21 @@
         height: 40px;
       }
     }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 
   <!-- Pako for fast deflate inflation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-  <!-- p5.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.5/p5.min.js"></script>
 </head>
 <body>
   <div id="ambient-glow"></div>
+  <div id="sketch-host"></div>
 
   <!-- Top Bar -->
   <div id="top-bar">
@@ -819,7 +822,7 @@
         <svg viewBox="0 0 24 24"><path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.5511 0 .9993.4486.9993 1.0003s-.4482 1.0003-.9993 1.0003m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.5511 0 .9993.4486.9993 1.0003s-.4482 1.0003-.9993 1.0003m11.4045-6.02l1.9973-3.4592a.416.416 0 0 0-.1521-.5676.416.416 0 0 0-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.077 12 8.077c-1.8533 0-3.5902.3346-5.1368.8727L4.8409 5.4467a.4161.4161 0 0 0-.5677-.1521.4157.4157 0 0 0-.152 5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396"/></svg>
         <span>Get App</span>
       </a>
-      <button class="top-btn" id="btn-fullscreen" title="Toggle Fullscreen">
+      <button class="top-btn" id="btn-fullscreen" title="Toggle Fullscreen" aria-label="Toggle fullscreen">
         <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
         <span>Fullscreen</span>
       </button>
@@ -833,39 +836,39 @@
     <div class="loader-text">Loading Sketch</div>
   </div>
 
-  <div id="toast"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
   <div id="banner-notice"></div>
 
   <!-- Floating Control Bar (Preserved & Upgraded) -->
   <div id="control-bar" style="display:none;">
-    <button class="ctrl-btn" id="btn-playpause" data-tip="Play / Pause">
+    <button class="ctrl-btn" id="btn-playpause" data-tip="Play / Pause" aria-label="Pause sketch">
       <svg id="icon-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
       <svg id="icon-play" viewBox="0 0 24 24" style="display:none;"><path d="M8 5v14l11-7z"/></svg>
     </button>
-    <button class="ctrl-btn" id="btn-restart" data-tip="Restart">
+    <button class="ctrl-btn" id="btn-restart" data-tip="Restart" aria-label="Restart sketch">
       <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
     </button>
-    <button class="ctrl-btn" id="btn-snapshot" data-tip="Save Snapshot">
+    <button class="ctrl-btn" id="btn-snapshot" data-tip="Save Snapshot" aria-label="Save snapshot">
       <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3z"/></svg>
     </button>
-    <button class="ctrl-btn" id="btn-record" data-tip="Record Video (5s)">
+    <button class="ctrl-btn" id="btn-record" data-tip="Record Video (5s)" aria-label="Record five second video">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>
     </button>
     <div class="divider"></div>
-    <button class="ctrl-btn" id="btn-params" data-tip="Parameters" style="display:none;">
+    <button class="ctrl-btn" id="btn-params" data-tip="Parameters" aria-label="Open parameters" aria-expanded="false" aria-controls="params-panel" style="display:none;">
       <svg viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
       <span class="badge-dot"></span>
     </button>
-    <button class="ctrl-btn" id="btn-code" data-tip="Source & Edit">
+    <button class="ctrl-btn" id="btn-code" data-tip="Source & Edit" aria-label="Open source editor" aria-expanded="false" aria-controls="code-modal">
       <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
     </button>
-    <button class="ctrl-btn" id="btn-share" data-tip="Share Link">
+    <button class="ctrl-btn" id="btn-share" data-tip="Share Link" aria-label="Share link">
       <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg>
     </button>
   </div>
 
   <!-- Parameters Panel -->
-  <div id="params-panel">
+  <div id="params-panel" role="region" aria-label="Sketch parameters">
     <div class="sheet-handle"></div>
     <div class="panel-header">
       <div class="panel-title-wrap">
@@ -877,7 +880,7 @@
           <svg viewBox="0 0 24 24" style="width:12px; height:12px; fill:currentColor;"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
           <span>Reset</span>
         </button>
-        <button class="panel-btn" id="btn-close-params" style="padding:4px 6px;">
+        <button class="panel-btn" id="btn-close-params" aria-label="Close parameters" style="padding:4px 6px;">
           <svg viewBox="0 0 24 24" style="width:14px; height:14px; fill:currentColor;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </div>
@@ -886,12 +889,12 @@
   </div>
 
   <!-- Code Modal (Playground) -->
-  <div id="code-modal">
+  <div id="code-modal" role="dialog" aria-modal="true" aria-label="Source editor">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-header-left">
           <div class="modal-dots">
-            <div class="dot red" id="dot-close" style="cursor:pointer;" title="Close"></div>
+            <div class="dot red" aria-hidden="true"></div>
             <div class="dot yellow"></div>
             <div class="dot green"></div>
           </div>
@@ -909,14 +912,14 @@
             <svg viewBox="0 0 24 24" style="width:14px; height:14px; fill:currentColor;"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
             <span id="copy-text">Copy</span>
           </button>
-          <button class="ctrl-btn" id="btn-close-code" style="width:34px; height:34px;">
+          <button class="ctrl-btn" id="btn-close-code" aria-label="Close source editor" style="width:34px; height:34px;">
             <svg viewBox="0 0 24 24" style="width:16px; height:16px;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </button>
         </div>
       </div>
       <div class="editor-wrapper">
         <div class="code-lines" id="code-lines"></div>
-        <textarea id="code-editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <textarea id="code-editor" aria-label="Sketch source code" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       </div>
     </div>
   </div>
@@ -926,9 +929,10 @@
     let isRunning = true;
     let autoHideTimer = null;
     let toastTimer = null;
-    let mediaRecorder = null;
-    let recordedChunks = [];
     let isRecording = false;
+    let runnerFrame = null;
+    let runnerPort = null;
+    let runnerTimer = null;
 
     // Default interactive demo sketch if no #c= parameter is provided
     const DEMO_SKETCH = `// @rin number particleCount "Particles" 30 180 80 10
@@ -983,6 +987,134 @@ function draw() {
   }
 }`;
 
+    // The sketch runs in an opaque-origin sandbox. Keep this runner inside index.html
+    // so a single Pages file update publishes the complete viewer.
+    function sketchRunner() {
+      let port;
+      let instance;
+      let recorder;
+      let stream;
+      let recordingTimer;
+      let chunks = [];
+      let recordingFailed = false;
+      const send = (type, extra = {}) => port?.postMessage({ type, ...extra });
+      const canvas = () => document.querySelector('canvas');
+      const stopTracks = () => {
+        stream?.getTracks().forEach(track => track.stop());
+        stream = null;
+      };
+
+      function record() {
+        if (recorder?.state === 'recording') {
+          recorder.stop();
+          return;
+        }
+        if (!canvas()?.captureStream || typeof MediaRecorder === 'undefined') {
+          send('error', { message: 'Video recording is not supported' });
+          return;
+        }
+        try {
+          stream = canvas().captureStream(30);
+          const mime = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4']
+            .find(type => MediaRecorder.isTypeSupported(type));
+          recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+          chunks = [];
+          recordingFailed = false;
+          recorder.ondataavailable = event => {
+            if (event.data?.size) chunks.push(event.data);
+          };
+          recorder.onerror = () => {
+            recordingFailed = true;
+            clearTimeout(recordingTimer);
+            stopTracks();
+            send('error', { message: 'Video recording failed' });
+            send('recording', { active: false });
+          };
+          recorder.onstop = () => {
+            clearTimeout(recordingTimer);
+            stopTracks();
+            send('recording', { active: false });
+            if (recordingFailed) return;
+            if (!chunks.length) {
+              send('error', { message: 'No video data was captured' });
+              return;
+            }
+            const type = recorder.mimeType || chunks[0].type || 'video/webm';
+            send('download', { blob: new Blob(chunks, { type }), mediaType: type, kind: 'video' });
+            chunks = [];
+          };
+          recorder.start();
+          send('recording', { active: true });
+          recordingTimer = setTimeout(() => {
+            if (recorder.state === 'recording') recorder.stop();
+          }, 5000);
+        } catch (_) {
+          stopTracks();
+          send('error', { message: 'Video recording is not supported' });
+          send('recording', { active: false });
+        }
+      }
+
+      function handle(event) {
+        const data = event.data || {};
+        try {
+          if (data.type === 'start') {
+            if (typeof p5 === 'undefined') throw new Error('p5.js could not be loaded');
+            p5.prototype.registerMethod('afterSetup', () => send('started'));
+            window.rinParams = data.params;
+            const script = document.createElement('script');
+            script.textContent = `${data.code}\n//# sourceURL=sketch.js`;
+            document.body.appendChild(script);
+            instance = new p5();
+          } else if (data.type === 'params') {
+            Object.assign(window.rinParams, data.params);
+            if (instance && !instance.isLooping()) instance.redraw();
+          } else if (data.type === 'pause') {
+            instance?.noLoop();
+          } else if (data.type === 'play') {
+            instance?.loop();
+          } else if (data.type === 'snapshot') {
+            if (!canvas()) throw new Error('No canvas available');
+            canvas().toBlob(blob => {
+              if (blob) send('download', { blob, mediaType: 'image/png', kind: 'snapshot' });
+              else send('error', { message: 'Snapshot failed' });
+            }, 'image/png');
+          } else if (data.type === 'record') {
+            record();
+          }
+        } catch (error) {
+          send('error', { message: error.message || String(error) });
+        }
+      }
+
+      window.addEventListener('error', event => send('error', { message: event.message || 'Sketch error' }));
+      window.addEventListener('unhandledrejection', event =>
+        send('error', { message: String(event.reason?.message || event.reason || 'Sketch error') }));
+      window.addEventListener('message', event => {
+        if (port || event.source !== window.parent || event.data !== 'rin-connect' || !event.ports[0]) return;
+        port = event.ports[0];
+        port.onmessage = handle;
+        port.start();
+        send('ready');
+      });
+      window.parent.postMessage('rin-runner-ready', '*');
+    }
+
+    function runnerDocument() {
+      const css = `
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+        body { display: flex; align-items: center; justify-content: center; }
+        canvas { display: block !important; max-width: 95vw !important; max-height: 86vh !important;
+          width: auto !important; height: auto !important; object-fit: contain; border-radius: 16px;
+          box-shadow: 0 24px 70px rgba(0, 0, 0, .85), 0 0 1px rgba(255, 255, 255, .25); }
+      `;
+      return '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
+        '<style>' + css + '</style>' +
+        '<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.5/p5.min.js"></' + 'script>' +
+        '</head><body><script>(' + sketchRunner.toString() + ')();</' + 'script></body></html>';
+    }
+
     function showToast(msg) {
       const el = document.getElementById('toast');
       if (!el) return;
@@ -995,6 +1127,9 @@ function draw() {
     }
 
     function base64UrlToBytes(base64url) {
+      if (base64url.length > 300000 || !/^[A-Za-z0-9_-]+$/.test(base64url)) {
+        throw new Error('Invalid or oversized sketch link');
+      }
       let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
       while (base64.length % 4) base64 += '=';
       const binary = atob(base64);
@@ -1020,6 +1155,106 @@ function draw() {
       throw new Error('No decompression method available.');
     }
 
+    async function compressedSketchUrl(code) {
+      const source = new TextEncoder().encode(code);
+      let compressed;
+      if (typeof pako !== 'undefined' && typeof pako.deflate === 'function') {
+        compressed = pako.deflate(source, { level: 9 });
+      } else if (typeof CompressionStream !== 'undefined') {
+        const stream = new Blob([source]).stream().pipeThrough(new CompressionStream('deflate'));
+        compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+      } else {
+        throw new Error('Link compression is unavailable');
+      }
+      let base64 = '';
+      for (let offset = 0; offset < compressed.length; offset += 0x8000) {
+        base64 += String.fromCharCode(...compressed.subarray(offset, offset + 0x8000));
+      }
+      const encoded = btoa(base64).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      if (encoded.length > 300000) throw new Error('Sketch is too large for a share link');
+      const url = new URL(window.location.href);
+      const params = new URLSearchParams(url.hash.substring(1) || url.search);
+      const hideSource = params.get('src') === '0';
+      url.searchParams.delete('code');
+      url.searchParams.delete('c');
+      url.hash = `c=${encoded}${hideSource ? '&src=0' : ''}`;
+      return url.href;
+    }
+
+    async function refreshShareUrl(code) {
+      try {
+        const url = await compressedSketchUrl(code);
+        if (globalCode === code) window.history.replaceState(null, '', url);
+      } catch (error) {
+        showToast(error.message || 'Could not update share link');
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+    }
+
+    function sendRunner(type, extra = {}) {
+      runnerPort?.postMessage({ type, ...extra });
+    }
+
+    function updateParam(name, value) {
+      window.rinParams[name] = value;
+      sendRunner('params', { params: { [name]: value } });
+    }
+
+    function downloadBlob(blob, type, kind) {
+      if (!blob || typeof blob.size !== 'number' || !blob.size) {
+        showToast('No media data was captured');
+        return;
+      }
+      try {
+        const extension = kind === 'snapshot' ? 'png' : type?.startsWith('video/mp4') ? 'mp4' : 'webm';
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `rin-${kind === 'snapshot' ? 'snapshot' : 'animation'}-${Date.now()}.${extension}`;
+        document.body.appendChild(link);
+        showToast(kind === 'snapshot' ? 'Snapshot saved' : 'Video downloaded');
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch (_) {
+        showToast('Media download failed');
+      }
+    }
+
+    function onRunnerMessage(event) {
+      const data = event.data || {};
+      if (data.type === 'ready') {
+        clearTimeout(runnerTimer);
+        sendRunner('start', { code: globalCode, params: window.rinParams });
+      } else if (data.type === 'started') {
+        document.getElementById('loading-indicator').style.display = 'none';
+      } else if (data.type === 'error') {
+        document.getElementById('loading-indicator').style.display = 'none';
+        showToast('Sketch error: ' + String(data.message || 'Unknown error').slice(0, 160));
+      } else if (data.type === 'recording') {
+        isRecording = !!data.active;
+        const button = document.getElementById('btn-record');
+        button.classList.toggle('recording', isRecording);
+        button.setAttribute('aria-label', isRecording ? 'Stop recording' : 'Record five second video');
+      } else if (data.type === 'download') {
+        downloadBlob(data.blob, data.mediaType, data.kind);
+      }
+    }
+
+    window.addEventListener('message', event => {
+      if (event.source !== runnerFrame?.contentWindow || event.data !== 'rin-runner-ready' || runnerPort) return;
+      const channel = new MessageChannel();
+      runnerPort = channel.port1;
+      runnerPort.onmessage = onRunnerMessage;
+      runnerPort.start();
+      runnerFrame.contentWindow.postMessage('rin-connect', '*', [channel.port2]);
+    });
+
     function parseRinParams(code) {
       const values = Object.create(null);
       const descriptors = [];
@@ -1041,7 +1276,7 @@ function draw() {
             def = Number(rest[0]);
             max = def > 0 ? def * 2 : 100;
           }
-          if (!isNaN(def) && isFinite(def)) {
+          if ([min, max, def, step].every(Number.isFinite) && min <= max && step > 0 && def >= min && def <= max) {
             values[name] = def;
             descriptors.push({ type, name, label, default: def, min, max, step });
           }
@@ -1050,7 +1285,7 @@ function draw() {
           values[name] = val;
           descriptors.push({ type, name, label, default: val });
         } else if (type === 'color') {
-          const val = rest[0] || '#00E5FF';
+          const val = /^#[0-9a-fA-F]{6}$/.test(rest[0]) ? rest[0] : '#00E5FF';
           values[name] = val;
           descriptors.push({ type, name, label, default: val });
         }
@@ -1062,16 +1297,20 @@ function draw() {
       const btnParams = document.getElementById('btn-params');
       const paramsList = document.getElementById('params-list');
       const countEl = document.getElementById('params-count');
+      paramsList.replaceChildren();
 
       if (!descriptors || descriptors.length === 0) {
         btnParams.style.display = 'none';
+        btnParams.classList.remove('active');
+        btnParams.setAttribute('aria-expanded', 'false');
+        document.getElementById('params-panel').classList.remove('visible');
+        if (countEl) countEl.textContent = '0';
         return;
       }
 
       btnParams.style.display = 'flex';
       if (countEl) countEl.textContent = descriptors.length;
 
-      paramsList.innerHTML = '';
       descriptors.forEach(desc => {
         const item = document.createElement('div');
         item.className = 'param-item';
@@ -1080,15 +1319,15 @@ function draw() {
           item.innerHTML = `
             <div class="param-title-row">
               <div>
-                <div class="param-label">${desc.label}</div>
-                <div class="param-var">rinParams.${desc.name}</div>
+                <div class="param-label">${escapeHtml(desc.label)}</div>
+                <div class="param-var">rinParams.${escapeHtml(desc.name)}</div>
               </div>
               <span class="param-val" id="val-${desc.name}">${desc.default}</span>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
-              <button class="panel-btn" id="dec-${desc.name}" style="padding:2px 8px; font-weight:bold;">−</button>
-              <input type="range" min="${desc.min}" max="${desc.max}" step="${desc.step}" value="${desc.default}" id="input-${desc.name}" style="flex:1;">
-              <button class="panel-btn" id="inc-${desc.name}" style="padding:2px 8px; font-weight:bold;">+</button>
+              <button class="panel-btn" aria-label="Decrease ${escapeHtml(desc.label)}" id="dec-${desc.name}" style="padding:2px 8px; font-weight:bold;">−</button>
+              <input type="range" aria-label="${escapeHtml(desc.label)}" min="${desc.min}" max="${desc.max}" step="${desc.step}" value="${desc.default}" id="input-${desc.name}" style="flex:1;">
+              <button class="panel-btn" aria-label="Increase ${escapeHtml(desc.label)}" id="inc-${desc.name}" style="padding:2px 8px; font-weight:bold;">+</button>
             </div>
             <div style="font-size:11px; color:var(--text-dim); display:flex; justify-content:space-between;">
               <span>${desc.min} .. ${desc.max}</span>
@@ -1108,8 +1347,7 @@ function draw() {
             const formatted = decimals > 0 ? Number(clamped.toFixed(decimals)) : Math.round(clamped);
             slider.value = formatted;
             valDisplay.textContent = formatted;
-            window.rinParams[desc.name] = formatted;
-            if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
+            updateParam(desc.name, formatted);
           };
 
           slider.addEventListener('input', () => updateNum(Number(slider.value)));
@@ -1120,11 +1358,11 @@ function draw() {
           item.innerHTML = `
             <div class="toggle-row">
               <div>
-                <div class="param-label">${desc.label}</div>
-                <div class="param-var">rinParams.${desc.name}</div>
+                <div class="param-label">${escapeHtml(desc.label)}</div>
+                <div class="param-var">rinParams.${escapeHtml(desc.name)}</div>
               </div>
               <label class="switch">
-                <input type="checkbox" ${desc.default ? 'checked' : ''} id="input-${desc.name}">
+                <input type="checkbox" aria-label="${escapeHtml(desc.label)}" ${desc.default ? 'checked' : ''} id="input-${desc.name}">
                 <span class="slider-toggle"></span>
               </label>
             </div>
@@ -1132,20 +1370,19 @@ function draw() {
           paramsList.appendChild(item);
           const toggle = item.querySelector(`#input-${desc.name}`);
           toggle.addEventListener('change', () => {
-            window.rinParams[desc.name] = toggle.checked;
-            if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
+            updateParam(desc.name, toggle.checked);
           });
 
         } else if (desc.type === 'color') {
           item.innerHTML = `
             <div class="toggle-row">
               <div>
-                <div class="param-label">${desc.label}</div>
-                <div class="param-var">rinParams.${desc.name}</div>
+                <div class="param-label">${escapeHtml(desc.label)}</div>
+                <div class="param-var">rinParams.${escapeHtml(desc.name)}</div>
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span class="param-val" id="val-${desc.name}">${desc.default}</span>
-                <input type="color" value="${desc.default}" id="input-${desc.name}" style="width:32px; height:32px; border-radius:8px; border:1px solid var(--border-glass); cursor:pointer; background:none; padding:0;">
+                <input type="color" aria-label="${escapeHtml(desc.label)}" value="${desc.default}" id="input-${desc.name}" style="width:32px; height:32px; border-radius:8px; border:1px solid var(--border-glass); cursor:pointer; background:none; padding:0;">
               </div>
             </div>
           `;
@@ -1155,8 +1392,7 @@ function draw() {
           colorInput.addEventListener('input', () => {
             const hex = colorInput.value.toUpperCase();
             valDisplay.textContent = hex;
-            window.rinParams[desc.name] = hex;
-            if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
+            updateParam(desc.name, hex);
           });
         }
       });
@@ -1165,7 +1401,7 @@ function draw() {
       if (btnReset) {
         btnReset.onclick = () => {
           descriptors.forEach(desc => {
-            window.rinParams[desc.name] = desc.default;
+            updateParam(desc.name, desc.default);
             const input = document.getElementById(`input-${desc.name}`);
             const valDisplay = document.getElementById(`val-${desc.name}`);
             if (input) {
@@ -1180,51 +1416,37 @@ function draw() {
               }
             }
           });
-          if (typeof isLooping === 'function' && !isLooping() && typeof redraw === 'function') redraw();
           showToast('Reset all parameters');
         };
       }
     }
 
-    let currentSketchScript = null;
-
-    function runSketch(code, isInitial = false) {
+    function runSketch(code) {
       const parsed = parseRinParams(code);
       window.rinParams = parsed.values;
       setupParamsUi(parsed.descriptors);
-
-      if (isInitial) {
-        currentSketchScript = document.createElement('script');
-        currentSketchScript.id = 'rin-sketch-script';
-        currentSketchScript.textContent = `${code}\n//# sourceURL=sketch.js`;
-        document.body.appendChild(currentSketchScript);
-
-        if (typeof p5 !== 'undefined') {
-          new p5();
-        }
-        isRunning = true;
-      } else {
-        try {
-          (0, eval)(code);
-          if (typeof window.setup === 'function') {
-            window.setup();
-          }
-          if (typeof loop === 'function') {
-            loop();
-          }
-          isRunning = true;
-          const iconPause = document.getElementById('icon-pause');
-          const iconPlay = document.getElementById('icon-play');
-          const btnPlayPause = document.getElementById('btn-playpause');
-          if (iconPause && iconPlay) {
-            iconPause.style.display = 'block';
-            iconPlay.style.display = 'none';
-            btnPlayPause?.classList.remove('active');
-          }
-        } catch (err) {
-          showToast('Error: ' + (err.message || String(err)));
-        }
-      }
+      clearTimeout(runnerTimer);
+      runnerPort?.close();
+      runnerPort = null;
+      runnerFrame?.remove();
+      isRecording = false;
+      document.getElementById('btn-record').classList.remove('recording');
+      document.getElementById('loading-indicator').style.display = 'flex';
+      runnerFrame = document.createElement('iframe');
+      runnerFrame.id = 'sketch-frame';
+      runnerFrame.title = 'Interactive sketch';
+      runnerFrame.setAttribute('sandbox', 'allow-scripts');
+      runnerFrame.srcdoc = runnerDocument();
+      document.getElementById('sketch-host').appendChild(runnerFrame);
+      runnerTimer = setTimeout(() => {
+        document.getElementById('loading-indicator').style.display = 'none';
+        showToast('Sketch runner could not be loaded');
+      }, 12000);
+      isRunning = true;
+      document.getElementById('icon-pause').style.display = 'block';
+      document.getElementById('icon-play').style.display = 'none';
+      document.getElementById('btn-playpause').classList.remove('active');
+      document.getElementById('btn-playpause').setAttribute('aria-label', 'Pause sketch');
     }
 
     function setupControls(allowCodeView = true) {
@@ -1244,7 +1466,6 @@ function draw() {
       const btnCode = document.getElementById('btn-code');
       const codeModal = document.getElementById('code-modal');
       const btnCloseCode = document.getElementById('btn-close-code');
-      const dotClose = document.getElementById('dot-close');
       const btnCopy = document.getElementById('btn-copy');
       const copyText = document.getElementById('copy-text');
       const btnRun = document.getElementById('btn-run');
@@ -1255,17 +1476,19 @@ function draw() {
       // Play / Pause
       btnPlayPause.addEventListener('click', () => {
         if (isRunning) {
-          if (typeof noLoop === 'function') noLoop();
+          sendRunner('pause');
           isRunning = false;
           iconPause.style.display = 'none';
           iconPlay.style.display = 'block';
           btnPlayPause.classList.add('active');
+          btnPlayPause.setAttribute('aria-label', 'Play sketch');
         } else {
-          if (typeof loop === 'function') loop();
+          sendRunner('play');
           isRunning = true;
           iconPause.style.display = 'block';
           iconPlay.style.display = 'none';
           btnPlayPause.classList.remove('active');
+          btnPlayPause.setAttribute('aria-label', 'Pause sketch');
         }
       });
 
@@ -1273,92 +1496,33 @@ function draw() {
       btnRestart.addEventListener('click', () => {
         btnRestart.style.transform = 'rotate(360deg)';
         setTimeout(() => { btnRestart.style.transform = ''; }, 320);
-        if (typeof window.setup === 'function') {
-          window.setup();
-          if (!isRunning) {
-            if (typeof loop === 'function') loop();
-            isRunning = true;
-            iconPause.style.display = 'block';
-            iconPlay.style.display = 'none';
-            btnPlayPause.classList.remove('active');
-          }
-        }
+        runSketch(globalCode);
         showToast('Restarted sketch');
       });
 
       // Snapshot (PNG)
       btnSnapshot.addEventListener('click', () => {
-        const cvs = document.querySelector('canvas');
-        if (!cvs) {
-          showToast('No canvas available');
-          return;
-        }
-        try {
-          const link = document.createElement('a');
-          link.download = `rin-snapshot-${Date.now()}.png`;
-          link.href = cvs.toDataURL('image/png');
-          link.click();
-          showToast('Snapshot saved');
-        } catch (_) {
-          showToast('Snapshot failed');
-        }
+        sendRunner('snapshot');
       });
 
       // Video Recording (WebM, 5s)
       if (btnRecord) {
         btnRecord.addEventListener('click', () => {
-          const cvs = document.querySelector('canvas');
-          if (!cvs) {
-            showToast('No canvas available');
-            return;
-          }
-          if (isRecording) {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-            isRecording = false;
-            btnRecord.classList.remove('recording');
-            return;
-          }
-
-          try {
-            const stream = cvs.captureStream(30);
-            const mimeTypes = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'];
-            let mime = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
-            mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-            recordedChunks = [];
-            mediaRecorder.ondataavailable = e => {
-              if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-            };
-            mediaRecorder.onstop = () => {
-              const blob = new Blob(recordedChunks, { type: mime || 'video/webm' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `rin-animation-${Date.now()}.webm`;
-              a.click();
-              URL.revokeObjectURL(url);
-              btnRecord.classList.remove('recording');
-              isRecording = false;
-              showToast('Video downloaded');
-            };
-            mediaRecorder.start();
-            isRecording = true;
-            btnRecord.classList.add('recording');
-            showToast('Recording (5 seconds)...');
-            setTimeout(() => {
-              if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop();
-              }
-            }, 5000);
-          } catch (e) {
-            showToast('Video recording not supported');
-          }
+          sendRunner('record');
+          if (!isRecording) showToast('Recording (5 seconds)...');
         });
       }
 
       // Share Link
       if (btnShare) {
         btnShare.addEventListener('click', async () => {
-          const url = window.location.href;
+          let url;
+          try {
+            url = await compressedSketchUrl(globalCode);
+          } catch (error) {
+            showToast(error.message || 'Could not create share link');
+            return;
+          }
           if (navigator.share) {
             try {
               await navigator.share({
@@ -1393,10 +1557,13 @@ function draw() {
       btnParams.addEventListener('click', () => {
         const visible = paramsPanel.classList.toggle('visible');
         btnParams.classList.toggle('active', visible);
+        btnParams.setAttribute('aria-expanded', String(visible));
       });
       btnCloseParams.addEventListener('click', () => {
         paramsPanel.classList.remove('visible');
         btnParams.classList.remove('active');
+        btnParams.setAttribute('aria-expanded', 'false');
+        btnParams.focus();
       });
 
       // Code Editor & Viewer
@@ -1416,8 +1583,9 @@ function draw() {
 
         // Tab key support in editor
         codeEditor.addEventListener('keydown', (e) => {
-          if (e.key === 'Tab') {
+          if (e.key === 'Tab' && !e.shiftKey) {
             e.preventDefault();
+            e.stopPropagation();
             const start = codeEditor.selectionStart;
             const end = codeEditor.selectionEnd;
             codeEditor.value = codeEditor.value.substring(0, start) + '  ' + codeEditor.value.substring(end);
@@ -1431,17 +1599,33 @@ function draw() {
           updateLineNumbers();
           codeModal.classList.add('visible');
           btnCode.classList.add('active');
+          btnCode.setAttribute('aria-expanded', 'true');
+          codeEditor.focus();
         });
 
         const closeModal = () => {
           codeModal.classList.remove('visible');
           btnCode.classList.remove('active');
+          btnCode.setAttribute('aria-expanded', 'false');
+          btnCode.focus();
         };
 
         btnCloseCode.addEventListener('click', closeModal);
-        if (dotClose) dotClose.addEventListener('click', closeModal);
         codeModal.addEventListener('click', (e) => {
           if (e.target === codeModal) closeModal();
+        });
+        codeModal.addEventListener('keydown', (e) => {
+          if (e.key !== 'Tab') return;
+          const focusable = [btnRun, btnCopy, btnCloseCode, codeEditor];
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
         });
 
         // Copy Code
@@ -1459,8 +1643,10 @@ function draw() {
         // Run Code Button
         btnRun.addEventListener('click', () => {
           globalCode = codeEditor.value;
-          runSketch(globalCode, false);
-          showToast('Compiled & running');
+          runSketch(globalCode);
+          refreshShareUrl(globalCode);
+          closeModal();
+          showToast('Starting sketch');
         });
       }
 
@@ -1470,10 +1656,14 @@ function draw() {
           if (codeModal && codeModal.classList.contains('visible')) {
             codeModal.classList.remove('visible');
             btnCode?.classList.remove('active');
+            btnCode?.setAttribute('aria-expanded', 'false');
+            btnCode?.focus();
           }
           if (paramsPanel.classList.contains('visible')) {
             paramsPanel.classList.remove('visible');
             btnParams.classList.remove('active');
+            btnParams.setAttribute('aria-expanded', 'false');
+            btnParams.focus();
           }
         } else if (e.code === 'Space' && e.target === document.body) {
           e.preventDefault();
@@ -1489,7 +1679,9 @@ function draw() {
         clearTimeout(autoHideTimer);
         autoHideTimer = setTimeout(() => {
           const isCodeModalVisible = codeModal && codeModal.parentElement && codeModal.classList.contains('visible');
-          if (!paramsPanel.classList.contains('visible') && !isCodeModalVisible) {
+          const controlsFocused = bar.contains(document.activeElement) ||
+            document.getElementById('top-bar').contains(document.activeElement);
+          if (!paramsPanel.classList.contains('visible') && !isCodeModalVisible && !controlsFocused) {
             bar.style.opacity = '0';
             bar.style.transform = 'translateX(-50%) translateY(14px)';
             document.getElementById('top-bar').style.opacity = '0';
@@ -1498,6 +1690,7 @@ function draw() {
       }
       window.addEventListener('mousemove', resetActivityTimer);
       window.addEventListener('touchstart', resetActivityTimer);
+      window.addEventListener('focusin', resetActivityTimer);
       resetActivityTimer();
     }
 
@@ -1509,9 +1702,8 @@ function draw() {
       const allowCodeView = params.get('src') !== '0';
 
       if (!encodedCode) {
-        if (loading) loading.style.display = 'none';
         globalCode = DEMO_SKETCH;
-        runSketch(globalCode, true);
+        runSketch(globalCode);
         setupControls(true);
         const notice = document.getElementById('banner-notice');
         if (notice) {
@@ -1527,15 +1719,14 @@ function draw() {
         const code = await decompress(bytes);
         globalCode = code;
 
-        if (loading) loading.style.display = 'none';
-        runSketch(globalCode, true);
+        runSketch(globalCode);
         setupControls(allowCodeView);
 
       } catch (err) {
         if (loading) loading.style.display = 'none';
         showToast('Error loading sketch: ' + (err.message || String(err)));
         globalCode = DEMO_SKETCH;
-        runSketch(globalCode, true);
+        runSketch(globalCode);
         setupControls(true);
       }
     }
@@ -1545,6 +1736,7 @@ function draw() {
     } else {
       startViewer();
     }
+    window.addEventListener('hashchange', () => window.location.reload());
   </script>
 </body>
 </html>
