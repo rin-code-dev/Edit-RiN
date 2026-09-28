@@ -133,8 +133,8 @@ internal fun AspectRatioDialog(
                                     }
                                     Text(
                                         when (ratio) {
-                                            "device" -> uiText("端末")
                                             "device_landscape" -> uiText("端末・横")
+                                            "device" -> uiText("端末・縦")
                                             else -> ratio
                                         },
                                         fontFamily = codeFontFamily,
@@ -143,12 +143,12 @@ internal fun AspectRatioDialog(
                                     )
                                     Text(
                                         when (ratio) {
-                                            "device" -> if (devicePreviewRatio >= 1f) landscapeRatioText else portraitRatioText
                                             "device_landscape" -> landscapeRatioText
-                                            "1:1" -> uiText("正方形")
-                                            "4:3" -> uiText("標準・横")
                                             "16:9" -> uiText("ワイド")
+                                            "4:3" -> uiText("標準・横")
+                                            "1:1" -> uiText("正方形")
                                             "9:16" -> uiText("縦長")
+                                            "device" -> portraitRatioText
                                             else -> ratio
                                         },
                                         style = MaterialTheme.typography.labelSmall,

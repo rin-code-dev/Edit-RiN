@@ -1,8 +1,35 @@
 # Release & Build Guide / リリース・ビルド手順
 
 - **Application ID**: `com.hikariatelier.app`
-- **Current Version**: `2.0.5` (Version Code: `22`)
-- **Git Tag**: `v2.0.5`
+- **Current Version**: `2.0.6` (Version Code: `23`)
+- **Git Tag**: `v2.0.6`
+
+---
+
+## English
+
+### Build Requirements
+- **JDK**: JDK 25 (set as `JAVA_HOME`). Gradle daemon and compilation target Java 25, while maintaining Android bytecode compatibility at Java 17.
+- **Android SDK**: Platform 35, Build Tools 36.0.0.
+- **Build Tools**: Gradle 9.8.0 wrapper, AGP 9.3.2, built-in Kotlin / Compose compiler 2.2.10.
+
+### Release Steps
+1. **Configure Signing**:
+   Copy `android/release-signing.properties.example` to `android/release-signing.properties` and fill in your keystore credentials.
+2. **Run Verification & Build**:
+   ```sh
+   node tests/runner.test.cjs
+   cd android
+   ./gradlew testReleaseUnitTest assembleRelease lintRelease
+   ```
+3. **Artifacts**:
+   - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
+   - Note: If signing is not configured, Gradle will produce `app-release-unsigned.apk` which cannot be installed directly.
+
+### Publication Guidelines
+- Keep your signing key, passwords, `release-signing.properties`, local SDK paths, and `mapping.txt` private.
+- Attach the signed release APK, matching source ZIP, and SHA-256 checksums to GitHub Releases.
+- Do not overwrite installations signed with different keys (e.g. debug builds); back up works to ZIP before upgrading.
 
 ---
 
@@ -31,30 +58,3 @@
 - リリースビルドでは R8（最適化・難読化）とリソース縮小が有効です。WebView との JavaScript ブリッジは自動で保持されます。
 - 署名鍵、パスワード、`release-signing.properties`、`local.properties`、難読化マップ（`mapping.txt`）は絶対に公開・コミットしないでください。
 - 署名が異なるビルド（デバッグ版など）には上書きインストールできません。必要に応じてアプリ内で作品の ZIP バックアップを取得してからインストールしてください。
-
----
-
-## English
-
-### Build Requirements
-- **JDK**: JDK 25 (set as `JAVA_HOME`). Gradle daemon and compilation target Java 25, while maintaining Android bytecode compatibility at Java 17.
-- **Android SDK**: Platform 35, Build Tools 36.0.0.
-- **Build Tools**: Gradle 9.8.0 wrapper, AGP 9.3.2, built-in Kotlin / Compose compiler 2.2.10.
-
-### Release Steps
-1. **Configure Signing**:
-   Copy `android/release-signing.properties.example` to `android/release-signing.properties` and fill in your keystore credentials.
-2. **Run Verification & Build**:
-   ```sh
-   node tests/runner.test.cjs
-   cd android
-   ./gradlew testReleaseUnitTest assembleRelease lintRelease
-   ```
-3. **Artifacts**:
-   - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
-   - Note: If signing is not configured, Gradle will produce `app-release-unsigned.apk` which cannot be installed directly.
-
-### Publication Guidelines
-- Keep your signing key, passwords, `release-signing.properties`, local SDK paths, and `mapping.txt` private.
-- Attach the signed release APK, matching source ZIP, and SHA-256 checksums to GitHub Releases.
-- Do not overwrite installations signed with different keys (e.g. debug builds); back up works to ZIP before upgrading.

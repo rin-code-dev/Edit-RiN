@@ -359,16 +359,16 @@ internal fun EditorWorkspaceLayout(
                             contentDescription = text(
                                 "プレビュー比率を変更: %s",
                                 when (state.previewRatioSelection) {
-                                    "device" -> text("端末")
                                     "device_landscape" -> text("端末・横")
+                                    "device" -> text("端末・縦")
                                     else -> state.previewRatioSelection
                                 }
                             )
                             customActions = PREVIEW_ASPECT_RATIOS.map { ratio ->
                                 CustomAccessibilityAction(
                                     when (ratio) {
-                                        "device" -> text("端末")
                                         "device_landscape" -> text("端末・横")
+                                        "device" -> text("端末・縦")
                                         else -> ratio
                                     }
                                 ) {
@@ -407,8 +407,8 @@ internal fun EditorWorkspaceLayout(
                         ) {
                             Text(
                                 text = when (state.previewRatioSelection) {
-                                    "device" -> text("端末")
                                     "device_landscape" -> text("端末・横")
+                                    "device" -> text("端末・縦")
                                     else -> state.previewRatioSelection
                                 },
                                 style = MaterialTheme.typography.labelSmall,

@@ -79,7 +79,7 @@ internal fun AddWorkDialog(
         width = (maxSide * deviceTemplateScale).toInt().coerceAtLeast(1),
         height = (minSide * deviceTemplateScale).toInt().coerceAtLeast(1)
     )
-    val creationAspectOptions = workTemplates + listOf(deviceTemplate, deviceLandscapeTemplate)
+    val creationAspectOptions = listOf(deviceLandscapeTemplate) + workTemplates + listOf(deviceTemplate)
     val template = creationAspectOptions.firstOrNull { it.ratio == newRatio } ?: creationAspectOptions.first()
 
     WorkSheet(
@@ -197,8 +197,8 @@ internal fun AddWorkDialog(
                                 Column {
                                     Text(
                                         when (option.ratio) {
-                                            "device" -> uiText("端末")
                                             "device_landscape" -> uiText("端末・横")
+                                            "device" -> uiText("端末・縦")
                                             else -> option.ratio
                                         },
                                         fontWeight = FontWeight.SemiBold,
@@ -207,8 +207,8 @@ internal fun AddWorkDialog(
                                     Text(
                                         if (selected) uiText("選択中")
                                         else when (option.ratio) {
-                                            "device" -> uiText("端末の画面比率")
                                             "device_landscape" -> uiText("横向きの端末比率")
+                                            "device" -> uiText("縦向きの端末比率")
                                             else -> "${option.width} × ${option.height}"
                                         },
                                         style = MaterialTheme.typography.labelSmall,
