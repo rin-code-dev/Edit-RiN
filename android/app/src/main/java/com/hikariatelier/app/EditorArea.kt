@@ -240,7 +240,7 @@ internal fun EditorArea(
                     modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_restore),
+                        painter = painterResource(R.drawable.ic_snapshot),
                         contentDescription = textTranslator("スナップショット", emptyArray()),
                         tint = colors.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)

@@ -76,7 +76,7 @@ internal fun WorkHistoryDialog(
     EditSettingsDialog(
         onDismissRequest = onDismiss,
         icon = {
-            Icon(painterResource(R.drawable.ic_restore), contentDescription = null)
+            Icon(painterResource(R.drawable.ic_history), contentDescription = null)
         },
         title = { Text(textTranslator("変更履歴", emptyArray())) },
         text = {

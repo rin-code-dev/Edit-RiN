@@ -56,7 +56,7 @@ internal fun SnapshotSheet(
             shape = RoundedCornerShape(12.dp)
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_restore),
+                painter = painterResource(R.drawable.ic_snapshot),
                 contentDescription = null,
                 modifier = Modifier.size(18.dp)
             )
