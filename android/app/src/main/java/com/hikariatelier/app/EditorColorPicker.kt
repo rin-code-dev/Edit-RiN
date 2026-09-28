@@ -100,6 +100,10 @@ fun hsvToColor(hue: Float, saturation: Float, value: Float, alpha: Float = 1f): 
     return Color(argb)
 }
 
+private val QUOTED_HEX_REGEX = """(['"`])(#[0-9a-fA-F]{3,8})\1""".toRegex()
+private val BARE_HEX_REGEX = """(?<![0-9a-zA-Z])(#[0-9a-fA-F]{3,8})\b""".toRegex()
+private val COLOR_FUNC_REGEX = """\b(color|fill|stroke|background|rgb|rgba)\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9.]+))?\s*\)""".toRegex()
+
 fun findColorAtSelection(text: String, selection: TextRange): EditorColorTarget? {
     if (text.isEmpty()) return null
     val cursor = if (selection.collapsed) selection.start else selection.min
@@ -112,8 +116,7 @@ fun findColorAtSelection(text: String, selection: TextRange): EditorColorTarget?
     val offsetInLine = (cursor - lineStart).coerceIn(0, line.length)
 
     // 1. Quoted hex: e.g. '#ff0055', "#ff0055", `#ff0055`
-    val quotedHexRegex = """(['"`])(#[0-9a-fA-F]{3,8})\1""".toRegex()
-    for (match in quotedHexRegex.findAll(line)) {
+    for (match in QUOTED_HEX_REGEX.findAll(line)) {
         val start = match.range.first
         val end = match.range.last + 1
         if (offsetInLine in start..end) {
@@ -121,42 +124,42 @@ fun findColorAtSelection(text: String, selection: TextRange): EditorColorTarget?
             val hexStr = match.groupValues[2]
             val parsed = parseHexColor(hexStr)
             if (parsed != null) {
+                val hexLen = hexStr.length
                 return EditorColorTarget(
                     range = TextRange(lineStart + start, lineStart + end),
                     color = parsed,
                     originalText = match.value,
                     isHex = true,
                     quote = quote,
-                    hasAlpha = hexStr.length in listOf(5, 9)
+                    hasAlpha = hexLen == 5 || hexLen == 9
                 )
             }
         }
     }
 
     // 2. Bare hex: e.g. #ff0055
-    val bareHexRegex = """(?<![0-9a-zA-Z])(#[0-9a-fA-F]{3,8})\b""".toRegex()
-    for (match in bareHexRegex.findAll(line)) {
+    for (match in BARE_HEX_REGEX.findAll(line)) {
         val start = match.range.first
         val end = match.range.last + 1
         if (offsetInLine in start..end) {
             val hexStr = match.groupValues[1]
             val parsed = parseHexColor(hexStr)
             if (parsed != null) {
+                val hexLen = hexStr.length
                 return EditorColorTarget(
                     range = TextRange(lineStart + start, lineStart + end),
                     color = parsed,
                     originalText = match.value,
                     isHex = true,
                     quote = "",
-                    hasAlpha = hexStr.length in listOf(5, 9)
+                    hasAlpha = hexLen == 5 || hexLen == 9
                 )
             }
         }
     }
 
     // 3. Color functions: e.g. fill(255, 100, 50), color(0, 128, 255, 0.5)
-    val funcRegex = """\b(color|fill|stroke|background|rgb|rgba)\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9.]+))?\s*\)""".toRegex()
-    for (match in funcRegex.findAll(line)) {
+    for (match in COLOR_FUNC_REGEX.findAll(line)) {
         val start = match.range.first
         val end = match.range.last + 1
         if (offsetInLine in start..end) {

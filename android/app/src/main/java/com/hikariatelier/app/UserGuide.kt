@@ -209,7 +209,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                itemsIndexed(sections) { index, section ->
+                itemsIndexed(sections, key = { _, s -> s.title }, contentType = { _, _ -> "guide_chip" }) { index, section ->
                     SuggestionChip(
                         onClick = {
                             scope.launch { state.animateScrollToItem(index) }
@@ -247,7 +247,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                itemsIndexed(sections) { index, section ->
+                itemsIndexed(sections, key = { _, s -> s.title }, contentType = { _, _ -> "guide_section" }) { index, section ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
@@ -298,15 +298,16 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
                                 }
 
                                 if (section.tag.isNotEmpty()) {
+                                    val isNewTag = section.tag == "New" || section.tag == "新機能"
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (section.tag in listOf("New", "新機能")) colors.tertiaryContainer else colors.secondaryContainer
+                                        color = if (isNewTag) colors.tertiaryContainer else colors.secondaryContainer
                                     ) {
                                         Text(
                                             text = section.tag,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = if (section.tag in listOf("New", "新機能")) colors.onTertiaryContainer else colors.onSecondaryContainer,
+                                            color = if (isNewTag) colors.onTertiaryContainer else colors.onSecondaryContainer,
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                         )
                                     }

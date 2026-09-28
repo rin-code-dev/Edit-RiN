@@ -321,9 +321,12 @@ internal fun EditorScreen(
 
     val lastSavedText by sessionViewModel.lastSavedTextState
 
-    val hasUnsavedChanges =
-        editorText != lastSavedText || sessionViewModel.fileDrafts.keys.any { it.startsWith("$activeWorkId/") } ||
-            workManagementViewModel.hasPendingMetadata(activeWorkId)
+    val hasUnsavedChanges by remember(activeWorkId) {
+        derivedStateOf {
+            editorText != lastSavedText || sessionViewModel.fileDrafts.keys.any { it.startsWith("$activeWorkId/") } ||
+                workManagementViewModel.hasPendingMetadata(activeWorkId)
+        }
+    }
 
     var selectedEditorFile by rememberSaveable(activeWorkId) { mutableStateOf("sketch.js") }
     val editingFile = selectedEditorFile.takeIf { it in activeWork?.files.orEmpty() } ?: "sketch.js"
@@ -441,7 +444,7 @@ internal fun EditorScreen(
     LaunchedEffect(
         editorText,
         activeWorkId,
-        sessionViewModel.fileDrafts.toMap(),
+        sessionViewModel.fileDrafts.hashCode(),
         draftRecovery
     ) {
 
