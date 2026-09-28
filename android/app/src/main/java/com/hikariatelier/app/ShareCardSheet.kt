@@ -298,11 +298,11 @@ internal fun ShareCardSheet(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text("Webでコードの閲覧・コピーを許可"),
+                                            text("Webのコード表示ボタン"),
                                             style = MaterialTheme.typography.titleSmall
                                         )
                                         Text(
-                                            text("OFFにすると、Web閲覧者はコードを見たりコピーしたりできなくなります"),
+                                            text("OFFで表示ボタンを隠します。コードはリンクに含まれるため、非公開にはなりません"),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -24,9 +25,9 @@ internal fun WorkRuntimeDialog(
     if (!visible) return
 
     val colors = MaterialTheme.colorScheme
-    var runtimeP5Version by remember(visible, initialP5Version) { mutableStateOf(initialP5Version) }
-    var runtimeSoundEnabled by remember(visible, initialSoundEnabled) { mutableStateOf(initialSoundEnabled) }
-    var runtimeLibraries by remember(visible, initialLibraries) { mutableStateOf(initialLibraries) }
+    var runtimeP5Version by rememberSaveable(visible, initialP5Version) { mutableStateOf(initialP5Version) }
+    var runtimeSoundEnabled by rememberSaveable(visible, initialSoundEnabled) { mutableStateOf(initialSoundEnabled) }
+    var runtimeLibraries by rememberSaveable(visible, initialLibraries) { mutableStateOf(initialLibraries.toMap()) }
 
     EditSettingsDialog(
         onDismissRequest = onDismiss,

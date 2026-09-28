@@ -43,4 +43,17 @@ class EditorSessionViewModelTest {
         assertTrue(session.fileUndoStacks.isEmpty())
         assertTrue(session.fileRedoStacks.isEmpty())
     }
+    @Test fun replacingOneFileKeepsSiblingDraftsAndUndoHistory() {
+        val session = EditorSessionViewModel()
+        seed(session, "one/helper.js")
+        seed(session, "one/keep.js")
+        seed(session, "two/helper.js")
+        session.clearAuxiliaryEditor("one", "helper.js")
+        assertFalse(session.fileDrafts.containsKey("one/helper.js"))
+        assertFalse(session.fileUndoStacks.containsKey("one/helper.js"))
+        assertEquals("draft", session.fileDrafts["one/keep.js"])
+        assertTrue(session.fileUndoStacks.containsKey("one/keep.js"))
+        assertEquals("draft", session.fileDrafts["two/helper.js"])
+    }
+
 }
