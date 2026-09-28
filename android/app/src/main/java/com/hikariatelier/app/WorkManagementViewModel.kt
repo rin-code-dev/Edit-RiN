@@ -123,7 +123,7 @@ internal class WorkManagementViewModel(
 
     private fun emit(event: WorkEvent) { eventChannel.trySend(event) }
     private fun execute(errorText: String = "保存できませんでした。保存先を確認して再試行してください",
-                        blockUi: Boolean = true, progressDelayMillis: Long = 0,
+                        blockUi: Boolean = true, progressDelayMillis: Long = 350L,
                         action: suspend () -> Unit): Job? {
         if (workSaving || session.assetBusy || session.snapshotOperationWorkId != null) return null
         workSaving = true
@@ -151,6 +151,7 @@ internal class WorkManagementViewModel(
             snapshotWork(original).also { copy ->
                 if (includeEdits) {
                     parameterDrafts[copy.id]?.let { copy.parameterValues.clear(); copy.parameterValues.putAll(it) }
+                    ratioDrafts[copy.id]?.let { copy.previewAspectRatio = it }
                     if (copy.id == selected && copy.code != code) {
                         copy.code = code; copy.updatedAt = System.currentTimeMillis()
                     }
@@ -260,7 +261,7 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(rerun = true))
     }
 
-    private fun changeWork(workId: String, event: WorkEvent = WorkEvent(), change: (Work) -> Unit) = execute {
+    private fun changeWork(workId: String, event: WorkEvent = WorkEvent(), change: (Work) -> Unit) = execute(blockUi = false) {
         val next = snapshots()
         val target = next.first { it.id == workId }
         change(target)
@@ -415,16 +416,40 @@ internal class WorkManagementViewModel(
         showRuntimeDialog = false
         emit(WorkEvent(forceRun = true))
     }
+    private var ratioJob: Job? = null
+
     fun previewRatio(work: Work?): String = normalizedPreviewAspectRatio(work?.let { ratioDrafts[it.id] ?: it.previewAspectRatio })
     fun draftPreviewRatio(value: String) { ratioDrafts[session.activeWorkIdState.value] = normalizedPreviewAspectRatio(value) }
-    fun commitPreviewRatio() = savePreviewRatio(previewRatio(session.worksState.value.find { it.id == session.activeWorkIdState.value }))
-    fun savePreviewRatio(value: String) = execute {
+    fun commitPreviewRatio(): Job = savePreviewRatio(previewRatio(session.worksState.value.find { it.id == session.activeWorkIdState.value }))
+    fun savePreviewRatio(value: String): Job {
         val id = session.activeWorkIdState.value
         val normalized = normalizedPreviewAspectRatio(value)
-        val next = snapshots()
-        next.first { it.id == id }.apply { previewAspectRatio = normalized; updatedAt = System.currentTimeMillis() }
-        try { persist(next, id); commit(next) }
-        finally { ratioDrafts.remove(id) }
+        draftPreviewRatio(normalized)
+        ratioJob?.cancel()
+        val job = scope.launch {
+            commandJob?.join()
+            execute(blockUi = false) {
+                val next = snapshots()
+                next.firstOrNull { it.id == id }?.apply {
+                    previewAspectRatio = normalized
+                    parameterDrafts[id]?.let {
+                        parameterValues.clear()
+                        parameterValues.putAll(it)
+                    }
+                    updatedAt = System.currentTimeMillis()
+                }
+                try {
+                    persist(next, id)
+                    commit(next)
+                } finally {
+                    if (ratioDrafts[id] == normalized) {
+                        ratioDrafts.remove(id)
+                    }
+                }
+            }?.join()
+        }
+        ratioJob = job
+        return job
     }
 
     fun hasPendingMetadata(workId: String): Boolean {
@@ -452,8 +477,10 @@ internal class WorkManagementViewModel(
         if (session.worksState.value.none { it.id == workId }) return null
         return execute(blockUi = false) {
             val next = snapshots()
-            next.first { it.id == workId }.apply {
-                parameterValues.clear(); parameterValues.putAll(values); updatedAt = System.currentTimeMillis()
+            next.firstOrNull { it.id == workId }?.apply {
+                parameterValues.clear(); parameterValues.putAll(values)
+                ratioDrafts[workId]?.let { previewAspectRatio = it }
+                updatedAt = System.currentTimeMillis()
             }
             persist(next, session.activeWorkIdState.value)
             commit(next)

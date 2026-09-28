@@ -45,7 +45,7 @@ internal val userGuideSections = listOf(
         steps = listOf(
             "Work Picker: Tap the title bar to open the gallery, switch between saved sketches, create new works, or search and sort your library.",
             "Live Preview: Edit sketch.js and tap the Play button. Your generative artwork compiles and executes instantly in real time.",
-            "Work Menu: Access the dropdown menu next to the title to rename, duplicate, export, delete, or configure aspect ratios (1:1, 4:3, 16:9, 9:16, or device ratio)."
+            "Work Menu: Access the dropdown menu next to the title to rename, duplicate, export, delete, or configure aspect ratios (1:1, 4:3, 16:9, 9:16, or device ratios including landscape)."
         )
     ),
     GuideSection(
