@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -461,3 +462,73 @@ internal fun WorkParameterPanel(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun WorkParameterBottomSheet(
+    visible: Boolean,
+    declarations: List<WorkParameter>,
+    parameterValues: Map<String, String>,
+    isLandscape: Boolean,
+    landscapeEditorOnLeft: Boolean,
+    editorWidthFraction: Float,
+    showStatusBar: Boolean,
+    colors: ColorScheme,
+    onChange: (WorkParameter, String) -> Unit,
+    onResetParameter: (WorkParameter) -> Unit,
+    onResetAll: () -> Unit,
+    onCommit: () -> Unit,
+    onDismiss: () -> Unit,
+    textTranslator: (String, Array<out Any?>) -> String,
+    windowSetup: @Composable () -> Unit = {}
+) {
+    if (!visible) return
+
+    val panelContent = @Composable {
+        WorkParameterPanel(
+            parameters = declarations,
+            values = parameterValues,
+            onChange = onChange,
+            onCommit = onCommit,
+            text = { s -> textTranslator(s, emptyArray()) },
+            onResetParameter = onResetParameter,
+            onResetAll = onResetAll,
+            onDismiss = onDismiss
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = if (isLandscape) Color.Transparent else colors.surface,
+        scrimColor = if (isLandscape) Color.Black.copy(alpha = 0.28f) else BottomSheetDefaults.ScrimColor,
+        dragHandle = if (isLandscape) null else { { BottomSheetDefaults.DragHandle() } }
+    ) {
+        windowSetup()
+        if (isLandscape) {
+            Box(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                contentAlignment = if (landscapeEditorOnLeft) Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(editorWidthFraction)
+                        .widthIn(min = 360.dp, max = 560.dp)
+                        .fillMaxHeight(),
+                    shape = if (landscapeEditorOnLeft)
+                        RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+                    else
+                        RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+                    color = colors.surface,
+                    border = BorderStroke(1.dp, colors.outlineVariant),
+                    tonalElevation = 6.dp
+                ) {
+                    panelContent()
+                }
+            }
+        } else {
+            panelContent()
+        }
+    }
+}
+

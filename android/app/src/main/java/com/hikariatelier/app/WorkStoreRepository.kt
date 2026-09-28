@@ -7,34 +7,56 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 
+internal interface WorkPersistence {
+    fun loadLocal(): WorkStore?
+    fun loadFolder(folderUri: Uri): WorkStore?
+    fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean
+    fun selectedWorkId(folderUri: Uri?): String? = null
+    fun rememberSelectedWork(folderUri: Uri?, activeId: String) {}
+}
+
 /** Persistence boundary for local works, SAF folders, and their asset blobs. */
 internal class WorkStoreRepository(
-    private val context: Context,
+    context: Context,
     private val assetStorage: AssetStorage,
     private val unreadableFolders: MutableSet<String>,
-    private val previewAssets: () -> PreviewAssets,
     private val worksFileName: String
-) {
+) : WorkPersistence {
+    private val context = context.applicationContext
     private val resolver get() = context.contentResolver
+    private val selection by lazy { context.getSharedPreferences("work-selection", Context.MODE_PRIVATE) }
 
-    fun pruneUnusedAssets(works: List<Work>) {
+    override fun selectedWorkId(folderUri: Uri?): String? =
+        selection.getString(folderUri?.toString() ?: "local", null)
+
+    // apply updates memory immediately and writes the small selection preference asynchronously.
+    override fun rememberSelectedWork(folderUri: Uri?, activeId: String) {
+        selection.edit().putString(folderUri?.toString() ?: "local", activeId).apply()
+    }
+
+    private fun restoreSelection(store: WorkStore, folderUri: Uri?): WorkStore {
+        val id = selectedWorkId(folderUri)?.takeIf { selected -> store.works.any { it.id == selected } }
+        return if (id == null) store else store.copy(activeWorkId = id)
+    }
+
+    fun pruneUnusedAssets(works: List<Work>, previewAssets: PreviewAssets) {
         val local = AtomicFile(File(context.filesDir, "local-works.json"))
         val localWorks = if (local.baseFile.exists() || File(local.baseFile.path + ".bak").exists()) {
             runCatching { local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) } }
                 .getOrNull()?.works ?: return
         } else emptyList()
         val keep = (works + localWorks).flatMap { it.assets.values }.map { it.hash }.toSet() +
-            previewAssets().assets.values.map { it.hash }
+            previewAssets.assets.values.map { it.hash }
         assetStorage.prune(keep)
     }
 
-    fun loadLocal(): WorkStore? = try {
+    override fun loadLocal(): WorkStore? = try {
         val local = AtomicFile(File(context.filesDir, "local-works.json"))
         if (!local.baseFile.exists() && !File(local.baseFile.path + ".bak").exists()) null else {
             val store = local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) }
                 ?: error("Invalid local works")
             check(store.works.flatMap { it.assets.values }.all(assetStorage::contains))
-            store
+            restoreSelection(store, null)
         }
     } catch (_: Exception) { unreadableFolders.add("local"); null }
 
@@ -96,13 +118,13 @@ internal class WorkStoreRepository(
         override fun delete(name: String): Boolean = directory.findFile(name)?.delete() == true
     }
 
-    fun loadFolder(folderUri: Uri): WorkStore? = try {
+    override fun loadFolder(folderUri: Uri): WorkStore? = try {
         val directory = DocumentFile.fromTreeUri(context, folderUri) ?: error("Cannot access work folder")
         check(directory.exists() && directory.canRead())
         val store = loadWorkDocument(documents(directory), worksFileName)
         if (store != null) restoreFolderAssets(directory, store.works)
         unreadableFolders.remove(folderUri.toString())
-        store
+        store?.let { restoreSelection(it, folderUri) }
     } catch (error: Exception) {
         unreadableFolders.add(folderUri.toString())
         Log.e("EditKIRO", "Failed to load work store; refusing overwrite", error)
@@ -110,14 +132,18 @@ internal class WorkStoreRepository(
     }
 
     @Synchronized
-    fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean {
-        if (folderUri == null) return saveLocal(works, activeId)
+    override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean {
+        if (folderUri == null) return saveLocal(works, activeId).also { saved ->
+            if (saved) rememberSelectedWork(null, activeId)
+        }
         if (folderUri.toString() in unreadableFolders) return false
         return try {
             val json = serializeWorkStore(works, activeId)
             val directory = DocumentFile.fromTreeUri(context, folderUri) ?: return false
             saveFolderAssets(directory, works)
-            saveWorkDocument(documents(directory), worksFileName, json)
+            saveWorkDocument(documents(directory), worksFileName, json).also { saved ->
+                if (saved) rememberSelectedWork(folderUri, activeId)
+            }
         } catch (error: Exception) {
             Log.e("EditKIRO", "Failed to save work store", error)
             false

@@ -86,6 +86,17 @@ class EditorSessionViewModel : ViewModel() {
         auxiliaryEditorGeneration++
     }
 
+    /** Invalidate only a changed/deleted file after its save succeeds. */
+    fun clearAuxiliaryEditor(workId: String, fileName: String) {
+        val key = "$workId/$fileName"
+        fileDrafts.remove(key)
+        fileEditorValues.remove(key)
+        fileUndoStacks.remove(key)
+        fileRedoStacks.remove(key)
+        codeFoldStates.remove(key)
+        auxiliaryEditorGeneration++
+    }
+
     var assetPreviewRevision by mutableStateOf(0)
     val worksState = mutableStateOf<List<Work>>(emptyList())
     val activeWorkIdState = mutableStateOf("")
@@ -121,5 +132,45 @@ class EditorSessionViewModel : ViewModel() {
                     ?: works.find { it.id == resolvedActiveId }?.code.orEmpty()
             )
         initialized = true
+    }
+
+    fun clearEditHistory() {
+        undoStack.clear()
+        redoStack.clear()
+    }
+
+    fun applyChange(
+        currentValue: TextFieldValue,
+        nextValue: TextFieldValue,
+        targetUndoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = undoStack,
+        targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
+    ) {
+        if (nextValue.text != currentValue.text) {
+            targetUndoStack.add(currentValue.copy(composition = null))
+            while (targetUndoStack.size > 100 || (targetUndoStack.size > 1 && targetUndoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
+                targetUndoStack.removeAt(0)
+            }
+            targetRedoStack.clear()
+        }
+    }
+
+    fun undo(
+        currentValue: TextFieldValue,
+        targetUndoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = undoStack,
+        targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
+    ): TextFieldValue? {
+        if (targetUndoStack.isEmpty()) return null
+        targetRedoStack.add(currentValue.copy(composition = null))
+        return targetUndoStack.removeAt(targetUndoStack.lastIndex)
+    }
+
+    fun redo(
+        currentValue: TextFieldValue,
+        targetUndoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = undoStack,
+        targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
+    ): TextFieldValue? {
+        if (targetRedoStack.isEmpty()) return null
+        targetUndoStack.add(currentValue.copy(composition = null))
+        return targetRedoStack.removeAt(targetRedoStack.lastIndex)
     }
 }

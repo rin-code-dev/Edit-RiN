@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +44,7 @@ internal fun WorkTagsDialog(
     val colors = MaterialTheme.colorScheme
     val background = if (LocalCustomTheme.current) colors.background
     else if (colors.surface.luminance() < 0.5f) Color(0xFF1E1E24) else colors.surfaceContainerHigh
-    var newTagInput by remember { mutableStateOf("") }
+    var newTagInput by rememberSaveable { mutableStateOf("") }
 
     val cleanInput = newTagInput.trim().removePrefix("#").trim()
     val canAdd = cleanInput.isNotEmpty() && !currentTags.any { it.equals(cleanInput, ignoreCase = true) }
@@ -51,8 +52,11 @@ internal fun WorkTagsDialog(
     fun commitAdd() {
         if (canAdd) {
             onAddTag(cleanInput)
-            newTagInput = ""
         }
+    }
+
+    LaunchedEffect(currentTags) {
+        if (cleanInput.isNotEmpty() && currentTags.any { it.equals(cleanInput, ignoreCase = true) }) newTagInput = ""
     }
 
     val availableSuggestions = remember(currentTags, allKnownTags) {
