@@ -13,6 +13,8 @@ internal fun translateUi(source: String, language: String): String {
 
 internal val uiTranslations = mapOf(
     "使い方ガイド" to ("User Guide" to "使用指南"),
+    "ヘルプ" to ("Help" to "帮助"),
+    "操作方法や機能の解説" to ("Learn features and shortcuts" to "功能与操作说明"),
     "パラメータ" to ("Parameters" to "参数"),
     "ライブパラメータ" to ("Live Parameters" to "实时参数"),
     "初期値" to ("Default" to "默认值"),

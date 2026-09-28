@@ -149,6 +149,10 @@ internal fun EditorScreen(
         mutableStateOf(false)
     }
 
+    var showUserGuide by rememberSaveable {
+        mutableStateOf(false)
+    }
+
     var showAddDialog by workManagementViewModel::showAddDialog
     var showDeleteDialog by workManagementViewModel::showDeleteDialog
     var showRenameDialog by workManagementViewModel::showRenameDialog
@@ -384,9 +388,10 @@ internal fun EditorScreen(
         editorFocusRequester.requestFocus()
     }
 
-    BackHandler(enabled = editorFocused && !showSettings) { focusManager.clearFocus(force = true) }
+    BackHandler(enabled = editorFocused && !showSettings && !showUserGuide) { focusManager.clearFocus(force = true) }
 
     BackHandler(enabled = showSettings) { showSettings = false }
+    BackHandler(enabled = showUserGuide) { showUserGuide = false }
 
     var autoRun by settingsViewModel::autoRun
 
@@ -653,6 +658,7 @@ internal fun EditorScreen(
                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 }
             },
+            onOpenUserGuide = { showUserGuide = true },
             onOpenSettings = {
                 showSettings = true
                 workManagementViewModel.saveCurrentWork(blockUi = false)
@@ -1452,5 +1458,16 @@ internal fun EditorScreen(
         )
     }
 
-
+    if (showUserGuide) {
+        Dialog(
+            onDismissRequest = { showUserGuide = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        ) {
+            val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
+            UserGuideScreen(
+                language = resolveUiLanguage(appLanguage, deviceLanguage),
+                onClose = { showUserGuide = false }
+            )
+        }
+    }
 }
