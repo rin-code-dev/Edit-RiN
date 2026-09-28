@@ -12,7 +12,7 @@
 - **JDK**: JDK 25 (`JAVA_HOME` に設定)
   - Gradle デーモンおよび Java コンパイルに JDK 25 を使用し、Android バイトコード互換性は Java 17 を維持します。
 - **Android SDK**: Platform 35, Build Tools 36.0.0
-- **ビルドツール**: Gradle Wrapper 9.5.0, Android Gradle Plugin (AGP) 9.3.2, Kotlin / Compose Compiler 2.2.10
+- **ビルドツール**: Gradle Wrapper 9.8.0, Android Gradle Plugin (AGP) 9.3.2, Kotlin / Compose Compiler 2.2.10
 
 ### リリースビルド手順
 1. **署名設定の作成**:
@@ -39,7 +39,7 @@
 ### Build Requirements
 - **JDK**: JDK 25 (set as `JAVA_HOME`). Gradle daemon and compilation target Java 25, while maintaining Android bytecode compatibility at Java 17.
 - **Android SDK**: Platform 35, Build Tools 36.0.0.
-- **Build Tools**: Gradle 9.5.0 wrapper, AGP 9.3.2, built-in Kotlin / Compose compiler 2.2.10.
+- **Build Tools**: Gradle 9.8.0 wrapper, AGP 9.3.2, built-in Kotlin / Compose compiler 2.2.10.
 
 ### Release Steps
 1. **Configure Signing**:
