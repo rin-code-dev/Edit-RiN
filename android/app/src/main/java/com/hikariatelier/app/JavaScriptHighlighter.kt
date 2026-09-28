@@ -78,7 +78,8 @@ class JavaScriptHighlighter(
                         } else if (current == character) {
                             val content = source.substring(contentStart, index)
                             index++
-                            if (content.startsWith('#') && (content.length in listOf(4, 5, 7, 9))) {
+                            val contentLen = content.length
+                            if (content.startsWith('#') && (contentLen == 4 || contentLen == 5 || contentLen == 7 || contentLen == 9)) {
                                 parseHexColor(content)?.let { hexCol ->
                                     builder.addStyle(
                                         SpanStyle(background = hexCol.copy(alpha = 0.28f)),
