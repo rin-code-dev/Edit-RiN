@@ -45,6 +45,7 @@ internal fun AspectRatioDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        sheetGesturesEnabled = false,
         containerColor = colors.surface,
         contentColor = colors.onSurface,
         tonalElevation = 0.dp,

@@ -446,7 +446,8 @@ internal fun ShareCardSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = false
     ) {
         val localView = androidx.compose.ui.platform.LocalView.current
         DisposableEffect(localView, isLandscape) {

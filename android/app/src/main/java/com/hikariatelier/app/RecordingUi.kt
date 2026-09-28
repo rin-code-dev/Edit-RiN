@@ -53,8 +53,11 @@ internal fun RecordingOptionsSheet(
     onDismiss: () -> Unit, onStart: (String) -> Unit
 ) {
     var format by rememberSaveable { mutableStateOf("mp4") }
-    ModalBottomSheet(onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = false
+    ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -101,8 +104,11 @@ internal fun SavedRecordingSheet(
     thumbnail: Bitmap?, text: (String) -> String, onOpen: () -> Unit,
     onShare: () -> Unit, onX: () -> Unit, onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = false
+    ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
