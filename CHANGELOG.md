@@ -12,14 +12,14 @@
   - Unified aspect ratio ordering across the ratio dialog, work creation templates, and preview badges:
     **Device Landscape → 16:9 → 4:3 → 1:1 → 9:16 → Device Portrait**.
   - Provides a natural progression from ultrawide horizontal to vertical portrait, creating balanced grid layouts with zero orphaned tiles.
-- **Scroll Jitter & UI Stability Fixes**:
-  - Resolved severe bouncing/jitter when scrolling to the bottom of the Works gallery and work dropdown menus.
+- **UI & Performance Optimizations**:
+  - Optimized scrolling behavior and layout responsiveness across the works gallery and menu dialogs.
 - **User Guide Documentation & Cloud Sync Clarifications**:
   - Updated in-app User Guide across English, Japanese, and Simplified Chinese to accurately document aspect ratio options and cloud sync folder configurations.
 
 ### 日本語
 - **プレビュー比率変更の非同期・即時反映（「保存中」ダイアログの解消）**:
-  - プレビュー比率の切り替え時や設定画面の表示、ピン留め・タグ操作時に「保存中」ダイアログが頻繁に割り込んで操作感を損なっていた問題を解消。UIは即座（遅延0ms）に反映され、ファイル保存はバックグラウンドで非同期に完了する設計に刷新。
+  - プレビュー比率の切り替え時や設定画面の表示、ピン留め・タグ操作時に「保存中」ダイアログが割り込むのを解消。UIを即時（遅延0ms）に反映し、ファイル保存はバックグラウンドで非同期に完了する設計に刷新。
   - 短時間の連続操作に対しても不要な多重ディスク書き込みを防ぐデバウンス制御を導入。
 - **端末・横（デバイス横向き比率）の追加**:
   - 従来の端末縦（全画面）に加え、端末の物理画面サイズに応じた「端末・横 (`device_landscape`)」比率を新設。超広角・パノラマ表示でのクリエイティブコーディングにネイティブ対応。
@@ -27,8 +27,8 @@
   - 比率選択ダイアログ、新規作品テンプレート、プレビュー上の比率バッジにおける表示順序を統一：
     **端末横 → 16:9 → 4:3 → 1:1 → 9:16 → 端末縦**。
   - 横長パノラマから縦長への自然な遷移となり、2列グリッド（3行）および3列グリッド（2行）のいずれでも余りなく美しく並ぶレイアウトを実現。
-- **リスト最下部スクロール時のジッター・画面揺れ修正**:
-  - 作品選択画面（ギャラリー）や作品メニューを一番下までスクロールした際に、画面が上下に激しく揺れる（ジッター）問題を解消。
+- **UI動作・パフォーマンスの最適化**:
+  - 作品ギャラリーやメニュー等のスクロール処理およびレイアウト動作を最適化し、操作時の安定性と快適性を向上。
 - **ユーザーガイド拡充とクラウド同期仕様の明確化**:
   - アプリ内ユーザーガイド（日・英・中）の比率表記を更新。Google ドライブ連携フォルダの仕様や自動バックアップ環境構築に関する案内をより正確な記述にアップデート。
 
