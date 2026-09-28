@@ -243,7 +243,7 @@ internal fun WorkSelectorChip(
                 Column(
                     Modifier
                         .weight(1f, fill = false)
-                        .widthIn(max = if (manualRotation) 128.dp else 180.dp)
+                        .widthIn(max = if (manualRotation) 160.dp else 220.dp)
                 ) {
                     Text(
                         if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
@@ -493,40 +493,34 @@ internal fun WorkActionsMenu(
         )
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val actionButtonSize = if (isLandscape) 34.dp else 38.dp
+    val actionIconSize = if (isLandscape) 18.dp else 20.dp
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 2.dp else 4.dp)
+    ) {
         if (manualRotation) {
             IconButton(
                 onClick = onRotate,
-                modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
+                modifier = Modifier.size(actionButtonSize)
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_rotate),
                     contentDescription = uiText("画面を回転"),
                     tint = colors.onSurface,
-                    modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
+                    modifier = Modifier.size(actionIconSize)
                 )
             }
         }
         IconButton(
-            onClick = onOpenUserGuide,
-            modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_help),
-                contentDescription = uiText("使い方ガイド"),
-                tint = colors.onSurface,
-                modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
-            )
-        }
-        IconButton(
             onClick = onOpenSettings,
-            modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
+            modifier = Modifier.size(actionButtonSize)
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_settings),
                 contentDescription = uiText("設定"),
                 tint = colors.onSurface,
-                modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
+                modifier = Modifier.size(actionIconSize)
             )
         }
         IconButton(
@@ -535,24 +529,24 @@ internal fun WorkActionsMenu(
                 viewModel.workActionsMenuExpanded = false
                 viewModel.workSettingsMenuExpanded = true
             },
-            modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
+            modifier = Modifier.size(actionButtonSize)
         ) {
             Icon(
                 painterResource(R.drawable.ic_folder_code),
                 contentDescription = uiText("作品設定"),
                 tint = colors.onSurface,
-                modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
+                modifier = Modifier.size(actionIconSize)
             )
         }
         IconButton(
             onClick = { viewModel.workActionsMenuExpanded = true },
-            modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
+            modifier = Modifier.size(actionButtonSize)
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_more_vertical),
                 contentDescription = uiText("作品メニュー"),
                 tint = colors.onSurface,
-                modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
+                modifier = Modifier.size(actionIconSize)
             )
         }
     }
