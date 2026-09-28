@@ -347,6 +347,24 @@ test('bundled Parameters.js parses declarations and draws with rinParams', () =>
   assert.ok(vm.runInContext('angle', c) > 0);
 });
 
+test('bundled Wave.js parses declarations and draws with rinParams', () => {
+  const source = readFileSync(`${__dirname}/../www/samples/Wave.js`, 'utf8');
+  assert.ok(source.includes('// @rin number speed'));
+  assert.ok(source.includes('// @rin number lineWidth'));
+  assert.ok(source.includes('// @rin color ink'));
+  const c = {
+    width: 800, height: 800, frameCount: 1,
+    createCanvas() {}, background() {},
+    beginShape() {}, endShape() {}, vertex() {},
+    circle() {}, stroke() {}, noStroke() {}, strokeWeight() {}, fill() {}, noFill() {},
+    sin: Math.sin, cos: Math.cos,
+    rinParams: { speed: 1, lineWidth: 4, ink: '#BA90E2' }
+  };
+  vm.createContext(c);
+  vm.runInContext(source + '\nsetup(); draw();', c);
+  assert.ok(vm.runInContext('phase', c) > 0);
+});
+
 test('bundled Sound.js parses and initializes with p5.sound APIs', () => {
   const source = readFileSync(`${__dirname}/../www/samples/Sound.js`, 'utf8');
   assert.ok(source.includes('p5.Oscillator'));
@@ -419,3 +437,120 @@ test('bundled matter.js and rinShaders are available in runner environment', () 
   assert.ok(runnerHtml.includes('window.rinShaders ='), 'runner should expose window.rinShaders');
 });
 
+
+function captureRunner({ looping = true, density = 2, asyncDraw = false } = {}) {
+  const r = runner('function setup() {} function draw() {}');
+  r.setup();
+  let currentDensity = density, running = looping;
+  const densities = [], exported = [];
+  r.canvas.width = r.context.width * density;
+  r.canvas.height = r.context.height * density;
+  r.context.pixelDensity = value => {
+    if (value === undefined) return currentDensity;
+    currentDensity = value;
+    densities.push(value);
+    r.canvas.width = r.context.width * value;
+    r.canvas.height = r.context.height * value;
+  };
+  r.context.isLooping = () => running;
+  r.context.noLoop = () => { running = false; };
+  r.context.loop = () => { running = true; };
+  const draws = [];
+  r.context.redraw = async () => {
+    if (asyncDraw) await new Promise(resolve => setImmediate(resolve));
+    draws.push(currentDensity);
+  };
+  r.canvas.toDataURL = () => `data:image/png;${r.canvas.width}x${r.canvas.height};base64,AA==`;
+  r.context.Android.onScreenshotExportReady = (data, width, height) => exported.push({ data, width, height });
+  return Object.assign(r, { densities, draws, exported, density: () => currentDensity, looping: () => running });
+}
+
+test('2x PNG really redraws at twice the original buffer size and restores a running sketch', async () => {
+  const r = captureRunner();
+  await r.context.__editKiroCaptureScreenshot(2);
+  assert.deepEqual(r.densities, [4, 2]);
+  assert.deepEqual(r.draws, [4, 2]);
+  assert.deepEqual(r.exported, [{ data: 'data:image/png;1280x720;base64,AA==', width: 1280, height: 720 }]);
+  assert.equal(r.canvas.width, 640);
+  assert.equal(r.canvas.height, 360);
+  assert.equal(r.looping(), true);
+  assert.equal(r.errors.length, 0);
+});
+
+test('4x PNG waits for async redraw and leaves a paused sketch paused', async () => {
+  const r = captureRunner({ looping: false, asyncDraw: true });
+  await r.context.__editKiroCaptureScreenshot(4);
+  assert.deepEqual(r.draws, [8, 2]);
+  assert.equal(r.exported[0].width, 2560);
+  assert.equal(r.exported[0].height, 1440);
+  assert.equal(r.looping(), false);
+  assert.equal(r.density(), 2);
+});
+
+test('normal PNG capture keeps pixels without redraw or density changes', async () => {
+  const r = captureRunner({ looping: false });
+  await r.context.__editKiroCaptureScreenshot();
+  assert.deepEqual(r.draws, []);
+  assert.deepEqual(r.densities, []);
+  assert.equal(r.exported[0].width, 640);
+  assert.equal(r.looping(), false);
+});
+
+test('PNG encoding and async draw failures restore density and playback without publishing', async () => {
+  for (const failure of ['encoding', 'draw']) {
+    const r = captureRunner();
+    if (failure === 'encoding') r.canvas.toDataURL = () => { throw new Error('PNG failed'); };
+    else r.context.redraw = async () => { if (r.density() > 2) throw new Error('draw failed'); };
+    await r.context.__editKiroCaptureScreenshot(2);
+    assert.equal(r.density(), 2);
+    assert.equal(r.looping(), true);
+    assert.equal(r.exported.length, 0);
+    assert.equal(r.errors.length, 1);
+  }
+});
+
+test('invalid scale and oversized PNGs fail before allocating or changing playback', async () => {
+  const r = captureRunner();
+  await r.context.__editKiroCaptureScreenshot(3);
+  r.canvas.width = 5000; r.canvas.height = 5000;
+  await r.context.__editKiroCaptureScreenshot(2);
+  assert.equal(r.errors.length, 2);
+  assert.deepEqual(r.densities, []);
+  assert.deepEqual(r.draws, []);
+  assert.equal(r.looping(), true);
+  assert.equal(r.exported.length, 0);
+});
+
+test('high-res capture rejects sketches that change canvas dimensions during redraw', async () => {
+  const r = captureRunner();
+  r.context.redraw = async () => { if (r.density() > 2) r.canvas.width = 1; };
+  await r.context.__editKiroCaptureScreenshot(2);
+  assert.equal(r.exported.length, 0);
+  assert.equal(r.errors.length, 1);
+  assert.equal(r.canvas.width, 640);
+  assert.equal(r.density(), 2);
+});
+
+test('concurrent PNG requests do not resize or publish twice', async () => {
+  const r = captureRunner({ asyncDraw: true });
+  await Promise.all([r.context.__editKiroCaptureScreenshot(2), r.context.__editKiroCaptureScreenshot(4)]);
+  assert.equal(r.exported.length, 1);
+  assert.equal(r.exported[0].width, 1280);
+  assert.deepEqual(r.densities, [4, 2]);
+});
+
+test('high-res PNG does not disturb an active recording session', async () => {
+  const r = captureRunner();
+  r.context.MediaRecorder = class {
+    static isTypeSupported() { return true; }
+    constructor() { this.mimeType = 'video/mp4'; this.state = 'inactive'; }
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; }
+  };
+  r.context.__editKiroStartRecording('mp4');
+  await r.context.__editKiroCaptureScreenshot(2);
+  assert.equal(r.exported.length, 0);
+  assert.deepEqual(r.densities, []);
+  assert.equal(r.stats().stoppedTracks, 0);
+  assert.equal(r.errors.length, 1);
+});

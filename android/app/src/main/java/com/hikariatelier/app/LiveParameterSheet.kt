@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import org.json.JSONObject
 
@@ -17,6 +18,8 @@ internal fun LiveParameterSheet(
     layout: ParameterSheetLayout, textTranslator: (String, Array<out Any?>) -> String,
     onDismiss: () -> Unit
 ) {
+    var showAddParameter by rememberSaveable { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
     val parameterWork = work
@@ -75,9 +78,20 @@ internal fun LiveParameterSheet(
             }
             scheduleSave()
         },
+        onAddParameter = { showAddParameter = true },
+        onInsertSample = {
+            if (!workManagementViewModel.insertParameterDeclarations(PARAMETER_SAMPLE)) {
+                android.widget.Toast.makeText(context, uiText("パラメータを追加できませんでした"), android.widget.Toast.LENGTH_LONG).show()
+            }
+        },
         onCommit = scheduleSave,
         onDismiss = flushSaveAndDismiss,
         textTranslator = { s, args -> uiText(s, *args) },
         windowSetup = { KeepLandscapeDialogImmersive(enabled = layout.isLandscape || !layout.showStatusBar) }
     )
+    if (showAddParameter) {
+        AddParameterDialog(declarations, text = { uiText(it) },
+            onAdd = { workManagementViewModel.insertParameterDeclarations(it) },
+            onDismiss = { showAddParameter = false })
+    }
 }

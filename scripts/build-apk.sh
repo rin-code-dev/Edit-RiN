@@ -6,7 +6,7 @@
 # します。成功時は成果物パスとサイズのみを出力し、失敗時はエラー要約のみを表示します。
 #
 # 使用法:
-#   ./scripts/build-apk.sh [debug|release] [--clean]
+#   ./scripts/build-apk.sh [debug|release] [--clean] [--test]
 # ==============================================================================
 
 set -eo pipefail
@@ -18,12 +18,14 @@ LOG_FILE="/tmp/edit-rin-build.log"
 
 BUILD_TYPE="debug"
 DO_CLEAN=false
+DO_TEST=false
 
 for arg in "$@"; do
   case "$arg" in
     release) BUILD_TYPE="release" ;;
     debug)   BUILD_TYPE="debug" ;;
     --clean) DO_CLEAN=true ;;
+    --test) DO_TEST=true ;;
   esac
 done
 
@@ -41,12 +43,17 @@ if [ "${DO_CLEAN}" = true ]; then
   CLEAN_CMD="clean"
 fi
 
+TEST_TASK=""
+if [ "${DO_TEST}" = true ]; then
+  if [ "${BUILD_TYPE}" = "release" ]; then TEST_TASK="testReleaseUnitTest"; else TEST_TASK="testDebugUnitTest"; fi
+fi
+
 START_TIME=$(date +%s)
 
 echo "==> Edit:RiN ${BUILD_TYPE} build started (logging to ${LOG_FILE})..."
 
 set +e
-./gradlew ${CLEAN_CMD} ${GRADLE_TASK} --max-workers=2 > "${LOG_FILE}" 2>&1
+./gradlew ${CLEAN_CMD} ${TEST_TASK} ${GRADLE_TASK} --max-workers=2 > "${LOG_FILE}" 2>&1
 EXIT_CODE=$?
 set -e
 

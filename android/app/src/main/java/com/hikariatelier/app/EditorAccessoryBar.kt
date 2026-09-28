@@ -56,6 +56,7 @@ internal fun EditorAccessoryBar(
     onRedo: () -> Unit,
     onSearch: () -> Unit,
     onFormat: () -> Unit,
+    onSnippets: () -> Unit,
     onApplyEdit: (TextFieldValue) -> Unit,
     lastColorPickerColor: Color,
     onOpenColorPicker: (EditorColorTarget?, Color) -> Unit,
@@ -202,6 +203,7 @@ internal fun EditorAccessoryBar(
             AccessoryKey("⌕", uiText("検索と置換"), command = true) {
                 onSearch()
             }
+            AccessoryKey("{…}", uiText("スニペット"), command = true) { onSnippets() }
             AccessoryKey("≡", uiText("コードを整形"), command = true) {
                 onFormat()
             }

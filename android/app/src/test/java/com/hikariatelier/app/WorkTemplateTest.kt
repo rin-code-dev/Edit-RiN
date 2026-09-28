@@ -32,4 +32,17 @@ class WorkTemplateTest {
             assertTrue(code.contains("resizeCanvas(windowWidth, windowHeight);"))
         }
     }
+    @Test fun allKindsKeepCanvasSizingAndLibraryConfiguration() {
+        WorkTemplateKind.entries.forEach { kind ->
+            val template = WorkTemplate("1:1", 800, 800, kind)
+            val fixed = template.code(CanvasSizingMode.FIXED)
+            val responsive = template.code(CanvasSizingMode.RESPONSIVE)
+            val webgl = kind in listOf(WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER)
+            assertTrue(fixed.contains(if (webgl) "createCanvas(800, 800, WEBGL)" else "createCanvas(800, 800)"))
+            assertFalse(fixed.contains("function windowResized()"))
+            assertTrue(responsive.contains("resizeCanvas(windowWidth, windowHeight)"))
+            assertEquals(if (kind == WorkTemplateKind.PHYSICS_MATTER) mapOf("matter-js" to "0.20.0") else emptyMap<String, String>(), template.libraries)
+        }
+    }
+
 }

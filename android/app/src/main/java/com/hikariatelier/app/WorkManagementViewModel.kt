@@ -240,12 +240,32 @@ internal class WorkManagementViewModel(
 
     fun createWork(title: String, ratio: String, sizingMode: CanvasSizingMode, template: WorkTemplate) = execute {
         val work = Work(id = java.util.UUID.randomUUID().toString(), title = title,
-            code = template.code(sizingMode), previewAspectRatio = ratio)
+            code = template.code(sizingMode), previewAspectRatio = ratio, libraries = template.libraries)
         val next = snapshots(includeEdits = true) + work
         persist(next, work.id)
         commit(next, work.id, replaceEditor = true, savedEdits = true)
         showAddDialog = false
         emit(WorkEvent(rerun = true))
+    }
+
+    /** Insert into the main file as one Undo operation. Failed saves keep the edit recoverable. */
+    fun insertParameterDeclarations(declarations: String): Boolean {
+        if (workSaving || session.assetBusy || session.snapshotOperationWorkId != null) return false
+        val work = session.worksState.value.firstOrNull { it.id == session.activeWorkIdState.value } ?: return false
+        val sources = work.files.mapValues { (name, code) -> session.fileDrafts["${work.id}/$name"] ?: code } +
+            ("sketch.js" to session.editorValueState.value.text)
+        val existing = workParameters(sources)
+        val added = workParameters(mapOf("sketch.js" to declarations))
+        val lines = declarations.lineSequence().filter { it.isNotBlank() }.toList()
+        if (added.size != lines.size || lines.any { workParameters(mapOf("sketch.js" to it)).size != 1 }) return false
+        if (added.isEmpty() || existing.size + added.size > 16 || added.any { item -> existing.any { it.name == item.name } })
+            return false
+        val before = session.editorValueState.value
+        val next = prependDeclarations(before, declarations)
+        session.applyChange(before, next)
+        session.editorValueState.value = next
+        saveCurrentWork(WorkEvent(rerun = true, forceRun = true))
+        return true
     }
 
     fun duplicateWork() = execute {

@@ -188,7 +188,7 @@
     }
 
     window.__editKiroSetCanvasSwapped = swapped => {
-      if (!sketchReady || recordingSession || !sketchCanvas()) return false;
+      if (!sketchReady || recordingSession || captureBusy || !sketchCanvas()) return false;
       try {
         if (swapped && !orientationBase) {
           const width = Number(window.width), height = Number(window.height);
@@ -227,7 +227,7 @@
     }
 
     function fitSketch(force = false) {
-      if (!sketchReady) return;
+      if (!sketchReady || captureBusy) return;
       const { width, height } = viewportSize();
       if (!force && width === lastWidth && height === lastHeight) return;
 
@@ -284,13 +284,68 @@
       if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
     };
 
-    window.__editKiroCaptureScreenshot = () => {
+    let captureBusy = false;
+    window.__editKiroCaptureScreenshot = async (scale = 1) => {
+      if (captureBusy) return;
+      captureBusy = true;
       try {
+        if (![1, 2, 4].includes(scale)) throw new Error('書き出し倍率が無効です');
         const canvas = sketchCanvas();
         if (!canvas) throw new Error('キャンバスが見つかりません');
-        notifyAndroid('onScreenshotReady', canvas.toDataURL('image/png'));
+        let dataUrl;
+        const outputWidth = canvas.width * scale, outputHeight = canvas.height * scale;
+        if (outputWidth > 8192 || outputHeight > 8192 || outputWidth * outputHeight > 16000000) {
+          throw new Error('画像が大きすぎます。倍率またはキャンバスサイズを下げてください');
+        }
+        if (scale === 1) {
+          dataUrl = canvas.toDataURL('image/png');
+        } else {
+          if (!sketchReady || recordingSession || window.__editKiroRuntimeHasError ||
+              typeof pixelDensity !== 'function' || typeof redraw !== 'function' || typeof draw !== 'function') {
+            throw new Error('再描画できる作品で録画を停止してから書き出してください');
+          }
+          const density = pixelDensity();
+          const looping = typeof isLooping === 'function' && isLooping();
+          const oldStyle = canvas.style.cssText;
+          let changed = false;
+          try {
+            if (looping) noLoop();
+            // p5.js 2 supports async draw: do not resize a frame that is still in flight.
+            const instance = window.p5?.instance;
+            const deadline = Date.now() + 2000;
+            while (instance?._inUserDraw) {
+              if (Date.now() > deadline) throw new Error('描画が完了してから再度お試しください');
+              await new Promise(resolve => requestAnimationFrame(resolve));
+            }
+            changed = true;
+            pixelDensity(density * scale);
+            await redraw();
+            const rendered = sketchCanvas();
+            if (window.__editKiroRuntimeHasError || rendered.width !== outputWidth || rendered.height !== outputHeight) {
+              throw new Error('指定した解像度で再描画できませんでした');
+            }
+            dataUrl = rendered.toDataURL('image/png');
+          } finally {
+            try {
+              if (changed) {
+                pixelDensity(density);
+                await redraw();
+              }
+            } finally {
+              canvas.style.cssText = oldStyle;
+              if (looping) loop(); else if (typeof noLoop === 'function') noLoop();
+            }
+          }
+        }
+        // Keep the original callback for share cards; the new callback includes the real PNG dimensions.
+        if (window.Android?.onScreenshotExportReady) {
+          notifyAndroid('onScreenshotExportReady', dataUrl, outputWidth, outputHeight);
+        } else notifyAndroid('onScreenshotReady', dataUrl);
       } catch (error) {
         notifyAndroid('onCaptureError', error?.message || String(error));
+      } finally {
+        captureBusy = false;
+        scheduleFit();
       }
     };
 

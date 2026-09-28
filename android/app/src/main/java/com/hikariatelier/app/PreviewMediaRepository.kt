@@ -18,8 +18,10 @@ internal class PreviewMediaRepository(context: Context) {
         mimeType: String,
         displayName: String,
         video: Boolean,
-        sourceFile: File? = null
+        sourceFile: File? = null,
+        directoryName: String = "EditRiN"
     ): Uri? = runCatching {
+        require(directoryName in setOf("EditRiN", "Edit-RiN"))
         fun copyTo(output: java.io.OutputStream) {
             if (sourceFile != null) sourceFile.inputStream().use { it.copyTo(output, 64 * 1024) }
             else output.write(Base64.decode(dataUrl.substringAfter(',', dataUrl), Base64.DEFAULT))
@@ -36,7 +38,7 @@ internal class PreviewMediaRepository(context: Context) {
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    if (video) "Movies/EditRiN" else "Pictures/EditRiN"
+                    if (video) "Movies/$directoryName" else "Pictures/$directoryName"
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
@@ -55,12 +57,16 @@ internal class PreviewMediaRepository(context: Context) {
             }
             uri
         } else {
-            val parent = context.getExternalFilesDir(
+            @Suppress("DEPRECATION")
+            val parent = if (!video && directoryName == "Edit-RiN") {
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            } else context.getExternalFilesDir(
                 if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
             ) ?: error("保存先を利用できません")
-            val directory = File(parent, "EditRiN").apply { mkdirs() }
+            val directory = File(parent, directoryName).apply { mkdirs() }
             val file = File(directory, displayName)
-            file.outputStream().use { copyTo(it) }
+            try { file.outputStream().use { copyTo(it) } }
+            catch (error: Exception) { file.delete(); throw error }
             MediaScannerConnection.scanFile(
                 context,
                 arrayOf(file.absolutePath),

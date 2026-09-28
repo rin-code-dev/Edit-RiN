@@ -47,7 +47,9 @@ internal fun WorkParameterPanel(
     text: (String) -> String,
     onResetParameter: ((WorkParameter) -> Unit)? = null,
     onResetAll: (() -> Unit)? = null,
-    onDismiss: (() -> Unit)? = null
+    onDismiss: (() -> Unit)? = null,
+    onAddParameter: (() -> Unit)? = null,
+    onInsertSample: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val hasModified = remember(parameters, values) {
@@ -133,6 +135,12 @@ internal fun WorkParameterPanel(
             }
         }
 
+        onAddParameter?.let { add ->
+            OutlinedButton(onClick = add, enabled = parameters.size < 16, modifier = Modifier.fillMaxWidth()) {
+                Text(text("＋ パラメータ追加"))
+            }
+        }
+
         // Empty state
         if (parameters.isEmpty()) {
             Card(
@@ -163,7 +171,7 @@ internal fun WorkParameterPanel(
                         color = MaterialTheme.colorScheme.surfaceContainerLowest
                     ) {
                         Text(
-                            text = "// @rin number speed \"Speed\" 0 3 1 0.1\n// @rin color ink \"Color\" #BA90E2\n// @rin boolean glow \"Glow\" true",
+                            text = PARAMETER_SAMPLE.trimEnd(),
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
@@ -172,11 +180,15 @@ internal fun WorkParameterPanel(
                         )
                     }
 
+                    onInsertSample?.let { insert ->
+                        Button(onClick = insert, modifier = Modifier.fillMaxWidth()) {
+                            Text(text("コードに直接挿入"))
+                        }
+                    }
                     OutlinedButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val template = "// @rin number speed \"Speed\" 0 3 1 0.1\n// @rin color ink \"Color\" #BA90E2\n// @rin boolean glow \"Glow\" true\n"
-                            clipboard.setPrimaryClip(ClipData.newPlainText("rinParams", template))
+                            clipboard.setPrimaryClip(ClipData.newPlainText("rinParams", PARAMETER_SAMPLE))
                             Toast.makeText(context, text("テンプレートをコピーしました"), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -480,7 +492,9 @@ internal fun WorkParameterBottomSheet(
     onCommit: () -> Unit,
     onDismiss: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    windowSetup: @Composable () -> Unit = {}
+    windowSetup: @Composable () -> Unit = {},
+    onAddParameter: (() -> Unit)? = null,
+    onInsertSample: (() -> Unit)? = null
 ) {
     if (!visible) return
 
@@ -493,7 +507,9 @@ internal fun WorkParameterBottomSheet(
             text = { s -> textTranslator(s, emptyArray()) },
             onResetParameter = onResetParameter,
             onResetAll = onResetAll,
-            onDismiss = onDismiss
+            onDismiss = onDismiss,
+            onAddParameter = onAddParameter,
+            onInsertSample = onInsertSample
         )
     }
 

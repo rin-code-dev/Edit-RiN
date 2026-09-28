@@ -343,4 +343,50 @@ class WorkManagementViewModelTest {
         assertTrue(session.undoStack.isEmpty())
     }
 
+    @Test fun parameterInsertionSavesMainAndAuxiliaryEditsAndKeepsUndo() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        val before = session.editorValueState.value
+        assertTrue(vm.insertParameterDeclarations(PARAMETER_SAMPLE))
+        val event = vm.events.first()
+        assertTrue(event.rerun); assertTrue(event.forceRun)
+        assertEquals(PARAMETER_SAMPLE + before.text, store.persisted!!.works.first().code)
+        assertEquals("unsaved helper", store.persisted!!.works.first().files["helper.js"])
+        assertEquals(before, session.undo(session.editorValueState.value))
+    }
+    @Test fun failedParameterSaveKeepsInsertedTextUndoAndPersistedWork() = runBlocking {
+        val session = session(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
+        val before = session.editorValueState.value
+        assertTrue(vm.insertParameterDeclarations(PARAMETER_SAMPLE))
+        assertTrue(vm.events.first().failure)
+        assertTrue(session.editorValueState.value.text.startsWith(PARAMETER_SAMPLE))
+        assertEquals("saved", session.worksState.value.first().code)
+        assertEquals(before, session.undo(session.editorValueState.value))
+    }
+    @Test fun parameterInsertionRejectsDuplicatesAcrossAuxiliaryDrafts() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        session.fileDrafts["one/helper.js"] = "// @rin number speed \"Speed\" 0 3 1 0.1"
+        val before = session.editorValueState.value
+        assertFalse(vm.insertParameterDeclarations(PARAMETER_SAMPLE))
+        assertEquals(before, session.editorValueState.value)
+        assertEquals(0, store.calls)
+    }
+    @Test fun physicsWorkPersistsTheRequiredLibraryBeforeSelectingIt() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        vm.createWork("Physics", "1:1", CanvasSizingMode.FIXED,
+            WorkTemplate("1:1", 800, 800, WorkTemplateKind.PHYSICS_MATTER))!!.join()
+        val work = store.persisted!!.works.last()
+        assertEquals(mapOf("matter-js" to "0.20.0"), work.libraries.toMap())
+        assertTrue(work.code.contains("Matter.Engine.create()"))
+        assertEquals(work.id, session.activeWorkIdState.value)
+    }
+
+    @Test fun parameterInsertionRejectsCodeAndDuplicateLinesWithoutChangingTheEditor() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        val before = session.editorValueState.value
+        assertFalse(vm.insertParameterDeclarations(PARAMETER_SAMPLE + "alert(1);"))
+        assertFalse(vm.insertParameterDeclarations(PARAMETER_SAMPLE + PARAMETER_SAMPLE))
+        assertEquals(before, session.editorValueState.value)
+        assertEquals(0, store.calls)
+    }
+
 }

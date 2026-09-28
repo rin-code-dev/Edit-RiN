@@ -98,7 +98,12 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
     }
 
     /** Saving and decoding use application storage and survive Activity recreation. */
-    fun saveScreenshot(dataUrl: String, forShareCard: Boolean) {
+    var screenshotSaving by mutableStateOf(false)
+        private set
+
+    fun saveScreenshot(dataUrl: String, forShareCard: Boolean, width: Int = 0, height: Int = 0) {
+        if (screenshotSaving) return
+        screenshotSaving = true
         viewModelScope.launch {
             try {
                 if (forShareCard) {
@@ -111,13 +116,16 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
                 } else {
                     val uri = withContext(Dispatchers.IO) {
                         mediaRepository.save(dataUrl = dataUrl, mimeType = "image/png",
-                            displayName = "EditRiN_${System.currentTimeMillis()}.png", video = false)
+                            displayName = "EditRiN_${System.currentTimeMillis()}.png", video = false,
+                            directoryName = if (width > 0) "Edit-RiN" else "EditRiN")
                     }
-                    notices.send(if (uri != null) "スクリーンショットをPictures/EditRiNへ保存しました"
-                        else "スクリーンショットを保存できませんでした")
+                    if (uri == null) notices.send("スクリーンショットを保存できませんでした")
+                    else if (width > 0 && height > 0) notices.send("%s × %s のPNG画像を保存しました", width, height)
+                    else notices.send("スクリーンショットをPictures/EditRiNへ保存しました")
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { notices.send("スクリーンショットを保存できませんでした") }
+            finally { screenshotSaving = false }
         }
     }
 

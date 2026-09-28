@@ -284,6 +284,7 @@ internal fun WorkActionsMenu(
     onRedo: () -> Unit,
     onSearch: () -> Unit,
     onFormat: () -> Unit,
+    onSnippets: () -> Unit,
     onSnapshot: () -> Unit,
     onHistory: () -> Unit,
     onAspectRatio: () -> Unit,
@@ -340,6 +341,9 @@ internal fun WorkActionsMenu(
                 onSearch()
             }
         )
+        ActionRow(iconRes = R.drawable.ic_snippet, title = uiText("スニペット"),
+            subtitle = uiText("カーソル位置に定番コードを挿入"), colors = colors,
+            onClick = { viewModel.workActionsMenuExpanded = false; onSnippets() })
         ActionRow(
             iconRes = R.drawable.ic_format,
             title = uiText("コードを整形"),
