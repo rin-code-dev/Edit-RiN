@@ -190,7 +190,8 @@ internal class WorkManagementViewModel(
         clearDraft()
     }
 
-    fun saveCurrentWork(then: WorkEvent = WorkEvent()) = execute {
+    fun saveCurrentWork(then: WorkEvent = WorkEvent(), blockUi: Boolean = false, progressDelayMillis: Long = 400) =
+        execute(blockUi = blockUi, progressDelayMillis = progressDelayMillis) {
         val id = session.activeWorkIdState.value
         val original = session.worksState.value.first { it.id == id }
         val next = snapshots(includeEdits = true)

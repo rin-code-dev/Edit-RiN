@@ -653,7 +653,10 @@ internal fun EditorScreen(
                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 }
             },
-            onOpenSettings = { workManagementViewModel.saveCurrentWork(WorkEvent(openSettings = true)) },
+            onOpenSettings = {
+                showSettings = true
+                workManagementViewModel.saveCurrentWork(blockUi = false)
+            },
             onUndo = { undoEditorChange() },
             onRedo = { redoEditorChange() },
             onSearch = { showSearchDialog = true },

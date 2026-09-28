@@ -165,6 +165,7 @@ internal fun WorkGallery(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = false,
         containerColor = background, contentColor = colors.onSurface,
         tonalElevation = 0.dp, dragHandle = null,
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
