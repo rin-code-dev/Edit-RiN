@@ -415,7 +415,7 @@ internal fun SampleUpdatePromptDialog(
         text = {
             Text(
                 textTranslator(
-                    "v1.1.0 で追加された新しい公式サンプル（%s）を現在の作品フォルダーに追加しますか？\n\n※既存の作品はそのまま保持されます。",
+                    "新しく追加された公式サンプル（%s）を現在の作品フォルダーに追加しますか？\n\n※既存の作品はそのまま保持されます。",
                     arrayOf(sampleNames)
                 )
             )

@@ -549,8 +549,8 @@ internal val uiTranslations = mapOf(
     "保存先フォルダーを選択" to ("Choose works folder" to "选择作品文件夹"),
     "あとで設定（端末内に保存）" to ("Set up later (save on device)" to "稍后设置（保存在设备内）"),
     "新しいサンプル作品の追加" to ("Add new sample works" to "添加新样例作品"),
-    "v1.1.0 で追加された新しい公式サンプル（%s）を現在の作品フォルダーに追加しますか？\n\n※既存の作品はそのまま保持されます。" to
-        ("Would you like to add the new official samples (%s) introduced in v1.1.0 to your works folder?\n\n※ Existing works will be kept unchanged." to "是否将 v1.1.0 新增的官方样例（%s）添加到当前作品文件夹？\n\n※ 现有作品将完整保留。"),
+    "新しく追加された公式サンプル（%s）を現在の作品フォルダーに追加しますか？\n\n※既存の作品はそのまま保持されます。" to
+        ("Would you like to add the new official samples (%s) to your works folder?\n\n※ Existing works will be kept unchanged." to "是否将新增的官方样例（%s）添加到当前作品文件夹？\n\n※ 现有作品将完整保留。"),
     "作品一覧に追加" to ("Add to works" to "添加到作品列表"),
     "あとで" to ("Later" to "稍后"),
     "サンプル作品を追加しました" to ("Sample works added" to "已添加样例作品"),
