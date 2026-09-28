@@ -17,6 +17,7 @@ internal fun AssetManagerDialog(
     onAdd: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit,
     onPreview: (String, ProjectAsset) -> Unit, onInsert: (String, ProjectAsset) -> Unit
 ) {
+    @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
     var renaming by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
@@ -31,7 +32,7 @@ internal fun AssetManagerDialog(
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (assets.isEmpty()) Text(text("素材を追加すると、ここに表示されます"))
                 LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(assets.toSortedMap().entries.toList(), key = { it.key }) { (name, asset) ->
+                    items(assets.toSortedMap().entries.toList(), key = { it.key }, contentType = { "asset_item" }) { (name, asset) ->
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
                             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                                 Text(name, style = MaterialTheme.typography.titleSmall)

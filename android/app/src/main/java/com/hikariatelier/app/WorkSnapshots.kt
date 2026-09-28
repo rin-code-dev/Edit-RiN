@@ -92,7 +92,7 @@ internal fun SnapshotSheet(
                     .heightIn(max = 380.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(snapshots, key = { it.id }) { snapshot ->
+                items(snapshots, key = { it.id }, contentType = { "snapshot_item" }) { snapshot ->
                     val isCurrent = snapshot.matches(current)
                     val lineCount = remember(snapshot.code) { snapshot.code.lines().size }
                     val dateFormatted = remember(snapshot.savedAt) {
