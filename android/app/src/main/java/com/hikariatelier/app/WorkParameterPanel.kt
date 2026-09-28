@@ -195,7 +195,7 @@ internal fun WorkParameterPanel(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_snippet),
+                            painter = painterResource(R.drawable.ic_duplicate),
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )

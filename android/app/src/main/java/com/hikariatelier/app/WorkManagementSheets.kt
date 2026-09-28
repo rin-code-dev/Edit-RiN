@@ -355,7 +355,7 @@ internal fun WorkActionsMenu(
             }
         )
         ActionRow(
-            iconRes = R.drawable.ic_restore,
+            iconRes = R.drawable.ic_snapshot,
             title = uiText("スナップショット"),
             subtitle = uiText("状態の記録・復元"),
             colors = colors,
@@ -365,7 +365,7 @@ internal fun WorkActionsMenu(
             }
         )
         ActionRow(
-            iconRes = R.drawable.ic_restore,
+            iconRes = R.drawable.ic_history,
             title = uiText("変更履歴"),
             subtitle = uiText("過去の保存状態を表示・復元"),
             colors = colors,
@@ -376,7 +376,7 @@ internal fun WorkActionsMenu(
             }
         )
         ActionRow(
-            iconRes = R.drawable.ic_fullscreen,
+            iconRes = R.drawable.ic_aspect_ratio,
             title = uiText("プレビュー比率"),
             subtitle = uiText("作品ごとにキャンバスの縦横比を設定"),
             colors = colors,
@@ -575,7 +575,7 @@ internal fun WorkActionsMenu(
                     }
                 )
                 ActionRow(
-                    iconRes = R.drawable.ic_folder_code,
+                    iconRes = R.drawable.ic_assets,
                     title = uiText("作品の素材"),
                     subtitle = uiText("画像・音声・フォントなどを管理"),
                     colors = colors,
@@ -585,7 +585,7 @@ internal fun WorkActionsMenu(
                     }
                 )
                 ActionRow(
-                    iconRes = R.drawable.ic_code,
+                    iconRes = R.drawable.ic_terminal,
                     title = uiText("実行環境"),
                     subtitle = uiText("p5.jsとライブラリを作品ごとに設定"),
                     colors = colors,

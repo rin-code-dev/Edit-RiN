@@ -51,7 +51,7 @@ internal val userGuideSections = listOf(
     GuideSection(
         title = "Live Parameters",
         summary = "Generate interactive sliders, color pickers, and toggle switches directly from comments in your code without building manual UI.",
-        iconRes = R.drawable.ic_snippet,
+        iconRes = R.drawable.ic_tune,
         tag = "Interactive",
         codeSnippet = """// @rin number speed "Speed" 0 3 1 0.1
 // @rin color ink "Ink Color" #BA90E2
@@ -97,7 +97,7 @@ function draw() {
     GuideSection(
         title = "Assets & Media",
         summary = "Bundle images, audio, video, custom fonts (TTF/OTF), and datasets (JSON/CSV) directly inside each work.",
-        iconRes = R.drawable.ic_folder_code,
+        iconRes = R.drawable.ic_assets,
         tag = "Assets",
         codeSnippet = """let img, snd;
 function preload() {
@@ -114,7 +114,7 @@ function preload() {
     GuideSection(
         title = "Runtime & Libraries",
         summary = "Fine-tune the runtime engine and library ecosystem to match your creative needs.",
-        iconRes = R.drawable.ic_settings,
+        iconRes = R.drawable.ic_terminal,
         tag = "Runtimes",
         steps = listOf(
             "p5.js Versioning: Select between p5.js 2.3.3 (modern web standards and WebGL improvements) and 1.11.5 (legacy compatibility).",
