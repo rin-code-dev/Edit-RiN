@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.5 — 2026-09-28
+
+### English
+- **Complete MVVM Architecture & MainActivity Modularization**:
+  - Refactored `MainActivity.kt` from ~9,900 lines down to 120 lines, fully transitioning to a clean MVVM architecture with strict separation of concerns.
+  - Introduced dedicated ViewModels and Repositories for all domains: Settings (`SettingsViewModel`, `SettingsRepository`), Work Management (`WorkManagementViewModel`, `WorkStoreRepository`, `WorkFolderRepository`), Snapshots (`WorkSnapshotViewModel`), Search & Replace (`SearchReplaceViewModel`), Console & Logging (`ConsoleViewModel`), Recording & Media (`RecordingViewModel`, `PreviewMediaRepository`), and Preview Controller (`PreviewController`).
+  - Extracted modular Compose UI screens and layout components: `EditorScreen`, `EditorWorkspaceLayout`, `EditorWindowEffects`, `EditorWorkDialogs`, `PreviewSurface`, and `LiveParameterSheet`.
+  - Added comprehensive automated unit test suites covering ViewModels, repositories, and persistence logic.
+- **Enhanced Data Persistence & State Preservation**:
+  - Implemented `WorkPersistence` interface with atomic writes and active work selection remembrance across SAF folders and local storage.
+  - Improved dialog input preservation (`rememberSaveable`) across configuration and orientation changes.
+  - Added responsive `WorkParameterBottomSheet` with native drawer presentation in landscape mode.
+
+### 日本語
+- **完全な MVVM アーキテクチャ移行・MainActivity のモジュール分離**:
+  - 約9,900行に肥大化していた `MainActivity.kt` を 120行 までスリム化し、責務分離を徹底したクリーンな MVVM 構成へ完全移行。
+  - 各ドメインごとに ViewModel と Repository を独立新設（設定、作品管理、スナップショット、検索・置換、ログ/コンソール、録画/メディア、プレビュー制御）。
+  - Compose UI 画面・レイアウトコンポーネントを独立分離（`EditorScreen`、`EditorWorkspaceLayout`、`EditorWindowEffects`、`EditorWorkDialogs`、`PreviewSurface`、`LiveParameterSheet` など）。
+  - 各 ViewModel や永続化層に対する包括的な自動単体テスト（Unit Tests）を整備・拡充。
+- **データ永続化と状態保持の安定化**:
+  - SAFフォルダおよびローカル保存における選択中作品の自動記憶とアトミック保存を行う `WorkPersistence` を導入。
+  - 画面回転や設定変更時に入力状態を保持する `rememberSaveable` 対応をダイアログ群に適用。
+  - 横画面でのドロワー表示に対応したレスポンシブな `WorkParameterBottomSheet` を追加。
+
 ## 2.0.4 — 2026-09-27
 
 ### English
