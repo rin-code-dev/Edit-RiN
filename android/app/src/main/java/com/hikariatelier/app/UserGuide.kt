@@ -45,7 +45,7 @@ internal val userGuideSections = listOf(
         steps = listOf(
             "Work Picker: Tap the title bar to open the gallery, switch between saved sketches, create new works, or search and sort your library.",
             "Live Preview: Edit sketch.js and tap the Play button. Your generative artwork compiles and executes instantly in real time.",
-            "Work Menu: Access the dropdown menu next to the title to rename, duplicate, export, delete, or configure aspect ratios (1:1, 4:3, 16:9, or responsive)."
+            "Work Menu: Access the dropdown menu next to the title to rename, duplicate, export, delete, or configure aspect ratios (1:1, 4:3, 16:9, 9:16, or device ratio)."
         )
     ),
     GuideSection(
@@ -66,7 +66,7 @@ function draw() {
         steps = listOf(
             "Syntax: Declare parameters at the top of your scripts using // @rin followed by type (number, color, or boolean).",
             "Real-time Binding: Values are automatically mapped to rinParams.<name>. Adjusting parameters updates your canvas without restarting the sketch.",
-            "Controls: Use the drawer for fine-tuning with +/- step buttons, reset to defaults individually or all at once, or copy parameter templates."
+            "Controls: Use the parameter panel for fine-tuning with +/- step buttons, reset to defaults individually or all at once, or copy parameter templates."
         )
     ),
     GuideSection(
@@ -130,7 +130,7 @@ function preload() {
         steps = listOf(
             "Screenshots: Instantly save crystal-clear PNG snapshots to your device's Pictures folder.",
             "Video Recording: Capture animated loops as MP4 (up to 60s) or animated GIF (up to 15s) directly from the preview bar.",
-            "Configuration: Tailor MP4 bitrates (up to 16 Mbps) and recording countdown timers under Settings → Save & backup.",
+            "Configuration: Tailor MP4 bitrates (up to 16 Mbps) and recording countdown timers under Settings → Storage.",
             "Quick Sharing: Send recorded media immediately to social media, messaging apps, or cloud storage via the system share sheet."
         )
     ),
@@ -142,7 +142,7 @@ function preload() {
         steps = listOf(
             "Single Work ZIP: Export or import an individual work with all its scripts, assets, and settings bundled together.",
             "Full Backup: Package all your works and preferences into a single archive before switching phones or factory resetting.",
-            "External Storage Folder: Direct your work storage to a custom folder (e.g. Nextcloud, Google Drive, or SD card) for automatic synchronization.",
+            "External Storage Folder: Direct your work storage to a custom folder or SD card. By pointing this to a folder managed by sync tools (such as FolderSync or Nextcloud), works can automatically sync to cloud storage (note: cloud drives like Google Drive cannot be directly selected in Android's directory picker).",
             "p5.js Web Editor Import: Import public sketches from any web editor username without needing login credentials."
         )
     )
@@ -161,6 +161,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
     }
     val copyText = when (language) { "ja" -> "コードをコピー"; "zh" -> "复制代码"; else -> "Copy Code" }
     val copiedText = when (language) { "ja" -> "クリップボードにコピーしました"; "zh" -> "已复制到剪贴板"; else -> "Copied to clipboard" }
+    val closeText = when (language) { "ja" -> "閉じる"; "zh" -> "关闭"; else -> "Close" }
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -198,7 +199,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
                 IconButton(onClick = onClose) {
                     Icon(
                         painter = painterResource(R.drawable.ic_close),
-                        contentDescription = "Close",
+                        contentDescription = closeText,
                         tint = colors.onSurface
                     )
                 }
@@ -298,7 +299,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
                                 }
 
                                 if (section.tag.isNotEmpty()) {
-                                    val isNewTag = section.tag == "New" || section.tag == "新機能"
+                                    val isNewTag = section.tag == "New" || section.tag == "新機能" || section.tag == "新特性"
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
                                         color = if (isNewTag) colors.tertiaryContainer else colors.secondaryContainer
