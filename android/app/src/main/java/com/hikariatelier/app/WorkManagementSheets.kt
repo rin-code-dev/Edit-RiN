@@ -277,6 +277,7 @@ internal fun WorkActionsMenu(
     colors: ColorScheme,
     viewModel: WorkManagementViewModel,
     onRotate: () -> Unit,
+    onOpenUserGuide: () -> Unit,
     onOpenSettings: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
@@ -472,6 +473,21 @@ internal fun WorkActionsMenu(
         )
     }
 
+    @Composable
+    fun HelpAction() {
+        SectionLabel(uiText("ヘルプ"), colors, isLandscape)
+        ActionRow(
+            iconRes = R.drawable.ic_help,
+            title = uiText("使い方ガイド"),
+            subtitle = uiText("操作方法や機能の解説"),
+            colors = colors,
+            onClick = {
+                viewModel.workActionsMenuExpanded = false
+                onOpenUserGuide()
+            }
+        )
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (manualRotation) {
             IconButton(
@@ -485,6 +501,17 @@ internal fun WorkActionsMenu(
                     modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
                 )
             }
+        }
+        IconButton(
+            onClick = onOpenUserGuide,
+            modifier = if (isLandscape) Modifier.size(34.dp) else Modifier
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_help),
+                contentDescription = uiText("使い方ガイド"),
+                tint = colors.onSurface,
+                modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp)
+            )
         }
         IconButton(
             onClick = onOpenSettings,
@@ -593,6 +620,8 @@ internal fun WorkActionsMenu(
                         Spacer(Modifier.height(12.dp))
                         FileActions()
                         Spacer(Modifier.height(12.dp))
+                        HelpAction()
+                        Spacer(Modifier.height(12.dp))
                         SectionLabel(uiText("管理"), colors, isLandscape)
                         DeleteAction()
                     }
@@ -600,6 +629,8 @@ internal fun WorkActionsMenu(
                 if (wideWorkPanels) {
                     Column(Modifier.weight(1f)) {
                         FileActions()
+                        Spacer(Modifier.height(12.dp))
+                        HelpAction()
                         Spacer(Modifier.height(12.dp))
                         SectionLabel(uiText("管理"), colors, isLandscape)
                         DeleteAction()
