@@ -227,7 +227,7 @@ internal fun PreviewActionsTray(
 
             // 1. Parameters
             ActionChip(
-                iconRes = R.drawable.ic_settings,
+                iconRes = R.drawable.ic_tune,
                 label = uiText("パラメータ"),
                 onClick = onOpenParameters
             )
@@ -496,7 +496,7 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
             )
 
             PreviewOverlayButton(
-                iconRes = R.drawable.ic_settings,
+                iconRes = R.drawable.ic_tune,
                 description = uiText("パラメータ"),
                 colors = colors,
                 onClick = onOpenParameters

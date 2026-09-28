@@ -21,7 +21,7 @@ private val japaneseUserGuide = listOf(
     GuideSection(
         title = "ライブパラメータ",
         summary = "コードにコメントを追加するだけで、スライダーやカラーパレット、スイッチなどの調整UIを自動生成できます。コードを書き換えずに数値を微調整できます。",
-        iconRes = R.drawable.ic_snippet,
+        iconRes = R.drawable.ic_tune,
         tag = "おすすめ",
         codeSnippet = """// @rin number speed "速さ" 0 3 1 0.1
 // @rin color ink "インク色" #BA90E2
@@ -67,7 +67,7 @@ function draw() {
     GuideSection(
         title = "素材（アセット）の活用",
         summary = "画像（PNG/JPG/SVG/GIF）、音声（MP3/WAV）、フォント（TTF/OTF）、データ（JSON/CSV）を作品ごとに直接取り込んで呼び出せます。",
-        iconRes = R.drawable.ic_folder_code,
+        iconRes = R.drawable.ic_assets,
         tag = "素材",
         codeSnippet = """let img, snd;
 function preload() {
@@ -84,7 +84,7 @@ function preload() {
     GuideSection(
         title = "実行環境とライブラリ",
         summary = "作品の特性に合わせて、p5.js のバージョンや拡張ライブラリを作品ごとに個別に設定できます。",
-        iconRes = R.drawable.ic_settings,
+        iconRes = R.drawable.ic_terminal,
         tag = "環境",
         steps = listOf(
             "p5.js バージョン選択: モダンな WebGL や最新機能に対応した「p5.js 2.3.3」と、従来の作品や軽量描画向けの「p5.js 1.11.5」を切り替えられます。",
@@ -133,7 +133,7 @@ private val chineseUserGuide = listOf(
     GuideSection(
         title = "实时参数",
         summary = "只需在代码中编写简单注释，即可自动生成滑块、调色板和布尔开关，无需手动编写复杂的界面代码。",
-        iconRes = R.drawable.ic_snippet,
+        iconRes = R.drawable.ic_tune,
         tag = "互动",
         codeSnippet = """// @rin number speed "速度" 0 3 1 0.1
 // @rin color ink "墨水颜色" #BA90E2
@@ -179,7 +179,7 @@ function draw() {
     GuideSection(
         title = "素材管理",
         summary = "在每个作品中独立管理图像（PNG/JPG/SVG/GIF）、音频、字体（TTF/OTF）和数据文件（JSON/CSV）。",
-        iconRes = R.drawable.ic_folder_code,
+        iconRes = R.drawable.ic_assets,
         tag = "素材",
         codeSnippet = """let img, snd;
 function preload() {
@@ -196,7 +196,7 @@ function preload() {
     GuideSection(
         title = "运行环境与库",
         summary = "根据作品需求自由选择最适宜的 p5.js 版本与内置图形扩展库。",
-        iconRes = R.drawable.ic_settings,
+        iconRes = R.drawable.ic_terminal,
         tag = "环境",
         steps = listOf(
             "版本选择：支持现代 WebGL 与最新特性的「p5.js 2.3.3」与轻量稳定的兼容版本「p5.js 1.11.5」。",
