@@ -264,7 +264,7 @@ internal fun WorkGallery(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    items(visibleWorks, key = { it.id }) { work ->
+                    items(visibleWorks, key = { it.id }, contentType = { "work_card" }) { work ->
                         val isSelected = work.id == activeId
                         val bitmap by produceState<android.graphics.Bitmap?>(null, work.id,
                             if (work.id == updatedPreviewId) previewRevision else 0) {

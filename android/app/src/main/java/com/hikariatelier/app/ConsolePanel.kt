@@ -143,7 +143,7 @@ internal fun ConsolePanel(
                         ),
                     contentPadding = PaddingValues(vertical = 4.dp)
                 ) {
-                    items(items = viewModel.entries, key = { it.id }) { entry ->
+                    items(items = viewModel.entries, key = { it.id }, contentType = { "console_entry" }) { entry ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

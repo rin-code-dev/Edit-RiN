@@ -132,7 +132,7 @@ internal fun SearchReplaceDialog(
                         )
                         if (found != null && found.matches.isNotEmpty()) {
                             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
-                                items(found.matches, key = { "${it.file}:${it.start}" }) { match ->
+                                items(found.matches, key = { "${it.file}:${it.start}" }, contentType = { "search_match" }) { match ->
                                     Column(
                                         Modifier
                                             .fillMaxWidth()

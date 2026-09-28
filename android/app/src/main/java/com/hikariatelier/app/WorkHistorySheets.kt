@@ -87,7 +87,7 @@ internal fun WorkHistoryDialog(
                     .heightIn(max = 420.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(reversed) { revision ->
+                items(reversed, key = { it.savedAt }, contentType = { "revision_item" }) { revision ->
                     Surface(
                         onClick = { onSelectRevision(revision) },
                         modifier = Modifier.fillMaxWidth(),
