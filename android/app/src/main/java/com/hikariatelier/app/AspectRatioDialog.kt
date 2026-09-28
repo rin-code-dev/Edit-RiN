@@ -35,11 +35,11 @@ internal fun AspectRatioDialog(
     val colors = MaterialTheme.colorScheme
     val configuration = LocalConfiguration.current
     val aspectColumns = if (wideWorkPanels) 3 else if (configuration.fontScale > 1.5f) 1 else 2
-    val deviceRatioText = if (devicePreviewRatio >= 1f) {
-        String.format(java.util.Locale.ROOT, "%.2f:1", devicePreviewRatio)
-    } else {
-        String.format(java.util.Locale.ROOT, "1:%.2f", 1f / devicePreviewRatio)
-    }
+    val validDeviceRatio = devicePreviewRatio.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val landscapeDeviceRatio = if (validDeviceRatio >= 1f) validDeviceRatio else (1f / validDeviceRatio)
+    val portraitDeviceRatio = if (validDeviceRatio <= 1f) validDeviceRatio else (1f / validDeviceRatio)
+    val landscapeRatioText = String.format(java.util.Locale.ROOT, "%.2f:1", landscapeDeviceRatio)
+    val portraitRatioText = String.format(java.util.Locale.ROOT, "1:%.2f", 1f / portraitDeviceRatio)
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -132,17 +132,24 @@ internal fun AspectRatioDialog(
                                         )
                                     }
                                     Text(
-                                        if (ratio == "device") uiText("端末") else ratio,
+                                        when (ratio) {
+                                            "device" -> uiText("端末")
+                                            "device_landscape" -> uiText("端末・横")
+                                            else -> ratio
+                                        },
                                         fontFamily = codeFontFamily,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (selected) colors.primary else colors.onSurface
                                     )
                                     Text(
-                                        if (ratio == "device") deviceRatioText else when (ratio) {
+                                        when (ratio) {
+                                            "device" -> if (devicePreviewRatio >= 1f) landscapeRatioText else portraitRatioText
+                                            "device_landscape" -> landscapeRatioText
                                             "1:1" -> uiText("正方形")
                                             "4:3" -> uiText("標準・横")
                                             "16:9" -> uiText("ワイド")
-                                            else -> uiText("縦長")
+                                            "9:16" -> uiText("縦長")
+                                            else -> ratio
                                         },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = colors.onSurfaceVariant

@@ -72,8 +72,15 @@ internal fun AddWorkDialog(
         width = (configuration.screenWidthDp * deviceTemplateScale).toInt().coerceAtLeast(1),
         height = (configuration.screenHeightDp * deviceTemplateScale).toInt().coerceAtLeast(1)
     )
-    val creationAspectOptions = workTemplates + deviceTemplate
-    val template = creationAspectOptions.first { it.ratio == newRatio }
+    val maxSide = maxOf(configuration.screenWidthDp, configuration.screenHeightDp, 1)
+    val minSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp, 1)
+    val deviceLandscapeTemplate = WorkTemplate(
+        ratio = "device_landscape",
+        width = (maxSide * deviceTemplateScale).toInt().coerceAtLeast(1),
+        height = (minSide * deviceTemplateScale).toInt().coerceAtLeast(1)
+    )
+    val creationAspectOptions = workTemplates + listOf(deviceTemplate, deviceLandscapeTemplate)
+    val template = creationAspectOptions.firstOrNull { it.ratio == newRatio } ?: creationAspectOptions.first()
 
     WorkSheet(
         title = uiText("新しい作品"),
@@ -156,7 +163,7 @@ internal fun AddWorkDialog(
                         Surface(
                             onClick = {
                                 newRatio = option.ratio
-                                if (option.ratio == "device") {
+                                if (option.ratio == "device" || option.ratio == "device_landscape") {
                                     newCanvasModeName = CanvasSizingMode.RESPONSIVE.name
                                 }
                             },
@@ -189,13 +196,21 @@ internal fun AddWorkDialog(
                                 Spacer(Modifier.width(8.dp))
                                 Column {
                                     Text(
-                                        if (option.ratio == "device") uiText("端末") else option.ratio,
+                                        when (option.ratio) {
+                                            "device" -> uiText("端末")
+                                            "device_landscape" -> uiText("端末・横")
+                                            else -> option.ratio
+                                        },
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (selected) colors.primary else colors.onSurface
                                     )
                                     Text(
-                                        if (selected) uiText("選択中") else if (option.ratio == "device")
-                                            uiText("端末の画面比率") else "${option.width} × ${option.height}",
+                                        if (selected) uiText("選択中")
+                                        else when (option.ratio) {
+                                            "device" -> uiText("端末の画面比率")
+                                            "device_landscape" -> uiText("横向きの端末比率")
+                                            else -> "${option.width} × ${option.height}"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = colors.onSurfaceVariant
                                     )

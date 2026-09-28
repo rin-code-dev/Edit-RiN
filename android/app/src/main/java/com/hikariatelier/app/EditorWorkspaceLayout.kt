@@ -358,12 +358,19 @@ internal fun EditorWorkspaceLayout(
                         .semantics {
                             contentDescription = text(
                                 "プレビュー比率を変更: %s",
-                                if (state.previewRatioSelection == "device") text("端末")
-                                else state.previewRatioSelection
+                                when (state.previewRatioSelection) {
+                                    "device" -> text("端末")
+                                    "device_landscape" -> text("端末・横")
+                                    else -> state.previewRatioSelection
+                                }
                             )
                             customActions = PREVIEW_ASPECT_RATIOS.map { ratio ->
                                 CustomAccessibilityAction(
-                                    if (ratio == "device") text("端末") else ratio
+                                    when (ratio) {
+                                        "device" -> text("端末")
+                                        "device_landscape" -> text("端末・横")
+                                        else -> ratio
+                                    }
                                 ) {
                                     currentRatioChange.value(ratio)
                                     true
@@ -399,8 +406,11 @@ internal fun EditorWorkspaceLayout(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (state.previewRatioSelection == "device") text("端末")
-                                    else state.previewRatioSelection,
+                                text = when (state.previewRatioSelection) {
+                                    "device" -> text("端末")
+                                    "device_landscape" -> text("端末・横")
+                                    else -> state.previewRatioSelection
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = state.codeFontFamily,
                                 fontWeight = FontWeight.SemiBold,
