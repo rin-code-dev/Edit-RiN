@@ -149,6 +149,14 @@ internal fun EditorScreen(
         mutableStateOf(false)
     }
 
+    var showSnippets by rememberSaveable(activeWorkId) { mutableStateOf(false) }
+    var showScreenshotScale by rememberSaveable { mutableStateOf(false) }
+    var pendingScreenshotScale by rememberSaveable { mutableIntStateOf(1) }
+    val screenshotPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) preview.requestScreenshot(scale = pendingScreenshotScale)
+        else Toast.makeText(context, uiText("画像を保存するにはストレージへのアクセスを許可してください"), Toast.LENGTH_LONG).show()
+    }
+
     var showUserGuide by rememberSaveable {
         mutableStateOf(false)
     }
@@ -676,6 +684,10 @@ internal fun EditorScreen(
                 }
                 editorFocusRequester.requestFocus()
             },
+            onSnippets = {
+                if (editingFile.endsWith(".js", ignoreCase = true)) showSnippets = true
+                else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
+            },
             onSnapshot = { showSnapshotSheet = true },
             onHistory = { showHistoryDialog = true },
             onAspectRatio = { showAspectRatioDialog = true },
@@ -773,7 +785,7 @@ internal fun EditorScreen(
                 showParameterSheet = true
             },
             onScreenshot = {
-                preview.requestScreenshot()
+                showScreenshotScale = true
                 previewActionsExpanded = false
             },
             onShareCard = {
@@ -909,7 +921,7 @@ internal fun EditorScreen(
                         previewActionsExpanded = false
                     },
                     onScreenshot = {
-                        preview.requestScreenshot()
+                        showScreenshotScale = true
                         previewActionsExpanded = false
                     },
                     onShareCard = {
@@ -1071,6 +1083,10 @@ internal fun EditorScreen(
                     applyEditorChange(TextFieldValue(formatted, TextRange(0)))
                     editorFocusRequester.requestFocus()
                 }
+            },
+            onSnippets = {
+                if (editingFile.endsWith(".js", ignoreCase = true)) showSnippets = true
+                else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             },
             onApplyEdit = { value ->
                 applyEditorChange(value)
@@ -1294,6 +1310,41 @@ internal fun EditorScreen(
                 )
             }
         }
+    }
+
+    if (showSnippets) {
+        SnippetDialog(text = { uiText(it) }, onInsert = { snippet ->
+            if (!workSaving) {
+                val indent = editingValue.text.substring(0, editingValue.selection.min)
+                    .substringAfterLast('\n').takeWhile { it == ' ' || it == '\t' }
+                val insertion = snippet.code.replace("\n", "\n$indent") + "\n$indent"
+                applyEditorChange(insertAtSelection(editingValue, insertion))
+                workManagementViewModel.saveCurrentWork()
+                showSnippets = false
+                editorFocusRequester.requestFocus()
+            }
+        }, onDismiss = { showSnippets = false })
+    }
+    if (preview.screenshotBusy || recordingViewModel.screenshotSaving) {
+        Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+            Surface(shape = RoundedCornerShape(16.dp)) {
+                Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text(uiText("画像を書き出し中…"))
+                }
+            }
+        }
+    }
+    if (showScreenshotScale) {
+        ScreenshotScaleDialog(text = { uiText(it) }, onCapture = { scale ->
+            showScreenshotScale = false
+            pendingScreenshotScale = scale
+            if (android.os.Build.VERSION.SDK_INT <= 28 && androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                screenshotPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            } else preview.requestScreenshot(scale = scale)
+        }, onDismiss = { showScreenshotScale = false })
     }
 
     if (showParameterSheet) {

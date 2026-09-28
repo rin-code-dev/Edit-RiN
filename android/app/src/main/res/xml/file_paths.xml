@@ -9,4 +9,7 @@
     <external-files-path
         name="recorded_images"
         path="Pictures/EditRiN/" />
+    <external-path
+        name="exported_png_images"
+        path="Pictures/Edit-RiN/" />
 </paths>

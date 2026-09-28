@@ -32,6 +32,8 @@ internal class PreviewController(
     var isPaused by mutableStateOf(false)
     @Volatile private var disposed = false
     @Volatile private var captureForShareCard = false
+    var screenshotBusy by mutableStateOf(false)
+        private set
 
     private fun text(source: String): String {
         val language = ConfigurationCompat.getLocales(activity.resources.configuration)[0]?.language ?: "en"
@@ -52,9 +54,17 @@ internal class PreviewController(
 
     fun evaluate(script: String) { if (!disposed) webView?.evaluateJavascript(script, null) }
 
-    fun requestScreenshot(forShareCard: Boolean = false) {
+    fun requestScreenshot(forShareCard: Boolean = false, scale: Int = 1) {
+        if (disposed || webView == null || screenshotBusy || recording.screenshotSaving) return
+        if (scale !in listOf(1, 2, 4)) return
+        if (scale > 1 && (recording.isPreviewRecording || recording.isRecordingSaving || recording.pendingRecordingFormat != null)) {
+            Toast.makeText(activity, text("録画を停止してから書き出してください"), Toast.LENGTH_LONG).show()
+            return
+        }
+        screenshotBusy = true
         captureForShareCard = forShareCard
-        evaluate("window.__editKiroCaptureScreenshot?.()")
+        evaluate("if (typeof window.__editKiroCaptureScreenshot === 'function') { window.__editKiroCaptureScreenshot($scale); } " +
+            "else { window.Android?.onCaptureError('プレビューの準備ができてから再度お試しください'); }")
     }
 
     fun runSketch(
@@ -127,6 +137,8 @@ internal class PreviewController(
             }
             view.webViewClient = AssetWebClient(activity.assets, assetStorage, onRendererCrash = { crashed ->
                 onMain {
+                    screenshotBusy = false
+                    captureForShareCard = false
                     val message = if (crashed) {
                         text("描画プロセスが異常終了しました（メモリまたはGPU負荷が高すぎる可能性があります）")
                     } else text("描画プロセスがメモリ不足等により終了されました")
@@ -193,10 +205,16 @@ internal class PreviewController(
                 if (status == "一時停止中") isPaused = true
             }
         }
-        @JavascriptInterface fun onScreenshotReady(dataUrl: String) {
+        @JavascriptInterface fun onScreenshotReady(dataUrl: String) = screenshotReady(dataUrl, 0, 0)
+        @JavascriptInterface fun onScreenshotExportReady(dataUrl: String, width: Int, height: Int) =
+            screenshotReady(dataUrl, width, height)
+        private fun screenshotReady(dataUrl: String, width: Int, height: Int) {
             val forCard = captureForShareCard
             captureForShareCard = false
-            onMain { recording.saveScreenshot(dataUrl, forCard) }
+            onMain {
+                screenshotBusy = false
+                recording.saveScreenshot(dataUrl, forCard, width, height)
+            }
         }
         @JavascriptInterface fun onRecordingStatusChanged(value: Boolean) {
             onMain { recording.isPreviewRecording = value }
@@ -225,7 +243,11 @@ internal class PreviewController(
             }
         }
         @JavascriptInterface fun onCaptureError(message: String) {
-            onMain { Toast.makeText(activity, message, Toast.LENGTH_LONG).show() }
+            captureForShareCard = false
+            onMain {
+                screenshotBusy = false
+                Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show()
+            }
         }
     }
 }

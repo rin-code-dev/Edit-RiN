@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -212,21 +213,40 @@ internal fun SnapshotSheet(
             text = {
                 Column {
                     Text(
-                        text("− 現在のコード / + スナップショットのコード"),
+                        text("− 現在のコード（削除） / + スナップショット（追加）"),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant
                     )
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = difference ?: text("スナップショットを読み込み中…"),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                            .verticalScroll(rememberScrollState())
-                            .horizontalScroll(rememberScrollState()),
-                        fontFamily = codeFontFamily,
-                        fontSize = 11.sp
-                    )
+                    val diff = difference
+                    if (diff == null) {
+                        Text(text("スナップショットを読み込み中…"))
+                    } else {
+                        val lines = remember(diff) { diff.lines() }
+                        Column(Modifier.fillMaxWidth().heightIn(max = 300.dp)
+                            .verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())
+                            .width(IntrinsicSize.Max)) {
+                            lines.forEach { line ->
+                                val kind = diffLineKind(line)
+                                val background = when (kind) {
+                                    DiffLineKind.ADDED -> androidx.compose.ui.graphics.Color(0xFF388E3C).copy(alpha = 0.16f)
+                                    DiffLineKind.REMOVED -> colors.errorContainer.copy(alpha = 0.35f)
+                                    DiffLineKind.HEADER -> colors.surfaceVariant
+                                    DiffLineKind.CONTEXT -> androidx.compose.ui.graphics.Color.Transparent
+                                }
+                                val foreground = when (kind) {
+                                    DiffLineKind.ADDED -> if (colors.surface.luminance() < 0.5f)
+                                        androidx.compose.ui.graphics.Color(0xFFA5D6A7) else androidx.compose.ui.graphics.Color(0xFF1B5E20)
+                                    DiffLineKind.REMOVED -> colors.error
+                                    else -> colors.onSurface
+                                }
+                                Text(line.ifEmpty { " " }, Modifier.fillMaxWidth().background(background)
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    fontFamily = codeFontFamily, fontSize = 11.sp, softWrap = false,
+                                    color = foreground, fontWeight = if (kind == DiffLineKind.HEADER) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {

@@ -1,6 +1,6 @@
 package com.hikariatelier.app
 
-internal fun localizedUserGuide(language: String): List<GuideSection> = when (language) {
+internal fun localizedUserGuide(language: String): List<GuideSection> = listOf(authoringUserGuide(language)) + when (language) {
     "ja" -> japaneseUserGuide
     "zh" -> chineseUserGuide
     else -> userGuideSections
@@ -229,3 +229,27 @@ function preload() {
         )
     )
 )
+
+private fun authoringUserGuide(language: String): GuideSection = when (language) {
+    "ja" -> GuideSection("制作ツールと高解像度出力", "多彩な新規テンプレート、GUIパラメータ作成、定番コードスニペット、差分確認、高画質PNG書き出しを活用して作品を仕上げます。", R.drawable.ic_snippet, "制作", steps = listOf(
+        "新規テンプレート: 2D基本、3D WebGL、カスタムシェーダー、物理演算（Matter.js）、パラメータからベースを選んで新規作成できます。必要なライブラリは自動で設定されます。",
+        "ライブパラメータ: パラメータ画面から「コードに直接挿入」でサンプルを追加したり、「＋ パラメータ追加」でスライダー・カラー・スイッチを直感的に定義できます。コードからは rinParams.<名前> でリアルタイムに参照されます（最大16個）。",
+        "コードスニペット: 作品メニューやキーボード上の {…} から、周期運動やパーティクルなどの定番コードをカーソル位置へワンタップで挿入できます。",
+        "スナップショット差分: 履歴画面で変更内容を色分け確認できます。緑色の行は追加、赤色の行は削除を表し、直前の状態との違いが一目で分かります。",
+        "高解像度PNG書き出し: プレビュー画面のカメラアイコンから1x・2x・4xを選択して保存できます。オフスクリーンで高精細に再描画し、Pictures/Edit-RiN フォルダへ美しく保存します（最大1600万画素）。"
+    ))
+    "zh" -> GuideSection("创作工具与高分辨率导出", "利用全新创作模板、GUI交互参数、常用代码片段、版本差异对比和高分辨率PNG导出，全面提升创作效率与画质。", R.drawable.ic_snippet, "创作", steps = listOf(
+        "新建模板：创建作品时可自由选择基础2D、3D WebGL、自定义着色器、Matter.js物理模拟或参数模板，所需扩展库将自动启用配置。",
+        "实时参数：在参数面板中点击“直接插入代码”或“＋ 添加参数”，即可可视化创建滑块、调色盘和切换开关。代码中直接通过 rinParams.<名称> 实时读取（最多支持16个）。",
+        "代码片段：通过作品菜单或键盘辅助栏的 {…} 按钮，一键在光标处插入周期运动、粒子系统等常用结构。",
+        "快照差异对比：直观高亮比对历史快照，新增行以绿色呈现，删除行以红色标注，代码变动一目了然。",
+        "高分辨率PNG导出：点击预览工具栏的相机图标，可选择1x、2x或4x倍率重新渲染，高品质保存至 Pictures/Edit-RiN（最高1600万像素）。"
+    ))
+    else -> GuideSection("Authoring Tools & High-Res Export", "Accelerate your creative coding with templates, interactive GUI parameters, code snippets, visual diffs, and high-resolution PNG export.", R.drawable.ic_snippet, "Create", steps = listOf(
+        "Creative Templates: Choose from 2D Basics, 3D WebGL, Custom Shaders, Matter.js Physics, or Live Parameters when creating a work. Required libraries configure automatically.",
+        "Live Parameters: Tap \"Insert into code\" for instant samples, or \"＋ Add parameter\" to define sliders, color pickers, and toggles without writing comments manually. Access in code via rinParams.<name> (up to 16 parameters).",
+        "Code Snippets: Insert motion loops, particles, and interaction patterns directly at the cursor from the work menu or the {…} keyboard button.",
+        "Visual Snapshot Diff: Review changes with color-coded diff syntax highlighting where additions appear in green and deletions in red.",
+        "High-Res PNG Export: Tap the camera button on the preview toolbar to export in 1x, 2x, or 4x. Renders cleanly off-screen and saves to Pictures/Edit-RiN (up to 16 MP)."
+    ))
+}

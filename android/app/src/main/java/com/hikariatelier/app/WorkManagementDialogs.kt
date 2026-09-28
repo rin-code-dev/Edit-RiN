@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
@@ -62,6 +63,8 @@ internal fun AddWorkDialog(
         mutableStateOf(CanvasSizingMode.FIXED.name)
     }
     val newCanvasMode = CanvasSizingMode.valueOf(newCanvasModeName)
+    var kindName by rememberSaveable { mutableStateOf(WorkTemplateKind.BASIC_2D.name) }
+    val kind = WorkTemplateKind.valueOf(kindName)
     val deviceTemplateScale = 960f / maxOf(
         configuration.screenWidthDp,
         configuration.screenHeightDp,
@@ -103,6 +106,15 @@ internal fun AddWorkDialog(
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp)
             )
+            Text(uiText("テンプレート種別"), style = MaterialTheme.typography.labelLarge)
+            WorkTemplateKind.entries.chunked(2).forEach { kinds ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    kinds.forEach { option ->
+                        FilterChip(selected = kind == option, onClick = { kindName = option.name },
+                            label = { Text(uiText(option.title)) }, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
             Text(
                 uiText("キャンバスの動作"),
                 style = MaterialTheme.typography.labelLarge,
@@ -232,7 +244,7 @@ internal fun AddWorkDialog(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        uiText("シンプルな円のテンプレート"),
+                        uiText(kind.title),
                         style = MaterialTheme.typography.labelLarge
                     )
                     Text(
@@ -258,7 +270,7 @@ internal fun AddWorkDialog(
         ) {
             TextButton(onClick = onDismiss) { Text(uiText("キャンセル")) }
             Button(
-                onClick = { onCreate(newTitle, template.ratio, newCanvasMode, template) },
+                onClick = { onCreate(newTitle, template.ratio, newCanvasMode, template.copy(kind = kind)) },
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(painterResource(R.drawable.ic_add), null, Modifier.size(18.dp))

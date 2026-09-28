@@ -14,9 +14,12 @@ class PreviewGeometryTest {
     }
 
     @Test
-    fun deviceRatioIsAcceptedAndResolvedAtRuntime() {
+    fun devicePortraitAndLandscapeAreResolvedIndependentlyOfCurrentOrientation() {
         assertEquals("device", normalizedPreviewAspectRatio("device"))
-        assertEquals(20f / 9f, previewAspectRatioValue("device", 20f / 9f), 0.0001f)
+        assertEquals(9f / 20f, previewAspectRatioValue("device", 20f / 9f), 0.0001f)
+        assertEquals("device_landscape", normalizedPreviewAspectRatio("device_landscape"))
+        assertEquals(20f / 9f, previewAspectRatioValue("device_landscape", 20f / 9f), 0.0001f)
+        assertEquals(20f / 9f, previewAspectRatioValue("device_landscape", 9f / 20f), 0.0001f)
         assertEquals(9f / 20f, previewAspectRatioValue("device", 9f / 20f), 0.0001f)
         assertEquals(1f, previewAspectRatioValue("device", Float.NaN), 0f)
     }
