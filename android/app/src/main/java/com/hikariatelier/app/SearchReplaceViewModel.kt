@@ -15,26 +15,24 @@ class SearchReplaceViewModel : ViewModel() {
     var goToLineText by mutableStateOf("")
     var showSearchDialog by mutableStateOf(false)
 
+    private var cachedRequest: FileSearchRequest? = null
+    private var cachedMatches: List<IntRange> = emptyList()
+
     fun searchMatches(source: String): List<IntRange> {
-        if (searchQuery.isEmpty()) return emptyList()
-        val needle = searchQuery
-        val matches = mutableListOf<IntRange>()
-        var fromIndex = 0
-        while (fromIndex <= source.length - needle.length) {
-            val start = source.indexOf(needle, fromIndex, ignoreCase = !searchMatchCase)
-            if (start < 0) break
-            matches += start until (start + needle.length)
-            fromIndex = start + needle.length.coerceAtLeast(1)
+        val request = FileSearchRequest(source, searchQuery, searchMatchCase)
+        if (request != cachedRequest) {
+            cachedMatches = findFileMatches(request)
+            cachedRequest = request
         }
-        return matches
+        return cachedMatches
     }
 
     fun selectSearchMatch(
         source: String,
         currentSelection: TextRange,
-        direction: Int
+        direction: Int,
+        matches: List<IntRange> = searchMatches(source)
     ): TextRange? {
-        val matches = searchMatches(source)
         if (matches.isEmpty()) return null
         val selectionStart = currentSelection.min
         val selectionEnd = currentSelection.max
@@ -95,10 +93,38 @@ class SearchReplaceViewModel : ViewModel() {
         val source = currentValue.text
         val matches = searchMatches(source)
         if (matches.isEmpty()) return currentValue
-        val builder = StringBuilder(source)
-        matches.asReversed().forEach { range ->
-            builder.replace(range.first, range.last + 1, replacementText)
-        }
-        return TextFieldValue(builder.toString(), TextRange(0))
+        return replaceFileMatches(currentValue, matches, replacementText)
     }
+}
+
+internal data class FileSearchRequest(val source: String, val query: String, val matchCase: Boolean)
+
+internal fun findFileMatches(request: FileSearchRequest): List<IntRange> {
+    val (source, query, matchCase) = request
+    if (query.isEmpty()) return emptyList()
+    return buildList {
+        var from = 0
+        while (from <= source.length - query.length) {
+            val start = source.indexOf(query, from, ignoreCase = !matchCase)
+            if (start < 0) break
+            add(start until start + query.length)
+            from = start + query.length
+        }
+    }
+}
+
+/** Append each untouched span once; replacement length does not multiply copy cost. */
+internal fun replaceFileMatches(value: TextFieldValue, matches: List<IntRange>, replacement: String): TextFieldValue {
+    if (matches.isEmpty()) return value
+    val source = value.text
+    val result = buildString {
+        var from = 0
+        for (range in matches) {
+            append(source, from, range.first)
+            append(replacement)
+            from = range.last + 1
+        }
+        append(source, from, source.length)
+    }
+    return TextFieldValue(result, TextRange(0))
 }
