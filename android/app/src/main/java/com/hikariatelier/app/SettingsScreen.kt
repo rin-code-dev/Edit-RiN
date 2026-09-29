@@ -159,9 +159,8 @@ internal fun SettingsScreen(
                 }
             )
         }
-        val settingsScroll = remember(settingsTab, settingsLandscape) {
-            androidx.compose.foundation.ScrollState(0)
-        }
+        val categoryScrolls = List(4) { rememberScrollState() }
+        val settingsScroll = categoryScrolls[settingsTab]
 
         Row(
             modifier =
@@ -1278,105 +1277,10 @@ internal fun SettingsScreen(
             }
 
             if (settingsTab == 3) {
-            SettingsSection(
-                title = "About",
-                description = uiText("アプリ情報とリンク")
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = uiText("アプリ情報"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Edit",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = uiText("バージョン %s", BuildConfig.VERSION_NAME),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    TextButton(
-                        enabled = !updateViewModel.checking,
-                        onClick = { updateViewModel.checkManually() },
-                        contentPadding = PaddingValues(horizontal = 0.dp)
-                    ) {
-                        Text(uiText(if (updateViewModel.manualChecking) "確認中…" else "アップデートを確認"))
-                    }
-                    TextButton(
-                        onClick = { showUserGuide = true },
-                        contentPadding = PaddingValues(horizontal = 0.dp)
-                    ) {
-                        Text(uiText("使い方ガイド"))
-                    }
-                    TextButton(
-                        onClick = { showLicenses = true },
-                        contentPadding = PaddingValues(horizontal = 0.dp)
-                    ) {
-                        Text(uiText("ライセンス情報"))
-                    }
-                }
-
-                SettingsDivider()
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = uiText("開発者"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant
-                    )
-                    Surface(
-                        onClick = { openExternalUrl(DEVELOPER_X_URL) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color.Transparent,
-                        contentColor = colors.primary
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            horizontalAlignment = Alignment.Start
-                        ) {
-                            Text("X")
-                            Text(
-                                text = "@rincodedev",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-
-                SettingsDivider()
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = uiText("サポート"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant
-                    )
-                    Text(
-                        text = uiText("開発を任意で支援できます"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    TextButton(
-                        onClick = { openExternalUrl(SUPPORT_OFUSE_URL) },
-                        contentPadding = PaddingValues(horizontal = 0.dp)
-                    ) {
-                        Text("OFUSE (Tip)")
-                    }
-                }
-            }
+                SettingsAboutSection(updateViewModel,
+                    onShowGuide = { showUserGuide = true },
+                    onShowLicenses = { showLicenses = true },
+                    openExternalUrl = openExternalUrl, textTranslator = textTranslator)
 
             }
         }

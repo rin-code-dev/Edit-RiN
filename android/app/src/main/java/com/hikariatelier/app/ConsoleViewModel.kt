@@ -7,6 +7,12 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 internal enum class ConsoleLevel {
     LOG,
@@ -24,9 +30,11 @@ internal data class ConsoleEntry(
     val count: Int = 1
 )
 
-internal class ConsoleViewModel : ViewModel() {
+internal class ConsoleViewModel(private val operationScope: CoroutineScope? = null) : ViewModel() {
     val entries = mutableStateListOf<ConsoleEntry>()
-    private var sequence by mutableLongStateOf(0L)
+    private var sequence = 0L
+    private val pending = ArrayDeque<ConsoleEntry>()
+    private var flushJob: Job? = null
 
     var showConsole by mutableStateOf(false)
     var consoleHeight by mutableFloatStateOf(170f)
@@ -36,6 +44,9 @@ internal class ConsoleViewModel : ViewModel() {
         get() = entries.count { it.level == ConsoleLevel.ERROR }
 
     fun clear() {
+        flushJob?.cancel()
+        flushJob = null
+        pending.clear()
         entries.clear()
     }
 
@@ -50,7 +61,7 @@ internal class ConsoleViewModel : ViewModel() {
         if (normalized.isBlank()) return
 
         val normalizedLine = line?.takeIf { it > 0 }
-        val previous = entries.lastOrNull()
+        val previous = pending.lastOrNull()
 
         if (
             previous?.level == level &&
@@ -59,15 +70,11 @@ internal class ConsoleViewModel : ViewModel() {
             previous.file == file &&
             previous.workId == workId
         ) {
-            val lastIndex = entries.lastIndex
-            if (lastIndex >= 0) {
-                entries[lastIndex] = previous.copy(count = previous.count + 1)
-            }
-            return
-        }
-
-        sequence += 1L
-        entries.add(
+            pending.removeLast()
+            pending.addLast(previous.copy(count = (previous.count.toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()))
+        } else {
+            sequence += 1L
+            pending.addLast(
             ConsoleEntry(
                 id = sequence,
                 level = level,
@@ -77,9 +84,33 @@ internal class ConsoleViewModel : ViewModel() {
                 workId = workId
             )
         )
+        }
+        while (pending.size > 200) pending.removeFirst()
+        if (level == ConsoleLevel.ERROR) {
+            flushJob?.cancel()
+            flushJob = null
+            flush()
+        } else if (flushJob == null) {
+            flushJob = (operationScope ?: viewModelScope).launch {
+                delay(100)
+                flush()
+                flushJob = null
+            }
+        }
+    }
 
-        while (entries.size > 200) {
-            entries.removeAt(0)
+    private fun flush() {
+        Snapshot.withMutableSnapshot {
+            while (pending.isNotEmpty()) {
+                val next = pending.removeFirst()
+                val previous = entries.lastOrNull()
+                if (previous != null && previous.level == next.level && previous.message == next.message &&
+                    previous.line == next.line && previous.file == next.file && previous.workId == next.workId) {
+                    entries[entries.lastIndex] = previous.copy(
+                        count = (previous.count.toLong() + next.count).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                } else entries.add(next)
+            }
+            while (entries.size > 200) entries.removeAt(0)
         }
     }
 }

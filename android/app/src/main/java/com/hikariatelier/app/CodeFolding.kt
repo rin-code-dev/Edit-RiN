@@ -5,7 +5,11 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 
 internal data class CodeFold(val open: Int, val close: Int)
-internal data class CodeFoldState(val source: String, val collapsed: Set<Int>)
+internal data class CodeFoldState(
+    val source: String,
+    val collapsed: Set<Int>,
+    val regions: List<CodeFold>? = null
+)
 
 /** Braces in comments, strings, templates and regular expressions are not block delimiters. */
 internal fun codeFolds(source: String): List<CodeFold> = FoldScanner(source).scan()
@@ -143,7 +147,7 @@ internal fun rebasedFolds(state: CodeFoldState?, source: String): Set<Int> {
         state.source[state.source.lastIndex - suffix] == source[source.lastIndex - suffix]) suffix++
     val oldEnd = state.source.length - suffix
     val delta = source.length - state.source.length
-    return codeFolds(state.source).filter { it.open in state.collapsed }.mapNotNull { fold ->
+    return (state.regions ?: codeFolds(state.source)).filter { it.open in state.collapsed }.mapNotNull { fold ->
         when {
             fold.close < prefix -> fold.open
             fold.open >= oldEnd -> fold.open + delta

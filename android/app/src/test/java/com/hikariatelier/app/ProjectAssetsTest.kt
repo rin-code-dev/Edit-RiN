@@ -60,8 +60,10 @@ class ProjectAssetsTest {
         assertTrue(runCatching { readAssetBackup(ByteArrayInputStream(zip("../escape" to byteArrayOf(1))), storage()) }.isFailure)
         assertTrue(runCatching { copyBounded(ByteArrayInputStream(ByteArray(11)), ByteArrayOutputStream(), 10) }.isFailure)
         val work = Work("a", "A", "")
-        val json = serializeWorkStore(listOf(work), "a").replace("\"assets\": {}", "\"assets\": {\"../x\":{\"hash\":\"${"a".repeat(64)}\",\"size\":1,\"mime\":\"image/png\"}}")
-        assertNull(parseWorkStoreJson(json))
+        val json = org.json.JSONObject(serializeWorkStore(listOf(work), "a"))
+        json.getJSONArray("works").getJSONObject(0).getJSONObject("assets").put(
+            "../x", org.json.JSONObject().put("hash", "a".repeat(64)).put("size", 1).put("mime", "image/png"))
+        assertNull(parseWorkStoreJson(json.toString()))
     }
     @Test fun pruningRetainsReferencedContent() {
         val store = storage()
