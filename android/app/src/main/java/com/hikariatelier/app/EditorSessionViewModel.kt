@@ -60,6 +60,12 @@ data class WorkStore(
 )
 
 class EditorSessionViewModel : ViewModel() {
+    internal class EditorScroll {
+        val vertical = androidx.compose.foundation.ScrollState(0)
+        val horizontal = androidx.compose.foundation.ScrollState(0)
+    }
+    private val editorScrolls = mutableMapOf<String, EditorScroll>()
+    internal fun editorScroll(key: String): EditorScroll = editorScrolls.getOrPut(key) { EditorScroll() }
     var assetBusy by mutableStateOf(false)
     var snapshotOperationWorkId by mutableStateOf<String?>(null)
     var snapshotRestoring by mutableStateOf(false)
@@ -73,6 +79,7 @@ class EditorSessionViewModel : ViewModel() {
 
     /** Discard caches only when their saved source is replaced or deleted. */
     fun clearAuxiliaryEditors(workId: String? = null) {
+        editorScrolls.keys.removeAll { workId == null || it.startsWith("$workId/") }
         val keys = (fileDrafts.keys + fileEditorValues.keys + fileUndoStacks.keys + fileRedoStacks.keys)
             .filter { workId == null || it.startsWith("$workId/") }
         keys.forEach { key ->
@@ -89,6 +96,7 @@ class EditorSessionViewModel : ViewModel() {
     /** Invalidate only a changed/deleted file after its save succeeds. */
     fun clearAuxiliaryEditor(workId: String, fileName: String) {
         val key = "$workId/$fileName"
+        editorScrolls.remove(key)
         fileDrafts.remove(key)
         fileEditorValues.remove(key)
         fileUndoStacks.remove(key)

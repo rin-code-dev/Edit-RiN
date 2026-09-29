@@ -144,10 +144,19 @@ internal class WorkManagementViewModel(
         }.also { commandJob = it }
     }
 
-    private fun snapshots(includeEdits: Boolean = false): List<Work> {
+    private fun snapshots(includeEdits: Boolean = false, copyIds: Set<String>? = null): List<Work> {
         val selected = session.activeWorkIdState.value
         val code = session.editorValueState.value.text
         return session.worksState.value.map { original ->
+            // Committed Work objects are replaced by commands, never mutated in place.
+            // Reuse untouched works; copy anything this command will edit or commit.
+            val dirty = includeEdits && (
+                (original.id == selected && original.code != code) ||
+                    parameterDrafts.containsKey(original.id) || ratioDrafts.containsKey(original.id) ||
+                    original.files.any { (name, saved) ->
+                        session.fileDrafts["${original.id}/$name"]?.let { it != saved } == true
+                    })
+            if (copyIds != null && original.id !in copyIds && !dirty) return@map original
             snapshotWork(original).also { copy ->
                 if (includeEdits) {
                     parameterDrafts[copy.id]?.let { copy.parameterValues.clear(); copy.parameterValues.putAll(it) }
@@ -183,6 +192,7 @@ internal class WorkManagementViewModel(
         }
         if (savedEdits) works.forEach { work ->
             if (parameterDrafts[work.id] == work.parameterValues.toMap()) parameterDrafts.remove(work.id)
+            if (ratioDrafts[work.id] == work.previewAspectRatio) ratioDrafts.remove(work.id)
             work.files.forEach { (name, code) ->
                 val key = "${work.id}/$name"
                 if (session.fileDrafts[key] == code) session.fileDrafts.remove(key)
@@ -195,7 +205,7 @@ internal class WorkManagementViewModel(
         execute(blockUi = blockUi, progressDelayMillis = progressDelayMillis) {
         val id = session.activeWorkIdState.value
         val original = session.worksState.value.first { it.id == id }
-        val next = snapshots(includeEdits = true)
+        val next = snapshots(includeEdits = true, copyIds = setOf(id))
         val replacement = next.first { it.id == id }
         if (session.lastSavedTextState.value != replacement.code) {
             replacement.revisions.add(WorkRevision(session.lastSavedTextState.value, original.updatedAt))
@@ -213,6 +223,7 @@ internal class WorkManagementViewModel(
         if (active != null && session.editorValueState.value.text != active.code) return true
         return works.any { work ->
             parameterDrafts[work.id]?.let { it != work.parameterValues.toMap() } == true ||
+                ratioDrafts[work.id]?.let { it != work.previewAspectRatio } == true ||
                 work.files.any { (name, code) ->
                     session.fileDrafts["${work.id}/$name"]?.let { it != code } == true
                 }
@@ -226,7 +237,7 @@ internal class WorkManagementViewModel(
             // Clean navigation does not serialize/rewrite all works or replace their objects.
             // If typing continues during an edit save, persist the newer edits before switching.
             while (hasEditsToSave()) {
-                val next = snapshots(includeEdits = true)
+                val next = snapshots(includeEdits = true, copyIds = emptySet())
                 persist(next, workId)
                 commit(next, savedEdits = true)
             }
@@ -282,7 +293,7 @@ internal class WorkManagementViewModel(
     }
 
     private fun changeWork(workId: String, event: WorkEvent = WorkEvent(), change: (Work) -> Unit) = execute(blockUi = false) {
-        val next = snapshots()
+        val next = snapshots(copyIds = setOf(workId))
         val target = next.first { it.id == workId }
         change(target)
         target.updatedAt = System.currentTimeMillis()
@@ -291,7 +302,7 @@ internal class WorkManagementViewModel(
         emit(event)
     }
     fun renameWork(workId: String, title: String) = execute {
-        val next = snapshots()
+        val next = snapshots(copyIds = setOf(workId))
         next.first { it.id == workId }.apply { this.title = title; updatedAt = System.currentTimeMillis() }
         persist(next, session.activeWorkIdState.value)
         commit(next)
@@ -373,7 +384,7 @@ internal class WorkManagementViewModel(
     }
     fun changeAssets(workId: String, updated: Map<String, ProjectAsset>) = execute("素材を保存できませんでした") {
         validateAssetSet(updated)
-        val next = snapshots()
+        val next = snapshots(copyIds = setOf(workId))
         val target = next.first { it.id == workId }
         target.assets.clear(); target.assets.putAll(updated)
         target.updatedAt = System.currentTimeMillis()
@@ -449,7 +460,7 @@ internal class WorkManagementViewModel(
         val job = scope.launch {
             commandJob?.join()
             execute(blockUi = false) {
-                val next = snapshots()
+                val next = snapshots(copyIds = setOf(id))
                 next.firstOrNull { it.id == id }?.apply {
                     previewAspectRatio = normalized
                     parameterDrafts[id]?.let {
@@ -496,7 +507,7 @@ internal class WorkManagementViewModel(
         val values = parameterDrafts[workId] ?: return null
         if (session.worksState.value.none { it.id == workId }) return null
         return execute(blockUi = false) {
-            val next = snapshots()
+            val next = snapshots(copyIds = setOf(workId))
             next.firstOrNull { it.id == workId }?.apply {
                 parameterValues.clear(); parameterValues.putAll(values)
                 ratioDrafts[workId]?.let { previewAspectRatio = it }

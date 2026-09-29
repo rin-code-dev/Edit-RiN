@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
@@ -41,7 +42,19 @@ internal fun SearchReplaceDialog(
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg arguments: Any?): String =
         textTranslator(source, arguments)
-    val matches = if (viewModel.searchWholeWork) emptyList() else viewModel.searchMatches(editingValue.text)
+    val request = FileSearchRequest(editingValue.text, viewModel.searchQuery, viewModel.searchMatchCase)
+    val searchResult by produceState<Pair<FileSearchRequest, List<IntRange>>?>(null, request, viewModel.searchWholeWork) {
+        value = null
+        if (!viewModel.searchWholeWork) {
+            if (request.source.length >= 8_000) delay(120)
+            value = request to withContext(Dispatchers.Default) { findFileMatches(request) }
+        }
+    }
+    val searching = !viewModel.searchWholeWork && searchResult?.first != request
+    val matches = searchResult?.takeIf { it.first == request }?.second.orEmpty()
+    val scope = rememberCoroutineScope()
+    val currentValue by rememberUpdatedState(editingValue)
+    var replacing by remember { mutableStateOf(false) }
     val selectedMatchIndex = matches.indexOfFirst {
         it.first == editingValue.selection.min && it.last + 1 == editingValue.selection.max
     }
@@ -100,7 +113,9 @@ internal fun SearchReplaceDialog(
                     Spacer(Modifier.weight(1f))
                     if (!viewModel.searchWholeWork) {
                         Text(
-                            text = if (matches.isEmpty()) {
+                            text = if (searching || replacing) {
+                                uiText("検索中…")
+                            } else if (matches.isEmpty()) {
                                 uiText("0件")
                             } else if (selectedMatchIndex >= 0) {
                                 "${selectedMatchIndex + 1} / ${matches.size}"
@@ -167,12 +182,12 @@ internal fun SearchReplaceDialog(
                         OutlinedButton(
                             shape = ButtonDefaults.outlinedShape,
                             onClick = {
-                                viewModel.selectSearchMatch(editingValue.text, editingValue.selection, -1)?.let {
+                                viewModel.selectSearchMatch(editingValue.text, editingValue.selection, -1, matches)?.let {
                                     onApplyChange(editingValue.copy(selection = it))
                                     editorFocusRequester.requestFocus()
                                 }
                             },
-                            enabled = matches.isNotEmpty(),
+                            enabled = !searching && !replacing && matches.isNotEmpty(),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(uiText("前へ"))
@@ -180,12 +195,12 @@ internal fun SearchReplaceDialog(
                         Button(
                             shape = ButtonDefaults.shape,
                             onClick = {
-                                viewModel.selectSearchMatch(editingValue.text, editingValue.selection, 1)?.let {
+                                viewModel.selectSearchMatch(editingValue.text, editingValue.selection, 1, matches)?.let {
                                     onApplyChange(editingValue.copy(selection = it))
                                     editorFocusRequester.requestFocus()
                                 }
                             },
-                            enabled = matches.isNotEmpty(),
+                            enabled = !searching && !replacing && matches.isNotEmpty(),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(uiText("次へ"))
@@ -213,13 +228,13 @@ internal fun SearchReplaceDialog(
                                 if (replaced) {
                                     onApplyChange(nextValue)
                                 } else {
-                                    viewModel.selectSearchMatch(editingValue.text, editingValue.selection, 1)?.let {
+                                    viewModel.selectSearchMatch(editingValue.text, editingValue.selection, 1, matches)?.let {
                                         onApplyChange(editingValue.copy(selection = it))
                                         editorFocusRequester.requestFocus()
                                     }
                                 }
                             },
-                            enabled = matches.isNotEmpty(),
+                            enabled = !searching && !replacing && matches.isNotEmpty(),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(uiText("置換"))
@@ -227,10 +242,23 @@ internal fun SearchReplaceDialog(
                         OutlinedButton(
                             shape = ButtonDefaults.outlinedShape,
                             onClick = {
-                                val nextValue = viewModel.replaceAllMatches(editingValue)
-                                onApplyChange(nextValue)
+                                val before = editingValue
+                                val replacement = viewModel.replacementText
+                                replacing = true
+                                scope.launch {
+                                    try {
+                                        val next = withContext(Dispatchers.Default) {
+                                            replaceFileMatches(before, matches, replacement)
+                                        }
+                                        // Never overwrite text typed while the replacement was being built.
+                                        if (currentValue == before && viewModel.searchQuery == request.query &&
+                                            viewModel.searchMatchCase == request.matchCase && viewModel.replacementText == replacement) {
+                                            onApplyChange(next)
+                                        }
+                                    } finally { replacing = false }
+                                }
                             },
-                            enabled = matches.isNotEmpty(),
+                            enabled = !searching && !replacing && matches.isNotEmpty(),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(uiText("すべて置換"))

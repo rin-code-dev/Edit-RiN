@@ -2,6 +2,7 @@ package com.hikariatelier.app
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.AtomicFile
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -76,17 +77,35 @@ internal class WorkStoreRepository(
         val references = works.flatMap { it.assets.values }.distinctBy { it.hash }
         if (references.isEmpty()) return
         val folder = directory.findFile("assets") ?: directory.createDirectory("assets") ?: error("Cannot create assets")
-        val existingFiles = folder.listFiles().associateBy { it.name }
+        // Fetch names, sizes and URIs in one provider query, instead of a size query per asset.
+        val existingFiles = folderAssetDocuments(folder)
         references.forEach { asset ->
             check(assetStorage.contains(asset))
             val existing = existingFiles[asset.hash]
-            if (existing == null || existing.length() != asset.size) {
-                val document = existing ?: folder.createFile("application/octet-stream", asset.hash) ?: error("Cannot save asset")
-                resolver.openOutputStream(document.uri, "wt")?.use { output ->
+            if (existing == null || existing.second != asset.size) {
+                val uri = existing?.first ?: folder.createFile("application/octet-stream", asset.hash)?.uri ?: error("Cannot save asset")
+                resolver.openOutputStream(uri, "wt")?.use { output ->
                     assetStorage.file(asset).inputStream().use { copyBounded(it, output, MAX_ASSET_BYTES) }
                 } ?: error("Cannot save asset")
             }
         }
+    }
+
+    private fun folderAssetDocuments(folder: DocumentFile): Map<String?, Pair<Uri, Long>> {
+        val queried = runCatching {
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(folder.uri, DocumentsContract.getDocumentId(folder.uri))
+            val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_SIZE)
+            resolver.query(children, columns, null, null, null)?.use { cursor ->
+                buildMap<String?, Pair<Uri, Long>> {
+                    while (cursor.moveToNext()) {
+                        put(cursor.getString(1), DocumentsContract.buildDocumentUriUsingTree(folder.uri, cursor.getString(0)) to
+                            if (cursor.isNull(2)) -1L else cursor.getLong(2))
+                    }
+                }
+            }
+        }.getOrNull()
+        return queried ?: folder.listFiles().associate { it.name to (it.uri to it.length()) }
     }
 
     private fun restoreFolderAssets(directory: DocumentFile, works: List<Work>) {

@@ -9,6 +9,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.foundation.Image
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -36,6 +43,17 @@ internal fun PreviewSurface(
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             PreviewWebView(preview, logicalSize, onClearEditorFocus)
+            var showLoading by remember { mutableStateOf(false) }
+            LaunchedEffect(preview.isLoading) {
+                showLoading = false
+                if (preview.isLoading) { delay(150); showLoading = true }
+            }
+            if (preview.isLoading) {
+                preview.loadingThumbnail?.let {
+                    Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                }
+                if (showLoading) CircularProgressIndicator(Modifier.align(Alignment.Center))
+            }
             controls()
         }
     }
@@ -43,10 +61,10 @@ internal fun PreviewSurface(
 
 @Composable
 internal fun PreviewWebView(preview: PreviewController, logicalSize: IntSize?, onClearEditorFocus: () -> Unit) {
-    AndroidView(
+    key(preview.generation) { AndroidView(
         factory = { context -> preview.createHost(context, onClearEditorFocus) },
         modifier = Modifier.fillMaxSize(),
         update = { host -> host.setLogicalSize(logicalSize?.width, logicalSize?.height) },
-        onRelease = { host -> host.preview.onPause() }
-    )
+        onRelease = { host -> if (preview.webView === host.preview) host.preview.onPause() }
+    ) }
 }

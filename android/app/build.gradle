@@ -22,8 +22,8 @@ android {
         applicationId "com.hikariatelier.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 24
-        versionName "2.0.7"
+        versionCode 25
+        versionName "2.0.8"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -90,7 +90,6 @@ apply from: 'release-notices.gradle'
 def syncWebAssets = tasks.register("syncWebAssets", Sync) {
     from(webSourceDir) {
         include 'p5_runner.html'
-        include 'p5.min.js'
         include 'p5-v1.min.js'
         include 'p5-v2.min.js'
         include 'p5.sound.min.js'

@@ -51,7 +51,7 @@ internal class AssetWebClient(
                 "p5_runner.html" -> WebResourceResponse("text/html", "UTF-8", bundled.open("public/p5_runner.html"))
                 "p5.min.js", "p5-v1.min.js", "p5-v2.min.js", "p5.sound.min.js",
                 "p5.brush-2.2.1.js", "matter-0.20.0.min.js" ->
-                    WebResourceResponse("application/javascript", "UTF-8", bundled.open("public/$relative"))
+                    WebResourceResponse("application/javascript", "UTF-8", bundled.open("public/${if (relative == "p5.min.js") "p5-v1.min.js" else relative}"))
                 else -> {
                     val virtualContent = state.virtualFiles[relative]
                         ?: if (relative.startsWith("assets/")) state.virtualFiles[relative.removePrefix("assets/")] else null

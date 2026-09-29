@@ -14,9 +14,14 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.os.ConfigurationCompat
 import java.io.File
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Owns one Activity's WebView. No ViewModel retains this controller or the Activity. */
 internal class PreviewController(
@@ -26,6 +31,15 @@ internal class PreviewController(
 ) {
     val session = PreviewSession()
     private val transfer = RecordingTransfer(File(activity.cacheDir, "recording-transfer"))
+    private val screenshotTransfer = RecordingTransfer(File(activity.cacheDir, "screenshot-transfer"))
+    var generation by mutableIntStateOf(0)
+        private set
+    var isLoading by mutableStateOf(false)
+        private set
+    var loadingThumbnail by mutableStateOf<android.graphics.Bitmap?>(null)
+        private set
+    private var runStartedAt = 0L
+    private var prepared = false
     var webView: WebView? = null
         private set
     var isError by mutableStateOf(false)
@@ -47,6 +61,8 @@ internal class PreviewController(
     private fun append(level: ConsoleLevel, message: String, line: Int? = null, file: String? = null) {
         models.console.append(level, message, line, file, session.workId)
         if (level == ConsoleLevel.ERROR) {
+            isLoading = false
+            loadingThumbnail = null
             isError = true
             models.console.showConsole = true
         }
@@ -78,11 +94,29 @@ internal class PreviewController(
             Toast.makeText(activity, text("録画を停止してから再実行してください"), Toast.LENGTH_SHORT).show()
             return
         }
+        // A new page invalidates any unfinished capture owned by the previous run.
+        screenshotTransfer.abort()
+        screenshotBusy = false
+        captureForShareCard = false
+        val previousId = session.workId
         val token = prepareSnapshot(source, supportingFiles, sourceAssets)
+        beginLoading(previousId, token)
         isPaused = false
         isError = false
         models.console.clear()
-        webView?.loadUrl(previewUrl(token))
+        webView?.loadUrl(previewUrl(token)) ?: run { generation++ }
+    }
+
+    private fun beginLoading(previousId: String?, token: String) {
+        isLoading = true
+        loadingThumbnail = null
+        runStartedAt = SystemClock.elapsedRealtime()
+        if (previousId != null) activity.lifecycleScope.launch {
+            val thumbnail = withContext(Dispatchers.IO) {
+                runCatching { android.graphics.BitmapFactory.decodeFile(workPreviewFile(activity.cacheDir, previousId).path) }.getOrNull()
+            }
+            if (!disposed && isLoading && session.assets.token == token) loadingThumbnail = thumbnail
+        }
     }
 
     private fun prepareSnapshot(source: String, files: Map<String, String>, assets: Map<String, ProjectAsset>): String {
@@ -92,6 +126,7 @@ internal class PreviewController(
                 it.parameterValues.putAll(models.works.parameterValues(original))
             }
         }
+        prepared = true
         return session.prepare(work, source, files, assets, models.session.fileDrafts.toMap())
     }
 
@@ -137,6 +172,11 @@ internal class PreviewController(
             }
             view.webViewClient = AssetWebClient(activity.assets, assetStorage, onRendererCrash = { crashed ->
                 onMain {
+                    if (webView !== view) return@onMain
+                    webView = null
+                    transfer.abort()
+                    screenshotTransfer.abort()
+                    recording.onPreviewDestroyed()
                     screenshotBusy = false
                     captureForShareCard = false
                     val message = if (crashed) {
@@ -147,8 +187,9 @@ internal class PreviewController(
             }) { session.assets }
             webView = view
             // Read the current session, rather than capturing a work from the first composition.
-            val token = prepareSnapshot(models.session.editorValueState.value.text,
+            val token = if (prepared) session.assets.token else prepareSnapshot(models.session.editorValueState.value.text,
                 currentWork()?.files.orEmpty(), currentWork()?.assets.orEmpty())
+            if (!isLoading) beginLoading(null, token)
             view.loadUrl(previewUrl(token))
         }
         preview.setOnTouchListener { view, event ->
@@ -169,6 +210,7 @@ internal class PreviewController(
         disposed = true
         captureForShareCard = false
         transfer.abort()
+        screenshotTransfer.abort()
         recording.onPreviewDestroyed()
         webView?.let {
             it.stopLoading()
@@ -183,6 +225,16 @@ internal class PreviewController(
 
     /** Called on the WebView bridge thread; UI changes are dispatched and guarded by close(). */
     private inner class Bridge {
+        @JavascriptInterface fun getRunToken(): String = session.assets.token
+        @JavascriptInterface fun onPreviewReady(token: String) {
+            onMain {
+                if (token == session.assets.token && !isError) {
+                    isLoading = false
+                    loadingThumbnail = null
+                    if (BuildConfig.DEBUG) Log.d("EditRiNPreview", "Preview ready in ${SystemClock.elapsedRealtime() - runStartedAt} ms")
+                }
+            }
+        }
         @JavascriptInterface fun getSketchCode(): String = session.sketchCode
         @JavascriptInterface fun getP5Version(): String = session.p5Version
         @JavascriptInterface fun isP5SoundEnabled(): Boolean = session.soundEnabled
@@ -208,6 +260,32 @@ internal class PreviewController(
         @JavascriptInterface fun onScreenshotReady(dataUrl: String) = screenshotReady(dataUrl, 0, 0)
         @JavascriptInterface fun onScreenshotExportReady(dataUrl: String, width: Int, height: Int) =
             screenshotReady(dataUrl, width, height)
+        private fun currentScreenshot(token: String) = !disposed && token.startsWith("${session.assets.token}:png-")
+        @JavascriptInterface fun beginScreenshotTransfer(token: String): Boolean = currentScreenshot(token) && screenshotTransfer.begin(token)
+        @JavascriptInterface fun appendScreenshotChunk(token: String, encoded: String): Boolean =
+            currentScreenshot(token) && screenshotTransfer.append(token, encoded)
+        @JavascriptInterface fun abortScreenshotTransfer(token: String) { screenshotTransfer.abort(token) }
+        @JavascriptInterface fun finishScreenshotTransfer(token: String, width: Int, height: Int) {
+            if (!currentScreenshot(token)) return
+            val file = screenshotTransfer.finish(token)
+            activity.runOnUiThread {
+                if (!currentScreenshot(token)) file?.delete() else {
+                    val forCard = captureForShareCard
+                    captureForShareCard = false
+                    screenshotBusy = false
+                    recording.saveScreenshotFile(file, forCard, width, height)
+                }
+            }
+        }
+        @JavascriptInterface fun onScreenshotError(token: String, message: String) {
+            onMain {
+                if (token == session.assets.token) {
+                    screenshotBusy = false
+                    captureForShareCard = false
+                    Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
         private fun screenshotReady(dataUrl: String, width: Int, height: Int) {
             val forCard = captureForShareCard
             captureForShareCard = false

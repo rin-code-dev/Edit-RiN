@@ -554,3 +554,86 @@ test('high-res PNG does not disturb an active recording session', async () => {
   assert.equal(r.stats().stoppedTracks, 0);
   assert.equal(r.errors.length, 1);
 });
+
+function chunkedScreenshotRunner() {
+  const r = runner();
+  r.writes = []; r.finished = []; r.aborts = [];
+  r.context.FileReader = class {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then(bytes => {
+        this.result = 'data:image/png;base64,' + Buffer.from(bytes).toString('base64');
+        this.onload();
+      });
+    }
+  };
+  r.context.Android.beginScreenshotTransfer = () => true;
+  r.context.Android.appendScreenshotChunk = (token, chunk) => { r.writes.push(Buffer.from(chunk, 'base64')); return true; };
+  r.context.Android.finishScreenshotTransfer = (token, width, height) => r.finished.push({width, height});
+  r.context.Android.abortScreenshotTransfer = token => r.aborts.push(token);
+  r.canvas.toDataURL = () => { throw new Error('whole-image Base64 must not be used'); };
+  return r;
+}
+
+test('PNG transfers bounded chunks without whole-image Base64 and completes after the last chunk', async () => {
+  const r = chunkedScreenshotRunner();
+  const png = Buffer.alloc(600_000, 37);
+  r.canvas.toBlob = done => queueMicrotask(() => done(new Blob([png], {type:'image/png'})));
+  await r.context.__editKiroCaptureScreenshot();
+  assert.deepEqual(Buffer.concat(r.writes), png);
+  assert.ok(r.writes.every(chunk => chunk.length <= 192 * 1024));
+  assert.deepEqual(r.finished, [{width:320, height:180}]);
+  assert.equal(r.aborts.length, 0);
+});
+
+test('failed PNG transfer aborts the partial file and permits a new capture', async () => {
+  const r = chunkedScreenshotRunner();
+  r.canvas.toBlob = done => done(new Blob(['png']));
+  r.context.Android.appendScreenshotChunk = () => false;
+  await r.context.__editKiroCaptureScreenshot();
+  assert.equal(r.aborts.length, 1);
+  assert.equal(r.finished.length, 0);
+  assert.ok(r.errors.length);
+  r.context.Android.appendScreenshotChunk = () => true;
+  await r.context.__editKiroCaptureScreenshot();
+  assert.equal(r.finished.length, 1);
+});
+
+test('null PNG encoding does not begin a native transfer', async () => {
+  const r = chunkedScreenshotRunner();
+  let begins = 0;
+  r.context.Android.beginScreenshotTransfer = () => { begins++; return true; };
+  r.canvas.toBlob = done => done(null);
+  await r.context.__editKiroCaptureScreenshot();
+  assert.equal(begins, 0);
+  assert.equal(r.finished.length, 0);
+  assert.ok(r.errors.length);
+});
+
+test('preview readiness is reported after setup and a presentation frame', () => {
+  const r = runner();
+  let ready = 0;
+  r.context.Android.onPreviewReady = () => ready++;
+  r.events.load();
+  assert.equal(ready, 0);
+  r.setup();
+  assert.equal(ready, 0);
+  r.flush();
+  assert.equal(ready, 1);
+});
+
+test('PNG completion and errors carry the originating run identity', async () => {
+  const r = chunkedScreenshotRunner();
+  let token;
+  const failures = [];
+  r.canvas.toBlob = done => done(new Blob(['png']));
+  r.context.Android.getRunToken = () => 'newer-run';
+  r.context.Android.beginScreenshotTransfer = value => { token = value; return true; };
+  r.context.Android.appendScreenshotChunk = () => false;
+  r.context.Android.onScreenshotError = (owner, message) => failures.push({owner, message});
+  await r.context.__editKiroCaptureScreenshot();
+  // The initial runner has no getRunToken bridge, so its captured owner is empty.
+  // A new bridge return value must not reassign an in-flight export to a newer run.
+  assert.ok(token.startsWith(':png-'));
+  assert.equal(failures[0].owner, '');
+  assert.equal(r.finished.length, 0);
+});

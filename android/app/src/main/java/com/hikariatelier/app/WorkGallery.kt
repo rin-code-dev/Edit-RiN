@@ -306,7 +306,7 @@ internal fun WorkGallery(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
                                             .padding(6.dp)
-                                            .size(24.dp)
+                                            .size(40.dp)
                                             .then(if (onTogglePin != null) Modifier.clickable { onTogglePin(work) } else Modifier)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
@@ -334,7 +334,7 @@ internal fun WorkGallery(
                                 Box {
                                     IconButton(
                                         onClick = { cardMenuWorkId = work.id },
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(40.dp)
                                     ) {
                                         Icon(
                                             painter = painterResource(R.drawable.ic_more_vertical),
@@ -420,6 +420,7 @@ internal fun WorkGallery(
                                         .padding(top = 2.dp)
                                         .clip(RoundedCornerShape(4.dp))
                                         .clickable { onEditTags?.invoke(work) }
+                                        .padding(vertical = 8.dp)
                                 )
                             } else {
                                 Text(
@@ -430,6 +431,7 @@ internal fun WorkGallery(
                                         .padding(top = 2.dp)
                                         .clip(RoundedCornerShape(4.dp))
                                         .clickable { onEditTags?.invoke(work) }
+                                        .padding(vertical = 8.dp)
                                 )
                             }
                             val info = buildList {

@@ -28,6 +28,8 @@ internal class PreviewWebViewHost(context: Context, val preview: WebView) : View
         val width = MeasureSpec.getSize(widthMeasureSpec)
         val height = MeasureSpec.getSize(heightMeasureSpec)
         setMeasuredDimension(width, height)
+        // A renderer crash removes/destroys the child before the user requests a new run.
+        if (preview.parent !== this) return
         preview.measure(
             MeasureSpec.makeMeasureSpec(logicalWidth ?: width, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(logicalHeight ?: height, MeasureSpec.EXACTLY)
@@ -35,6 +37,7 @@ internal class PreviewWebViewHost(context: Context, val preview: WebView) : View
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        if (preview.parent !== this) return
         val childWidth = preview.measuredWidth.coerceAtLeast(1)
         val childHeight = preview.measuredHeight.coerceAtLeast(1)
         val scale = minOf(width.toFloat() / childWidth, height.toFloat() / childHeight)

@@ -94,8 +94,9 @@ internal fun EditorArea(
         else rebasedFolds(storedFolds, editingText).intersect(foldRegions.map { it.open }.toSet())
     }
     SideEffect {
-        if (parsedFoldRegions != null && storedFolds != null && (storedFolds.source != editingText || storedFolds.collapsed != collapsedFolds)) {
-            sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, collapsedFolds)
+        if (parsedFoldRegions != null && storedFolds != null &&
+            (storedFolds.source != editingText || storedFolds.collapsed != collapsedFolds || storedFolds.regions != foldRegions)) {
+            sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, collapsedFolds, foldRegions)
         }
     }
     val projection = remember(editingText, foldRegions, collapsedFolds) {
@@ -111,28 +112,22 @@ internal fun EditorArea(
             (if (selection.collapsed) selection.start > it.open + 1 && selection.start < it.close
             else selection.min < it.close && selection.max > it.open + 1) }.map { it.open }.toSet()
         if (reveal.isNotEmpty()) sessionViewModel.codeFoldStates[editingKey] =
-            CodeFoldState(editingText, collapsedFolds - reveal)
+            CodeFoldState(editingText, collapsedFolds - reveal, foldRegions)
     }
     fun toggleFold(fold: CodeFold) {
         val next = if (fold.open in collapsedFolds) collapsedFolds - fold.open else collapsedFolds + fold.open
         if (fold.open !in collapsedFolds) {
             onUpdateEditingValue(editingValue.copy(selection = TextRange(fold.open), composition = null))
         }
-        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, next)
+        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, next, foldRegions)
     }
     var gutterLayout by remember(editingKey) { mutableStateOf<TextLayoutResult?>(null) }
     var editorTextLayout by remember(editingKey) {
         mutableStateOf<TextLayoutResult?>(null)
     }
 
-    val logicalLineStarts = remember(editingText) {
-        buildList {
-            add(0)
-            editingText.forEachIndexed { index, character ->
-                if (character == '\n') add(index + 1)
-            }
-        }
-    }
+    val lineIndex = remember(editingKey) { EditorLineIndex() }
+    val logicalLineStarts = remember(editingText, lineIndex) { lineIndex.update(editingText) }
 
     val foldsByLine = remember(foldRegions, logicalLineStarts) {
         foldRegions.groupBy { fold ->
@@ -250,8 +245,8 @@ internal fun EditorArea(
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize()
             ) {
-                val editorScrollState = rememberScrollState()
-                val editorHorizontalScrollState = rememberScrollState()
+                val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
+                val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
                 LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                     val target = navigationTarget ?: return@LaunchedEffect
                     val layout = editorTextLayout ?: return@LaunchedEffect
@@ -261,7 +256,8 @@ internal fun EditorArea(
                     if (containing.isNotEmpty()) {
                         sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(
                             editingText,
-                            collapsedFolds - containing.map { it.open }.toSet()
+                            collapsedFolds - containing.map { it.open }.toSet(),
+                            foldRegions
                         )
                         return@LaunchedEffect
                     }
@@ -302,7 +298,7 @@ internal fun EditorArea(
                                     }
                                 }
                                 .semantics {
-                                    customActions = foldsByLine.mapNotNull { (line, fold) ->
+                                    customActions = foldsByLine.asSequence().mapNotNull { (line, fold) ->
                                         if (projection.hidden.any { fold.open > it.open && fold.close <= it.close }) null
                                         else CustomAccessibilityAction(textTranslator(
                                             if (fold.open in collapsedFolds) "%s行目を展開" else "%s行目を折りたたむ",
@@ -310,7 +306,7 @@ internal fun EditorArea(
                                         )) {
                                             toggleFold(fold); true
                                         }
-                                    }.take(24)
+                                    }.take(24).toList()
                                 }
                                 .heightIn(min = contentMinHeight)
                                 .drawBehind {

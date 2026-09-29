@@ -57,6 +57,7 @@ internal fun EditorScreen(
     onOpenExternalUrl: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val configuration = LocalConfiguration.current
     val activity = context as ComponentActivity
     val lifecycle = activity.lifecycle
     val lifecycleScope = activity.lifecycleScope
@@ -81,15 +82,12 @@ internal fun EditorScreen(
     val fontFeatures = if (settingsViewModel.fontLigatures)
         "'liga' 1, 'clig' 1, 'calt' 1" else "'liga' 0, 'clig' 0, 'calt' 0"
     fun uiText(source: String, vararg arguments: Any?): String {
-        val deviceLanguage = ConfigurationCompat.getLocales(context.resources.configuration)[0]?.language ?: "en"
+        val deviceLanguage = ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en"
         val translated = translateUi(source, resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage))
         return if (arguments.isEmpty()) translated else String.format(java.util.Locale.ROOT, translated, *arguments)
     }
     val focusManager =
         LocalFocusManager.current
-
-    val configuration =
-        LocalConfiguration.current
 
     val view =
         LocalView.current
@@ -271,25 +269,7 @@ internal fun EditorScreen(
         recordingViewModel.cancelRecordingCountdown()
     }
 
-    LaunchedEffect(pendingRecordingFormat) {
-        val format = pendingRecordingFormat ?: return@LaunchedEffect
-        while (recordingCountdownRemaining > 0) {
-            delay(1000)
-            recordingCountdownRemaining--
-        }
-        if (pendingRecordingFormat == format) {
-            pendingRecordingFormat = null
-            startSelectedRecording(format)
-        }
-    }
-
-    LaunchedEffect(isPreviewRecording, isRecordingSaving, recordingStartedAt) {
-        while (isPreviewRecording && !isRecordingSaving) {
-            recordingElapsedMillis = (SystemClock.elapsedRealtime() - recordingStartedAt)
-                .coerceIn(0L, recordingLimitMillis)
-            delay(200)
-        }
-    }
+    EditorRecordingEffects(recordingViewModel, ::startSelectedRecording)
 
     var previewActionsExpanded by remember {
         mutableStateOf(false)
@@ -359,9 +339,13 @@ internal fun EditorScreen(
     var editingValue by editingState
     val editingText = editingValue.text
     val undoStack = if (editingFile == "sketch.js") sessionViewModel.undoStack else
-        sessionViewModel.fileUndoStacks.getOrPut(editingKey) { mutableStateListOf() }
+        remember(editingKey, sessionViewModel.auxiliaryEditorGeneration) {
+            sessionViewModel.fileUndoStacks.getOrPut(editingKey) { mutableStateListOf() }
+        }
     val redoStack = if (editingFile == "sketch.js") sessionViewModel.redoStack else
-        sessionViewModel.fileRedoStacks.getOrPut(editingKey) { mutableStateListOf() }
+        remember(editingKey, sessionViewModel.auxiliaryEditorGeneration) {
+            sessionViewModel.fileRedoStacks.getOrPut(editingKey) { mutableStateListOf() }
+        }
     var pendingRevision by remember { mutableStateOf<WorkRevision?>(null) }
     var consoleHeight by consoleViewModel::consoleHeight
     var consoleExpanded by consoleViewModel::consoleExpanded
@@ -1105,21 +1089,10 @@ internal fun EditorScreen(
         )
     }
 
-    val completionSources = remember(activeWorkId, editingFile, editingText, editorText,
-        activeWork?.files, sessionViewModel.auxiliaryEditorGeneration, codeCompletion) {
-        if (!codeCompletion) emptyMap()
-        else projectSearchSources(activeWorkId, editorText, activeWork?.files.orEmpty(),
-            sessionViewModel.fileDrafts).toMutableMap().apply { put(editingFile, editingText) }
-    }
-    val projectCompletionSnapshot by produceState<Pair<String, List<ProjectSymbol>>>(
-        "" to emptyList(), activeWorkId, completionSources
-    ) {
-        if (completionSources.values.sumOf { it.length } >= 8_000) delay(120)
-        value = activeWorkId to withContext(Dispatchers.Default) { projectSymbols(completionSources) }
-    }
-    val projectCompletionSymbols = projectCompletionSnapshot.second.takeIf {
-        projectCompletionSnapshot.first == activeWorkId
-    }.orEmpty()
+    val projectCompletionSymbols = rememberProjectCompletionSymbols(
+        activeWorkId, editingFile, editingText, editorText, activeWork?.files.orEmpty(),
+        sessionViewModel, codeCompletion
+    )
     val editorSuggestions = remember(editingValue.text, editingValue.selection, editorFocused,
         codeCompletion, editingFile, projectCompletionSymbols) {
         if (!editorFocused || !codeCompletion) emptyList()

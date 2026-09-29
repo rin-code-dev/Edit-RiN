@@ -101,21 +101,35 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
     var screenshotSaving by mutableStateOf(false)
         private set
 
-    fun saveScreenshot(dataUrl: String, forShareCard: Boolean, width: Int = 0, height: Int = 0) {
-        if (screenshotSaving) return
+    fun saveScreenshot(dataUrl: String, forShareCard: Boolean, width: Int = 0, height: Int = 0) =
+        saveScreenshotSource(dataUrl, null, forShareCard, width, height)
+
+    fun saveScreenshotFile(file: File?, forShareCard: Boolean, width: Int, height: Int) {
+        if (file == null) { notices.send("スクリーンショットを保存できませんでした"); return }
+        saveScreenshotSource("", file, forShareCard, width, height)
+    }
+
+    private fun saveScreenshotSource(dataUrl: String, sourceFile: File?, forShareCard: Boolean, width: Int, height: Int) {
+        if (screenshotSaving) {
+            viewModelScope.launch(Dispatchers.IO) { sourceFile?.delete() }
+            return
+        }
         screenshotSaving = true
         viewModelScope.launch {
             try {
                 if (forShareCard) {
                     val bitmap = withContext(Dispatchers.IO) {
-                        val bytes = android.util.Base64.decode(dataUrl.substringAfter(',', dataUrl), android.util.Base64.DEFAULT)
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (sourceFile != null) android.graphics.BitmapFactory.decodeFile(sourceFile.path)
+                        else {
+                            val bytes = android.util.Base64.decode(dataUrl.substringAfter(',', dataUrl), android.util.Base64.DEFAULT)
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        }
                     }
                     if (bitmap == null) notices.send("スクリーンショットを保存できませんでした")
                     else shareCardArtwork = bitmap
                 } else {
                     val uri = withContext(Dispatchers.IO) {
-                        mediaRepository.save(dataUrl = dataUrl, mimeType = "image/png",
+                        mediaRepository.save(dataUrl = dataUrl, sourceFile = sourceFile, mimeType = "image/png",
                             displayName = "EditRiN_${System.currentTimeMillis()}.png", video = false,
                             directoryName = if (width > 0) "Edit-RiN" else "EditRiN")
                     }
@@ -125,7 +139,10 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { notices.send("スクリーンショットを保存できませんでした") }
-            finally { screenshotSaving = false }
+            finally {
+                screenshotSaving = false
+                withContext(NonCancellable + Dispatchers.IO) { sourceFile?.delete() }
+            }
         }
     }
 

@@ -50,7 +50,7 @@ internal fun serializeWorkStore(
         .put("activeWorkId", activeWorkId)
         .put("savedAt", System.currentTimeMillis())
         .put("works", array)
-        .toString(2)
+        .toString()
 }
 
 internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {

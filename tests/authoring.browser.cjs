@@ -12,7 +12,8 @@ for (const name of ['WEBGL', 'SHADER', 'MATTER']) {
 }
 templates.CIRCLE = JSON.parse(kotlin.match(/internal const val CIRCLE_TEMPLATE = (".*")/)[1]);
 const runner = fs.readFileSync(path.join(root, 'www/p5_runner.html'), 'utf8');
-const cases = ['1.11.5', '2.3.3'].flatMap(version => Object.keys(templates).flatMap(kind => ['fixed', 'responsive'].map(mode => ({ version, kind, mode }))));
+const baseCases = ['1.11.5', '2.3.3'].flatMap(version => Object.keys(templates).flatMap(kind => ['fixed', 'responsive'].map(mode => ({ version, kind, mode }))));
+const cases = baseCases.flatMap(c => [false, true].map(chunked => ({...c, chunked})));
 const caseTest = `<script>
 (async () => {
   let result = {case: window.__case, ok: false};
@@ -67,6 +68,21 @@ const server = http.createServer((req, res) => {
         onCaptureError: error => window.__test.errors.push(error),
         onScreenshotExportReady: (data,width,height) => {window.__test.exported={data,width,height};}
       };
+      if (window.__case.chunked) {
+        let id, chunks;
+        Object.assign(window.Android, {
+          beginScreenshotTransfer: token => {id=token;chunks=[];return true;},
+          appendScreenshotChunk: (token, data) => {
+            if(token!==id || atob(data).length>192*1024) return false;
+            chunks.push(atob(data));return true;
+          },
+          abortScreenshotTransfer: () => {chunks=[];},
+          finishScreenshotTransfer: (token,width,height) => {
+            if(token!==id) throw new Error('wrong PNG token');
+            window.__test.exported={data:'data:image/png;base64,'+btoa(chunks.join('')),width,height};
+          }
+        });
+      }
     </script>`;
     res.setHeader('Content-Type', 'text/html');
     return res.end(runner.replace('<head>', '<head>' + mock).replace('</body>', `<script>window.addEventListener('load', () => {const script=document.createElement('script');script.textContent=${JSON.stringify(caseTest.replace(/^<script>\n|<\/script>$/g, ''))};document.body.appendChild(script);});</script></body>`));
@@ -100,7 +116,7 @@ server.listen(0,'127.0.0.1',async ()=>{
     ws.onmessage=e=>{const data=JSON.parse(e.data);if(pending.has(data.id)){pending.get(data.id)(data.result);pending.delete(data.id);}};
     const evaluate=expression=>new Promise((resolve,reject)=>{const key=++id;const timer=setTimeout(()=>{pending.delete(key);reject(new Error('Browser evaluation timeout'));},5000);pending.set(key,value=>{clearTimeout(timer);resolve(value);});ws.send(JSON.stringify({id:key,method:'Runtime.evaluate',params:{expression,returnByValue:true}}));});
     let results=[],last=0;
-    for(let i=0;i<240;i++){
+    for(let i=0;i<cases.length*16;i++){
       const r=await evaluate('JSON.stringify(window.__browserResults || [])');
       results=JSON.parse(r.result.value);
       if(results.length>last){console.log(JSON.stringify(results.slice(last)));last=results.length;}

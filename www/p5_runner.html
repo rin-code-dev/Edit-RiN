@@ -155,6 +155,7 @@
     let lastHeight = 0;
     let resizeFrame = 0;
     let pendingForcedFit = false;
+    const runToken = window.Android?.getRunToken?.() || '';
     let sketchReady = false;
     let recordingSession = null;
     let canvasSizeObserver = null;
@@ -284,6 +285,41 @@
       if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
     };
 
+    const chunkedPng = () => window.Android?.beginScreenshotTransfer &&
+      window.Android?.appendScreenshotChunk && window.Android?.finishScreenshotTransfer;
+
+    function encodePng(canvas) {
+      if (!chunkedPng() || !canvas.toBlob) return canvas.toDataURL('image/png');
+      return new Promise((resolve, reject) => canvas.toBlob(blob => {
+        if (blob) resolve(blob); else reject(new Error('PNGの作成に失敗しました'));
+      }, 'image/png'));
+    }
+
+    async function publishPng(payload, width, height) {
+      if (typeof payload === 'string') {
+        if (window.Android?.onScreenshotExportReady) notifyAndroid('onScreenshotExportReady', payload, width, height);
+        else notifyAndroid('onScreenshotReady', payload);
+        return;
+      }
+      const token = runToken + ':png-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      if (!window.Android.beginScreenshotTransfer(token)) throw new Error('画像の保存を開始できませんでした');
+      try {
+        for (let offset = 0; offset < payload.size; offset += 192 * 1024) {
+          const encoded = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(',')[1]);
+            reader.onerror = reader.onabort = () => reject(new Error('画像データを読み出せませんでした'));
+            reader.readAsDataURL(payload.slice(offset, offset + 192 * 1024));
+          });
+          if (!window.Android.appendScreenshotChunk(token, encoded)) throw new Error('画像を保存できませんでした');
+        }
+        window.Android.finishScreenshotTransfer(token, width, height);
+      } catch (error) {
+        window.Android?.abortScreenshotTransfer?.(token);
+        throw error;
+      }
+    }
+
     let captureBusy = false;
     window.__editKiroCaptureScreenshot = async (scale = 1) => {
       if (captureBusy) return;
@@ -298,7 +334,7 @@
           throw new Error('画像が大きすぎます。倍率またはキャンバスサイズを下げてください');
         }
         if (scale === 1) {
-          dataUrl = canvas.toDataURL('image/png');
+          dataUrl = await encodePng(canvas);
         } else {
           if (!sketchReady || recordingSession || window.__editKiroRuntimeHasError ||
               typeof pixelDensity !== 'function' || typeof redraw !== 'function' || typeof draw !== 'function') {
@@ -324,7 +360,7 @@
             if (window.__editKiroRuntimeHasError || rendered.width !== outputWidth || rendered.height !== outputHeight) {
               throw new Error('指定した解像度で再描画できませんでした');
             }
-            dataUrl = rendered.toDataURL('image/png');
+            dataUrl = await encodePng(rendered);
           } finally {
             try {
               if (changed) {
@@ -337,12 +373,10 @@
             }
           }
         }
-        // Keep the original callback for share cards; the new callback includes the real PNG dimensions.
-        if (window.Android?.onScreenshotExportReady) {
-          notifyAndroid('onScreenshotExportReady', dataUrl, outputWidth, outputHeight);
-        } else notifyAndroid('onScreenshotReady', dataUrl);
+        await publishPng(dataUrl, outputWidth, outputHeight);
       } catch (error) {
-        notifyAndroid('onCaptureError', error?.message || String(error));
+        if (window.Android?.onScreenshotError) notifyAndroid('onScreenshotError', runToken, error?.message || String(error));
+        else notifyAndroid('onCaptureError', error?.message || String(error));
       } finally {
         captureBusy = false;
         scheduleFit();
@@ -896,7 +930,12 @@
         }
         document.getElementById('boot')?.remove();
         scheduleFit(true);
-        if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
+        if (!window.__editKiroRuntimeHasError) {
+          notifyAndroid('onStatusChanged', '実行中');
+          requestAnimationFrame(() => {
+            if (!window.__editKiroRuntimeHasError) notifyAndroid('onPreviewReady', runToken);
+          });
+        }
       };
       if (typeof p5.registerAddon === 'function') {
         p5.registerAddon((constructor, prototype, hooks) => { hooks.postsetup = afterSetup; });

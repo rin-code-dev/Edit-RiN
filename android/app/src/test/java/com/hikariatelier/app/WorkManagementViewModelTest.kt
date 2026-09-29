@@ -389,4 +389,39 @@ class WorkManagementViewModelTest {
         assertEquals(0, store.calls)
     }
 
+    @Test fun savingEditsReusesUntouchedWorksAndKeepsCommittedObjectsUnmodified() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        val before = session.worksState.value
+        vm.saveCurrentWork()!!.join()
+        assertNotSame(before[0], session.worksState.value[0])
+        assertSame(before[1], session.worksState.value[1])
+        assertEquals("saved", before[0].code)
+        assertEquals("old helper", before[0].files["helper.js"])
+    }
+
+    @Test fun metadataSaveCopiesOnlyItsTargetAndFailureKeepsOriginalObjects() = runBlocking {
+        val session = cleanSession(); val store = Store(); val vm = vm(session, store, this)
+        val before = session.worksState.value
+        vm.togglePin("one")!!.join()
+        assertFalse(before[0].isPinned)
+        assertTrue(session.worksState.value[0].isPinned)
+        assertSame(before[1], session.worksState.value[1])
+        val committed = session.worksState.value
+        store.succeed = false
+        vm.addTag("one", "test")!!.join()
+        assertSame(committed, session.worksState.value)
+        assertTrue(session.worksState.value[0].tags.isEmpty())
+    }
+
+    @Test fun switchingPersistsPendingRatioAndDoesNotKeepSavingIt() = runBlocking {
+        val session = cleanSession(); val store = Store(); val vm = vm(session, store, this)
+        vm.draftPreviewRatio("16:9")
+        vm.selectWork("two", false)!!.join()
+        assertEquals(1, store.calls)
+        assertEquals("16:9", store.persisted!!.works[0].previewAspectRatio)
+        assertFalse(vm.hasPendingMetadata("one"))
+        vm.selectWork("one", false)!!.join()
+        assertEquals(1, store.calls)
+    }
+
 }

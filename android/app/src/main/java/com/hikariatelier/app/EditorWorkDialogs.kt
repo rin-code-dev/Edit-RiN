@@ -44,7 +44,7 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
     val previewRatioSelection = workManagementViewModel.previewRatio(activeWork)
     val devicePreviewRatio = configuration.screenWidthDp.toFloat() / configuration.screenHeightDp.coerceAtLeast(1)
     fun uiText(source: String, vararg arguments: Any?): String {
-        val language = ConfigurationCompat.getLocales(context.resources.configuration)[0]?.language ?: "en"
+        val language = ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en"
         val translated = translateUi(source, resolveUiLanguage(settingsViewModel.appLanguage, language))
         return if (arguments.isEmpty()) translated else String.format(java.util.Locale.ROOT, translated, *arguments)
     }
