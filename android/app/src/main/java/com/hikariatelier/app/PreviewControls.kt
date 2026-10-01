@@ -433,7 +433,7 @@ internal fun SaveRestoreControls(
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_save),
-                contentDescription = uiText("作品を保存"),
+                contentDescription = uiText("作品の全ファイルを保存"),
                 tint = if (hasUnsavedChanges) colors.primary else colors.onSurface,
                 modifier = Modifier.size(iconSize)
             )
@@ -796,5 +796,4 @@ internal fun LandscapeSplitDivider(
         Spacer(modifier.width(8.dp))
     }
 }
-
 

@@ -26,7 +26,8 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
         appLanguage = preferences.getString("setting_app_language", "system").orEmpty().takeIf { it in listOf("system", "ja", "en", "zh") } ?: "system",
         customBackground = preferences.getInt("custom_background", 0xFF101014.toInt()),
         customAccent = preferences.getInt("custom_accent", 0xFFA8C7FA.toInt()),
-        showStatusBar = preferences.getBoolean("setting_status_bar", true),
+        showStatusBar = preferences.getBoolean("setting_status_bar", false),
+        showNavigationBar = preferences.getBoolean("setting_navigation_bar", preferences.getBoolean("setting_status_bar", false)),
         landscapeUseCutout = preferences.getBoolean("setting_landscape_use_cutout", false),
         manualRotation = preferences.getBoolean("setting_manual_rotation", true),
         autoRun = preferences.getBoolean("setting_auto_run", true),
@@ -64,6 +65,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
             .putInt("custom_background", state.customBackground)
             .putInt("custom_accent", state.customAccent)
             .putBoolean("setting_status_bar", state.showStatusBar)
+            .putBoolean("setting_navigation_bar", state.showNavigationBar)
             .putBoolean("setting_landscape_use_cutout", state.landscapeUseCutout)
             .putBoolean("setting_manual_rotation", state.manualRotation)
             .putBoolean("setting_auto_run", state.autoRun)
@@ -105,6 +107,7 @@ internal fun SettingsUiState.toBackupJson(): String = JSONObject()
     .put("customBackground", customBackground)
     .put("customAccent", customAccent)
     .put("showStatusBar", showStatusBar)
+    .put("showNavigationBar", showNavigationBar)
     .put("landscapeUseCutout", landscapeUseCutout)
     .put("manualRotation", manualRotation)
     .put("autoRun", autoRun)
@@ -139,6 +142,7 @@ internal fun SettingsUiState.restoredFromBackup(json: JSONObject): SettingsUiSta
     customBackground = json.optInt("customBackground", customBackground) or 0xFF000000.toInt(),
     customAccent = json.optInt("customAccent", customAccent) or 0xFF000000.toInt(),
     showStatusBar = json.optBoolean("showStatusBar", showStatusBar),
+    showNavigationBar = json.optBoolean("showNavigationBar", json.optBoolean("showStatusBar", showNavigationBar)),
     landscapeUseCutout = json.optBoolean("landscapeUseCutout", landscapeUseCutout),
     manualRotation = json.optBoolean("manualRotation", manualRotation),
     autoRun = json.optBoolean("autoRun", autoRun),

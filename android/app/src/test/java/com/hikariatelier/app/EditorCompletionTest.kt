@@ -6,6 +6,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EditorCompletionTest {
+    @Test fun cacheReparsesOnlyChangedFilesAndRemovesDeletedFiles() {
+        val parsed = mutableListOf<String>()
+        val cache = ProjectCompletionCache { file, source -> parsed.add(file); projectSymbols(mapOf(file to source)) }
+        val original = linkedMapOf("sketch.js" to "const main = 1", "helper.js" to "function helper() {}", "effect.frag" to "void main() {}")
+        assertEquals(setOf("main", "helper"), cache.symbols(original).map { it.name }.toSet())
+        assertEquals(listOf("sketch.js", "helper.js"), parsed)
+        parsed.clear()
+        cache.symbols(original.toMap())
+        assertTrue(parsed.isEmpty())
+        val changed = original + ("sketch.js" to "const changed = 1")
+        assertEquals(setOf("changed", "helper"), cache.symbols(changed).map { it.name }.toSet())
+        assertEquals(listOf("sketch.js"), parsed)
+        assertEquals(listOf("changed"), cache.symbols(changed - "helper.js").map { it.name })
+        parsed.clear()
+        cache.symbols(changed)
+        assertEquals(listOf("helper.js"), parsed)
+    }
     @Test fun prefixIsLimitedToIdentifierAtCursor() {
         assertEquals("cre", completionPrefix(TextFieldValue("let x = cre + other", TextRange(11))))
         assertEquals("", completionPrefix(TextFieldValue("create", TextRange(0, 6))))

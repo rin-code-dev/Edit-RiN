@@ -81,6 +81,29 @@ class SettingsRepositoryTest {
         assertEquals("imported-old.font", restored.customFontFile)
         assertEquals("Installed font", restored.importedFontName)
     }
+    @Test fun newInstallDefaultsToHiddenBars() {
+        val state = SettingsRepository(Preferences()).load()
+        assertFalse(state.showStatusBar)
+        assertFalse(state.showNavigationBar)
+    }
+    @Test fun systemBarsPersistIndependently() {
+        val repository = SettingsRepository(Preferences())
+        for (status in listOf(false, true)) for (navigation in listOf(false, true)) {
+            val state = SettingsUiState(showStatusBar = status, showNavigationBar = navigation)
+            repository.save(state)
+            assertEquals(state, repository.load())
+            assertEquals(state, SettingsUiState().restoredFromBackup(JSONObject(state.toBackupJson())))
+        }
+    }
+    @Test fun oldCombinedBarSettingMigratesToBothBars() {
+        val prefs = Preferences().apply { values["setting_status_bar"] = false }
+        val repository = SettingsRepository(prefs)
+        assertFalse(repository.load().showNavigationBar)
+        val restored = SettingsUiState().restoredFromBackup(JSONObject().put("showStatusBar", false))
+        assertFalse(restored.showStatusBar)
+        assertFalse(restored.showNavigationBar)
+    }
+
     @Test fun invalidBackupValuesAreNormalized() {
         val json = JSONObject().put("editorFontSize", 500).put("landscapePreviewSplit", 0.59)
             .put("mp4BitrateMbps", 123).put("recordingCountdownSeconds", -1)

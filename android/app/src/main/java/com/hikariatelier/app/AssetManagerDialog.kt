@@ -8,14 +8,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AssetManagerDialog(
     assets: Map<String, ProjectAsset>, busy: Boolean, text: (String) -> String,
     onAdd: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit,
-    onPreview: (String, ProjectAsset) -> Unit, onInsert: (String, ProjectAsset) -> Unit
+    onPreview: (String, ProjectAsset) -> Unit, onInsert: (String, ProjectAsset) -> Unit,
+    referenceSources: Map<String, String> = emptyMap()
 ) {
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
@@ -62,14 +67,49 @@ internal fun AssetManagerDialog(
                 OutlinedTextField(value = newName, onValueChange = { newName = it }, singleLine = true,
                     label = { Text(text("ファイル名")) }, isError = !valid)
                 Text(text("コード内のパスも新しい名前に変更してください"), style = MaterialTheme.typography.bodySmall)
+                AssetReferenceSummary(referenceSources, old, text)
             } },
             confirmButton = { TextButton(enabled = valid, onClick = { onRename(old, newName); renaming = null }) { Text(text("保存")) } },
             dismissButton = { TextButton(onClick = { renaming = null }) { Text(text("閉じる")) } })
     }
     deleting?.let { name ->
         EditSettingsDialog(onDismissRequest = { deleting = null }, title = { Text(text("素材を削除")) },
-            text = { Text(name) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(name)
+                Text(text("削除してもコードは変更されません。"), style = MaterialTheme.typography.bodySmall)
+                AssetReferenceSummary(referenceSources, name, text)
+            } },
             confirmButton = { TextButton(onClick = { onDelete(name); deleting = null }) { Text(text("削除")) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(text("閉じる")) } })
+    }
+}
+
+@Composable
+private fun AssetReferenceSummary(sources: Map<String, String>, name: String, text: (String) -> String) {
+    val result by produceState<ProjectSearchResults?>(null, sources, name) {
+        value = withContext(Dispatchers.Default) { assetReferenceCandidates(sources, name) }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
+        Text(text("文字列が一致する箇所を表示します。動的なパスは検出できません。"),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val found = result
+        when {
+            found == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            found.matches.isEmpty() -> Text(text("一致する参照候補はありません"), style = MaterialTheme.typography.bodySmall)
+            else -> {
+                if (found.truncated) Text(text("先頭50件を表示"), style = MaterialTheme.typography.labelSmall)
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 160.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(found.matches, key = { "${it.file}:${it.start}" }) { match ->
+                        Column {
+                            Text("${match.file}:${match.line}", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary)
+                            Text(match.excerpt, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

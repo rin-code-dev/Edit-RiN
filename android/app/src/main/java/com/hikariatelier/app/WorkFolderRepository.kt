@@ -11,13 +11,8 @@ internal class WorkFolderRepository(context: Context, private val preferences: S
     fun validUri(): Uri? {
         val value = preferences.getString("works_folder_uri", null) ?: return null
         val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return null
-        val permitted = app.contentResolver.persistedUriPermissions.any {
-            it.uri == uri && it.isReadPermission && it.isWritePermission
-        }
-        val accessible = permitted && runCatching {
-            DocumentFile.fromTreeUri(app, uri)?.let { it.exists() && it.canRead() && it.canWrite() } == true
-        }.getOrDefault(false)
-        if (!accessible) { preferences.edit().remove("works_folder_uri").apply(); return null }
+        // Keep the chosen location through temporary outages and permission loss. The typed
+        // load result offers reconnect/retry, instead of silently showing unrelated local works.
         return uri
     }
     fun takePermission(uri: Uri) {
