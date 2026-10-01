@@ -16,6 +16,7 @@ internal const val MAX_BACKUP_BYTES = 512L * 1024 * 1024
 private val assetHashPattern = Regex("[a-f0-9]{64}")
 private val assetMimePattern = Regex("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")
 private val backupAssetPattern = Regex("assets/[a-f0-9]{64}")
+private val backupTemplateAssetPattern = Regex("template-assets/[a-f0-9]{64}")
 private val assetRangePattern = Regex("bytes=(\\d*)-(\\d*)")
 
 /** Immutable references let works share a blob without sharing mutable filenames. */
@@ -114,14 +115,16 @@ internal class AssetStorage(private val root: File) {
 }
 
 internal data class AssetBackup(val store: WorkStore, val settings: String?,
-    val snapshots: Map<String, List<WorkSnapshot>> = emptyMap())
+    val snapshots: Map<String, List<WorkSnapshot>> = emptyMap(), val templates: List<Work>? = null)
 
 internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId: String, settings: String, storage: AssetStorage,
-    snapshots: Map<String, List<WorkSnapshot>>? = null) {
+    snapshots: Map<String, List<WorkSnapshot>>? = null, templates: List<Work>? = null, templateStorage: AssetStorage? = null) {
+    require((works + templates.orEmpty()).all { it.bodyLoaded }) { "Load work bodies before exporting a backup" }
     val assets = works.flatMap { it.assets.values }.distinctBy { it.hash }
-    require(assets.sumOf { it.size } <= MAX_BACKUP_BYTES)
+    val templateAssets = templates.orEmpty().flatMap { it.assets.values }.distinctBy { it.hash }
+    require((assets + templateAssets).sumOf { it.size } <= MAX_BACKUP_BYTES)
     ZipOutputStream(output.buffered()).use { zip ->
-        var totalBytes = assets.sumOf { it.size }
+        var totalBytes = (assets + templateAssets).sumOf { it.size }
         fun text(name: String, value: String) {
             val bytes = value.toByteArray(Charsets.UTF_8)
             if (name != "snapshots.json") require(bytes.size <= 16L * 1024 * 1024) { "Backup metadata too large" }
@@ -131,6 +134,7 @@ internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId:
         }
         text("works.json", serializeWorkStore(works, activeId))
         text("settings.json", settings)
+        templates?.let { text("templates.json", serializeWorkStore(it, "")) }
         snapshots?.let { histories ->
             require(histories.keys.all { id -> works.any { it.id == id } })
             text("snapshots.json", org.json.JSONObject().put("version", 1).put("works",
@@ -143,6 +147,13 @@ internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId:
             storage.file(asset).inputStream().use { copyBounded(it, zip, MAX_ASSET_BYTES) }
             zip.closeEntry()
         }
+        templateAssets.forEach { asset ->
+            val source = checkNotNull(templateStorage) { "Missing template storage" }
+            check(source.contains(asset)) { "Missing template asset" }
+            zip.putNextEntry(ZipEntry("template-assets/${asset.hash}"))
+            source.file(asset).inputStream().use { copyBounded(it, zip, MAX_ASSET_BYTES) }
+            zip.closeEntry()
+        }
     }
 }
 
@@ -153,15 +164,17 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
         var works: String? = null
         var settings: String? = null
         var snapshotsJson: String? = null
+        var templatesJson: String? = null
         val seen = mutableSetOf<String>()
         val blobs = mutableMapOf<String, ProjectAsset>()
+        val templateBlobs = mutableMapOf<String, ProjectAsset>()
         var total = 0L
         ZipInputStream(input.buffered()).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 require(seen.add(entry.name) && seen.size <= 2000)
                 when {
-                    entry.name in setOf("works.json", "settings.json", "snapshots.json") -> {
+                    entry.name in setOf("works.json", "settings.json", "snapshots.json", "templates.json") -> {
                         val output = java.io.ByteArrayOutputStream()
                         total += copyBounded(zip, output, if (entry.name == "snapshots.json") MAX_BACKUP_BYTES - total else 16L * 1024 * 1024)
                         val text = output.toString("UTF-8")
@@ -169,12 +182,19 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
                             "works.json" -> works = text
                             "settings.json" -> settings = text
                             "snapshots.json" -> snapshotsJson = text
+                            "templates.json" -> templatesJson = text
                         }
                     }
                     backupAssetPattern.matches(entry.name) -> {
                         val hash = entry.name.substringAfter('/')
                         val asset = staged.put(zip, "application/octet-stream", hash)
                         blobs[hash] = asset
+                        total += asset.size
+                    }
+                    backupTemplateAssetPattern.matches(entry.name) -> {
+                        val hash = entry.name.substringAfter('/')
+                        val asset = staged.put(zip, "application/octet-stream", hash)
+                        templateBlobs[hash] = asset
                         total += asset.size
                     }
                     entry.isDirectory && entry.name == "assets/" -> Unit
@@ -200,8 +220,16 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
         referencedAssets.forEach { asset ->
             require(blobs[asset.hash]?.size == asset.size) { "Missing asset in backup" }
         }
-        storage.commitStaged(staged, referencedAssets)
-        return AssetBackup(store, settings, snapshots)
+        val templates = templatesJson?.let { json ->
+            checkNotNull(parseWorkStoreJson(json)) { "Invalid templates" }.works
+        }
+        require(templates != null || templateBlobs.isEmpty()) { "Template assets without metadata" }
+        val referencedTemplateAssets = templates.orEmpty().flatMap { it.assets.values }
+        referencedTemplateAssets.forEach { asset ->
+            require(templateBlobs[asset.hash]?.size == asset.size) { "Missing template asset in backup" }
+        }
+        storage.commitStaged(staged, referencedAssets + referencedTemplateAssets)
+        return AssetBackup(store, settings, snapshots, templates)
     } finally {
         stagingDirectory.deleteRecursively()
     }
@@ -228,7 +256,7 @@ internal fun snapshotWork(work: Work, assets: Map<String, ProjectAsset> = work.a
     parameterValues = work.parameterValues.toMap(),
     createdAt = work.createdAt, updatedAt = work.updatedAt,
     isPinned = work.isPinned, tags = work.tags.toList()
-)
+).also { it.bodyLoaded = work.bodyLoaded }
 
 private val knownAssetMimeTypes = mapOf("png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif",
         "webp" to "image/webp", "svg" to "image/svg+xml", "mp3" to "audio/mpeg", "wav" to "audio/wav",

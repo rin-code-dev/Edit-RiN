@@ -120,7 +120,7 @@ internal fun EditorScreen(
 
     var manualRotation by settingsViewModel::manualRotation
 
-    EditorWindowEffects(isLandscape, manualRotation, showStatusBar)
+    EditorWindowEffects(isLandscape, manualRotation, showStatusBar, settingsViewModel.showNavigationBar)
 
     val selectedFolderUri = workManagementViewModel.selectedFolderUri
 
@@ -311,8 +311,11 @@ internal fun EditorScreen(
 
     val hasUnsavedChanges by remember(activeWorkId) {
         derivedStateOf {
-            editorText != lastSavedText || sessionViewModel.fileDrafts.keys.any { it.startsWith("$activeWorkId/") } ||
-                workManagementViewModel.hasPendingMetadata(activeWorkId)
+            val selected = sessionViewModel.activeWorkIdState.value
+            val saved = sessionViewModel.worksState.value.firstOrNull { it.id == selected }
+            sessionViewModel.editorValueState.value.text != sessionViewModel.lastSavedTextState.value ||
+                saved?.files?.any { (name, code) -> sessionViewModel.fileDrafts["$selected/$name"]?.let { it != code } == true } == true ||
+                workManagementViewModel.hasPendingMetadata(selected)
         }
     }
 
@@ -367,17 +370,20 @@ internal fun EditorScreen(
     fun applyEditorChange(
         nextValue: TextFieldValue
     ) {
+        if (sessionViewModel.editorInputLocked) return
         sessionViewModel.applyChange(editingValue, nextValue, undoStack, redoStack)
         editingValue = nextValue
     }
 
     fun undoEditorChange() {
+        if (sessionViewModel.editorInputLocked) return
         val restored = sessionViewModel.undo(editingValue, undoStack, redoStack) ?: return
         editingValue = restored
         editorFocusRequester.requestFocus()
     }
 
     fun redoEditorChange() {
+        if (sessionViewModel.editorInputLocked) return
         val restored = sessionViewModel.redo(editingValue, undoStack, redoStack) ?: return
         editingValue = restored
         editorFocusRequester.requestFocus()
@@ -491,7 +497,7 @@ internal fun EditorScreen(
         if (sessionViewModel.assetPreviewRevision > 0) runSketch()
     }
 
-    fun restoreCurrentWork() { workManagementViewModel.restoreCurrentWork() }
+    fun restoreCurrentWork() { workManagementViewModel.requestRestoreCurrentWork() }
     fun saveCurrentWork() { workManagementViewModel.saveCurrentWork() }
 
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -526,8 +532,6 @@ internal fun EditorScreen(
         if (uri != null) workManagementViewModel.importWorkZip(uri)
     }
     val currentWorkEventHandler = rememberUpdatedState<(WorkEvent) -> Unit> { event ->
-        if (event.failure) isError = true
-        else if (event.clearError || event.rerun || event.forceRun) isError = false
         if (event.haptic) hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
         event.message?.let { Toast.makeText(context, uiText(it), Toast.LENGTH_LONG).show() }
         if (event.closeAuxiliary) showAuxiliaryFileEditor = false
@@ -586,6 +590,19 @@ internal fun EditorScreen(
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
             onClick = { workMenuExpanded = true },
+            saveLabel = when {
+                workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存競合")
+                workManagementViewModel.operationState == WorkOperationState.FAILED -> uiText("保存失敗")
+                workSaving -> uiText("処理中")
+                hasUnsavedChanges -> uiText("未保存")
+                workManagementViewModel.operationState == WorkOperationState.SAVED -> uiText("保存済み")
+                else -> null
+            },
+            saveFailed = workManagementViewModel.operationState in setOf(WorkOperationState.CONFLICT, WorkOperationState.FAILED),
+            onRetry = if (!workSaving && workManagementViewModel.operationState in setOf(WorkOperationState.CONFLICT, WorkOperationState.FAILED)) ({
+                if (workManagementViewModel.operationState == WorkOperationState.CONFLICT) workManagementViewModel.showConflictDialog = true
+                else saveCurrentWork()
+            }) else null,
             modifier = modifier
         )
 
@@ -627,7 +644,7 @@ internal fun EditorScreen(
                 onEditTags = { target -> workManagementViewModel.editingTagsWorkId = target.id },
                 onDeleteGlobalTag = { tag -> workManagementViewModel.deleteGlobalTag(tag) },
                 textTranslator = { s, args -> uiText(s, *args) },
-                windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+                windowSetup = { KeepLandscapeDialogImmersive() }
             )
         }
     }
@@ -702,7 +719,7 @@ internal fun EditorScreen(
             onOpenAssets = { focusManager.clearFocus(force = true); showAssets = true },
             onOpenRuntime = { showRuntimeDialog = true },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }
 
@@ -1133,7 +1150,7 @@ internal fun EditorScreen(
             editingKey = editingKey,
             editingText = editingText,
             editingValue = editingValue,
-            onUpdateEditingValue = { editingValue = it },
+            onUpdateEditingValue = { if (!sessionViewModel.editorInputLocked) editingValue = it },
             onApplyEditorChange = { applyEditorChange(it) },
             editorFocused = editorFocused,
             onFocusChange = { editorFocused = it },
@@ -1150,6 +1167,7 @@ internal fun EditorScreen(
             navigationSequence = navigationSequence,
             navigationTarget = navigationTarget,
             onClearNavigationTarget = { navigationTarget = null },
+            readOnly = sessionViewModel.editorInputLocked,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
             modifier = modifier
@@ -1201,7 +1219,6 @@ internal fun EditorScreen(
                 ),
                 modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
                 folderName = selectedFolderName,
-                statusBarForcedHidden = isLandscape,
                 assets = assets,
                 updateViewModel = updateViewModel,
                 textTranslator = { text, arguments -> uiText(text, *arguments) }
@@ -1264,7 +1281,7 @@ internal fun EditorScreen(
                 decorFitsSystemWindows = false
             )
         ) {
-            KeepLandscapeDialogImmersive(enabled = true)
+            KeepLandscapeDialogImmersive(forceFullscreen = true)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1392,7 +1409,8 @@ internal fun EditorScreen(
             onInsert = { name, asset ->
                 applyEditorChange(insertAtSelection(editingValue, assetLoaderCode(name, asset)))
                 showAssets = false
-            }
+            },
+            referenceSources = projectSearchSources(activeWorkId, editorText, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
         )
     }
     previewAsset?.let { (name, asset) ->

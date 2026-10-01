@@ -87,7 +87,7 @@ internal fun LiveParameterSheet(
         onCommit = scheduleSave,
         onDismiss = flushSaveAndDismiss,
         textTranslator = { s, args -> uiText(s, *args) },
-        windowSetup = { KeepLandscapeDialogImmersive(enabled = layout.isLandscape || !layout.showStatusBar) }
+        windowSetup = { KeepLandscapeDialogImmersive() }
     )
     if (showAddParameter) {
         AddParameterDialog(declarations, text = { uiText(it) },

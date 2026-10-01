@@ -51,10 +51,10 @@ class AuthoringToolsTest {
     @Test fun authoringNamesAndGuidesAreLocalizedInAllSupportedLanguages() {
         val keys = WorkTemplateKind.entries.map { it.title } + ParameterKind.entries.map { it.title } +
             codeSnippets.flatMap { listOf(it.title, it.category, it.placement) } +
-            listOf("テンプレート種別", "コードに直接挿入", "＋ パラメータ追加", "PNG画像書き出し", "1x（通常）", "2x（高精細）", "4x（超高精細）", "%s × %s のPNG画像を保存しました")
+            listOf("自作テンプレート", "標準テンプレート", "テンプレートとして保存", "テンプレート名", "テンプレートを削除", "テンプレートを保存できませんでした", "テンプレート種別", "コードに直接挿入", "＋ パラメータ追加", "PNG画像書き出し", "1x（通常）", "2x（高精細）", "4x（超高精細）", "%s × %s のPNG画像を保存しました")
         keys.forEach { assertTrue("Missing translation: $it", uiTranslations.containsKey(it)) }
         listOf("ja", "en", "zh").forEach {
-            assertEquals(5, localizedUserGuide(it).first().steps.size)
+            assertEquals(6, localizedUserGuide(it).first().steps.size)
         }
     }
 }

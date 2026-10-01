@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PreviewSourceLocationTest {
+    @Test fun consoleIdentityUsesTheOriginalScriptUrlInsteadOfCurrentWebViewUrl() {
+        assertEquals("old", previewTokenFromSource("sketch.js?run=old"))
+        assertEquals("new", previewTokenFromSource("$PREVIEW_ORIGIN/project/new/p5-v2.min.js"))
+        assertNull(previewTokenFromSource("sketch.js"))
+        assertNull(previewTokenFromSource("https://other.example/project/new/p5.min.js"))
+    }
     @Test fun mapsSortedFilesAndMainWithoutLinkingSeparatorLines() {
         val files = previewSourceFiles("setup();\ndraw();", linkedMapOf("z.js" to "z();", "a.js" to "a();\n"))
         assertEquals(PreviewSourceLocation("a.js", 2), previewSourceLocation(files, 2))

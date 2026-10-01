@@ -34,6 +34,31 @@ internal fun editorCompletions(value: TextFieldValue): List<String> {
 internal data class ProjectSymbol(val name: String, val file: String)
 internal data class CompletionCandidate(val name: String, val file: String? = null)
 
+/** One work owns this cache; only changed JS files need their declarations scanned. */
+internal class ProjectCompletionCache(
+    private val parse: (String, String) -> List<ProjectSymbol> = { file, source -> projectSymbols(mapOf(file to source)) }
+) {
+    private data class Entry(val source: String, val symbols: List<ProjectSymbol>)
+    private val entries = mutableMapOf<String, Entry>()
+
+    @Synchronized fun symbols(sources: Map<String, String>, checkActive: () -> Unit = {}): List<ProjectSymbol> {
+        val files = sources.filterKeys { it.endsWith(".js", ignoreCase = true) }
+        checkActive()
+        entries.keys.retainAll(files.keys)
+        return buildList {
+            files.forEach { (file, source) ->
+                checkActive()
+                val cached = entries[file]
+                val entry = if (cached != null && cached.source == source) cached else Entry(source, parse(file, source)).also {
+                    checkActive()
+                    entries[file] = it
+                }
+                addAll(entry.symbols)
+            }
+        }
+    }
+}
+
 /** Collect declarations without treating words in comments and literals as code. */
 internal fun projectSymbols(sources: Map<String, String>): List<ProjectSymbol> = buildList {
     val seen = HashSet<Pair<String, String>>()

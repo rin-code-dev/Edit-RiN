@@ -42,7 +42,8 @@ class MainActivity : ComponentActivity() {
                 WorkStoreRepository(applicationContext, assetStorage, sessionViewModel.unreadableFolderUris, "hikari_atelier_works.json"),
                 DraftSnapshotRepository(File(filesDir, "editkiro_draft.json")),
                 WorkTransferRepository(applicationContext, assetStorage), settingsViewModel,
-                WorkFolderRepository(applicationContext, settingsRepository.preferences))
+                WorkFolderRepository(applicationContext, settingsRepository.preferences),
+                templatePersistence = UserTemplateRepository(filesDir, assetStorage))
         } }
     }
     private val snapshotViewModel: WorkSnapshotViewModel by viewModels {
@@ -73,11 +74,17 @@ class MainActivity : ComponentActivity() {
             AppTheme(themeMode = settings.themeMode, customBackground = Color(settings.customBackground),
                 customAccent = Color(settings.customAccent), customFont = settingsViewModel.customFontFamily,
                 ligatures = settings.fontLigatures) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalSystemBarVisibility provides systemBarVisibility(
+                        androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                        settings.showStatusBar, settings.showNavigationBar)
+                ) {
                 UpdateDialog(updateViewModel, ::uiText) { openExternalUrl(RELEASES_URL) }
                 if (sessionReady) {
                     EditorScreen(models, controller, media, ::openExternalUrl)
                 } else {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                }
                 }
             }
         }

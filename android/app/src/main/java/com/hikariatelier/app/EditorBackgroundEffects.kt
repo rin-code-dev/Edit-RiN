@@ -5,6 +5,7 @@ import androidx.compose.runtime.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 
 /** Time-based recording updates have their own composition scope. */
 @Composable
@@ -35,6 +36,7 @@ internal fun rememberProjectCompletionSymbols(
     workId: String, file: String, text: String, mainText: String,
     files: Map<String, String>, session: EditorSessionViewModel, enabled: Boolean
 ): List<ProjectSymbol> {
+    val cache = remember(workId) { ProjectCompletionCache() }
     val drafts = session.fileDrafts.toMap()
     val sources = remember(workId, file, text, mainText, files.toMap(), drafts, enabled) {
         if (!enabled) emptyMap() else projectSearchSources(workId, mainText, files, drafts)
@@ -42,7 +44,7 @@ internal fun rememberProjectCompletionSymbols(
     }
     val result by produceState<Pair<String, List<ProjectSymbol>>>("" to emptyList(), workId, sources) {
         if (sources.values.sumOf { it.length } >= 8_000) delay(120)
-        value = workId to withContext(Dispatchers.Default) { projectSymbols(sources) }
+        value = workId to withContext(Dispatchers.Default) { cache.symbols(sources) { ensureActive() } }
     }
     return result.second.takeIf { result.first == workId }.orEmpty()
 }

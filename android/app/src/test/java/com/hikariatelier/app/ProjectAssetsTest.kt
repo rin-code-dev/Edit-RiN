@@ -87,4 +87,51 @@ class ProjectAssetsTest {
         assertEquals(7L..9L, assetByteRange("bytes=-3", 10))
         for (header in listOf("bytes=10-", "bytes=5-2", "bytes=0-1,3-4", "bytes=-0", "bytes=x-")) assertNull(assetByteRange(header, 10))
     }
+    @Test fun fullBackupCarriesIndependentTemplatesAndTheirBinaryAssets() {
+        val workStorage = storage(); val templateStorage = storage()
+        val bytes = byteArrayOf(3, 9, 27, 81)
+        val asset = templateStorage.put(ByteArrayInputStream(bytes), "image/png")
+        val work = Work("a", "A", "main")
+        val template = Work("template-a", "Image template", "loadImage('image.png')",
+            files = mutableMapOf("helper.js" to "helper"), assets = mapOf("image.png" to asset),
+            previewAspectRatio = "9:16", parameterValues = mapOf("speed" to "2"))
+        val output = ByteArrayOutputStream()
+        writeAssetBackup(output, listOf(work), "a", "{}", workStorage,
+            templates = listOf(template), templateStorage = templateStorage)
+        val restoredStorage = storage()
+        val restored = readAssetBackup(ByteArrayInputStream(output.toByteArray()), restoredStorage)
+        assertEquals("template-a", restored.templates!!.single().id)
+        assertEquals("helper", restored.templates!!.single().files["helper.js"])
+        assertEquals("9:16", restored.templates!!.single().previewAspectRatio)
+        assertEquals("2", restored.templates!!.single().parameterValues["speed"])
+        assertArrayEquals(bytes, restoredStorage.file(asset).readBytes())
+    }
+
+    @Test fun legacyBackupOmitsTemplatesWhileExplicitEmptyTemplateListRoundTrips() {
+        val work = Work("a", "A", "main")
+        val legacy = readAssetBackup(ByteArrayInputStream(zip("works.json" to serializeWorkStore(listOf(work), "a").toByteArray())), storage())
+        assertNull(legacy.templates)
+        val output = ByteArrayOutputStream()
+        writeAssetBackup(output, listOf(work), "a", "{}", storage(), templates = emptyList())
+        assertEquals(emptyList<Work>(), readAssetBackup(ByteArrayInputStream(output.toByteArray()), storage()).templates)
+    }
+
+    @Test fun missingTemplateBlobRejectsEntireArchiveBeforePublishingWorkAssets() {
+        val source = storage(); val target = storage()
+        val bytes = byteArrayOf(2, 4, 6)
+        val asset = source.put(ByteArrayInputStream(bytes), "image/png")
+        val work = Work("a", "A", "main", assets = mapOf("image.png" to asset))
+        val template = Work("t", "Template", "", assets = mapOf("image.png" to asset))
+        val archive = zip("works.json" to serializeWorkStore(listOf(work), "a").toByteArray(),
+            "templates.json" to serializeWorkStore(listOf(template), "").toByteArray(),
+            "assets/${asset.hash}" to bytes)
+        assertTrue(runCatching { readAssetBackup(ByteArrayInputStream(archive), target) }.isFailure)
+        assertFalse(target.contains(asset))
+    }
+
+    @Test fun backupExportRejectsDeferredBodiesInsteadOfWritingEmptyCode() {
+        val deferred = Work("a", "A", "").also { it.bodyLoaded = false }
+        assertTrue(runCatching { writeAssetBackup(ByteArrayOutputStream(), listOf(deferred), "a", "{}", storage()) }.isFailure)
+    }
+
 }

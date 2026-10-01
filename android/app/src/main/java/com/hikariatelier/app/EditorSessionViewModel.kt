@@ -39,6 +39,8 @@ class Work(
     isPinned: Boolean = false,
     tags: List<String> = emptyList()
 ) {
+    /** Gallery metadata placeholders cannot be persisted as empty authored content. */
+    internal var bodyLoaded: Boolean = true
     var title by mutableStateOf(title)
     var code by mutableStateOf(code)
     var previewAspectRatio by mutableStateOf(previewAspectRatio)
@@ -67,6 +69,7 @@ class EditorSessionViewModel : ViewModel() {
     private val editorScrolls = mutableMapOf<String, EditorScroll>()
     internal fun editorScroll(key: String): EditorScroll = editorScrolls.getOrPut(key) { EditorScroll() }
     var assetBusy by mutableStateOf(false)
+    var editorInputLocked by mutableStateOf(false)
     var snapshotOperationWorkId by mutableStateOf<String?>(null)
     var snapshotRestoring by mutableStateOf(false)
     val fileDrafts = androidx.compose.runtime.mutableStateMapOf<String, String>()

@@ -1,11 +1,16 @@
 package com.hikariatelier.app
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.TransformedText
@@ -66,7 +71,10 @@ internal fun revisionDifference(current: String, revision: String): String {
 }
 
 @Composable
-internal fun FileTabs(names: List<String>, selected: String, onSelect: (String) -> Unit) {
+internal fun FileTabs(
+    names: List<String>, selected: String, dirtyFiles: Set<String> = emptySet(),
+    unsavedDescription: String = "未保存の変更あり", enabled: Boolean = true, onSelect: (String) -> Unit
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -79,13 +87,18 @@ internal fun FileTabs(names: List<String>, selected: String, onSelect: (String) 
             val isShader = ext in setOf("frag", "vert", "glsl")
             FilterChip(
                 selected = name == selected,
+                enabled = enabled,
                 onClick = { onSelect(name) },
+                modifier = Modifier.semantics { if (name in dirtyFiles) stateDescription = unsavedDescription },
                 label = {
                     Row(
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(name, maxLines = 1)
+                        if (name in dirtyFiles) {
+                            Box(Modifier.size(5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                        }
                         if (isShader) {
                             Surface(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),

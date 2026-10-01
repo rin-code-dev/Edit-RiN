@@ -52,6 +52,16 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) workManagementViewModel.chooseFolder(uri)
     }
+    WorkRecoveryDialogs(workManagementViewModel, { uiText(it) }) { folderLauncher.launch(selectedFolderUri) }
+    if (workManagementViewModel.showTemplateManager) UserTemplateManagerSheet(
+        templates = workManagementViewModel.userTemplates, currentWorkTitle = activeWork?.title,
+        busy = assetBusy || snapshotBusy, loadFailed = workManagementViewModel.templateLoadFailed,
+        text = { uiText(it) }, onRetry = { workManagementViewModel.retryUserTemplates() },
+        onRename = { id, title -> workManagementViewModel.renameUserTemplate(id, title) },
+        onUpdate = { workManagementViewModel.updateUserTemplate(it) },
+        onDelete = { workManagementViewModel.deleteUserTemplate(it) },
+        onDismiss = { workManagementViewModel.showTemplateManager = false }
+    )
     if (showSnapshotSheet) {
         val currentContent = activeWork?.let {
             currentSnapshotContent(workManagementViewModel.workForSnapshot(it), editorText, sessionViewModel.fileDrafts)
@@ -74,7 +84,7 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
             onDeleteSnapshot = { snapshotViewModel.delete(it) },
             onDismiss = { if (!sessionViewModel.snapshotRestoring) showSnapshotSheet = false },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }
 
@@ -126,12 +136,12 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
 
 
 
-    if (selectedFolderUri == null) {
+    if (selectedFolderUri == null && workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null) {
         FolderSelectionPromptDialog(
             colors = colors,
             onChooseFolder = { folderLauncher.launch(null) },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }
 
@@ -144,7 +154,8 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
     }
     var showSampleUpdateDialog by workManagementViewModel::showSamplePrompt
 
-    if (showSampleUpdateDialog && missingOfficialSamples.isNotEmpty() && selectedFolderUri != null &&
+    if (showSampleUpdateDialog && workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null &&
+        missingOfficialSamples.isNotEmpty() && selectedFolderUri != null &&
         settingsViewModel.samplePromptVersion < BuildConfig.VERSION_CODE) {
         val sampleNames = missingOfficialSamples.joinToString(", ") { it.title }
         SampleUpdatePromptDialog(
@@ -156,13 +167,22 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
                 workManagementViewModel.dismissSamplePrompt()
             },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }
 
     if (showAddDialog) {
         AddWorkDialog(
             worksCount = works.size,
+            userTemplates = workManagementViewModel.userTemplates,
+            busy = assetBusy || snapshotBusy,
+            templateLoadFailed = workManagementViewModel.templateLoadFailed,
+            onRetryTemplates = { workManagementViewModel.retryUserTemplates() },
+            onDeleteTemplate = { workManagementViewModel.deleteUserTemplate(it) },
+            onManageTemplates = { showAddDialog = false; workManagementViewModel.showTemplateManager = true },
+            onCreateFromTemplate = { title, id ->
+                workManagementViewModel.createWorkFromUserTemplate(title.trim().ifBlank { uiText("新しい作品") }, id)
+            },
             workTemplates = workTemplates,
             wideWorkPanels = wideWorkPanels,
             colors = colors,
@@ -173,7 +193,19 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
                 workManagementViewModel.createWork(title.trim().ifBlank { uiText("新しい作品") }, ratio, sizingMode, template)
             },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
+        )
+    }
+
+    if (workManagementViewModel.showSaveTemplateDialog && activeWork != null) {
+        SaveUserTemplateDialog(
+            initialTitle = activeWork.title,
+            busy = assetBusy || snapshotBusy,
+            loadFailed = workManagementViewModel.templateLoadFailed,
+            text = { uiText(it) },
+            onRetry = { workManagementViewModel.retryUserTemplates() },
+            onSave = { workManagementViewModel.saveUserTemplate(it) },
+            onDismiss = { workManagementViewModel.showSaveTemplateDialog = false }
         )
     }
 
@@ -184,7 +216,7 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
             onDismiss = { showRenameDialog = false },
             onConfirmRename = { title -> workManagementViewModel.renameWork(activeWork.id, title) },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }
 
@@ -207,6 +239,6 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
             onDismiss = { showDeleteDialog = false },
             onConfirmDelete = { workManagementViewModel.deleteCurrentWork() },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive(enabled = isLandscape) }
+            windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }}

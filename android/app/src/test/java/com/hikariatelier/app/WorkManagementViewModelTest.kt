@@ -424,4 +424,135 @@ class WorkManagementViewModelTest {
         assertEquals(1, store.calls)
     }
 
+    private class Templates : UserTemplatePersistence {
+        var entries = emptyList<Work>()
+        var fail = false
+        var failLoad = false
+        var failAssets = false
+        var captured: Work? = null
+        override fun load(): List<Work> { check(!failLoad); return entries.map(::snapshotWork) }
+        override fun save(templates: List<Work>) { check(!fail); entries = templates.map(::snapshotWork) }
+        override fun captureAssets(template: Work) { check(!failAssets); captured = snapshotWork(template) }
+        override fun prepareAssets(template: Work) { check(!failAssets) }
+    }
+
+    @Test fun templateRegistrationCapturesEditsAndDoesNotChangeEditorOrUndo() = runBlocking {
+        val session = session(); val store = Store(); val templates = Templates()
+        val vm = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined,
+            operationScope = this, templatePersistence = templates)
+        vm.updateParameter("one", "speed", "2")
+        vm.draftPreviewRatio("9:16")
+        val before = session.editorValueState.value
+        vm.showSaveTemplateDialog = true
+        vm.saveUserTemplate("  My template  ")!!.join()
+        val template = templates.entries.single()
+        assertEquals("My template", template.title)
+        assertEquals("unsaved", template.code)
+        assertEquals("unsaved helper", template.files["helper.js"])
+        assertEquals("2", template.parameterValues["speed"])
+        assertEquals("9:16", template.previewAspectRatio)
+        assertNotEquals("one", template.id)
+        assertEquals(before, session.editorValueState.value)
+        assertEquals("saved", session.lastSavedTextState.value)
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        assertEquals(1, session.undoStack.size)
+        assertEquals(0, store.calls)
+        assertFalse(vm.showSaveTemplateDialog)
+    }
+
+    @Test fun failedTemplateRegistrationKeepsDialogEditsAndTemplateList() = runBlocking {
+        for (assetFailure in listOf(false, true)) {
+            val session = session(); val templates = Templates().apply { fail = !assetFailure; failAssets = assetFailure }
+            val vm = WorkManagementViewModel(session, Store(), io = Dispatchers.Unconfined,
+                operationScope = this, templatePersistence = templates)
+            vm.showSaveTemplateDialog = true
+            vm.saveUserTemplate("Template")!!.join()
+            assertTrue(vm.userTemplates.isEmpty())
+            assertTrue(vm.showSaveTemplateDialog)
+            assertEquals("unsaved", session.editorValueState.value.text)
+            assertEquals(1, session.undoStack.size)
+            assertTrue(vm.events.first().failure)
+        }
+    }
+
+    @Test fun creatingFromTemplatePersistsSourceEditsAndKeepsIndependentTemplate() = runBlocking {
+        val session = session(); val store = Store()
+        val templates = Templates().apply { entries = listOf(Work("template", "Template", "template code",
+            files = mutableMapOf("extra.js" to "extra"), previewAspectRatio = "16:9",
+            p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true, libraries = mapOf("matter-js" to "0.20.0"))) }
+        val vm = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined,
+            operationScope = this, templatePersistence = templates)
+        vm.retryUserTemplates()!!.join()
+        vm.showAddDialog = true
+        vm.createWorkFromUserTemplate("Created", "template")!!.join()
+        val created = session.worksState.value.last()
+        assertEquals(created.id, session.activeWorkIdState.value)
+        assertNotEquals("template", created.id)
+        assertEquals("Created", created.title)
+        assertEquals("template code", session.editorValueState.value.text)
+        assertEquals("extra", created.files["extra.js"])
+        assertEquals("16:9", created.previewAspectRatio)
+        assertEquals(P5_VERSION_LEGACY, created.p5Version)
+        assertTrue(created.p5SoundEnabled)
+        assertEquals(mapOf("matter-js" to "0.20.0"), created.libraries)
+        assertEquals("unsaved", store.persisted!!.works.first().code)
+        assertEquals("unsaved helper", store.persisted!!.works.first().files["helper.js"])
+        created.files["extra.js"] = "changed"
+        assertEquals("extra", templates.entries.single().files["extra.js"])
+        assertEquals("extra", vm.userTemplates.single().files["extra.js"])
+        assertFalse(vm.showAddDialog)
+    }
+
+    @Test fun failedTemplateCreationPreservesSelectedWorkAndDrafts() = runBlocking {
+        for (assetFailure in listOf(false, true)) {
+            val session = session(); val store = Store().apply { succeed = assetFailure }
+            val templates = Templates().apply { entries = listOf(Work("template", "Template", "code")); failAssets = assetFailure }
+            val vm = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined,
+                operationScope = this, templatePersistence = templates)
+            vm.retryUserTemplates()!!.join()
+            vm.showAddDialog = true
+            vm.createWorkFromUserTemplate("Created", "template")!!.join()
+            assertEquals("one", session.activeWorkIdState.value)
+            assertEquals("unsaved", session.editorValueState.value.text)
+            assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+            assertEquals(1, session.undoStack.size)
+            assertEquals(2, session.worksState.value.size)
+            assertTrue(vm.showAddDialog)
+            assertTrue(vm.events.first().failure)
+        }
+    }
+
+    @Test fun templateDeletionCommitsOnlyAfterSuccessfulSave() = runBlocking {
+        val session = session(); val store = Store()
+        val templates = Templates().apply { entries = listOf(Work("template", "Template", "code")) }
+        val vm = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined,
+            operationScope = this, templatePersistence = templates)
+        vm.retryUserTemplates()!!.join()
+        templates.fail = true
+        vm.deleteUserTemplate("template")!!.join()
+        assertEquals("template", vm.userTemplates.single().id)
+        templates.fail = false
+        vm.deleteUserTemplate("template")!!.join()
+        assertTrue(vm.userTemplates.isEmpty())
+        assertTrue(templates.entries.isEmpty())
+        assertEquals(0, store.calls)
+        assertEquals(2, session.worksState.value.size)
+        assertEquals("unsaved", session.editorValueState.value.text)
+    }
+
+    @Test fun unreadableTemplateStoreBlocksWritesUntilRetrySucceeds() = runBlocking {
+        val session = session(); val templates = Templates().apply { failLoad = true }
+        val vm = WorkManagementViewModel(session, Store(), io = Dispatchers.Unconfined,
+            operationScope = this, templatePersistence = templates)
+        vm.retryUserTemplates()!!.join()
+        assertTrue(vm.templateLoadFailed)
+        vm.saveUserTemplate("New")!!.join()
+        assertTrue(vm.userTemplates.isEmpty())
+        assertTrue(templates.entries.isEmpty())
+        templates.failLoad = false
+        vm.retryUserTemplates()!!.join()
+        assertFalse(vm.templateLoadFailed)
+        vm.saveUserTemplate("New")!!.join()
+        assertEquals("New", vm.userTemplates.single().title)
+    }
 }

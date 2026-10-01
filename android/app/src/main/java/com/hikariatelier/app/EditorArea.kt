@@ -71,9 +71,13 @@ internal fun EditorArea(
     onClearNavigationTarget: () -> Unit,
     colors: ColorScheme,
     textTranslator: (String, Array<out Any?>) -> String,
+    readOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val darkEditorTheme = colors.surface.luminance() < 0.5f
+    val dirtyFiles = dirtyProjectFiles(activeWorkId, activeWork?.code.orEmpty(),
+        sessionViewModel.editorValueState.value.text, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
+    LaunchedEffect(readOnly) { if (readOnly) focusManager.clearFocus(force = true) }
 
     val editorErrorLines by remember(editingFile, activeWorkId) {
         derivedStateOf {
@@ -115,6 +119,7 @@ internal fun EditorArea(
             CodeFoldState(editingText, collapsedFolds - reveal, foldRegions)
     }
     fun toggleFold(fold: CodeFold) {
+        if (readOnly) return
         val next = if (fold.open in collapsedFolds) collapsedFolds - fold.open else collapsedFolds + fold.open
         if (fold.open !in collapsedFolds) {
             onUpdateEditingValue(editingValue.copy(selection = TextRange(fold.open), composition = null))
@@ -222,7 +227,9 @@ internal fun EditorArea(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    FileTabs(listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted(), selectedEditorFile) {
+                    FileTabs(listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted(), selectedEditorFile,
+                        dirtyFiles = dirtyFiles, unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
+                        enabled = !readOnly) {
                         if (selectedEditorFile != it) {
                             focusManager.clearFocus(force = true)
                             onFocusChange(false)
@@ -232,6 +239,7 @@ internal fun EditorArea(
                 }
                 IconButton(
                     onClick = onOpenSnapshotSheet,
+                    enabled = !readOnly,
                     modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
@@ -336,17 +344,20 @@ internal fun EditorArea(
                     ) {
                         BasicTextField(
                             value = editingValue,
+                            readOnly = readOnly,
                             onValueChange = {
-                                if (editingValue.selection.collapsed &&
-                                    deletesFoldedCode(editingText, it.text, projection.hidden)) {
-                                    sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
-                                } else onApplyEditorChange(
-                                    if (autoIndent && editingValue.composition == null && it.composition == null) {
-                                        applyAutomaticIndent(editingValue, it)
-                                    } else {
-                                        it
-                                    }
-                                )
+                                if (!readOnly) {
+                                    if (editingValue.selection.collapsed &&
+                                        deletesFoldedCode(editingText, it.text, projection.hidden)) {
+                                        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
+                                    } else onApplyEditorChange(
+                                        if (autoIndent && editingValue.composition == null && it.composition == null) {
+                                            applyAutomaticIndent(editingValue, it)
+                                        } else {
+                                            it
+                                        }
+                                    )
+                                }
                             },
                             modifier = Modifier
                                 .then(

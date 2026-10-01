@@ -43,6 +43,15 @@ const caseTest = `<script>
     await window.__editKiroCaptureScreenshot(2);
     if (!isLooping() || pixelDensity() !== baseD) throw new Error('running state not restored');
     if (window.__test.errors.length) throw new Error(window.__test.errors.join(';'));
+    // Exercise a real browser exception after an apparent URL change: the page keeps its owner.
+    const owner = window.__editRinRunToken;
+    history.replaceState(null, '', '/project/newer-run/p5_runner.html');
+    window.__editRinRunToken = 'newer-run';
+    if (window.__editRinRunToken !== owner) throw new Error('run identity changed');
+    const probe = document.createElement('script');
+    probe.textContent = '\\nthrow new Error("bridge probe");\\n//# sourceURL=sketch.js?run=' + owner;
+    document.head.appendChild(probe);
+    if (window.__test.runtimeErrors.length !== 1 || window.__test.runtimeErrors[0].line !== 2 || window.__test.runtimeErrors[0].owner !== owner) throw new Error('runtime location/owner missing');
     result = {...result, ok: true, exports};
   } catch (e) { result.error = String(e); }
   parent.postMessage(result, '*');
@@ -50,34 +59,41 @@ const caseTest = `<script>
 </script>`;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/case') {
+  if (/^\/project\/case-\d+\/p5_runner\.html$/.test(url.pathname)) {
     const c = cases[Number(url.searchParams.get('i'))];
     let code = templates[c.kind];
     if (c.mode === 'fixed') code = code.split('\nfunction windowResized()')[0].replace('createCanvas(windowWidth, windowHeight', 'createCanvas(200, 120');
     const mock = `<script>
       window.__case = ${JSON.stringify(c)};
-      window.__test = {ready:false,errors:[]};
+      window.__test = {ready:false,errors:[],bridgeCalls:[],runtimeErrors:[]};
+      const expectedOwner = location.pathname.split('/')[2];
+      const checkOwner = owner => {
+        window.__test.bridgeCalls.push(owner);
+        if (owner !== expectedOwner) throw new Error('wrong bridge owner: ' + owner);
+      };
       window.Android = {
-        getSketchCode: () => ${JSON.stringify(code)},
-        getP5Version: () => ${JSON.stringify(c.version)},
-        isP5SoundEnabled: () => false,
-        getWorkLibraries: () => ${JSON.stringify(c.kind === 'MATTER' ? '{"matter-js":"0.20.0"}' : '{}')},
-        getWorkParameters: () => '{}', getWorkShaders: () => '{}',
-        onStatusChanged: status => {if (status === '実行中') window.__test.ready = true;},
-        onError: error => window.__test.errors.push(error), onRuntimeError: error => window.__test.errors.push(error),
-        onCaptureError: error => window.__test.errors.push(error),
-        onScreenshotExportReady: (data,width,height) => {window.__test.exported={data,width,height};}
+        getSketchCode: owner => {checkOwner(owner);return ${JSON.stringify(code)};},
+        getP5Version: owner => {checkOwner(owner);return ${JSON.stringify(c.version)};},
+        isP5SoundEnabled: owner => {checkOwner(owner);return false;},
+        getWorkLibraries: owner => {checkOwner(owner);return ${JSON.stringify(c.kind === 'MATTER' ? '{"matter-js":"0.20.0"}' : '{}')};},
+        getWorkParameters: owner => {checkOwner(owner);return '{}';}, getWorkShaders: owner => {checkOwner(owner);return '{}';},
+        onStatusChanged: (owner,status) => {checkOwner(owner);if (status === '実行中') window.__test.ready = true;},
+        onError: (owner,error) => {checkOwner(owner);window.__test.errors.push(error);}, onRuntimeError: (owner,error,line) => {checkOwner(owner);window.__test.errors.push(error);window.__test.runtimeErrors.push({owner,line});},
+        onCaptureError: (owner,error) => {checkOwner(owner);window.__test.errors.push(error);},
+        onScreenshotExportReady: (owner,data,width,height) => {checkOwner(owner);window.__test.exported={data,width,height};}
       };
       if (window.__case.chunked) {
         let id, chunks;
         Object.assign(window.Android, {
-          beginScreenshotTransfer: token => {id=token;chunks=[];return true;},
-          appendScreenshotChunk: (token, data) => {
+          beginScreenshotTransfer: (owner,token) => {checkOwner(owner);id=token;chunks=[];return true;},
+          appendScreenshotChunk: (owner,token, data) => {
+            checkOwner(owner);
             if(token!==id || atob(data).length>192*1024) return false;
             chunks.push(atob(data));return true;
           },
-          abortScreenshotTransfer: () => {chunks=[];},
-          finishScreenshotTransfer: (token,width,height) => {
+          abortScreenshotTransfer: (owner) => {checkOwner(owner);chunks=[];},
+          finishScreenshotTransfer: (owner,token,width,height) => {
+            checkOwner(owner);
             if(token!==id) throw new Error('wrong PNG token');
             window.__test.exported={data:'data:image/png;base64,'+btoa(chunks.join('')),width,height};
           }
@@ -91,7 +107,7 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type','text/html');
     return res.end(`<body><pre id="results">RUNNING</pre><script>
       const results=window.__browserResults=[]; let frame, index=0;
-      function next(){ if(frame)frame.remove();if(index===${cases.length}){document.querySelector('pre').textContent=JSON.stringify(results);return;}frame=document.createElement('iframe');frame.style='width:200px;height:120px';frame.src='/case?i='+index++;document.body.appendChild(frame);}
+      function next(){ if(frame)frame.remove();if(index===${cases.length}){document.querySelector('pre').textContent=JSON.stringify(results);return;}frame=document.createElement('iframe');frame.style='width:200px;height:120px';frame.src='/project/case-'+index+'/p5_runner.html?i='+index++;document.body.appendChild(frame);}
       addEventListener('message',e=>{results.push(e.data);next();});next();
     </script></body>`);
   }

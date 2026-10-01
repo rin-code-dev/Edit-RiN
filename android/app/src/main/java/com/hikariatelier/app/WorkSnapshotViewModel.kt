@@ -60,7 +60,7 @@ internal class WorkSnapshotViewModel(
         val work = session.worksState.value.find { it.id == session.activeWorkIdState.value } ?: return
         session.snapshotOperationWorkId = work.id
         session.snapshotRestoring = restoring
-        if (restoring) session.assetBusy = true
+        if (restoring) { session.assetBusy = true; session.editorInputLocked = true }
         viewModelScope.launch {
             try { action(work) }
             catch (cancelled: CancellationException) { throw cancelled }
@@ -68,7 +68,7 @@ internal class WorkSnapshotViewModel(
             finally {
                 session.snapshotRestoring = false
                 session.snapshotOperationWorkId = null
-                if (restoring) session.assetBusy = false
+                if (restoring) { session.assetBusy = false; session.editorInputLocked = false }
             }
         }
     }

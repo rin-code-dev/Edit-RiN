@@ -14,6 +14,18 @@ internal interface WorkPersistence {
     fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean
     fun selectedWorkId(folderUri: Uri?): String? = null
     fun rememberSelectedWork(folderUri: Uri?, activeId: String) {}
+    fun loadResult(folderUri: Uri?, eager: Boolean = false): WorkLoadResult = try {
+        val store = if (folderUri == null) loadLocal() else loadFolder(folderUri)
+        if (store == null || store.works.isEmpty()) WorkLoadResult.Empty else {
+            val selected = selectedWorkId(folderUri)?.takeIf { id -> store.works.any { it.id == id } }
+            WorkLoadResult.Loaded(if (selected == null) store else store.copy(activeWorkId = selected))
+        }
+    } catch (error: Exception) { WorkLoadResult.Failed(WorkLoadFailure.UNAVAILABLE, error.message.orEmpty()) }
+    fun saveResult(folderUri: Uri?, works: List<Work>, activeId: String): WorkSaveResult =
+        if (save(folderUri, works, activeId)) WorkSaveResult.Saved else WorkSaveResult.Failed
+    fun loadWork(folderUri: Uri?, workId: String): Work? =
+        (if (folderUri == null) loadLocal() else loadFolder(folderUri))?.works?.find { it.id == workId }
+    fun materializeWorks(folderUri: Uri?, works: List<Work>): List<Work> = works
 }
 
 /** Persistence boundary for local works, SAF folders, and their asset blobs. */
@@ -25,6 +37,8 @@ internal class WorkStoreRepository(
 ) : WorkPersistence {
     private val context = context.applicationContext
     private val resolver get() = context.contentResolver
+    private val localSplit = SplitWorkStore(FileWorkDocuments(File(this.context.filesDir, "work-store")))
+    private val folderSplits = mutableMapOf<String, SplitWorkStore>()
     private val selection by lazy { context.getSharedPreferences("work-selection", Context.MODE_PRIVATE) }
 
     override fun selectedWorkId(folderUri: Uri?): String? =
@@ -46,31 +60,78 @@ internal class WorkStoreRepository(
             runCatching { local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) } }
                 .getOrNull()?.works ?: return
         } else emptyList()
+        val recoveryHashes = runCatching {
+            localSplit.retainedAssetHashes() + folderSplits.values.flatMap { it.retainedAssetHashes() }
+        }.getOrNull() ?: return // Unreadable recovery data must never cause asset deletion.
         val keep = (works + localWorks).flatMap { it.assets.values }.map { it.hash }.toSet() +
-            previewAssets.assets.values.map { it.hash }
+            previewAssets.assets.values.map { it.hash } + recoveryHashes
         assetStorage.prune(keep)
     }
 
-    override fun loadLocal(): WorkStore? = try {
+    private fun loadLegacyLocal(): WorkStore? {
         val local = AtomicFile(File(context.filesDir, "local-works.json"))
-        if (!local.baseFile.exists() && !File(local.baseFile.path + ".bak").exists()) null else {
-            val store = local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) }
-                ?: error("Invalid local works")
-            check(store.works.flatMap { it.assets.values }.all(assetStorage::contains))
-            restoreSelection(store, null)
-        }
-    } catch (_: Exception) { unreadableFolders.add("local"); null }
+        if (!local.baseFile.exists() && !File(local.baseFile.path + ".bak").exists()) return null
+        return local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) }
+            ?: error("Invalid local works")
+    }
 
     @Synchronized
-    private fun saveLocal(works: List<Work>, activeId: String): Boolean {
-        if ("local" in unreadableFolders) return false
+    override fun loadLocal(): WorkStore? = (loadResult(null, eager = true) as? WorkLoadResult.Loaded)?.store
+
+    @Synchronized
+    override fun loadResult(folderUri: Uri?, eager: Boolean): WorkLoadResult {
+        val key = folderUri?.toString() ?: "local"
+        return try {
+            val directory = folderUri?.let { DocumentFile.fromTreeUri(context, it) }
+            if (folderUri != null && (directory == null || !directory.exists() || !directory.canRead())) {
+                unreadableFolders.add(key)
+                return WorkLoadResult.Failed(WorkLoadFailure.UNAVAILABLE, "Cannot access work folder")
+            }
+            val split = if (directory == null) localSplit else splitFolder(directory)
+            val preferredId = selectedWorkId(folderUri)
+            val store = if (directory == null) {
+                split.loadOrMigrate(::loadLegacyLocal, { legacy ->
+                    check(legacy.works.flatMap { it.assets.values }.all(assetStorage::contains))
+                    normalizeLegacyRuntime(legacy)
+                }, eager, preferredId)
+            } else {
+                split.loadOrMigrate({ loadWorkDocument(documents(directory), worksFileName) }, { legacy ->
+                    restoreFolderAssets(directory, legacy.works)
+                    normalizeLegacyRuntime(legacy)
+                }, eager, preferredId)
+            }
+            if (store != null) {
+                if (directory == null) check(store.works.flatMap { it.assets.values }.all(assetStorage::contains))
+                else restoreFolderAssets(directory, store.works)
+            }
+            unreadableFolders.remove(key)
+            if (store == null || store.works.isEmpty()) WorkLoadResult.Empty else
+                WorkLoadResult.Loaded(restoreSelection(store, folderUri), split.recovered, split.deferredWorkIds)
+        } catch (error: Exception) {
+            unreadableFolders.add(key)
+            Log.e("EditKIRO", "Failed to load work store; refusing overwrite", error)
+            val reason = if (error is SecurityException || error is java.io.IOException) WorkLoadFailure.UNAVAILABLE else WorkLoadFailure.CORRUPT
+            WorkLoadResult.Failed(reason, error.message.orEmpty())
+        }
+    }
+
+    private fun normalizeLegacyRuntime(store: WorkStore) {
+        store.works.filter { it.id == "gravity" && it.p5Version == P5_VERSION_CURRENT }
+            .forEach { it.p5Version = P5_VERSION_LEGACY }
+    }
+
+    @Synchronized
+    private fun saveLocalResult(works: List<Work>, activeId: String): WorkSaveResult {
+        if ("local" in unreadableFolders) return WorkSaveResult.Failed
         return runCatching {
-            val json = serializeWorkStore(works, activeId)
-            val atomic = AtomicFile(File(context.filesDir, "local-works.json"))
-            val output = atomic.startWrite()
-            try { output.write(json.toByteArray(Charsets.UTF_8)); atomic.finishWrite(output) }
-            catch (error: Exception) { atomic.failWrite(output); throw error }
-        }.isSuccess
+            if (localSplit.loadIfNeeded() == null) loadLegacyLocal()?.let { legacy ->
+                normalizeLegacyRuntime(legacy)
+                val migrated = localSplit.saveResult(legacy.works, legacy.activeWorkId)
+                if (migrated != WorkSaveResult.Saved) return migrated
+            }
+            check(works.flatMap { it.assets.values }.all(assetStorage::contains))
+            localSplit.saveResult(works, activeId)
+        }.getOrDefault(WorkSaveResult.Failed)
     }
 
     private fun saveFolderAssets(directory: DocumentFile, works: List<Work>) {
@@ -123,49 +184,108 @@ internal class WorkStoreRepository(
     }
 
     private fun documents(directory: DocumentFile): WorkDocuments = object : WorkDocuments {
-        override fun exists(name: String) = directory.findFile(name) != null
-        override fun read(name: String): String? = directory.findFile(name)?.let { file ->
+        private var children: MutableMap<String, DocumentFile>? = null
+        private fun files(): MutableMap<String, DocumentFile> = children ?: directory.listFiles()
+            .mapNotNull { file -> file.name?.let { it to file } }.toMap().toMutableMap().also { children = it }
+        override fun refresh() { children = null }
+        override fun exists(name: String) = name in files()
+        override fun read(name: String): String? = files()[name]?.let { file ->
             resolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
+                ?: throw java.io.IOException("Cannot read work document")
         }
         override fun write(name: String, content: String): Boolean {
-            val file = directory.createFile("application/octet-stream", name) ?: return false
+            val file = files()[name] ?: directory.createFile("application/octet-stream", name) ?: return false
+            files()[name] = file
             resolver.openOutputStream(file.uri, "wt")?.bufferedWriter()?.use { it.write(content) } ?: return false
             return file.name == name
         }
-        override fun rename(from: String, to: String): Boolean =
-            directory.findFile(from)?.renameTo(to) == true && directory.findFile(to) != null
-        override fun delete(name: String): Boolean = directory.findFile(name)?.delete() == true
+        override fun rename(from: String, to: String): Boolean {
+            val file = files()[from] ?: return false
+            if (to in files()) return false
+            if (!file.renameTo(to) || file.name != to) { refresh(); return false }
+            files().remove(from); files()[to] = file
+            return true
+        }
+        override fun delete(name: String): Boolean {
+            val file = files()[name] ?: return false
+            if (!file.delete()) return false
+            files().remove(name)
+            return true
+        }
     }
 
-    override fun loadFolder(folderUri: Uri): WorkStore? = try {
-        val directory = DocumentFile.fromTreeUri(context, folderUri) ?: error("Cannot access work folder")
-        check(directory.exists() && directory.canRead())
-        val store = loadWorkDocument(documents(directory), worksFileName)
-        if (store != null) restoreFolderAssets(directory, store.works)
-        unreadableFolders.remove(folderUri.toString())
-        store?.let { restoreSelection(it, folderUri) }
-    } catch (error: Exception) {
-        unreadableFolders.add(folderUri.toString())
-        Log.e("EditKIRO", "Failed to load work store; refusing overwrite", error)
-        null
+    private fun splitFolder(directory: DocumentFile): SplitWorkStore {
+        return folderSplits.getOrPut(directory.uri.toString()) {
+            // Do not create a directory for read-only/empty-folder checks.
+            SplitWorkStore(object : WorkDocuments {
+                private var delegate: WorkDocuments? = null
+                private fun docs(create: Boolean = false): WorkDocuments? {
+                    delegate?.let { return it }
+                    val folder = directory.findFile("edit-rin-works")
+                        ?: if (create) directory.createDirectory("edit-rin-works") else null
+                    if (folder == null) return null
+                    check(folder.isDirectory)
+                    return documents(folder).also { delegate = it }
+                }
+                override fun refresh() { delegate = null }
+                override fun exists(name: String) = docs()?.exists(name) == true
+                override fun read(name: String) = docs()?.read(name)
+                override fun write(name: String, content: String) = docs(true)?.write(name, content) == true
+                override fun rename(from: String, to: String) = docs()?.rename(from, to) == true
+                override fun delete(name: String) = docs()?.delete(name) == true
+            })
+        }
     }
 
     @Synchronized
-    override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean {
-        if (folderUri == null) return saveLocal(works, activeId).also { saved ->
-            if (saved) rememberSelectedWork(null, activeId)
+    override fun loadFolder(folderUri: Uri): WorkStore? =
+        (loadResult(folderUri, eager = true) as? WorkLoadResult.Loaded)?.store
+
+    @Synchronized
+    override fun loadWork(folderUri: Uri?, workId: String): Work? {
+        if (folderUri == null) return localSplit.loadWork(workId)?.also { work ->
+            check(work.assets.values.all(assetStorage::contains))
         }
-        if (folderUri.toString() in unreadableFolders) return false
-        return try {
-            val json = serializeWorkStore(works, activeId)
-            val directory = DocumentFile.fromTreeUri(context, folderUri) ?: return false
-            saveFolderAssets(directory, works)
-            saveWorkDocument(documents(directory), worksFileName, json).also { saved ->
-                if (saved) rememberSelectedWork(folderUri, activeId)
+        val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
+        return splitFolder(directory).loadWork(workId)?.also { restoreFolderAssets(directory, listOf(it)) }
+    }
+
+    @Synchronized
+    override fun materializeWorks(folderUri: Uri?, works: List<Work>): List<Work> {
+        if (folderUri == null) return localSplit.materializeWorks(works).also { full ->
+            check(full.flatMap { it.assets.values }.all(assetStorage::contains))
+        }
+        val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
+        return splitFolder(directory).materializeWorks(works).also { restoreFolderAssets(directory, it) }
+    }
+
+    @Synchronized
+    override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean =
+        saveResult(folderUri, works, activeId) == WorkSaveResult.Saved
+
+    @Synchronized
+    override fun saveResult(folderUri: Uri?, works: List<Work>, activeId: String): WorkSaveResult {
+        val result = if (folderUri == null) saveLocalResult(works, activeId) else {
+            if (folderUri.toString() in unreadableFolders) return WorkSaveResult.Failed
+            try {
+                val directory = DocumentFile.fromTreeUri(context, folderUri) ?: return WorkSaveResult.Failed
+                val split = splitFolder(directory)
+                if (split.loadIfNeeded() == null) {
+                    loadWorkDocument(documents(directory), worksFileName)?.let { legacy ->
+                        restoreFolderAssets(directory, legacy.works)
+                        normalizeLegacyRuntime(legacy)
+                        val migrated = split.saveResult(legacy.works, legacy.activeWorkId)
+                        if (migrated != WorkSaveResult.Saved) return migrated
+                    }
+                }
+                saveFolderAssets(directory, split.worksWithChangedAssets(works))
+                split.saveResult(works, activeId)
+            } catch (error: Exception) {
+                Log.e("EditKIRO", "Failed to save work store", error)
+                WorkSaveResult.Failed
             }
-        } catch (error: Exception) {
-            Log.e("EditKIRO", "Failed to save work store", error)
-            false
         }
+        if (result == WorkSaveResult.Saved) rememberSelectedWork(folderUri, activeId)
+        return result
     }
 }

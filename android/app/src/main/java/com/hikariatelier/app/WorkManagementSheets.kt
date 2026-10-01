@@ -3,6 +3,7 @@ package com.hikariatelier.app
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -197,7 +198,10 @@ internal fun WorkSelectorChip(
     colors: ColorScheme,
     textTranslator: (String, Array<out Any?>) -> String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    saveLabel: String? = null,
+    saveFailed: Boolean = false,
+    onRetry: (() -> Unit)? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -219,6 +223,7 @@ internal fun WorkSelectorChip(
         ) {
             if (isLandscape) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -232,12 +237,16 @@ internal fun WorkSelectorChip(
                     }
                     Text(
                         activeWorkTitle ?: uiText("作品を選択"),
+                        modifier = Modifier.weight(1f),
                         color = colors.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    saveLabel?.let { Text(it, modifier = Modifier.widthIn(max = 60.dp),
+                        color = if (saveFailed) colors.error else colors.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             } else {
                 Column(
@@ -246,9 +255,9 @@ internal fun WorkSelectorChip(
                         .widthIn(max = if (manualRotation) 160.dp else 220.dp)
                 ) {
                     Text(
-                        if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
+                        saveLabel?.let { uiText("作品") + " · " + it } ?: if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (hasUnsavedChanges) colors.tertiary else colors.onSurfaceVariant,
+                        color = if (saveFailed) colors.error else if (hasUnsavedChanges) colors.tertiary else colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -260,6 +269,10 @@ internal fun WorkSelectorChip(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            onRetry?.let { retry ->
+                TextButton(onClick = retry, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)) { Text(uiText("再試行"), style = MaterialTheme.typography.labelSmall) }
             }
         }
     }
@@ -385,6 +398,21 @@ internal fun WorkActionsMenu(
                 onAspectRatio()
             }
         )
+        ActionRow(
+            iconRes = R.drawable.ic_snippet,
+            title = uiText("テンプレートとして保存"),
+            subtitle = uiText("コード・素材・実行設定を新規作品のひな形にする"),
+            colors = colors,
+            enabled = activeWork != null && !assetBusy,
+            onClick = {
+                viewModel.workActionsMenuExpanded = false
+                viewModel.showSaveTemplateDialog = true
+            }
+        )
+        ActionRow(iconRes = R.drawable.ic_snippet, title = uiText("テンプレート管理"),
+            subtitle = uiText("自作テンプレートを検索・名前変更・更新"), colors = colors,
+            enabled = !assetBusy,
+            onClick = { viewModel.workActionsMenuExpanded = false; viewModel.showTemplateManager = true })
         val currentIsPinned = activeWork?.isPinned == true
         ActionRow(
             iconRes = if (currentIsPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin,
@@ -723,4 +751,3 @@ internal fun WorkBar(
         workActionsContent()
     }
 }
-

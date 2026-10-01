@@ -31,7 +31,6 @@ internal fun SettingsScreen(
     font: FontSettingsUiState,
     actions: SettingsScreenActions,
     folderName: String,
-    statusBarForcedHidden: Boolean,
     assets: AssetManager,
     updateViewModel: UpdateViewModel,
     textTranslator: (String, Array<out Any?>) -> String,
@@ -583,21 +582,16 @@ internal fun SettingsScreen(
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    title =
-                        uiText("ステータスバーとナビゲーションバーを非表示"),
-                    description =
-                        if (statusBarForcedHidden) {
-                            uiText("横画面では常に全画面（非表示）になります")
-                        } else {
-                            uiText("時刻、通知アイコン、OSナビゲーションバーを非表示にして画面を広く使います")
-                        },
-                    checked =
-                        !showStatusBar || statusBarForcedHidden,
-                    enabled =
-                        !statusBarForcedHidden,
-                    onCheckedChange = { hide ->
-                        onShowStatusBarChange(!hide)
-                    }
+                    title = uiText("ステータスバーを非表示"),
+                    description = uiText("時刻と通知アイコンの表示を切り替えます") + "\n" + uiText("横画面では両方のバーが常に非表示になります"),
+                    checked = !showStatusBar,
+                    onCheckedChange = { hide -> onShowStatusBarChange(!hide) }
+                )
+                SettingSwitchRow(
+                    title = uiText("ナビゲーションバーを非表示"),
+                    description = uiText("OSの戻る・ホーム・アプリ切替バーの表示を切り替えます") + "\n" + uiText("横画面では両方のバーが常に非表示になります"),
+                    checked = !state.showNavigationBar,
+                    onCheckedChange = { hide -> onSettingsChange { copy(showNavigationBar = !hide) } }
                 )
 
                 SettingsDivider()

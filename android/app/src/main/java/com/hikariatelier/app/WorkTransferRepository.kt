@@ -22,6 +22,7 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
     private val app = context.applicationContext
     private val resolver = app.contentResolver
     private val filesDir = app.filesDir
+    private val templates = UserTemplateRepository(filesDir, assetStorage)
 
     suspend fun readAssets(uris: List<Uri>, existing: Map<String, ProjectAsset>): Map<String, ProjectAsset> =
         withContext(Dispatchers.IO) {
@@ -50,11 +51,21 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
             ?: error("Cannot write JS file")
     }
 
-    suspend fun writeBackup(uri: Uri, works: List<Work>, activeId: String, settings: String) =
+    suspend fun writeBackup(uri: Uri, works: List<Work>, activeId: String, settings: String,
+                            includeTemplates: Boolean = true) =
         withContext(Dispatchers.IO) {
-            val output = resolver.openOutputStream(uri, "wt") ?: error("Cannot open backup")
-            writeAssetBackup(output, works, activeId, settings, assetStorage,
-                WorkSnapshotStore.exportSnapshots(filesDir, works))
+            val userTemplates = if (includeTemplates) templates.load() else null
+            val staged = File.createTempFile("backup-export-", ".zip", app.cacheDir)
+            try {
+                // Validate and finish the archive before opening/truncating the chosen destination.
+                staged.outputStream().use { output ->
+                    writeAssetBackup(output, works, activeId, settings, assetStorage,
+                        WorkSnapshotStore.exportSnapshots(filesDir, works), userTemplates, templates.backupAssetStorage)
+                }
+                resolver.openOutputStream(uri, "wt")?.use { output ->
+                    staged.inputStream().use { it.copyTo(output) }
+                } ?: error("Cannot open backup")
+            } finally { staged.delete() }
         }
 
     suspend fun readBackup(uri: Uri): AssetBackup = withContext(Dispatchers.IO) {
@@ -63,7 +74,23 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
     }
 
     suspend fun commitBackup(backup: AssetBackup, save: () -> Boolean): Boolean = withContext(Dispatchers.IO) {
-        WorkSnapshotStore.importWithWorks(filesDir, backup.snapshots, save)
+        val incoming = backup.templates
+        val previous = incoming?.let { templates.load() }
+        var replacedTemplates = false
+        try {
+            if (incoming != null) {
+                incoming.forEach(templates::captureAssets)
+                templates.saveRetainingAssets(incoming)
+                replacedTemplates = true
+            }
+            val committed = WorkSnapshotStore.importWithWorks(filesDir, backup.snapshots, save)
+            check(committed) { "Cannot save imported works" }
+            if (committed && incoming != null) templates.pruneAssets(incoming)
+            committed
+        } catch (error: Exception) {
+            if (replacedTemplates) templates.saveRetainingAssets(checkNotNull(previous))
+            throw error
+        }
     }
 
     suspend fun readWorkZip(uri: Uri): AssetBackup {

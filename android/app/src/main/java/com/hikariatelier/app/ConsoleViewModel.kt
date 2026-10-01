@@ -30,6 +30,16 @@ internal data class ConsoleEntry(
     val count: Int = 1
 )
 
+internal fun ConsoleEntry.copyText(): String = buildString {
+    append("[${level.name}] ")
+    append(message)
+    if (count > 1) append("  ×$count")
+    file?.let { append("  ·  $it"); line?.let { number -> append(":$number") } }
+}
+
+internal fun visibleConsoleEntries(entries: List<ConsoleEntry>, errorsOnly: Boolean): List<ConsoleEntry> =
+    if (errorsOnly) entries.filter { it.level == ConsoleLevel.ERROR } else entries
+
 internal class ConsoleViewModel(private val operationScope: CoroutineScope? = null) : ViewModel() {
     val entries = mutableStateListOf<ConsoleEntry>()
     private var sequence = 0L
@@ -39,6 +49,7 @@ internal class ConsoleViewModel(private val operationScope: CoroutineScope? = nu
     var showConsole by mutableStateOf(false)
     var consoleHeight by mutableFloatStateOf(170f)
     var consoleExpanded by mutableStateOf(false)
+    var errorsOnly by mutableStateOf(false)
 
     val errorCount: Int
         get() = entries.count { it.level == ConsoleLevel.ERROR }

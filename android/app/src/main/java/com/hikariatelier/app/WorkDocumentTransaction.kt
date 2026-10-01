@@ -2,6 +2,7 @@ package com.hikariatelier.app
 
 /** Small document operations keep SAF's provider behavior testable without an Android device. */
 internal interface WorkDocuments {
+    fun refresh() {}
     fun exists(name: String): Boolean
     fun read(name: String): String?
     fun write(name: String, content: String): Boolean
