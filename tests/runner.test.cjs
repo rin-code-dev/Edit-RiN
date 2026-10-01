@@ -19,9 +19,9 @@ test('recording streams bounded chunks in order and finishes only after final da
       });
     }
   };
-  r.context.Android.beginRecordingTransfer = () => true;
-  r.context.Android.appendRecordingChunk = (id, data) => { writes.push(Buffer.from(data, 'base64')); return true; };
-  r.context.Android.finishRecordingTransfer = (id, mime) => finished.push(mime);
+  r.context.Android.beginRecordingTransfer = owner => { assert.equal(owner, 'run-one'); return true; };
+  r.context.Android.appendRecordingChunk = (owner, id, data) => { assert.equal(owner, 'run-one'); writes.push(Buffer.from(data, 'base64')); return true; };
+  r.context.Android.finishRecordingTransfer = (owner, id, mime) => { assert.equal(owner, 'run-one'); finished.push(mime); };
   r.context.MediaRecorder = class {
     static isTypeSupported() { return true; }
     constructor() { recorder = this; this.mimeType = 'video/mp4'; this.state = 'inactive'; }
@@ -83,17 +83,17 @@ function runner(code = 'function setup() {}') {
     captureStream() { return { getTracks: () => [{ stop() { stoppedTracks++; } }] }; }
   };
   const context = {
-    console, Blob,
+    console, Blob, location: { pathname: '/project/run-one/p5_runner.html' },
     width: 320, height: 180, drawingContext: drawing,
     Android: {
       getSketchCode: () => code,
       getP5Version: () => '1.11.5',
       isP5SoundEnabled: () => false,
-      onStatusChanged: status => statuses.push(status),
-      onError: error => errors.push(error),
-      onRuntimeError: error => errors.push(error),
-      onRecordingStatusChanged: status => statuses.push(status),
-      onCaptureError: error => errors.push(error)
+      onStatusChanged: (owner, status) => statuses.push(status),
+      onError: (owner, error) => errors.push(error),
+      onRuntimeError: (owner, error) => errors.push(error),
+      onRecordingStatusChanged: (owner, status) => statuses.push(status),
+      onCaptureError: (owner, error) => errors.push(error)
     },
     requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
     cancelAnimationFrame(id) { frames.delete(id); },
@@ -416,7 +416,7 @@ test('hiding and restoring portrait preview preserves artwork and paused pixels'
 test('runtime errors preserve combined source lines and find user frames in Promise stacks', () => {
   const r = runner();
   const locations = [];
-  r.context.Android.onRuntimeError = (message, line) => locations.push([message, line]);
+  r.context.Android.onRuntimeError = (owner, message, line) => locations.push([message, line]);
   r.context.onerror('helper failed', 'sketch.js', 3);
   r.events.unhandledrejection({ reason: { message: 'async failed', stack: 'Error: async failed\n    at task (sketch.js:12:7)' } });
   r.context.onerror('library failed', 'p5-v2.min.js', 200, 1,
@@ -461,7 +461,7 @@ function captureRunner({ looping = true, density = 2, asyncDraw = false } = {}) 
     draws.push(currentDensity);
   };
   r.canvas.toDataURL = () => `data:image/png;${r.canvas.width}x${r.canvas.height};base64,AA==`;
-  r.context.Android.onScreenshotExportReady = (data, width, height) => exported.push({ data, width, height });
+  r.context.Android.onScreenshotExportReady = (owner, data, width, height) => exported.push({ data, width, height });
   return Object.assign(r, { densities, draws, exported, density: () => currentDensity, looping: () => running });
 }
 
@@ -567,9 +567,9 @@ function chunkedScreenshotRunner() {
     }
   };
   r.context.Android.beginScreenshotTransfer = () => true;
-  r.context.Android.appendScreenshotChunk = (token, chunk) => { r.writes.push(Buffer.from(chunk, 'base64')); return true; };
-  r.context.Android.finishScreenshotTransfer = (token, width, height) => r.finished.push({width, height});
-  r.context.Android.abortScreenshotTransfer = token => r.aborts.push(token);
+  r.context.Android.appendScreenshotChunk = (owner, token, chunk) => { r.writes.push(Buffer.from(chunk, 'base64')); return true; };
+  r.context.Android.finishScreenshotTransfer = (owner, token, width, height) => r.finished.push({width, height});
+  r.context.Android.abortScreenshotTransfer = (owner, token) => r.aborts.push(token);
   r.canvas.toDataURL = () => { throw new Error('whole-image Base64 must not be used'); };
   return r;
 }
@@ -626,14 +626,37 @@ test('PNG completion and errors carry the originating run identity', async () =>
   let token;
   const failures = [];
   r.canvas.toBlob = done => done(new Blob(['png']));
-  r.context.Android.getRunToken = () => 'newer-run';
-  r.context.Android.beginScreenshotTransfer = value => { token = value; return true; };
+  r.context.location.pathname = '/project/newer-run/p5_runner.html';
+  r.context.Android.beginScreenshotTransfer = (owner, value) => { token = value; return true; };
   r.context.Android.appendScreenshotChunk = () => false;
   r.context.Android.onScreenshotError = (owner, message) => failures.push({owner, message});
   await r.context.__editKiroCaptureScreenshot();
-  // The initial runner has no getRunToken bridge, so its captured owner is empty.
-  // A new bridge return value must not reassign an in-flight export to a newer run.
-  assert.ok(token.startsWith(':png-'));
-  assert.equal(failures[0].owner, '');
+  // A later URL change cannot reassign this page's in-flight export.
+  assert.ok(token.startsWith('run-one:png-'));
+  assert.equal(failures[0].owner, 'run-one');
   assert.equal(r.finished.length, 0);
+});
+
+test('runtime errors, pause status and ready callbacks retain the page run identity', () => {
+  const r = runner();
+  const calls = [];
+  r.context.Android.onStatusChanged = (owner, status) => calls.push([owner, status]);
+  r.context.Android.onPreviewReady = owner => calls.push([owner, 'ready']);
+  r.context.Android.onRuntimeError = (owner, message, line) => calls.push([owner, message, line]);
+  r.context.location.pathname = '/project/newer-run/p5_runner.html';
+  r.context.__editRinRunToken = 'newer-run';
+  assert.equal(r.context.__editRinRunToken, 'run-one');
+  r.setup();
+  r.flush();
+  r.context.pauseSketch();
+  r.events.unhandledrejection({ reason: { message: 'old error', stack: 'Error\n at draw (sketch.js?run=run-one:8:2)' } });
+  r.events.unhandledrejection({ reason: { message: 'absolute source', stack: 'Error\n at draw (https://appassets.androidplatform.net/project/run-one/sketch.js?run=run-one:9:2)' } });
+  assert.deepEqual(calls, [['run-one', '実行中'], ['run-one', 'ready'], ['run-one', '一時停止中'], ['run-one', 'old error', 8], ['run-one', 'absolute source', 9]]);
+});
+
+test('separate JS files remain valid at ASI-sensitive IIFE and array boundaries', () => {
+  const r = runner('const n = 1\n;\n(function(){ window.first = n; })() // trailing comment\n;\n[2].forEach(value => { window.second = value; })\n;\nfunction setup() {}');
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.context.first, 1);
+  assert.equal(r.context.second, 2);
 });

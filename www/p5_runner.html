@@ -45,6 +45,9 @@
 
   <script>
     (() => {
+      // Keep the URL identity even if a newer run replaces the native snapshot.
+      const runToken = window.location?.pathname?.match(/^\/project\/([^/]+)\//)?.[1] || '';
+      Object.defineProperty(window, '__editRinRunToken', { value: runToken });
       window.__editKiroRuntimeHasError = false;
       const reportError = (message, line = 0) => {
         window.__editKiroRuntimeHasError = true;
@@ -54,21 +57,21 @@
           const lineNumber = Number(line) || 0;
 
           if (lineNumber > 0 && window.Android?.onRuntimeError) {
-            window.Android.onRuntimeError(text, lineNumber);
+            window.Android.onRuntimeError(runToken, text, lineNumber);
           } else {
-            window.Android?.onError(text);
+            window.Android?.onError(runToken, text);
           }
         } catch (_) {}
       };
       window.__editKiroReportError = reportError;
 
       const stackLine = error => {
-        const match = String(error?.stack || '').match(/(?:^|[\s(])sketch\.js:(\d+):\d+/m);
+        const match = String(error?.stack || '').match(/(?:^|[\s(])(?:https?:\/\/[^\s()]*\/)?sketch\.js(?:\?run=[^:\s)]+)?:(\d+):\d+/m);
         return match ? Number(match[1]) : 0;
       };
       window.onerror = (message, source, line, column, error) => {
         const userLine =
-          String(source || '') === 'sketch.js'
+          (String(source || '') === 'sketch.js' || String(source || '').endsWith('sketch.js?run=' + runToken))
             ? line
             : stackLine(error);
 
@@ -84,8 +87,8 @@
 
   <script>
     (() => {
-      const version = window.Android?.getP5Version?.() === '2.3.3' ? '2' : '1';
-      const soundEnabled = window.Android?.isP5SoundEnabled?.() === true;
+      const version = window.Android?.getP5Version?.(window.__editRinRunToken) === '2.3.3' ? '2' : '1';
+      const soundEnabled = window.Android?.isP5SoundEnabled?.(window.__editRinRunToken) === true;
       window.__editKiroSoundEnabled = soundEnabled;
       document.write(`<script src="p5-v${version}.min.js" onerror="window.__editKiroReportError('p5.js を読み込めませんでした')"><\/script>`);
       if (soundEnabled) {
@@ -96,10 +99,10 @@
 
   <script>
     (() => {
-      const libraries = JSON.parse(window.Android?.getWorkLibraries?.() || '{}');
+      const libraries = JSON.parse(window.Android?.getWorkLibraries?.(window.__editRinRunToken) || '{}');
       const load = file => document.write(`<script src="${file}" onerror="window.__editKiroReportError('Library load failed: ${file}')"><\/script>`);
       if (libraries['p5.brush'] === '2.2.1') {
-        if (window.Android?.getP5Version?.() === '2.3.3') load('p5.brush-2.2.1.js');
+        if (window.Android?.getP5Version?.(window.__editRinRunToken) === '2.3.3') load('p5.brush-2.2.1.js');
         else window.__editKiroReportError('p5.brush 2.2.1 requires p5.js 2.3.3');
       }
       if (libraries['matter-js'] === '0.20.0') {
@@ -111,7 +114,7 @@
   <script>
     (() => {
       let initial = {};
-      try { initial = JSON.parse(window.Android?.getWorkParameters?.() || '{}'); } catch (_) {}
+      try { initial = JSON.parse(window.Android?.getWorkParameters?.(window.__editRinRunToken) || '{}'); } catch (_) {}
       window.rinParams = Object.assign(Object.create(null), initial);
       window.__editRinSetParameter = (name, value) => {
         if (Object.prototype.hasOwnProperty.call(window.rinParams, name) &&
@@ -127,7 +130,7 @@
   <script>
     (() => {
       let shaders = {};
-      try { shaders = JSON.parse(window.Android?.getWorkShaders?.() || '{}'); } catch (_) {}
+      try { shaders = JSON.parse(window.Android?.getWorkShaders?.(window.__editRinRunToken) || '{}'); } catch (_) {}
       window.rinShaders = Object.assign(Object.create(null), shaders);
     })();
   </script>
@@ -135,10 +138,10 @@
   <script>
     (() => {
       try {
-        const code = window.Android?.getSketchCode?.() || '';
+        const code = window.Android?.getSketchCode?.(window.__editRinRunToken) || '';
         const script = document.createElement('script');
         script.id = 'user-sketch';
-        script.textContent = `${code}\n//# sourceURL=sketch.js`;
+        script.textContent = `${code}\n//# sourceURL=sketch.js?run=${window.__editRinRunToken}`;
         document.head.appendChild(script);
       } catch (error) {
         window.__editKiroReportError(error?.message || String(error));
@@ -155,7 +158,7 @@
     let lastHeight = 0;
     let resizeFrame = 0;
     let pendingForcedFit = false;
-    const runToken = window.Android?.getRunToken?.() || '';
+    const runToken = window.__editRinRunToken;
     let sketchReady = false;
     let recordingSession = null;
     let canvasSizeObserver = null;
@@ -211,7 +214,7 @@
 
     function notifyAndroid(method, ...args) {
       try {
-        window.Android?.[method]?.(...args);
+        window.Android?.[method]?.(runToken, ...args);
       } catch (_) {}
     }
 
@@ -302,7 +305,7 @@
         return;
       }
       const token = runToken + ':png-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-      if (!window.Android.beginScreenshotTransfer(token)) throw new Error('画像の保存を開始できませんでした');
+      if (!window.Android.beginScreenshotTransfer(runToken, token)) throw new Error('画像の保存を開始できませんでした');
       try {
         for (let offset = 0; offset < payload.size; offset += 192 * 1024) {
           const encoded = await new Promise((resolve, reject) => {
@@ -311,11 +314,11 @@
             reader.onerror = reader.onabort = () => reject(new Error('画像データを読み出せませんでした'));
             reader.readAsDataURL(payload.slice(offset, offset + 192 * 1024));
           });
-          if (!window.Android.appendScreenshotChunk(token, encoded)) throw new Error('画像を保存できませんでした');
+          if (!window.Android.appendScreenshotChunk(runToken, token, encoded)) throw new Error('画像を保存できませんでした');
         }
-        window.Android.finishScreenshotTransfer(token, width, height);
+        window.Android.finishScreenshotTransfer(runToken, token, width, height);
       } catch (error) {
-        window.Android?.abortScreenshotTransfer?.(token);
+        window.Android?.abortScreenshotTransfer?.(runToken, token);
         throw error;
       }
     }
@@ -375,7 +378,7 @@
         }
         await publishPng(dataUrl, outputWidth, outputHeight);
       } catch (error) {
-        if (window.Android?.onScreenshotError) notifyAndroid('onScreenshotError', runToken, error?.message || String(error));
+        if (window.Android?.onScreenshotError) notifyAndroid('onScreenshotError', error?.message || String(error));
         else notifyAndroid('onCaptureError', error?.message || String(error));
       } finally {
         captureBusy = false;
@@ -707,7 +710,7 @@
           reader.readAsDataURL(blob.slice(offset, offset + 192 * 1024));
         });
         if (recordingSession !== session ||
-            !window.Android?.appendRecordingChunk(session.transferId, encoded)) {
+            !window.Android?.appendRecordingChunk(runToken, session.transferId, encoded)) {
           throw new Error('録画を保存できませんでした');
         }
         session.transferred += Math.min(192 * 1024, blob.size - offset);
@@ -810,7 +813,7 @@
         if (!canvas) throw new Error('キャンバスが見つかりません');
         recordingSession = session;
         if (window.Android?.beginRecordingTransfer &&
-            !window.Android.beginRecordingTransfer(session.transferId)) {
+            !window.Android.beginRecordingTransfer(runToken, session.transferId)) {
           throw new Error('録画の保存先を準備できませんでした');
         }
         if (requestedFormat === 'gif') {
@@ -933,7 +936,7 @@
         if (!window.__editKiroRuntimeHasError) {
           notifyAndroid('onStatusChanged', '実行中');
           requestAnimationFrame(() => {
-            if (!window.__editKiroRuntimeHasError) notifyAndroid('onPreviewReady', runToken);
+            if (!window.__editKiroRuntimeHasError) notifyAndroid('onPreviewReady');
           });
         }
       };

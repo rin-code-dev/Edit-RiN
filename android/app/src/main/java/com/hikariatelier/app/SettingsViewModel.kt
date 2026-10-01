@@ -43,6 +43,7 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     var customBackground by setting({ it.customBackground }, { old, value -> old.copy(customBackground = value) })
     var customAccent by setting({ it.customAccent }, { old, value -> old.copy(customAccent = value) })
     var showStatusBar by setting({ it.showStatusBar }, { old, value -> old.copy(showStatusBar = value) })
+    var showNavigationBar by setting({ it.showNavigationBar }, { old, value -> old.copy(showNavigationBar = value) })
     var landscapeUseCutout by setting({ it.landscapeUseCutout }, { old, value -> old.copy(landscapeUseCutout = value) })
     var manualRotation by setting({ it.manualRotation }, { old, value -> old.copy(manualRotation = value) })
     var autoRun by setting({ it.autoRun }, { old, value -> old.copy(autoRun = value) })

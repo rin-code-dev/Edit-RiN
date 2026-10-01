@@ -3,6 +3,10 @@ package com.hikariatelier.app
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -50,6 +55,13 @@ internal fun AddWorkDialog(
     configuration: Configuration,
     onDismiss: () -> Unit,
     onCreate: (title: String, ratio: String, sizingMode: CanvasSizingMode, template: WorkTemplate) -> Unit,
+    userTemplates: List<Work>,
+    busy: Boolean,
+    templateLoadFailed: Boolean,
+    onRetryTemplates: () -> Unit,
+    onCreateFromTemplate: (String, String) -> Unit,
+    onDeleteTemplate: (String) -> Unit,
+    onManageTemplates: (() -> Unit)? = null,
     textTranslator: (String, Array<out Any?>) -> String,
     windowSetup: @Composable () -> Unit = {}
 ) {
@@ -58,6 +70,10 @@ internal fun AddWorkDialog(
     var newTitle by rememberSaveable {
         mutableStateOf(uiText("新しい作品") + " ${worksCount + 1}")
     }
+    var customTab by rememberSaveable { mutableStateOf(false) }
+    var selectedTemplateId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingTemplateId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedUserTemplate = userTemplates.firstOrNull { it.id == selectedTemplateId }
     var newRatio by rememberSaveable { mutableStateOf("1:1") }
     var newCanvasModeName by rememberSaveable {
         mutableStateOf(CanvasSizingMode.FIXED.name)
@@ -88,7 +104,7 @@ internal fun AddWorkDialog(
     WorkSheet(
         title = uiText("新しい作品"),
         subtitle = uiText("名前と描画比率を選んでスタート"),
-        onDismiss = onDismiss,
+        onDismiss = { if (!busy) onDismiss() },
         colors = colors,
         textTranslator = textTranslator,
         windowSetup = windowSetup
@@ -101,11 +117,28 @@ internal fun AddWorkDialog(
             OutlinedTextField(
                 value = newTitle,
                 onValueChange = { newTitle = it },
+                enabled = !busy,
                 label = { Text(uiText("作品名")) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp)
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !customTab, enabled = !busy, onClick = { customTab = false },
+                    label = { Text(uiText("標準テンプレート")) })
+                FilterChip(selected = customTab, enabled = !busy, onClick = { customTab = true },
+                    label = { Text(uiText("自作テンプレート")) })
+            }
+            if (customTab) {
+                UserTemplateChoices(
+                    templates = userTemplates, selectedId = selectedTemplateId,
+                    busy = busy, loadFailed = templateLoadFailed,
+                    text = { uiText(it) }, onRetry = onRetryTemplates,
+                    onSelect = { selectedTemplateId = it },
+                    onDelete = { deletingTemplateId = it },
+                    onManage = onManageTemplates
+                )
+            } else {
             Text(uiText("テンプレート種別"), style = MaterialTheme.typography.labelLarge)
             WorkTemplateKind.entries.chunked(2).forEach { kinds ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -167,9 +200,15 @@ internal fun AddWorkDialog(
                 style = MaterialTheme.typography.labelLarge,
                 color = colors.onSurfaceVariant
             )
-            val creationAspectColumns = if (wideWorkPanels) 3 else if (configuration.fontScale > 1.5f) 1 else 2
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val creationAspectColumns = when {
+                configuration.fontScale > 1.5f || maxWidth < 280.dp -> 1
+                maxWidth >= 540.dp -> 3
+                else -> 2
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             creationAspectOptions.chunked(creationAspectColumns).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { option ->
                         val selected = option.ratio == newRatio
                         Surface(
@@ -179,7 +218,7 @@ internal fun AddWorkDialog(
                                     newCanvasModeName = CanvasSizingMode.RESPONSIVE.name
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 96.dp),
                             shape = RoundedCornerShape(16.dp),
                             color = if (selected) colors.primary.copy(alpha = 0.08f) else colors.surface,
                             border = BorderStroke(
@@ -187,9 +226,10 @@ internal fun AddWorkDialog(
                                 if (selected) colors.primary else colors.outlineVariant
                             )
                         ) {
-                            Row(
-                                Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                Modifier.fillMaxWidth().padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                                     val size = fitPreviewSize(
@@ -205,24 +245,24 @@ internal fun AddWorkDialog(
                                             )
                                     )
                                 }
-                                Spacer(Modifier.width(8.dp))
-                                Column {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         when (option.ratio) {
                                             "device_landscape" -> uiText("端末・横")
                                             "device" -> uiText("端末・縦")
                                             else -> option.ratio
                                         },
+                                        textAlign = TextAlign.Center,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (selected) colors.primary else colors.onSurface
                                     )
                                     Text(
-                                        if (selected) uiText("選択中")
-                                        else when (option.ratio) {
+                                        when (option.ratio) {
                                             "device_landscape" -> uiText("横向きの端末比率")
                                             "device" -> uiText("縦向きの端末比率")
                                             else -> "${option.width} × ${option.height}"
                                         },
+                                        textAlign = TextAlign.Center,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = colors.onSurfaceVariant
                                     )
@@ -234,6 +274,8 @@ internal fun AddWorkDialog(
                         Spacer(Modifier.weight(1f))
                     }
                 }
+            }
+            }
             }
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -261,6 +303,7 @@ internal fun AddWorkDialog(
                     )
                 }
             }
+            }
             Spacer(Modifier.height(4.dp))
         }
         Row(
@@ -268,9 +311,13 @@ internal fun AddWorkDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onDismiss) { Text(uiText("キャンセル")) }
+            TextButton(enabled = !busy, onClick = onDismiss) { Text(uiText("キャンセル")) }
             Button(
-                onClick = { onCreate(newTitle, template.ratio, newCanvasMode, template.copy(kind = kind)) },
+                enabled = !busy && (!customTab || (selectedUserTemplate != null && !templateLoadFailed)),
+                onClick = {
+                    if (customTab) selectedUserTemplate?.let { onCreateFromTemplate(newTitle, it.id) }
+                    else onCreate(newTitle, template.ratio, newCanvasMode, template.copy(kind = kind))
+                },
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(painterResource(R.drawable.ic_add), null, Modifier.size(18.dp))
@@ -278,6 +325,20 @@ internal fun AddWorkDialog(
                 Text(uiText("作成"))
             }
         }
+    }
+    userTemplates.firstOrNull { it.id == deletingTemplateId }?.let { deleting ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) deletingTemplateId = null },
+            title = { Text(uiText("テンプレートを削除")) },
+            text = { Text(uiText("「%s」を削除します。作成済みの作品には影響しません。", deleting.title)) },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    onDeleteTemplate(deleting.id)
+                    deletingTemplateId = null
+                }) { Text(uiText("削除")) }
+            },
+            dismissButton = { TextButton(enabled = !busy, onClick = { deletingTemplateId = null }) { Text(uiText("キャンセル")) } }
+        )
     }
 }
 
@@ -435,4 +496,3 @@ internal fun SampleUpdatePromptDialog(
         }
     )
 }
-
