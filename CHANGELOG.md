@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.2.1 — 2026-10-05
+
+### English
+- Separate bundled read-only samples from all existing user works. Copy a sample with its trial parameters before editing.
+- Organize user works in one-level folders, with creation, renaming, moves and deletion that keeps the contained works.
+- Replace Sound with the supplied MONO SYNTH SCOPE sketch and use the p5.js 2.x sound runtime.
+- Restore the original Halo and Gravity samples, and replace Parameters and Wave with the supplied wave Parameter sketch.
+- Keep the last file, cursor, scrolling and Undo/Redo when returning to a work during the editing session. Restored or replaced content invalidates incompatible history.
+- Show when edits have not reached the running preview, with a Run changes action and an indication that existing errors belong to the previous run.
+- Retain a recording after a save failure. Retry saving, choose another destination, or explicitly discard it.
+- Search and replace the current file in a compact editor bar, with match highlighting and preserved cursor position after replacement. Whole-work search remains available.
+- Rename an asset together with selected literal references, preview the updates, and preserve edits if the combined save fails.
+- Name snapshots, add notes, and edit their details without changing the captured content.
+- Open or share PNG images directly from the save result screen.
+- Reorder gallery folders by long-pressing and dragging to swap with adjacent tabs, keeping My works fixed at the start.
+- Rewrite the comprehensive in-app User Guide across English, Japanese, and Chinese with all new features and workflows.
+
+### 日本語
+- 同梱サンプル原本を閲覧専用で別管理。既存作品はすべてユーザー作品として保持し、サンプルは試したパラメータとともにコピーして編集。
+- ユーザー作品を1階層のフォルダーで分類。作成・名前変更・移動に対応し、フォルダー削除時も中の作品を保持。
+- Soundを指定コードのMONO SYNTH SCOPEへ変更し、p5.js 2.xのサウンド実行環境に設定。
+- HaloとGravityを元の作品へ復元し、ParametersとWaveを指定コードの「wave Parameter」に統合。
+- 編集セッション中に作品へ戻ると、最後のファイル・カーソル・スクロール位置・Undo/Redoを引き継ぐよう改善。復元や内容の置き換えでは不整合な履歴を無効化。
+- 編集内容がプレビューへ未反映の場合に表示し、「変更を実行」から再実行可能に。以前の実行に対するエラーも区別。
+- 保存に失敗した録画を保持し、再保存・別の保存先・明示的な破棄に対応。
+- 現在のファイルの検索・置換をコンパクトな編集バーへ変更。検索箇所の強調表示と置換後のカーソル保持に対応し、作品全体の検索も維持。
+- 素材名と選択した固定パスの参照をまとめて変更。更新箇所を確認でき、保存失敗時は元の編集内容を保持。
+- スナップショットに名前・メモを付け、記録内容を変えずに編集可能に。
+- PNG保存後の結果画面から画像を直接開く・共有する操作に対応。
+- 作品選択のフォルダーを長押しドラッグで左右のタブと入れ替えて並び替え（「自分の作品」は先頭固定）。
+- 最新機能・ワークフローに対応し、アプリ内の使い方ガイド（日英中）を全面刷新。
+
 ## 2.2.0 — 2026-10-05
 
 ### English

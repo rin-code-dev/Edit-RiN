@@ -24,6 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.rememberUpdatedState
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -72,16 +77,28 @@ internal fun EditorArea(
     colors: ColorScheme,
     textTranslator: (String, Array<out Any?>) -> String,
     readOnly: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    errorsCurrent: Boolean = true,
+    searchMatches: List<IntRange> = emptyList(),
+    inlineSearch: @Composable () -> Unit = {},
+    navigationRequestsFocus: Boolean = true,
+    previewHasChanges: Boolean = false,
+    onRunChanges: () -> Unit = {},
+    onCopySample: () -> Unit = {},
+    onEditorFontSizeChange: (Float) -> Unit = {},
+    showErrorBanner: Boolean = true,
+    onJumpToSource: (String, Int) -> Unit = { _, _ -> }
 ) {
+    val currentFontSize = rememberUpdatedState(editorFontSize)
+    val currentFontSizeChange = rememberUpdatedState(onEditorFontSizeChange)
     val darkEditorTheme = colors.surface.luminance() < 0.5f
     val dirtyFiles = dirtyProjectFiles(activeWorkId, activeWork?.code.orEmpty(),
         sessionViewModel.editorValueState.value.text, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
     LaunchedEffect(readOnly) { if (readOnly) focusManager.clearFocus(force = true) }
 
-    val editorErrorLines by remember(editingFile, activeWorkId) {
+    val editorErrorLines by remember(editingFile, activeWorkId, errorsCurrent, consoleEntries) {
         derivedStateOf {
-            consoleEntries.asSequence()
+            if (!errorsCurrent) emptySet() else consoleEntries.asSequence()
                 .filter { it.level == ConsoleLevel.ERROR && it.file == editingFile && it.workId == activeWorkId }
                 .mapNotNull { it.line }
                 .toSet()
@@ -108,8 +125,25 @@ internal fun EditorArea(
         FoldProjection(editingText, foldRegions, collapsedFolds)
     }
     val displayText = remember(projection) { projection.transform(AnnotatedString(editingText)).text.text }
-    val foldedHighlighter = remember(javascriptHighlighter, projection) {
-        VisualTransformation { text -> projection.transform(javascriptHighlighter.filter(text).text) }
+    val searchColor = colors.primary.copy(alpha = 0.18f)
+    val visibleSearchMatches = remember(searchMatches, editingValue.selection) {
+        if (searchMatches.size <= 2000) searchMatches else {
+            val found = searchMatches.binarySearch { it.first.compareTo(editingValue.selection.min) }
+            val anchor = if (found >= 0) found else -found - 1
+            val start = (anchor - 1000).coerceIn(0, searchMatches.size - 2000)
+            searchMatches.subList(start, start + 2000)
+        }
+    }
+    val foldedHighlighter = remember(javascriptHighlighter, projection, visibleSearchMatches, searchColor) {
+        VisualTransformation { text ->
+            val highlighted = AnnotatedString.Builder(javascriptHighlighter.filter(text).text).apply {
+                visibleSearchMatches.forEach { range ->
+                    if (range.first >= 0 && range.last < text.length && !range.isEmpty())
+                        addStyle(SpanStyle(background = searchColor), range.first, range.last + 1)
+                }
+            }.toAnnotatedString()
+            projection.transform(highlighted)
+        }
     }
     LaunchedEffect(editingKey, editingValue.selection, collapsedFolds) {
         val selection = editingValue.selection
@@ -205,7 +239,29 @@ internal fun EditorArea(
     }
 
     Card(
-        modifier = modifier.border(
+        modifier = modifier.pointerInput(Unit) {
+            // Two-finger pinch resizes the code; single-finger scrolling and selection are untouched.
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                var startDistance = 0f
+                var startSize = currentFontSize.value
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val pressed = event.changes.filter { it.pressed }
+                    if (pressed.size >= 2) {
+                        val distance = (pressed[0].position - pressed[1].position).getDistance()
+                        if (startDistance <= 0f) { startDistance = distance; startSize = currentFontSize.value }
+                        else if (distance > 0f) {
+                            val next = (startSize * distance / startDistance).coerceIn(12f, 28f)
+                            if (kotlin.math.abs(next - currentFontSize.value) >= 0.5f) {
+                                currentFontSizeChange.value(next.roundToInt().toFloat())
+                            }
+                        }
+                        event.changes.forEach { it.consume() }
+                    } else startDistance = 0f
+                } while (event.changes.any { it.pressed })
+            }
+        }.border(
             width = 1.dp,
             color = if (editorFocused) {
                 colors.primary
@@ -223,32 +279,91 @@ internal fun EditorArea(
         )
     ) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    FileTabs(listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted(), selectedEditorFile,
-                        dirtyFiles = dirtyFiles, unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
-                        enabled = !readOnly) {
-                        if (selectedEditorFile != it) {
-                            focusManager.clearFocus(force = true)
-                            onFocusChange(false)
-                            onSelectEditorFile(it)
+            if (activeWork?.isSample == true) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(textTranslator("サンプル・閲覧専用", emptyArray()),
+                    style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = onCopySample, enabled = !sessionViewModel.assetBusy) {
+                    Text(textTranslator("コピーして編集", emptyArray()))
+                }
+            }
+            val projectFiles = listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted()
+            val hasMultipleFiles = projectFiles.size > 1
+            if (hasMultipleFiles) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        FileTabs(projectFiles, selectedEditorFile,
+                            dirtyFiles = dirtyFiles, unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
+                            enabled = !sessionViewModel.editorInputLocked) {
+                            if (selectedEditorFile != it) {
+                                focusManager.clearFocus(force = true)
+                                onFocusChange(false)
+                                onSelectEditorFile(it)
+                            }
+                        }
+                    }
+                    if (editorFocused && previewHasChanges) {
+                        TextButton(onClick = onRunChanges, enabled = !readOnly,
+                            contentPadding = PaddingValues(horizontal = 6.dp)) {
+                            Text(textTranslator("変更を実行", emptyArray()), style = MaterialTheme.typography.labelSmall,
+                                color = colors.tertiary)
                         }
                     }
                 }
-                IconButton(
-                    onClick = onOpenSnapshotSheet,
-                    enabled = !readOnly,
-                    modifier = Modifier.size(34.dp)
+            } else if (editorFocused && previewHasChanges) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_snapshot),
-                        contentDescription = textTranslator("スナップショット", emptyArray()),
-                        tint = colors.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    TextButton(onClick = onRunChanges, enabled = !readOnly,
+                        contentPadding = PaddingValues(horizontal = 6.dp)) {
+                        Text(textTranslator("変更を実行", emptyArray()), style = MaterialTheme.typography.labelSmall,
+                            color = colors.tertiary)
+                    }
+                }
+            }
+            inlineSearch()
+            if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
+                Text(textTranslator("エラーは前回の実行結果です", emptyArray()),
+                    Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall, color = colors.tertiary)
+            }
+            val latestError = if (showErrorBanner && errorsCurrent) {
+                consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
+            } else null
+            if (latestError != null) {
+                val errorFile = latestError.file ?: editingFile
+                val errorLine = latestError.line
+                Surface(
+                    onClick = { if (errorLine != null) onJumpToSource(errorFile, errorLine) },
+                    enabled = errorLine != null,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.errorContainer,
+                    contentColor = colors.onErrorContainer
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = (if (errorLine != null) "${errorFile}:$errorLine  " else "") +
+                                latestError.message.lineSequence().firstOrNull().orEmpty(),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        if (errorLine != null) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(textTranslator("移動", emptyArray()),
+                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
             BoxWithConstraints(
@@ -256,6 +371,12 @@ internal fun EditorArea(
             ) {
                 val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
                 val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
+                val localDensity = LocalDensity.current
+                val gutterChars = (if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)
+                val gutterWidth = (
+                    gutterChars * editorFontSize * localDensity.fontScale * 0.60f + 10f
+                ).dp
+                val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
                 LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                     val target = navigationTarget ?: return@LaunchedEffect
                     val layout = editorTextLayout ?: return@LaunchedEffect
@@ -270,15 +391,21 @@ internal fun EditorArea(
                         )
                         return@LaunchedEffect
                     }
-                    editorFocusRequester.requestFocus()
+                    if (navigationRequestsFocus) editorFocusRequester.requestFocus()
                     editorScrollState.scrollTo(layout.getLineTop(layout.getLineForOffset(projection.originalToTransformed(offset))).toInt())
+                    if (!editorWordWrap) {
+                        val cursorOffset = if (navigationRequestsFocus) offset else editingValue.selection.min
+                        val cursor = layout.getCursorRect(projection.originalToTransformed(cursorOffset.coerceIn(0, editingText.length)))
+                        val left = editorHorizontalScrollState.value
+                        if (cursor.right > left + viewportWidth) {
+                            editorHorizontalScrollState.scrollTo((cursor.right - viewportWidth).toInt().coerceAtLeast(0))
+                        } else if (cursor.left < left) {
+                            editorHorizontalScrollState.scrollTo(cursor.left.toInt().coerceAtLeast(0))
+                        }
+                    }
                     onClearNavigationTarget()
                 }
                 val contentMinHeight = (maxHeight - 32.dp).coerceAtLeast(0.dp)
-                val gutterChars = (if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)
-                val gutterWidth = (
-                    gutterChars * editorFontSize * LocalDensity.current.fontScale * 0.60f + 10f
-                ).dp
                 val gutterDividerColor = colors.outlineVariant
 
                 Row(

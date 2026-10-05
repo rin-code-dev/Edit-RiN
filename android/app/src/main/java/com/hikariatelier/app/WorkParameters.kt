@@ -70,3 +70,40 @@ internal fun parameterValuesJson(parameters: List<WorkParameter>, values: Map<St
             }
         }
     }.toString()
+
+/**
+ * Rewrites the default value of each `// @rin` declaration in [source] to the current value in [values].
+ * Returns the new text and the names whose declaration changed, or null when nothing differs.
+ */
+internal fun applyParameterDefaults(source: String, values: Map<String, String>): Pair<String, Set<String>>? {
+    val changed = mutableSetOf<String>()
+    val lines = source.split("\n").map { line ->
+        val match = parameterLine.matchEntire(line.trimEnd('\r')) ?: return@map line
+        val kind = match.groupValues[1]
+        val name = match.groupValues[2]
+        val saved = values[name] ?: return@map line
+        val parameter = workParameters(mapOf("sketch.js" to line)).singleOrNull() ?: return@map line
+        val current = parameterValue(parameter, saved)
+        val range = match.groups[4]?.range ?: return@map line
+        val parts = match.groupValues[4].trim().split(Regex("\\s+")).toMutableList()
+        val replaced = when (parameter) {
+            is WorkParameter.Number -> {
+                val next = formatNumberValue(current.toFloat(), parameter.step)
+                if (kotlin.math.abs(next.toFloat() - parameter.defaultValue.toFloat()) <= 0.0001f) return@map line
+                parts[2] = next; true
+            }
+            is WorkParameter.Color -> {
+                if (current.equals(parameter.defaultValue, true)) return@map line
+                parts[0] = current.uppercase(); true
+            }
+            is WorkParameter.Boolean -> {
+                if (current.equals(parameter.defaultValue, true)) return@map line
+                parts[0] = current.lowercase(); true
+            }
+        }
+        if (!replaced || kind.isEmpty()) return@map line
+        changed += name
+        line.substring(0, range.first) + parts.joinToString(" ") + (if (line.endsWith("\r")) "\r" else "")
+    }
+    return if (changed.isEmpty()) null else lines.joinToString("\n") to changed
+}

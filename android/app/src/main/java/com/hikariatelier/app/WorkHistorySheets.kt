@@ -32,7 +32,8 @@ internal fun WorkSnapshotSheet(
     isLandscape: Boolean,
     dismissEnabled: Boolean,
     onRetry: () -> Unit,
-    onCreateSnapshot: () -> Unit,
+    onCreateSnapshot: (String?, String?) -> Unit,
+    onUpdateSnapshotDetails: (WorkSnapshot, String?, String?) -> Unit,
     onRestoreSnapshot: (WorkSnapshot) -> Unit,
     onDeleteSnapshot: (WorkSnapshot) -> Unit,
     onDismiss: () -> Unit,
@@ -57,6 +58,7 @@ internal fun WorkSnapshotSheet(
             onRetry = onRetry,
             codeFontFamily = codeFontFamily,
             onCreateSnapshot = onCreateSnapshot,
+            onUpdateSnapshotDetails = onUpdateSnapshotDetails,
             onRestoreSnapshot = onRestoreSnapshot,
             onDeleteSnapshot = onDeleteSnapshot,
             text = { s -> textTranslator(s, emptyArray()) }

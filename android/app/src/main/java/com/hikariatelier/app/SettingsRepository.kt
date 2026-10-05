@@ -43,7 +43,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
         preserveExpandedPreview = preferences.getBoolean("setting_preserve_expanded_preview", true),
         landscapePreviewFraction = normalizedLandscapeSplit(preferences.getFloat("setting_landscape_preview_split_v2", 0.5f)),
         showResizeHandles = preferences.getBoolean("setting_resize_handles_visible", true),
-        editorFontSize = preferences.getFloat("setting_editor_font", 14f).takeIf { it.isFinite() }?.coerceIn(12f, 20f) ?: 14f,
+        editorFontSize = preferences.getFloat("setting_editor_font", 14f).takeIf { it.isFinite() }?.coerceIn(12f, 28f) ?: 14f,
         autoIndent = preferences.getBoolean("setting_auto_indent", true),
         showLineNumbers = preferences.getBoolean("setting_line_numbers", true),
         showEditorAccessoryBar = preferences.getBoolean("setting_editor_accessory_bar", true),
@@ -54,6 +54,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
         editorWordWrap = preferences.getBoolean("setting_editor_word_wrap", true),
         landscapeEditorOnLeft = preferences.getBoolean("setting_landscape_editor_on_left", true),
         draftRecovery = preferences.getBoolean("setting_draft_recovery", true),
+        autoSaveOnLeave = preferences.getBoolean("setting_auto_save_on_leave", true),
         mp4BitrateMbps = preferences.getInt("setting_mp4_bitrate_mbps", 5).takeIf(MP4_BITRATE_OPTIONS::contains) ?: 5,
         xShareText = preferences.getString("setting_x_share_text", DEFAULT_X_SHARE_TEXT).orEmpty(),
         recordingCountdownSeconds = preferences.getInt("setting_recording_countdown_seconds", 3).takeIf(RECORDING_COUNTDOWN_OPTIONS::contains) ?: 3,
@@ -92,6 +93,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
             .putBoolean("setting_editor_word_wrap", state.editorWordWrap)
             .putBoolean("setting_landscape_editor_on_left", state.landscapeEditorOnLeft)
             .putBoolean("setting_draft_recovery", state.draftRecovery)
+            .putBoolean("setting_auto_save_on_leave", state.autoSaveOnLeave)
             .putInt("setting_mp4_bitrate_mbps", state.mp4BitrateMbps)
             .putString("setting_x_share_text", state.xShareText)
             .putInt("setting_recording_countdown_seconds", state.recordingCountdownSeconds)
@@ -134,6 +136,7 @@ internal fun SettingsUiState.toBackupJson(): String = JSONObject()
     .put("editorWordWrap", editorWordWrap)
     .put("landscapeEditorOnLeft", landscapeEditorOnLeft)
     .put("draftRecovery", draftRecovery)
+    .put("autoSaveOnLeave", autoSaveOnLeave)
     .put("mp4BitrateMbps", mp4BitrateMbps)
     .put("xShareText", xShareText)
     .put("recordingCountdownSeconds", recordingCountdownSeconds)
@@ -158,7 +161,7 @@ internal fun SettingsUiState.restoredFromBackup(json: JSONObject): SettingsUiSta
     preserveExpandedPreview = json.optBoolean("preserveExpandedPreview", preserveExpandedPreview),
     landscapePreviewFraction = normalizedLandscapeSplit(json.optDouble("landscapePreviewSplit", landscapePreviewFraction.toDouble()).toFloat()),
     showResizeHandles = json.optBoolean("resizeHandlesVisible", showResizeHandles),
-    editorFontSize = json.optDouble("editorFontSize", editorFontSize.toDouble()).toFloat().takeIf { it.isFinite() }?.coerceIn(12f, 20f) ?: 14f,
+    editorFontSize = json.optDouble("editorFontSize", editorFontSize.toDouble()).toFloat().takeIf { it.isFinite() }?.coerceIn(12f, 28f) ?: 14f,
     autoIndent = json.optBoolean("autoIndent", autoIndent),
     showLineNumbers = json.optBoolean("lineNumbers", showLineNumbers),
     showEditorAccessoryBar = json.optBoolean("accessoryBar", showEditorAccessoryBar),
@@ -169,6 +172,7 @@ internal fun SettingsUiState.restoredFromBackup(json: JSONObject): SettingsUiSta
     editorWordWrap = json.optBoolean("editorWordWrap", editorWordWrap),
     landscapeEditorOnLeft = json.optBoolean("landscapeEditorOnLeft", landscapeEditorOnLeft),
     draftRecovery = json.optBoolean("draftRecovery", draftRecovery),
+    autoSaveOnLeave = json.optBoolean("autoSaveOnLeave", autoSaveOnLeave),
     mp4BitrateMbps = json.optInt("mp4BitrateMbps", mp4BitrateMbps).takeIf(MP4_BITRATE_OPTIONS::contains) ?: 5,
     xShareText = json.optString("xShareText", xShareText).take(1000),
     recordingCountdownSeconds = json.optInt("recordingCountdownSeconds", recordingCountdownSeconds).takeIf(RECORDING_COUNTDOWN_OPTIONS::contains) ?: 3,

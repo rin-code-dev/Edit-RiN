@@ -19,7 +19,7 @@ internal fun GalleryWorkDialogs(
     text: (String) -> String,
     windowSetup: @Composable () -> Unit = {}
 ) {
-    val renameWork = works.firstOrNull { it.id == model.galleryRenameWorkId }
+    val renameWork = works.firstOrNull { it.id == model.galleryRenameWorkId && !it.isSample }
     if (renameWork != null) {
         var title by rememberSaveable(renameWork.id) { mutableStateOf(renameWork.title) }
         EditSettingsDialog(onDismissRequest = { if (!busy) model.galleryRenameWorkId = null },
@@ -37,7 +37,7 @@ internal fun GalleryWorkDialogs(
                 TextButton(enabled = !busy, onClick = { model.galleryRenameWorkId = null }) { Text(text("キャンセル")) }
             })
     }
-    val deleted = works.filter { it.id in model.galleryDeleteIds }
+    val deleted = works.filter { it.id in model.galleryDeleteIds && !it.isSample }
     if (deleted.isNotEmpty()) {
         EditSettingsDialog(onDismissRequest = { if (!busy) model.galleryDeleteIds = emptySet() },
             title = { Text(text("選択した作品を削除")) },
@@ -61,7 +61,7 @@ internal fun GalleryWorkDialogs(
                 TextButton(enabled = !busy, onClick = { model.galleryDeleteIds = emptySet() }) { Text(text("キャンセル")) }
             })
     }
-    val tagged = works.filter { it.id in model.galleryTagIds }
+    val tagged = works.filter { it.id in model.galleryTagIds && !it.isSample }
     if (tagged.isNotEmpty()) {
         var input by rememberSaveable(model.galleryTagIds) { mutableStateOf("") }
         val tag = input.trim().removePrefix("#").trim()

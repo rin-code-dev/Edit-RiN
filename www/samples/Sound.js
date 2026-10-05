@@ -1,63 +1,221 @@
-// Sound — touch to play tones; an oscilloscope sweeps the screen
-const SIZE = 600;
+// p5.js 2.3.3 + p5.sound
+// MONO SYNTH SCOPE
+
 let osc;
+let filter;
 let fft;
-let t = 0;
+let env;
+
+let active = false;
+let freq = 220;
 
 function setup() {
-  createCanvas(SIZE, SIZE);
-  osc = new p5.Oscillator('triangle');
-  osc.amp(0);
+  createCanvas(windowWidth, windowHeight);
+
+  // Oscillator
+  osc = new p5.Oscillator(220, "sine");
+
+  // Filter
+  filter = new p5.LowPass();
+
+  osc.disconnect();
+  osc.connect(filter);
+
+  // Envelope
+  env = new p5.Envelope();
+  env.setADSR(0.03, 0.1, 0.35, 0.2);
+
+  // Envelope経由で出力
+  filter.disconnect();
+  filter.connect(env);
+
+  // FFT
+  fft = new p5.FFT(512);
+  env.connect(fft);
+
   osc.start();
-  fft = new p5.FFT(0.8, 1024);
+
+  textFont("monospace");
+  strokeCap(ROUND);
 }
 
 function draw() {
-  t += 0.02;
-  background(9, 9, 11);
+  background(8);
 
-  if (mouseIsPressed) {
-    const midi = floor(map(mouseX, 0, width, 45, 81, true));
-    osc.freq(440 * pow(2, (midi - 69) / 12), 0.04);
-    osc.amp(map(mouseY, height, 0, 0.1, 0.4, true), 0.05);
-  } else {
-    osc.amp(0, 0.15);
+  if (active) {
+    // 横方向 = 音程
+    const targetFreq = map(
+      constrain(mouseX, 0, width),
+      0,
+      width,
+      80,
+      600
+    );
+
+    freq = lerp(freq, targetFreq, 0.08);
+
+    osc.freq(freq);
+
+    // 縦方向 = フィルター
+    const cutoff = map(
+      constrain(mouseY, 0, height),
+      height,
+      0,
+      180,
+      2200
+    );
+
+    filter.freq(cutoff);
+    filter.res(1.5);
   }
 
+  drawGrid();
+  drawWave();
+  drawCursor();
+  drawUI();
+}
+
+function drawGrid() {
+  strokeWeight(1);
+  stroke(255, 15);
+
+  const gap = 40;
+
+  for (let x = gap; x < width; x += gap) {
+    line(x, 0, x, height);
+  }
+
+  for (let y = gap; y < height; y += gap) {
+    line(0, y, width, y);
+  }
+
+  stroke(255, 40);
+  line(0, height / 2, width, height / 2);
+}
+
+function drawWave() {
   const wave = fft.waveform();
 
-  // 背景の淡い余韻波
   noFill();
-  stroke(168, 199, 250, 40);
+
+  // glow
+  stroke(255, 30);
+  strokeWeight(5);
+
+  beginShape();
+
+  for (let i = 0; i < wave.length; i++) {
+    const x = map(i, 0, wave.length - 1, 0, width);
+    const y =
+      height / 2 +
+      wave[i] * height * 0.3;
+
+    vertex(x, y);
+  }
+
+  endShape();
+
+  // main waveform
+  stroke(255, 230);
+  strokeWeight(1.5);
+
+  beginShape();
+
+  for (let i = 0; i < wave.length; i++) {
+    const x = map(i, 0, wave.length - 1, 0, width);
+    const y =
+      height / 2 +
+      wave[i] * height * 0.3;
+
+    vertex(x, y);
+  }
+
+  endShape();
+}
+
+function drawCursor() {
+  if (!active) return;
+
+  stroke(255, 80);
   strokeWeight(1);
-  beginShape();
-  for (let i = 0; i < wave.length; i += 4) {
-    const x = map(i, 0, wave.length, 0, width);
-    const y = height / 2 + wave[i] * 180 + sin(t + i * 0.02) * 15;
-    vertex(x, y);
-  }
-  endShape();
 
-  // メインのオシロスコープ波形（画面全体を横断）
-  stroke(168, 199, 250);
-  strokeWeight(3);
-  beginShape();
-  for (let i = 0; i < wave.length; i += 2) {
-    const x = map(i, 0, wave.length, 0, width);
-    const idle = !mouseIsPressed ? sin(t * 2 + (x / width) * TWO_PI * 2) * 8 : 0;
-    const y = height / 2 + wave[i] * 220 + idle;
-    vertex(x, y);
-  }
-  endShape();
+  line(mouseX, 0, mouseX, height);
+  line(0, mouseY, width, mouseY);
 
-  if (!mouseIsPressed) {
-    noStroke();
-    fill(168, 199, 250, 160);
-    textAlign(CENTER, CENTER);
-    text('Touch to play', width / 2, height - 40);
+  noFill();
+
+  stroke(255);
+  strokeWeight(1.5);
+
+  circle(mouseX, mouseY, 20);
+
+  fill(255);
+  noStroke();
+
+  circle(mouseX, mouseY, 3);
+}
+
+function drawUI() {
+  noStroke();
+
+  fill(255);
+  textSize(11);
+
+  text("MONO SYNTH SCOPE", 18, 25);
+
+  fill(255, 100);
+
+  if (active) {
+    text(
+      freq.toFixed(1) + " Hz",
+      18,
+      height - 22
+    );
+  } else {
+    text(
+      "TOUCH + DRAG",
+      18,
+      height - 22
+    );
   }
 }
 
-function touchStarted() {
+function soundOn() {
   userStartAudio();
+
+  if (!active) {
+    active = true;
+    env.triggerAttack(0.18);
+  }
+}
+
+function soundOff() {
+  if (active) {
+    active = false;
+    env.triggerRelease();
+  }
+}
+
+function mousePressed() {
+  soundOn();
+  return false;
+}
+
+function mouseReleased() {
+  soundOff();
+  return false;
+}
+
+function touchStarted() {
+  soundOn();
+  return false;
+}
+
+function touchEnded() {
+  soundOff();
+  return false;
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }

@@ -110,7 +110,7 @@ class SettingsRepositoryTest {
             .put("appLanguage", "unsupported").put("p5Username", "invalid/name")
             .put("xShareText", "x".repeat(1200))
         val restored = SettingsUiState().restoredFromBackup(json)
-        assertEquals(20f, restored.editorFontSize)
+        assertEquals(28f, restored.editorFontSize)
         assertEquals(0.65f, restored.landscapePreviewFraction)
         assertEquals(5, restored.mp4BitrateMbps); assertEquals(3, restored.recordingCountdownSeconds)
         assertEquals("system", restored.appLanguage); assertEquals("", restored.p5Username)

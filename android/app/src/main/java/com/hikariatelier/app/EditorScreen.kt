@@ -378,7 +378,9 @@ internal fun EditorScreen(
         }
     }
 
-    var selectedEditorFile by rememberSaveable(activeWorkId) { mutableStateOf("sketch.js") }
+    var selectedEditorFile by remember(activeWorkId, sessionViewModel.auxiliaryEditorGeneration) {
+        sessionViewModel.editorFileState(activeWorkId)
+    }
     val editingFile = selectedEditorFile.takeIf { it in activeWork?.files.orEmpty() } ?: "sketch.js"
     val editingJavaScript = isJavaScriptProjectFile(editingFile)
     val editingKey = "$activeWorkId/$editingFile"
@@ -401,6 +403,13 @@ internal fun EditorScreen(
         }
     var editingValue by editingState
     val editingText = editingValue.text
+    val inlineSearchVisible = showSearchDialog && !searchReplaceViewModel.searchWholeWork && !galleryPresent
+    var searchHighlightResult by remember(editingKey) { mutableStateOf<Pair<String, List<IntRange>>?>(null) }
+    val previewHasChanges by remember(preview, activeWorkId) {
+        derivedStateOf { !previewRunMatches(preview.runInput,
+            sessionViewModel.worksState.value.firstOrNull { it.id == sessionViewModel.activeWorkIdState.value },
+            sessionViewModel.editorValueState.value.text, sessionViewModel.fileDrafts) }
+    }
     val undoStack = if (editingFile == "sketch.js") sessionViewModel.undoStack else
         remember(editingKey, sessionViewModel.auxiliaryEditorGeneration) {
             sessionViewModel.fileUndoStacks.getOrPut(editingKey) { mutableStateListOf() }
@@ -430,6 +439,7 @@ internal fun EditorScreen(
         nextValue: TextFieldValue
     ) {
         if (sessionViewModel.editorInputLocked) return
+        if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
         sessionViewModel.applyChange(editingValue, nextValue, undoStack, redoStack)
         editingValue = nextValue
     }
@@ -446,6 +456,7 @@ internal fun EditorScreen(
 
     fun undoEditorChange() {
         if (sessionViewModel.editorInputLocked) return
+        if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
         val restored = sessionViewModel.undo(editingValue, undoStack, redoStack) ?: return
         editingValue = restored
         editorFocusRequester.requestFocus()
@@ -453,6 +464,7 @@ internal fun EditorScreen(
 
     fun redoEditorChange() {
         if (sessionViewModel.editorInputLocked) return
+        if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
         val restored = sessionViewModel.redo(editingValue, undoStack, redoStack) ?: return
         editingValue = restored
         editorFocusRequester.requestFocus()
@@ -533,6 +545,7 @@ internal fun EditorScreen(
 
     var navigationSequence by remember { mutableIntStateOf(0) }
     var navigationTarget by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var navigationRequestsFocus by remember { mutableStateOf(true) }
 
     fun navigateToSource(file: String, line: Int, selection: TextRange? = null) {
         if (line <= 0 || (file != "sketch.js" && file !in activeWork?.files.orEmpty())) return
@@ -549,6 +562,7 @@ internal fun EditorScreen(
         } ?: TextRange(offset))
         selectedEditorFile = file
         navigationTarget = file to line
+        navigationRequestsFocus = true
         navigationSequence++
         showConsole = false
         consoleExpanded = false
@@ -642,6 +656,20 @@ internal fun EditorScreen(
             workManagementViewModel.events.collect { currentWorkEventHandler.value(it) }
         }
     }
+    LaunchedEffect(activeWorkId) { RecentWorks.touch(context, activeWorkId) }
+    val autoSaveOnLeave by settingsViewModel::autoSaveOnLeave
+    val currentAutoSaveOnLeave = rememberUpdatedState(autoSaveOnLeave)
+    val currentHasUnsavedChanges = rememberUpdatedState(hasUnsavedChanges)
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && currentAutoSaveOnLeave.value &&
+                currentHasUnsavedChanges.value && !sessionViewModel.sampleReadOnly) {
+                workManagementViewModel.saveCurrentWork(blockUi = false)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(snapshotViewModel) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             snapshotViewModel.notices.events.collect { notice ->
@@ -703,6 +731,14 @@ internal fun EditorScreen(
             modifier = modifier
         )
 
+    }
+
+    var initialGallerySectionSet by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(sessionViewModel.initialized) {
+        if (sessionViewModel.initialized && !initialGallerySectionSet) {
+            if (sessionViewModel.sampleReadOnly) workGalleryState.changeFolder(SAMPLE_FOLDER)
+            initialGallerySectionSet = true
+        }
     }
 
     fun closeWorkGallery() {
@@ -791,11 +827,15 @@ internal fun EditorScreen(
         if (assetBusy) return
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+        workGalleryState.changeFolder(if (activeWork?.isSample == true) SAMPLE_FOLDER else activeWork?.folderName?.takeIf { it.isNotEmpty() })
         workGalleryState.jumpToWork(activeWorkId)
     }
     fun toggleAllGallerySelection() {
         if (assetBusy) return
-        val allIds = works.map { it.id }.toSet()
+        val allIds = works.filter { !it.isSample && workGalleryState.inFolder(it) &&
+            (workGalleryState.selectedTag == null || it.tags.any { tag -> tag.equals(workGalleryState.selectedTag, true) }) &&
+            (workGalleryState.query.isBlank() || it.title.contains(workGalleryState.query.trim(), true) ||
+                it.tags.any { tag -> tag.contains(workGalleryState.query.trim().removePrefix("#"), true) }) }.map { it.id }.toSet()
         workGalleryState.selectedIds = if (workGalleryState.selectedIds == allIds) emptySet() else allIds
     }
 
@@ -805,6 +845,7 @@ internal fun EditorScreen(
             text = { uiText(it) }, sort = settingsViewModel.workSort,
             onSort = { settingsViewModel.workSort = it }, modifier = modifier, buttonSize = buttonSize,
             busy = assetBusy, canDeleteSelection = workGalleryState.selectedIds.size < works.size,
+            onMoveSelection = { workManagementViewModel.galleryMoveIds = workGalleryState.selectedIds },
             onTagSelection = {
                 focusManager.clearFocus(force = true); keyboardController?.hide()
                 workManagementViewModel.galleryTagIds = workGalleryState.selectedIds
@@ -836,7 +877,7 @@ internal fun EditorScreen(
                     workManagementViewModel.selectWork(work.id, openMenu)
                 }
             },
-            onAdd = { closeWorkGallery(); showAddDialog = true },
+            onAdd = { workManagementViewModel.newWorkFolder = workGalleryState.selectedFolder?.takeIf { it in workManagementViewModel.galleryFolders }.orEmpty(); closeWorkGallery(); showAddDialog = true },
             state = workGalleryState,
             modifier = modifier.semantics { paneTitle = uiText("作品") },
             onTogglePin = { workManagementViewModel.togglePin(it.id) },
@@ -844,13 +885,22 @@ internal fun EditorScreen(
             onDeleteGlobalTag = { workManagementViewModel.deleteGlobalTag(it) },
             busy = assetBusy,
             onRename = { workManagementViewModel.galleryRenameWorkId = it.id },
-            onDuplicate = { workManagementViewModel.duplicateGalleryWork(it.id) },
+            onDuplicate = { if (it.isSample) workManagementViewModel.requestSampleCopy(it.id) else workManagementViewModel.duplicateGalleryWork(it.id) },
             onDelete = { workManagementViewModel.galleryDeleteIds = setOf(it.id) },
             onActiveThumbnailBounds = { if (galleryTarget) galleryThumbnailBounds = it },
             morphWorkId = galleryPreviewOwner,
             suppressMorphThumbnail = galleryMorphActive,
-            morphProgress = galleryProgress
+            morphProgress = galleryProgress,
+            folders = workManagementViewModel.galleryFolders,
+            tabs = workManagementViewModel.galleryTabs,
+            onManageFolders = { workManagementViewModel.showGalleryFolders = true },
+            onMove = { workManagementViewModel.galleryMoveIds = setOf(it.id) },
+            onReorderTabs = { workManagementViewModel.reorderGalleryTabs(it) }
         )
+    }
+
+    fun editUserWork(action: () -> Unit) {
+        if (sessionViewModel.sampleReadOnly) workManagementViewModel.requestSampleCopy() else action()
     }
 
     @Composable
@@ -859,7 +909,7 @@ internal fun EditorScreen(
             activeWork = activeWork,
             canUndo = undoStack.isNotEmpty(),
             canRedo = redoStack.isNotEmpty(),
-            canDelete = works.size > 1,
+            canDelete = activeWork?.isSample != true && works.size > 1,
             hasUnsavedChanges = hasUnsavedChanges,
             isLandscape = isLandscape,
             manualRotation = manualRotation,
@@ -881,7 +931,7 @@ internal fun EditorScreen(
             },
             onUndo = { undoEditorChange() },
             onRedo = { redoEditorChange() },
-            onSearch = { showSearchDialog = true },
+            onSearch = { editUserWork { searchReplaceViewModel.openSearch(editingValue) } },
             onFormat = {
                 formatEditingFile()
             },
@@ -889,13 +939,13 @@ internal fun EditorScreen(
                 if (editingJavaScript) showSnippets = true
                 else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             },
-            onSnapshot = { showSnapshotSheet = true },
-            onHistory = { showHistoryDialog = true },
-            onAspectRatio = { showAspectRatioDialog = true },
-            onTogglePin = { activeWork?.let { workManagementViewModel.togglePin(it.id) } },
-            onEditTags = { workManagementViewModel.editingTagsWorkId = activeWork?.id },
-            onRename = { showRenameDialog = true },
-            onDuplicate = { workManagementViewModel.duplicateWork() },
+            onSnapshot = { editUserWork { showSnapshotSheet = true } },
+            onHistory = { editUserWork { showHistoryDialog = true } },
+            onAspectRatio = { editUserWork { showAspectRatioDialog = true } },
+            onTogglePin = { editUserWork { activeWork?.let { workManagementViewModel.togglePin(it.id) } } },
+            onEditTags = { editUserWork { workManagementViewModel.editingTagsWorkId = activeWork?.id } },
+            onRename = { editUserWork { showRenameDialog = true } },
+            onDuplicate = { editUserWork { workManagementViewModel.duplicateWork() } },
             assetBusy = assetBusy,
             onExportZip = { exportWorkZip.launch("Edit-RiN-work.zip") },
             onImportZip = { importWorkZip.launch(arrayOf("application/zip", "application/octet-stream")) },
@@ -914,10 +964,10 @@ internal fun EditorScreen(
                     safeJsFileName(activeWork?.title ?: "sketch")
                 )
             },
-            onDelete = { showDeleteDialog = true },
-            onOpenProjectFiles = { showProjectFilesDialog = true },
-            onOpenAssets = { focusManager.clearFocus(force = true); showAssets = true },
-            onOpenRuntime = { showRuntimeDialog = true },
+            onDelete = { editUserWork { showDeleteDialog = true } },
+            onOpenProjectFiles = { editUserWork { showProjectFilesDialog = true } },
+            onOpenAssets = { editUserWork { focusManager.clearFocus(force = true); showAssets = true } },
+            onOpenRuntime = { editUserWork { showRuntimeDialog = true } },
             textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }
         )
@@ -1048,6 +1098,7 @@ internal fun EditorScreen(
             RunStatusControls(
                 isError = isError,
                 isPaused = isPaused,
+                hasPendingChanges = previewHasChanges && !preview.isLoading,
                 colors = colors,
                 height = 34.dp,
                 buttonSize = 32.dp,
@@ -1076,6 +1127,7 @@ internal fun EditorScreen(
                 height = 34.dp,
                 buttonSize = 32.dp,
                 iconSize = 18.dp,
+                onSnapshot = { editUserWork { showSnapshotSheet = true } },
                 onRestore = { restoreCurrentWork() },
                 onSave = { saveCurrentWork() },
                 textTranslator = { s, args -> uiText(s, *args) }
@@ -1193,6 +1245,7 @@ internal fun EditorScreen(
             RunStatusControls(
                 isError = isError,
                 isPaused = isPaused,
+                hasPendingChanges = previewHasChanges && !preview.isLoading,
                 colors = colors,
                 height = if (isLandscape) 34.dp else 38.dp,
                 buttonSize = 34.dp,
@@ -1227,6 +1280,7 @@ internal fun EditorScreen(
                 height = if (isLandscape) 34.dp else 38.dp,
                 buttonSize = 34.dp,
                 iconSize = 20.dp,
+                onSnapshot = { editUserWork { showSnapshotSheet = true } },
                 onRestore = { restoreCurrentWork() },
                 onSave = { saveCurrentWork() },
                 textTranslator = { s, args -> uiText(s, *args) }
@@ -1251,6 +1305,7 @@ internal fun EditorScreen(
     fun EditorAccessoryBar(
         modifier: Modifier = Modifier
     ) {
+        if (sessionViewModel.sampleReadOnly) return
         com.hikariatelier.app.EditorAccessoryBar(
             editingValue = editingValue,
             compactAccessoryKeys = compactAccessoryKeys,
@@ -1260,7 +1315,7 @@ internal fun EditorScreen(
             redoAvailable = redoStack.isNotEmpty(),
             onUndo = { undoEditorChange() },
             onRedo = { redoEditorChange() },
-            onSearch = { showSearchDialog = true },
+            onSearch = { editUserWork { searchReplaceViewModel.openSearch(editingValue) } },
             onFormat = {
                 formatEditingFile()
             },
@@ -1305,7 +1360,7 @@ internal fun EditorScreen(
             suggestions = editorSuggestions,
             editingValue = editingValue,
             editingText = editingText,
-            visible = editorFocused && codeCompletion && editingJavaScript,
+            visible = editorFocused && codeCompletion && editingJavaScript && !inlineSearchVisible,
             codeFontFamily = codeFontFamily,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
@@ -1331,7 +1386,8 @@ internal fun EditorScreen(
             editingKey = editingKey,
             editingText = editingText,
             editingValue = editingValue,
-            onUpdateEditingValue = { if (!sessionViewModel.editorInputLocked && !galleryPresent) editingValue = it },
+            onUpdateEditingValue = { if (!sessionViewModel.editorInputLocked && !galleryPresent &&
+                (!sessionViewModel.sampleReadOnly || it.text == editingValue.text)) editingValue = it },
             onApplyEditorChange = { if (!galleryPresent) applyEditorChange(it) },
             editorFocused = editorFocused,
             onFocusChange = { editorFocused = it },
@@ -1339,16 +1395,47 @@ internal fun EditorScreen(
             focusManager = focusManager,
             consoleEntries = consoleEntries,
             sessionViewModel = sessionViewModel,
+            errorsCurrent = !previewHasChanges,
+            previewHasChanges = previewHasChanges && !preview.isLoading,
+            onRunChanges = { runSketch() },
+            searchMatches = searchHighlightResult?.takeIf {
+                showSearchDialog && !searchReplaceViewModel.searchWholeWork && it.first == editingText
+            }?.second.orEmpty(),
+            inlineSearch = {
+                if (!galleryPresent && !sessionViewModel.editorInputLocked) {
+                    SearchReplaceBar(
+                        viewModel = searchReplaceViewModel,
+                        editingKey = editingKey,
+                        editingValue = editingValue,
+                        onApplyChange = { applyEditorChange(it) },
+                        onJumpToLine = { jumpToLine(it) },
+                        editorFocusRequester = editorFocusRequester,
+                        codeFontFamily = codeFontFamily,
+                        textTranslator = { s, args -> uiText(s, *args) },
+                        onSearchMatchesChanged = { source, matches -> searchHighlightResult = source to matches },
+                        onRevealMatch = { range ->
+                            navigationRequestsFocus = false
+                            navigationTarget = editingFile to (1 + editingState.value.text.take(range.min).count { it == '\n' })
+                            navigationSequence++
+                        }
+                    )
+                }
+            },
             codeFontFamily = codeFontFamily,
             editorFontSize = editorFontSize,
+            onEditorFontSizeChange = { editorFontSize = it },
+            showErrorBanner = !showConsole,
+            onJumpToSource = { file, line -> navigateToSource(file, line) },
             editorWordWrap = editorWordWrap,
             autoIndent = autoIndent,
             showLineNumbers = showLineNumbers,
             fontFeatures = fontFeatures,
             navigationSequence = navigationSequence,
             navigationTarget = navigationTarget.takeUnless { galleryPresent },
+            navigationRequestsFocus = navigationRequestsFocus,
             onClearNavigationTarget = { navigationTarget = null },
-            readOnly = sessionViewModel.editorInputLocked || galleryPresent,
+            readOnly = sessionViewModel.editorInputLocked || galleryPresent || sessionViewModel.sampleReadOnly,
+            onCopySample = { workManagementViewModel.requestSampleCopy() },
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
             modifier = modifier
@@ -1383,12 +1470,10 @@ internal fun EditorScreen(
                     onBack = { showSettings = false },
                     onChooseFolder = { workManagementViewModel.saveCurrentWork(WorkEvent(openFolder = true)) },
                     onImportOfficialSamples = {
-                        val ids = works.map { it.id }.toSet()
-                        val titles = works.map { it.title.lowercase() }.toSet()
-                        val missing = workManagementViewModel.officialSamples.filter { it.id !in ids && it.title.lowercase() !in titles }
-                        if (missing.isEmpty()) Toast.makeText(context,
-                            uiText("すべての公式サンプル作品は既に追加されています"), Toast.LENGTH_SHORT).show()
-                        else workManagementViewModel.addSamples(missing)
+                        showSettings = false
+                        workGalleryState.selectedFolder = SAMPLE_FOLDER
+                        workGalleryState.closeSearch(); workGalleryState.finishSelection()
+                        workMenuExpanded = true
                     },
                     onImportFont = { fontPicker.launch(arrayOf("*/*")) },
                     onResetFont = { settingsViewModel.resetFont() },
@@ -1411,11 +1496,11 @@ internal fun EditorScreen(
             EditorWorkspaceLayout(
                 state = EditorWorkspaceState(
                     isLandscape = isLandscape,
-                    editorFocused = editorFocused && !galleryPresent,
+                    editorFocused = (editorFocused || inlineSearchVisible) && !galleryPresent,
                     keyboardVisible = keyboardVisible && !galleryPresent,
                     showResizeHandles = showResizeHandles,
                     showConsole = showConsole,
-                    showEditorAccessoryBar = showEditorAccessoryBar,
+                    showEditorAccessoryBar = showEditorAccessoryBar && !inlineSearchVisible,
                     compactPreview = compactPreview,
                     hideEditingPreview = hideEditingPreview,
                     themeMode = themeMode,
@@ -1429,7 +1514,7 @@ internal fun EditorScreen(
                     previewRatioSelection = previewRatioSelection,
                     portraitRatioDragging = portraitRatioDragging,
                     codeFontFamily = codeFontFamily,
-                    hasVisibleCompletions = editorSuggestions.isNotEmpty(),
+                    hasVisibleCompletions = editorSuggestions.isNotEmpty() && !inlineSearchVisible,
                     galleryVisible = galleryPresent,
                     galleryProgress = galleryProgress
                 ),
@@ -1538,7 +1623,8 @@ internal fun EditorScreen(
     if (showParameterSheet) {
         LiveParameterSheet(activeWork, editorText, sessionViewModel, workManagementViewModel, preview,
             ParameterSheetLayout(isLandscape, landscapeEditorOnLeft, 1f - animatedLandscapePreviewFraction, showStatusBar),
-            { source, args -> uiText(source, *args) }, onDismiss = { showParameterSheet = false })
+            { source, args -> uiText(source, *args) },
+            onDismiss = { showParameterSheet = false })
     }
 
     if (showRecordingFormatDialog && !isRecordingOrCountingDown) {
@@ -1594,13 +1680,7 @@ internal fun EditorScreen(
                 assetTargetId = activeWorkId
                 assetPicker.launch(arrayOf("*/*"))
             },
-            onRename = { old, new ->
-                activeWork?.let { work ->
-                    val updated = work.assets.toMutableMap()
-                    updated.remove(old)?.let { updated[new] = it }
-                    changeAssets(work.id, updated)
-                }
-            },
+            onRename = { request -> workManagementViewModel.renameAsset(request) },
             onDelete = { name -> activeWork?.let { changeAssets(it.id, it.assets.toMap() - name) } },
             onClose = { showAssets = false },
             onPreview = { name, asset -> previewAsset = name to asset },

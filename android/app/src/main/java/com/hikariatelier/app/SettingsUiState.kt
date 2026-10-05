@@ -28,6 +28,7 @@ internal data class SettingsUiState(
     val editorWordWrap: Boolean = true,
     val landscapeEditorOnLeft: Boolean = true,
     val draftRecovery: Boolean = true,
+    val autoSaveOnLeave: Boolean = true,
     val mp4BitrateMbps: Int = 5,
     val xShareText: String = DEFAULT_X_SHARE_TEXT,
     val recordingCountdownSeconds: Int = 3,
@@ -36,5 +37,5 @@ internal data class SettingsUiState(
     val fontLigatures: Boolean = false,
     val customFontFile: String = "",
     val importedFontName: String = "",
-    val workSort: String = "更新順",
+    val workSort: String = "更新順"
 )

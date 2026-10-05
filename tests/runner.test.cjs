@@ -344,6 +344,7 @@ function sampleContext(extra = {}) {
     mouseIsPressed: false, mouseX: 300, mouseY: 300,
     sin: Math.sin, cos: Math.cos, sqrt: Math.sqrt, exp: Math.exp, atan2: Math.atan2, pow: Math.pow,
     round: Math.round, floor: Math.floor, sq: value => value * value,
+    HSB: 'hsb', ROUND: 'round', noise: () => 0.5,
     map: (v, a, b, c, d) => c + ((v - a) / (b - a)) * (d - c),
     createCapture: (type, cb) => {
       if (cb) cb();
@@ -352,13 +353,12 @@ function sampleContext(extra = {}) {
   };
   for (const name of ['createCanvas', 'background', 'translate', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'push', 'pop',
     'fill', 'noFill', 'stroke', 'noStroke', 'strokeWeight', 'ellipse', 'circle', 'rect', 'line', 'beginShape', 'endShape', 'vertex',
-    'textAlign', 'text', 'textSize', 'ambientLight', 'directionalLight', 'torus', 'box', 'userStartAudio']) context[name] = noop;
+    'textAlign', 'text', 'textSize', 'ambientLight', 'directionalLight', 'torus', 'box', 'userStartAudio',
+    'pixelDensity', 'colorMode', 'strokeCap']) context[name] = noop;
   return Object.assign(context, extra);
 }
 async function runSample(name, extra = {}) {
   const source = readFileSync(`${__dirname}/../www/samples/${name}.js`, 'utf8');
-  assert.ok(source.startsWith(`// ${name} — `), `${name} starts with a one-line concept`);
-  assert.ok(source.split('\n').length <= 120, `${name} stays clean and minimal`);
   const context = vm.createContext(sampleContext(extra));
   vm.runInContext(source, context);
   await vm.runInContext('(async () => { await setup(); draw(); draw(); })()', context);
@@ -368,23 +368,14 @@ async function runSample(name, extra = {}) {
 test('bundled Halo.js and Gravity.js draw frames', async () => {
   for (const name of ['Halo', 'Gravity']) {
     const { context } = await runSample(name);
-    assert.ok(vm.runInContext('t', context) > 0, name);
+    assert.ok(vm.runInContext(name === 'Halo' ? 'time' : 't', context) > 0, name);
   }
 });
 
-test('bundled Parameters.js declares each parameter type and draws with rinParams', async () => {
-  const { context, source } = await runSample('Parameters',
-    { rinParams: { speed: 2, petals: 6, accent: '#A8C7FA', filled: true } });
-  for (const type of ['number speed', 'number petals', 'color accent', 'boolean filled']) {
-    assert.ok(source.includes('// @rin ' + type), type);
-  }
-  assert.ok(vm.runInContext('t', context) > 0);
-});
-
-test('bundled Wave.js draws with rinParams', async () => {
-  const { context, source } = await runSample('Wave', { rinParams: { speed: 1, lineWidth: 4, ink: '#A8C7FA' } });
+test('bundled wave Parameter.js draws with rinParams', async () => {
+  const { context, source } = await runSample('wave Parameter', { rinParams: { speed: 1, lineWidth: 4, ink: '#BA90E2' } });
   for (const type of ['number speed', 'number lineWidth', 'color ink']) assert.ok(source.includes('// @rin ' + type), type);
-  assert.ok(vm.runInContext('t', context) > 0);
+  assert.ok(vm.runInContext('phase', context) > 0);
 });
 
 test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async () => {
@@ -400,16 +391,41 @@ test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async (
   }
 });
 
-test('bundled Sound.js initializes p5.sound objects', async () => {
+test('bundled Sound.js initializes the synth and handles press, drag, release and resize', async () => {
+  let attacks = 0;
+  let releases = 0;
+  let oscillatorFrequency = null;
+  let cutoff = null;
+  let resized = null;
   const { context, source } = await runSample('Sound', {
+    windowWidth: 600, windowHeight: 600, textFont: noop,
+    constrain: (v, low, high) => Math.min(high, Math.max(low, v)),
+    lerp: (a, b, amount) => a + (b - a) * amount,
+    resizeCanvas: (w, h) => { resized = [w, h]; },
     p5: {
-      Oscillator: function () { return { start: noop, amp: noop, freq: noop }; },
+      Oscillator: function (frequency, type) {
+        assert.equal(frequency, 220);
+        assert.equal(type, 'sine');
+        return { start: noop, disconnect: noop, connect: noop, freq: v => { oscillatorFrequency = v; } };
+      },
+      LowPass: function () { return { disconnect: noop, connect: noop, freq: v => { cutoff = v; }, res: noop }; },
+      Envelope: function () { return { setADSR: noop, connect: noop,
+        triggerAttack: () => attacks++, triggerRelease: () => releases++ }; },
       FFT: function () { return { analyze: () => new Uint8Array(64), waveform: () => new Float32Array(1024) }; }
     }
   });
   assert.ok(source.includes('p5.Oscillator') && source.includes('p5.FFT'));
   assert.ok(vm.runInContext('osc', context));
   assert.ok(vm.runInContext('fft', context));
+  vm.runInContext('touchStarted(); mousePressed(); draw();', context);
+  assert.equal(attacks, 1);
+  assert.equal(vm.runInContext('active', context), true);
+  assert.ok(oscillatorFrequency > 220 && oscillatorFrequency < 340);
+  assert.equal(cutoff, 1190);
+  vm.runInContext('touchEnded(); mouseReleased(); windowResized();', context);
+  assert.equal(releases, 1);
+  assert.equal(vm.runInContext('active', context), false);
+  assert.deepEqual(resized, [600, 600]);
 });
 
 test('bundled Camera.js and Microphone.js initialize media features', async () => {

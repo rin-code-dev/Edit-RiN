@@ -37,10 +37,13 @@ class Work(
     val createdAt: Long = System.currentTimeMillis(),
     updatedAt: Long = System.currentTimeMillis(),
     isPinned: Boolean = false,
-    tags: List<String> = emptyList()
+    tags: List<String> = emptyList(),
+    folderName: String = "",
+    val isSample: Boolean = false
 ) {
     /** Gallery metadata placeholders cannot be persisted as empty authored content. */
     internal var bodyLoaded: Boolean = true
+    var folderName by mutableStateOf(folderName)
     var title by mutableStateOf(title)
     var code by mutableStateOf(code)
     var previewAspectRatio by mutableStateOf(previewAspectRatio)
@@ -62,6 +65,49 @@ data class WorkStore(
 )
 
 class EditorSessionViewModel : ViewModel() {
+    private data class MainEditorResume(
+        val value: TextFieldValue,
+        val savedText: String,
+        val undo: List<TextFieldValue>,
+        val redo: List<TextFieldValue>
+    ) {
+        val size: Long get() = value.text.length.toLong() + undo.sumOf { it.text.length.toLong() } + redo.sumOf { it.text.length.toLong() }
+    }
+    private val mainEditorResumes = linkedMapOf<String, MainEditorResume>()
+    private var skipCurrentEditorCapture = false
+    private val mainEditorPositions = mutableMapOf<String, androidx.compose.ui.text.TextRange>()
+    private val selectedFiles = mutableMapOf<String, androidx.compose.runtime.MutableState<String>>()
+    internal fun editorFileState(workId: String) = selectedFiles.getOrPut(workId) { mutableStateOf("sketch.js") }
+
+    /** Navigation keeps history only while its saved source still matches the work. */
+    internal fun activateWorkEditor(workId: String, code: String, resume: Boolean, retainedIds: Set<String>) {
+        val previousId = activeWorkIdState.value
+        mainEditorResumes.keys.retainAll(retainedIds)
+        mainEditorPositions.keys.retainAll(retainedIds)
+        selectedFiles.keys.retainAll(retainedIds)
+        if (!skipCurrentEditorCapture && previousId != workId && previousId in retainedIds) {
+            mainEditorPositions[previousId] = editorValueState.value.selection
+            mainEditorResumes.remove(previousId)
+            mainEditorResumes[previousId] = MainEditorResume(editorValueState.value.copy(composition = null),
+                lastSavedTextState.value, undoStack.toList(), redoStack.toList())
+        }
+        val cached = mainEditorResumes.remove(workId)?.takeIf { resume && it.savedText == code && it.value.text == code }
+        skipCurrentEditorCapture = false
+        activeWorkIdState.value = workId
+        lastSavedTextState.value = code
+        historyWorkId = workId
+        val position = if (resume) mainEditorPositions[workId]?.let {
+            androidx.compose.ui.text.TextRange(it.start.coerceIn(0, code.length), it.end.coerceIn(0, code.length))
+        } else null
+        editorValueState.value = cached?.value ?: TextFieldValue(code, position ?: androidx.compose.ui.text.TextRange.Zero)
+        if (!resume) mainEditorPositions.remove(workId)
+        clearEditHistory()
+        cached?.let { undoStack.addAll(it.undo); redoStack.addAll(it.redo) }
+        // Retain positions for all works; bound the heavyweight text/history cache.
+        while (mainEditorResumes.size > 8 || mainEditorResumes.values.sumOf { it.size } > 8_000_000L) {
+            mainEditorResumes.remove(mainEditorResumes.keys.first())
+        }
+    }
     internal class EditorScroll {
         val vertical = androidx.compose.foundation.ScrollState(0)
         val horizontal = androidx.compose.foundation.ScrollState(0)
@@ -69,6 +115,7 @@ class EditorSessionViewModel : ViewModel() {
     private val editorScrolls = mutableMapOf<String, EditorScroll>()
     internal fun editorScroll(key: String): EditorScroll = editorScrolls.getOrPut(key) { EditorScroll() }
     var assetBusy by mutableStateOf(false)
+    val sampleReadOnly: Boolean get() = worksState.value.any { it.id == activeWorkIdState.value && it.isSample }
     var editorInputLocked by mutableStateOf(false)
     var snapshotOperationWorkId by mutableStateOf<String?>(null)
     var snapshotRestoring by mutableStateOf(false)
@@ -82,6 +129,9 @@ class EditorSessionViewModel : ViewModel() {
 
     /** Discard caches only when their saved source is replaced or deleted. */
     fun clearAuxiliaryEditors(workId: String? = null) {
+        if (workId == null || workId == activeWorkIdState.value) skipCurrentEditorCapture = true
+        if (workId == null) { mainEditorResumes.clear(); mainEditorPositions.clear(); selectedFiles.clear() }
+        else { mainEditorResumes.remove(workId); mainEditorPositions.remove(workId); selectedFiles.remove(workId) }
         editorScrolls.keys.removeAll { workId == null || it.startsWith("$workId/") }
         val keys = (fileDrafts.keys + fileEditorValues.keys + fileUndoStacks.keys + fileRedoStacks.keys)
             .filter { workId == null || it.startsWith("$workId/") }
@@ -105,6 +155,7 @@ class EditorSessionViewModel : ViewModel() {
         fileUndoStacks.remove(key)
         fileRedoStacks.remove(key)
         codeFoldStates.remove(key)
+        if (selectedFiles[workId]?.value == fileName) selectedFiles[workId]?.value = "sketch.js"
         auxiliaryEditorGeneration++
     }
 

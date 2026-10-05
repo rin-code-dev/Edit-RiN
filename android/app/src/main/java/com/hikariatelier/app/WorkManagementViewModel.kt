@@ -102,6 +102,45 @@ internal class WorkManagementViewModel(
     private val eventChannel = Channel<WorkEvent>(Channel.UNLIMITED)
     val events = eventChannel.receiveAsFlow()
     private val scope get() = operationScope ?: viewModelScope
+    var copySampleId by mutableStateOf<String?>(null)
+    var galleryMoveIds by mutableStateOf<Set<String>>(emptySet())
+    var showGalleryFolders by mutableStateOf(false)
+    var newWorkFolder by mutableStateOf("")
+    private var emptyGalleryFolders by mutableStateOf<Set<String>>(emptySet())
+    var galleryTabs by mutableStateOf<List<String>>(listOf(SAMPLE_FOLDER))
+        private set
+    val galleryFolders: List<String>
+        get() = galleryTabs.filter { it != SAMPLE_FOLDER && it.isNotEmpty() }
+
+    private fun syncGalleryTabs(preferred: List<String>, emptyFolders: Set<String>, works: List<Work>): List<String> {
+        val userFolders = (emptyFolders + works.filterNot { it.isSample }.map { it.folderName }.filter { it.isNotBlank() })
+        val result = mutableListOf<String>()
+        preferred.forEach { tab ->
+            if (tab == SAMPLE_FOLDER) {
+                if (SAMPLE_FOLDER !in result) result.add(SAMPLE_FOLDER)
+            } else if (tab == "") {
+                if (userFolders.isNotEmpty() && "" !in result) result.add("")
+            } else if (tab in userFolders) {
+                if (tab !in result) result.add(tab)
+            }
+        }
+        if (SAMPLE_FOLDER !in result) result.add(0, SAMPLE_FOLDER)
+        if (userFolders.isNotEmpty() && "" !in result) {
+            val sampleIdx = result.indexOf(SAMPLE_FOLDER)
+            if (sampleIdx != -1) result.add(sampleIdx + 1, "") else result.add(0, "")
+        }
+        userFolders.forEach { folder ->
+            if (folder !in result) result.add(folder)
+        }
+        return result
+    }
+
+    fun requestSampleCopy(workId: String = session.activeWorkIdState.value) {
+        if (session.worksState.value.any { it.id == workId && it.isSample }) copySampleId = workId
+    }
+    private fun requireEditable(workId: String = session.activeWorkIdState.value) {
+        require(session.worksState.value.any { it.id == workId && !it.isSample }) { "Sample originals are read-only" }
+    }
     var officialSamples by mutableStateOf<List<Work>>(emptyList())
         private set
 
@@ -114,7 +153,6 @@ internal class WorkManagementViewModel(
         if (session.initialized) return
         loadUserTemplates()
         val samples = withContext(io) { defaultWorks() }
-        officialSamples = samples
         selectedFolderUri = withContext(io) { folders?.validUri() }
         val result = withContext(io) { persistence.loadResult(selectedFolderUri) }
         val store = when (result) {
@@ -123,11 +161,17 @@ internal class WorkManagementViewModel(
                 if (result.recovered) emit(WorkEvent(message = "前の保存データから復旧しました"))
                 result.store
             }
-            WorkLoadResult.Empty -> { needsInitialSave = true; WorkStore(samples, samples.firstOrNull()?.id.orEmpty()) }
+            WorkLoadResult.Empty -> { needsInitialSave = true; WorkStore(emptyList(), "") }
             is WorkLoadResult.Failed -> { loadFailure = result; WorkStore(emptyList(), "") }
         }
-        val activeId = store.activeWorkId.takeIf { id -> store.works.any { it.id == id } }
-            ?: store.works.firstOrNull()?.id.orEmpty()
+        officialSamples = sampleCatalog(samples, store.works)
+        emptyGalleryFolders = withContext(io) { folders?.galleryFolders(selectedFolderUri).orEmpty() }
+        val loadedOrder = withContext(io) { folders?.galleryTabsOrder(selectedFolderUri).orEmpty() }
+        galleryTabs = syncGalleryTabs(loadedOrder, emptyGalleryFolders, store.works)
+        val remembered = persistence.selectedWorkId(selectedFolderUri)
+        val activeId = remembered?.takeIf { id -> officialSamples.any { it.id == id } }
+            ?: store.activeWorkId.takeIf { id -> store.works.any { it.id == id } }
+            ?: store.works.firstOrNull()?.id ?: officialSamples.firstOrNull()?.id.orEmpty()
         val rawDraft = if (settings?.draftRecovery != false) withContext(io) { drafts?.load() } else null
         // Only files with drafts need a saved body at startup; other gallery items stay deferred.
         var works = store.works
@@ -143,12 +187,13 @@ internal class WorkManagementViewModel(
         if (rawDraft != null && (compatible == null || compatible.second != rawDraft.second ||
                 (compatible.first.workId != activeId && compatible.first.code != works.firstOrNull { it.id == compatible.first.workId }?.code))) pendingDraft = rawDraft
         compatible?.second?.let(session.fileDrafts::putAll)
-        session.initialize(works, activeId, compatible?.first?.takeIf { it.workId == activeId }?.code)
+        session.initialize(if (loadFailure == null) works + officialSamples else works, activeId, compatible?.first?.takeIf { it.workId == activeId }?.code)
     }
 
     fun saveDraft() {
         if (settings?.draftRecovery != false && session.initialized && pendingDraft == null && loadFailure == null) {
             val work = session.worksState.value.firstOrNull { it.id == session.activeWorkIdState.value } ?: return
+            if (work.isSample) return
             val activeHash = draftBaseHash(work)
             drafts?.save(work.id, session.editorValueState.value.text, session.fileDrafts.toMap(),
                 draftStoreKey(selectedFolderUri), activeHash,
@@ -204,6 +249,7 @@ internal class WorkManagementViewModel(
         return session.worksState.value.map { original ->
             // Committed Work objects are replaced by commands, never mutated in place.
             // Reuse untouched works; copy anything this command will edit or commit.
+            if (original.isSample) return@map snapshotWork(original)
             val dirty = includeEdits && (
                 (original.id == selected && original.code != code) ||
                     parameterDrafts.containsKey(original.id) || ratioDrafts.containsKey(original.id) ||
@@ -231,8 +277,12 @@ internal class WorkManagementViewModel(
         if (conflictPending && !resolvingConflict) throw WorkConflictException()
         check(loadFailure == null)
         operationState = WorkOperationState.SAVING
-        when (withContext(io) { persistence.saveResult(folder, works, activeId) }) {
-            WorkSaveResult.Saved -> { operationState = WorkOperationState.SAVED; needsInitialSave = false }
+        val userStore = userWorkStore(works, activeId)
+        when (withContext(io) { persistence.saveResult(folder, userStore.works, userStore.activeWorkId) }) {
+            WorkSaveResult.Saved -> {
+                operationState = WorkOperationState.SAVED; needsInitialSave = false
+                if (works.any { it.id == activeId && it.isSample }) persistence.rememberSelectedWork(folder, activeId)
+            }
             WorkSaveResult.Conflict -> throw WorkConflictException()
             WorkSaveResult.Failed -> error("Cannot save work store")
         }
@@ -272,8 +322,8 @@ internal class WorkManagementViewModel(
 
     fun mergeExternalChanges() = execute(errorText = "変更を統合できませんでした。編集内容は保持しています", locksEditor = true) {
         materialize()
-        val baseline = session.worksState.value.map(::snapshotWork)
-        val edited = snapshots(includeEdits = true)
+        val baseline = session.worksState.value.filterNot { it.isSample }.map(::snapshotWork)
+        val edited = snapshots(includeEdits = true).filterNot { it.isSample }
         val result = withContext(io) { persistence.loadResult(selectedFolderUri, eager = true) }
         val remote = when (result) {
             is WorkLoadResult.Loaded -> result.store.works
@@ -323,15 +373,16 @@ internal class WorkManagementViewModel(
     }
 
     private fun commit(works: List<Work>, activeId: String = session.activeWorkIdState.value,
-                       replaceEditor: Boolean = false, savedEdits: Boolean = false) {
-        session.worksState.value = works
+                       replaceEditor: Boolean = false, savedEdits: Boolean = false, resumeEditor: Boolean = false) {
+        val users = works.filterNot { it.isSample }
+        if (officialSamples.any { sample -> users.any { it.id == sample.id } })
+            officialSamples = sampleCatalog(officialSamples, users)
+        val combined = users + officialSamples
+        val resolvedId = activeId.takeIf { id -> combined.any { it.id == id } } ?: combined.firstOrNull()?.id.orEmpty()
+        session.worksState.value = combined
         if (replaceEditor) {
-            session.activeWorkIdState.value = activeId
-            val active = works.firstOrNull { it.id == activeId }
-            session.editorValueState.value = TextFieldValue(active?.code.orEmpty())
-            session.lastSavedTextState.value = active?.code.orEmpty()
-            session.historyWorkId = activeId
-            session.clearEditHistory()
+            val active = combined.firstOrNull { it.id == resolvedId }
+            session.activateWorkEditor(resolvedId, active?.code.orEmpty(), resumeEditor, combined.map { it.id }.toSet())
         } else if (savedEdits) {
             works.firstOrNull { it.id == session.activeWorkIdState.value }?.let { session.lastSavedTextState.value = it.code }
         }
@@ -370,8 +421,8 @@ internal class WorkManagementViewModel(
     internal fun hasEditsToSave(): Boolean {
         val works = session.worksState.value
         val active = works.firstOrNull { it.id == session.activeWorkIdState.value }
-        if (active != null && session.editorValueState.value.text != active.code) return true
-        return works.any { work ->
+        if (active != null && !active.isSample && session.editorValueState.value.text != active.code) return true
+        return works.filterNot { it.isSample }.any { work ->
             parameterDrafts[work.id]?.let { it != work.parameterValues.toMap() } == true ||
                 ratioDrafts[work.id]?.let { it != work.previewAspectRatio } == true ||
                 work.files.any { (name, code) ->
@@ -393,7 +444,7 @@ internal class WorkManagementViewModel(
             }
             persistence.rememberSelectedWork(selectedFolderUri, workId)
             hydrate(workId)
-            commit(session.worksState.value, workId, replaceEditor = true)
+            commit(session.worksState.value, workId, replaceEditor = true, resumeEditor = true)
         }
         workMenuExpanded = false
         workActionsMenuExpanded = openMenu
@@ -402,7 +453,8 @@ internal class WorkManagementViewModel(
 
     fun createWork(title: String, ratio: String, sizingMode: CanvasSizingMode, template: WorkTemplate) = execute(locksEditor = true) {
         val work = Work(id = java.util.UUID.randomUUID().toString(), title = title,
-            code = template.code(sizingMode), previewAspectRatio = ratio, libraries = template.libraries)
+            code = template.code(sizingMode), previewAspectRatio = ratio, libraries = template.libraries,
+            folderName = newWorkFolder.takeIf { it in galleryFolders }.orEmpty())
         val next = snapshots(includeEdits = true) + work
         persistAndSwitch(next, work.id)
         showAddDialog = false
@@ -421,6 +473,7 @@ internal class WorkManagementViewModel(
     fun retryUserTemplates() = execute(blockUi = false) { loadUserTemplates() }
 
     fun saveUserTemplate(title: String) = execute(errorText = "テンプレートを保存できませんでした") {
+        requireEditable()
         require(title.trim().isNotEmpty())
         check(!templateLoadFailed)
         val repository = checkNotNull(templatePersistence)
@@ -460,6 +513,7 @@ internal class WorkManagementViewModel(
     }
 
     fun updateUserTemplate(templateId: String) = execute(errorText = "テンプレートを保存できませんでした") {
+        requireEditable()
         check(!templateLoadFailed)
         val previous = userTemplates.first { it.id == templateId }
         val current = snapshots(includeEdits = true).first { it.id == session.activeWorkIdState.value }
@@ -478,7 +532,7 @@ internal class WorkManagementViewModel(
         check(!templateLoadFailed)
         val repository = checkNotNull(templatePersistence)
         val template = userTemplates.first { it.id == templateId }
-        val work = newWorkFromUserTemplate(template, title.trim())
+        val work = newWorkFromUserTemplate(template, title.trim()).apply { folderName = newWorkFolder.takeIf { it in galleryFolders }.orEmpty() }
         val next = snapshots(includeEdits = true) + work
         withContext(io) { repository.prepareAssets(template) }
         persistAndSwitch(next, work.id)
@@ -488,6 +542,7 @@ internal class WorkManagementViewModel(
 
     /** Insert into the main file as one Undo operation. Failed saves keep the edit recoverable. */
     fun insertParameterDeclarations(declarations: String): Boolean {
+        if (session.sampleReadOnly) { requestSampleCopy(); return false }
         if (workSaving || session.assetBusy || session.snapshotOperationWorkId != null) return false
         val work = session.worksState.value.firstOrNull { it.id == session.activeWorkIdState.value } ?: return false
         val sources = work.files.mapValues { (name, code) -> session.fileDrafts["${work.id}/$name"] ?: code } +
@@ -506,19 +561,105 @@ internal class WorkManagementViewModel(
         return true
     }
 
+    /** Writes the current parameter values into the `@rin` declarations of the editing file as new defaults. */
+    fun applyParameterDefaults(): Boolean {
+        if (session.sampleReadOnly) { requestSampleCopy(); return false }
+        if (workSaving || session.assetBusy || session.snapshotOperationWorkId != null) return false
+        val work = session.worksState.value.firstOrNull { it.id == session.activeWorkIdState.value } ?: return false
+        val before = session.editorValueState.value
+        val (text, names) = applyParameterDefaults(before.text, parameterValues(work)) ?: return false
+        val next = before.copy(text = text, selection = androidx.compose.ui.text.TextRange(
+            before.selection.start.coerceAtMost(text.length), before.selection.end.coerceAtMost(text.length)))
+        session.applyChange(before, next)
+        session.editorValueState.value = next
+        names.forEach { updateParameter(work.id, it, null) }
+        saveCurrentWork(WorkEvent(rerun = true, forceRun = true))
+        return true
+    }
+
+    fun copySample(title: String, folder: String) = execute("サンプルをコピーできませんでした", locksEditor = true) {
+        val source = session.worksState.value.first { it.id == copySampleId && it.isSample }
+        require(title.trim().isNotEmpty() && title.trim().length <= 120)
+        require(folder.isEmpty() || folder in galleryFolders)
+        val copy = copyGalleryWork(source, emptySet()).apply {
+            this.title = title.trim(); folderName = folder
+            parameterValues.clear(); parameterValues.putAll(this@WorkManagementViewModel.parameterValues(source))
+        }
+        persistAndSwitch(snapshots(includeEdits = true) + copy, copy.id)
+        copySampleId = null
+        workMenuExpanded = false
+        emit(WorkEvent(rerun = true, message = "自分の作品にコピーしました"))
+    }
+
+    fun createGalleryFolder(name: String) = execute("フォルダーを作成できませんでした", blockUi = false) {
+        val normalized = name.trim()
+        require(validGalleryFolder(normalized) && normalized !in galleryFolders)
+        val names = emptyGalleryFolders + galleryFolders + normalized
+        val updatedTabs = syncGalleryTabs(galleryTabs + normalized, names, session.worksState.value)
+        galleryTabs = updatedTabs
+        withContext(io) { folders?.saveGalleryTabsOrder(selectedFolderUri, updatedTabs) }
+        emptyGalleryFolders = names
+    }
+
+    fun renameGalleryFolder(old: String, name: String) = execute("フォルダーを変更できませんでした", blockUi = false) {
+        val normalized = name.trim()
+        require(old in galleryFolders && validGalleryFolder(normalized) && (old == normalized || normalized !in galleryFolders))
+        val next = snapshots(copyIds = session.worksState.value.filter { !it.isSample && it.folderName == old }.map { it.id }.toSet())
+        next.filter { !it.isSample && it.folderName == old }.forEach { it.folderName = normalized }
+        persist(next, session.activeWorkIdState.value)
+        commit(next)
+        val names = (emptyGalleryFolders + galleryFolders - old) + normalized
+        val updatedTabs = galleryTabs.map { if (it == old) normalized else it }
+        galleryTabs = syncGalleryTabs(updatedTabs, names, next)
+        withContext(io) { folders?.saveGalleryTabsOrder(selectedFolderUri, galleryTabs) }
+        emptyGalleryFolders = names
+    }
+
+    fun deleteGalleryFolder(name: String) = execute("フォルダーを削除できませんでした", blockUi = false) {
+        require(name in galleryFolders)
+        val next = snapshots(copyIds = session.worksState.value.filter { !it.isSample && it.folderName == name }.map { it.id }.toSet())
+        next.filter { !it.isSample && it.folderName == name }.forEach { it.folderName = "" }
+        persist(next, session.activeWorkIdState.value)
+        commit(next)
+        val names = emptyGalleryFolders - name
+        val updatedTabs = galleryTabs.filter { it != name }
+        galleryTabs = syncGalleryTabs(updatedTabs, names, next)
+        withContext(io) { folders?.saveGalleryTabsOrder(selectedFolderUri, galleryTabs) }
+        emptyGalleryFolders = names
+    }
+
+    fun reorderGalleryTabs(newTabs: List<String>) = execute(blockUi = false) {
+        val synced = syncGalleryTabs(newTabs, emptyGalleryFolders, session.worksState.value)
+        galleryTabs = synced
+        withContext(io) { folders?.saveGalleryTabsOrder(selectedFolderUri, synced) }
+    }
+
+    fun moveGalleryWorks(ids: Set<String>, folder: String) = execute("作品を移動できませんでした", blockUi = false) {
+        require(ids.isNotEmpty() && (folder.isEmpty() || folder in galleryFolders))
+        ids.forEach(::requireEditable)
+        val next = snapshots(copyIds = ids)
+        next.filter { it.id in ids }.forEach { it.folderName = folder }
+        persist(next, session.activeWorkIdState.value)
+        commit(next)
+        galleryMoveIds = emptySet()
+        emit(WorkEvent(message = "作品を移動しました"))
+    }
+
     fun duplicateWork() = execute(locksEditor = true) {
+        requireEditable()
         val current = snapshots(includeEdits = true).first { it.id == session.activeWorkIdState.value }
         val duplicate = Work(id = java.util.UUID.randomUUID().toString(), title = "${current.title} copy",
             code = current.code, files = current.files.toMutableMap(), assets = current.assets.toMap(),
             previewAspectRatio = current.previewAspectRatio, p5Version = current.p5Version,
             p5SoundEnabled = current.p5SoundEnabled, libraries = current.libraries.toMap(),
-            parameterValues = current.parameterValues.toMap(), isPinned = current.isPinned, tags = current.tags.toList())
+            parameterValues = current.parameterValues.toMap(), isPinned = current.isPinned, tags = current.tags.toList(), folderName = current.folderName)
         val next = snapshots(includeEdits = true) + duplicate
         persistAndSwitch(next, duplicate.id)
         emit(WorkEvent(rerun = true))
     }
 
     private fun changeWork(workId: String, event: WorkEvent = WorkEvent(), change: (Work) -> Unit) = execute(blockUi = false) {
+        requireEditable(workId)
         val next = snapshots(copyIds = setOf(workId))
         val target = next.first { it.id == workId }
         change(target)
@@ -528,6 +669,7 @@ internal class WorkManagementViewModel(
         emit(event)
     }
     fun renameWork(workId: String, title: String) = execute {
+        requireEditable(workId)
         val next = snapshots(copyIds = setOf(workId))
         next.first { it.id == workId }.apply { this.title = title; updatedAt = System.currentTimeMillis() }
         persist(next, session.activeWorkIdState.value)
@@ -563,6 +705,7 @@ internal class WorkManagementViewModel(
     }
 
     fun duplicateGalleryWork(workId: String) = execute("作品を複製できませんでした", locksEditor = true) {
+        requireEditable(workId)
         val captured = operationWorks(setOf(workId))
         val copy = copyGalleryWork(captured.first { it.id == workId }, captured.map { it.title }.toSet())
         val next = captured + copy
@@ -572,6 +715,7 @@ internal class WorkManagementViewModel(
     }
 
     fun tagGalleryWorks(ids: Set<String>, rawTag: String, remove: Boolean = false) = execute(blockUi = false) {
+        ids.forEach(::requireEditable)
         val tag = rawTag.trim().removePrefix("#").trim()
         require(tag.isNotBlank())
         val next = snapshots(copyIds = ids)
@@ -590,6 +734,7 @@ internal class WorkManagementViewModel(
     fun deleteCurrentWork() = deleteGalleryWorks(setOf(session.activeWorkIdState.value))
 
     fun deleteGalleryWorks(ids: Set<String>) = execute("作品を削除できませんでした", locksEditor = true) {
+        ids.forEach(::requireEditable)
         val before = operationWorks(ids)
         val survivors = before.filterNot { it.id in ids }
         require(survivors.isNotEmpty()) // Keep the existing last-work protection.
@@ -642,7 +787,7 @@ internal class WorkManagementViewModel(
     private fun retainedUndoWorks(): List<Work> = deletionUndo?.removed?.map { it.work }.orEmpty()
 
     fun addSamples(samples: List<Work>, fromPrompt: Boolean = false) = execute {
-        val next = snapshots() + samples.map(::snapshotWork)
+        val next = snapshots() + samples.map { copyGalleryWork(it, snapshots().map { work -> work.title }.toSet()) }
         persist(next, session.activeWorkIdState.value)
         commit(next)
         if (fromPrompt) dismissSamplePrompt()
@@ -670,6 +815,7 @@ internal class WorkManagementViewModel(
     }
 
     fun restoreCurrentWork() = execute(locksEditor = true) {
+        requireEditable()
         val id = session.activeWorkIdState.value
         val folder = selectedFolderUri
         val result = withContext(io) { persistence.loadResult(folder, eager = true) }
@@ -684,6 +830,7 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(rerun = true))
     }
     fun restoreRevision(revision: WorkRevision) = execute(locksEditor = true) {
+        requireEditable()
         val id = session.activeWorkIdState.value
         val next = snapshots()
         val restored = next.first { it.id == id }
@@ -697,6 +844,7 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(rerun = true, closeHistory = true))
     }
     fun changeAssets(workId: String, updated: Map<String, ProjectAsset>) = execute("素材を保存できませんでした") {
+        requireEditable(workId)
         validateAssetSet(updated)
         val next = snapshots(copyIds = setOf(workId))
         val target = next.first { it.id == workId }
@@ -707,8 +855,58 @@ internal class WorkManagementViewModel(
         if (session.activeWorkIdState.value == workId) session.assetPreviewRevision++
     }
 
+    fun renameAsset(request: AssetRenameRequest) = execute("素材名と参照パスを保存できませんでした。編集内容は保持しています", locksEditor = true) {
+        requireEditable()
+        val id = session.activeWorkIdState.value
+        val next = snapshots(includeEdits = true, copyIds = setOf(id))
+        val target = next.first { it.id == id }
+        require(request.oldName in target.assets && validAssetName(request.newName))
+        require(request.oldName == request.newName || request.newName !in target.assets)
+        val sources = target.files.toMap() + ("sketch.js" to target.code)
+        val updated = withContext(Dispatchers.Default) { applyAssetRename(sources, request) }
+        validateProjectTextFiles(updated - "sketch.js", updated.getValue("sketch.js"))
+        val changedFiles = sources.keys.filter { sources[it] != updated[it] }
+        val editorUpdates = changedFiles.associateWith { file ->
+            val before = if (file == "sketch.js") session.editorValueState.value else
+                session.fileEditorValues["$id/$file"]?.value ?: TextFieldValue(sources.getValue(file))
+            check(before.text == sources.getValue(file))
+            before to assetRenameEditorValue(before, file, request)
+        }
+        val asset = target.assets.remove(request.oldName)!!
+        target.assets[request.newName] = asset
+        target.code = updated.getValue("sketch.js")
+        target.files.clear(); target.files.putAll(updated - "sketch.js")
+        if (target.code != session.lastSavedTextState.value) {
+            target.revisions.add(WorkRevision(session.lastSavedTextState.value, target.updatedAt))
+            while (target.revisions.size > 30) target.revisions.removeAt(0)
+        }
+        target.updatedAt = System.currentTimeMillis()
+        persist(next, id)
+        // One Undo entry per affected file; persistence failure never reaches this mutation.
+        changedFiles.forEach { file ->
+            if (file == "sketch.js") {
+                val (before, after) = editorUpdates.getValue(file)
+                session.applyChange(before, after)
+                session.editorValueState.value = after
+            } else {
+                val key = "$id/$file"
+                val state = session.fileEditorValues.getOrPut(key) { mutableStateOf(TextFieldValue(sources.getValue(file))) }
+                val (before, after) = editorUpdates.getValue(file)
+                val undo = session.fileUndoStacks.getOrPut(key) { androidx.compose.runtime.mutableStateListOf() }
+                val redo = session.fileRedoStacks.getOrPut(key) { androidx.compose.runtime.mutableStateListOf() }
+                session.applyChange(before, after, undo, redo)
+                state.value = after
+                session.fileDrafts[key] = after.text
+            }
+        }
+        commit(next, savedEdits = true)
+        session.assetPreviewRevision++
+        emit(WorkEvent(message = "素材名と選択した参照パスを更新しました"))
+    }
+
     fun addAssets(workId: String, uris: List<Uri>, preview: PreviewAssets) =
         execute("素材を追加できませんでした。ファイル名・サイズ・保存先を確認してください") {
+            requireEditable(workId)
             val next = snapshots()
             val target = next.first { it.id == workId }
             withContext(io) { (persistence as? WorkStoreRepository)?.pruneUnusedAssets(next + retainedUndoWorks(), preview) }
@@ -721,6 +919,7 @@ internal class WorkManagementViewModel(
         }
 
     internal suspend fun commitSnapshotRestore(snapshot: WorkSnapshot) {
+        requireEditable()
         val id = session.activeWorkIdState.value
         val original = session.worksState.value.first { it.id == id }
         val current = currentSnapshotContent(workForSnapshot(original), session.editorValueState.value.text, session.fileDrafts)
@@ -735,6 +934,7 @@ internal class WorkManagementViewModel(
     }
 
     fun saveAuxiliaryFiles(updatedFiles: Map<String, String>) = execute {
+        requireEditable()
         validateProjectTextFiles(updatedFiles, session.editorValueState.value.text)
         val id = session.activeWorkIdState.value
         val original = session.worksState.value.first { it.id == id }
@@ -753,6 +953,7 @@ internal class WorkManagementViewModel(
     }
     fun saveRuntime(version: String, sound: Boolean, libraries: Map<String, String>,
                     config: ProjectDocumentConfig? = null) = execute {
+        requireEditable()
         val next = snapshots()
         val id = session.activeWorkIdState.value
         val configKey = "$id/$PROJECT_CONFIG_FILE"
@@ -776,9 +977,10 @@ internal class WorkManagementViewModel(
     private var ratioJob: Job? = null
 
     fun previewRatio(work: Work?): String = normalizedPreviewAspectRatio(work?.let { ratioDrafts[it.id] ?: it.previewAspectRatio })
-    fun draftPreviewRatio(value: String) { ratioDrafts[session.activeWorkIdState.value] = normalizedPreviewAspectRatio(value) }
+    fun draftPreviewRatio(value: String) { if (!session.sampleReadOnly) ratioDrafts[session.activeWorkIdState.value] = normalizedPreviewAspectRatio(value) }
     fun commitPreviewRatio(): Job = savePreviewRatio(previewRatio(session.worksState.value.find { it.id == session.activeWorkIdState.value }))
     fun savePreviewRatio(value: String): Job {
+        if (session.sampleReadOnly) return scope.launch { requestSampleCopy() }
         val id = session.activeWorkIdState.value
         val normalized = normalizedPreviewAspectRatio(value)
         draftPreviewRatio(normalized)
@@ -810,6 +1012,7 @@ internal class WorkManagementViewModel(
     }
 
     fun hasPendingMetadata(workId: String): Boolean {
+        if (session.worksState.value.any { it.id == workId && it.isSample }) return false
         val work = session.worksState.value.find { it.id == workId } ?: return false
         return parameterDrafts[workId]?.let { it != work.parameterValues.toMap() } == true ||
             ratioDrafts[workId]?.let { it != work.previewAspectRatio } == true
@@ -822,6 +1025,7 @@ internal class WorkManagementViewModel(
         parameterDrafts[workId] = next
     }
     fun scheduleParameterSave(workId: String) {
+        if (session.worksState.value.any { it.id == workId && it.isSample }) return
         parameterJobs.remove(workId)?.cancel()
         parameterJobs[workId] = scope.launch { delay(500); commandJob?.join(); saveParameters(workId)?.join() }
     }
@@ -830,6 +1034,7 @@ internal class WorkManagementViewModel(
         return scope.launch { commandJob?.join(); saveParameters(workId)?.join() }
     }
     private fun saveParameters(workId: String): Job? {
+        if (session.worksState.value.any { it.id == workId && it.isSample }) return null
         val values = parameterDrafts[workId] ?: return null
         if (session.worksState.value.none { it.id == workId }) return null
         return execute(blockUi = false) {
@@ -853,24 +1058,22 @@ internal class WorkManagementViewModel(
             commit(edits, savedEdits = true)
         }
         materialize()
-        val current = snapshots(includeEdits = true).ifEmpty { officialSamples.map(::snapshotWork) }
+        val current = snapshots(includeEdits = true).filterNot { it.isSample }
         val currentId = session.activeWorkIdState.value.takeIf { id -> current.any { it.id == id } } ?: current.firstOrNull()?.id.orEmpty()
         val stored = withContext(io) {
             folderRepository.takePermission(uri)
             val result = persistence.loadResult(uri, eager = true)
             require(result !is WorkLoadResult.Failed)
             val loaded = (result as? WorkLoadResult.Loaded)?.store
-            if (loaded != null && loaded.works.any { it.id == "gravity" && it.p5Version == P5_VERSION_CURRENT }) {
-                val migrated = loaded.works.map { snapshotWork(it).apply { if (id == "gravity") p5Version = P5_VERSION_LEGACY } }
-                check(persistence.save(uri, migrated, loaded.activeWorkId))
-                return@withContext WorkStore(migrated, loaded.activeWorkId)
-            }
             // An unreadable store must be rejected by the persistence boundary.
             if (loaded == null || loaded.works.isEmpty()) check(persistence.save(uri, current, currentId))
             loaded
         }
         folderRepository.select(uri)
         selectedFolderUri = uri
+        emptyGalleryFolders = withContext(io) { folders?.galleryFolders(uri).orEmpty() }
+        val loadedOrder = withContext(io) { folders?.galleryTabsOrder(uri).orEmpty() }
+        galleryTabs = syncGalleryTabs(loadedOrder, emptyGalleryFolders, stored?.works ?: current)
         deletionUndoToken?.let(::dismissGalleryDeletion)
         loadFailure = null
         if (stored != null && stored.works.isNotEmpty()) {
@@ -898,7 +1101,8 @@ internal class WorkManagementViewModel(
     }
     fun exportBackup(uri: Uri) = execute("バックアップを書き出せませんでした") {
         materialize()
-        requireNotNull(transfer).writeBackup(uri, snapshots(includeEdits = true), session.activeWorkIdState.value,
+        val users = userWorkStore(snapshots(includeEdits = true), session.activeWorkIdState.value)
+        requireNotNull(transfer).writeBackup(uri, users.works, users.activeWorkId,
             requireNotNull(settings).state.toBackupJson())
     }
     fun importBackup(uri: Uri) = execute("バックアップを復元できませんでした", locksEditor = true) {

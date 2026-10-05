@@ -40,6 +40,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -323,7 +326,7 @@ internal fun WorkActionsMenu(
 
     @Composable
     fun EditActions() {
-        SectionLabel(uiText("編集・作品"), colors, isLandscape)
+        SectionLabel(uiText("編集"), colors, isLandscape)
         ActionRow(
             iconRes = R.drawable.ic_undo,
             title = uiText("元に戻す"),
@@ -369,6 +372,8 @@ internal fun WorkActionsMenu(
                 onFormat()
             }
         )
+        Spacer(Modifier.height(12.dp))
+        SectionLabel(uiText("記録・表示"), colors, isLandscape)
         ActionRow(
             iconRes = R.drawable.ic_snapshot,
             title = uiText("スナップショット"),
@@ -400,62 +405,75 @@ internal fun WorkActionsMenu(
                 onAspectRatio()
             }
         )
+        Spacer(Modifier.height(12.dp))
+        SectionLabel(uiText("作品の整理"), colors, isLandscape)
+        var organizeExpanded by rememberSaveable { mutableStateOf(false) }
         ActionRow(
-            iconRes = R.drawable.ic_snippet,
-            title = uiText("テンプレートとして保存"),
-            subtitle = uiText("コード・素材・実行設定を新規作品のひな形にする"),
+            iconRes = R.drawable.ic_chevron_down,
+            title = uiText(if (organizeExpanded) "閉じる" else "テンプレート・ピン・タグ・名前・複製"),
+            subtitle = uiText("作品の整理に使う操作"),
             colors = colors,
-            enabled = activeWork != null && !assetBusy,
-            onClick = {
-                viewModel.workActionsMenuExpanded = false
-                viewModel.showSaveTemplateDialog = true
-            }
+            onClick = { organizeExpanded = !organizeExpanded }
         )
-        ActionRow(iconRes = R.drawable.ic_snippet, title = uiText("テンプレート管理"),
-            subtitle = uiText("自作テンプレートを検索・名前変更・更新"), colors = colors,
-            enabled = !assetBusy,
-            onClick = { viewModel.workActionsMenuExpanded = false; viewModel.showTemplateManager = true })
-        val currentIsPinned = activeWork?.isPinned == true
-        ActionRow(
-            iconRes = if (currentIsPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin,
-            title = if (currentIsPinned) uiText("ピン留め解除") else uiText("ピン留め"),
-            subtitle = if (currentIsPinned) uiText("ピン留めを解除して通常の並び順に戻す") else uiText("作品をピン留めして上部に固定"),
-            colors = colors,
-            onClick = {
-                viewModel.workActionsMenuExpanded = false
-                onTogglePin()
-            }
-        )
-        ActionRow(
-            iconRes = R.drawable.ic_tag,
-            title = uiText("タグを編集"),
-            subtitle = uiText("作品の分類タグを管理"),
-            colors = colors,
-            onClick = {
-                viewModel.workActionsMenuExpanded = false
-                onEditTags()
-            }
-        )
-        ActionRow(
-            iconRes = R.drawable.ic_rename,
-            title = uiText("名前を変更"),
-            subtitle = uiText("作品タイトルを編集"),
-            colors = colors,
-            onClick = {
-                viewModel.workActionsMenuExpanded = false
-                onRename()
-            }
-        )
-        ActionRow(
-            iconRes = R.drawable.ic_duplicate,
-            title = uiText("複製"),
-            subtitle = uiText("現在のコードからコピーを作成"),
-            colors = colors,
-            onClick = {
-                viewModel.workActionsMenuExpanded = false
-                onDuplicate()
-            }
-        )
+        if (organizeExpanded) {
+            ActionRow(
+                iconRes = R.drawable.ic_save,
+                title = uiText("テンプレートとして保存"),
+                subtitle = uiText("コード・素材・実行設定を新規作品のひな形にする"),
+                colors = colors,
+                enabled = activeWork != null && !assetBusy && activeWork.isSample.not(),
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    viewModel.showSaveTemplateDialog = true
+                }
+            )
+            ActionRow(iconRes = R.drawable.ic_folder_code, title = uiText("テンプレート管理"),
+                subtitle = uiText("自作テンプレートを検索・名前変更・更新"), colors = colors,
+                enabled = !assetBusy,
+                onClick = { viewModel.workActionsMenuExpanded = false; viewModel.showTemplateManager = true })
+            val currentIsPinned = activeWork?.isPinned == true
+            ActionRow(
+                iconRes = if (currentIsPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin,
+                title = if (currentIsPinned) uiText("ピン留め解除") else uiText("ピン留め"),
+                subtitle = if (currentIsPinned) uiText("ピン留めを解除して通常の並び順に戻す") else uiText("作品をピン留めして上部に固定"),
+                colors = colors,
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    onTogglePin()
+                }
+            )
+            ActionRow(
+                iconRes = R.drawable.ic_tag,
+                title = uiText("タグを編集"),
+                subtitle = uiText("作品の分類タグを管理"),
+                colors = colors,
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    onEditTags()
+                }
+            )
+            ActionRow(
+                iconRes = R.drawable.ic_rename,
+                title = uiText("名前を変更"),
+                subtitle = uiText("作品タイトルを編集"),
+                colors = colors,
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    onRename()
+                }
+            )
+            ActionRow(
+                iconRes = R.drawable.ic_duplicate,
+                title = uiText(if (activeWork?.isSample == true) "コピーして編集" else "複製"),
+                subtitle = uiText("現在のコードからコピーを作成"),
+                colors = colors,
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    onDuplicate()
+                }
+            )
+    
+        }
     }
 
     @Composable
@@ -530,7 +548,7 @@ internal fun WorkActionsMenu(
         horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 2.dp else 4.dp)
     ) {
         if (manualRotation) {
-            IconButton(
+            TooltipIconButton(label = uiText("画面を回転"),
                 onClick = onRotate,
                 modifier = Modifier.size(actionButtonSize)
             ) {
@@ -542,7 +560,7 @@ internal fun WorkActionsMenu(
                 )
             }
         }
-        IconButton(
+        TooltipIconButton(label = uiText("設定"),
             onClick = onOpenSettings,
             modifier = Modifier.size(actionButtonSize)
         ) {
@@ -553,7 +571,7 @@ internal fun WorkActionsMenu(
                 modifier = Modifier.size(actionIconSize)
             )
         }
-        IconButton(
+        TooltipIconButton(label = uiText("作品設定"),
             enabled = activeWork != null,
             onClick = {
                 viewModel.workActionsMenuExpanded = false
@@ -568,7 +586,7 @@ internal fun WorkActionsMenu(
                 modifier = Modifier.size(actionIconSize)
             )
         }
-        IconButton(
+        TooltipIconButton(label = uiText("作品メニュー"),
             onClick = { viewModel.workActionsMenuExpanded = true },
             modifier = Modifier.size(actionButtonSize)
         ) {

@@ -1,6 +1,7 @@
 package com.hikariatelier.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -18,7 +19,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun AssetManagerDialog(
     assets: Map<String, ProjectAsset>, busy: Boolean, text: (String) -> String,
-    onAdd: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit,
+    onAdd: () -> Unit, onRename: (AssetRenameRequest) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit,
     onPreview: (String, ProjectAsset) -> Unit, onInsert: (String, ProjectAsset) -> Unit,
     referenceSources: Map<String, String> = emptyMap()
 ) {
@@ -27,6 +28,14 @@ internal fun AssetManagerDialog(
     var renaming by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
+    var selectedReferences by remember { mutableStateOf<Set<AssetRenameCandidate>>(emptySet()) }
+    var renameCandidates by remember { mutableStateOf<List<AssetRenameCandidate>?>(null) }
+    var renamePending by remember { mutableStateOf(false) }
+    LaunchedEffect(assets, renamePending, renaming, newName) {
+        if (renamePending && renaming !in assets && newName in assets) {
+            renaming = null; renamePending = false
+        }
+    }
     EditSettingsDialog(
         onDismissRequest = { if (!busy) onClose() },
         title = { Text(text("作品の素材")) },
@@ -47,7 +56,10 @@ internal fun AssetManagerDialog(
                                     TextButton(enabled = !busy, onClick = { onPreview(name, asset) }) { Text(text("プレビュー")) }
                                     TextButton(enabled = !busy, onClick = { onInsert(name, asset) }) { Text(text("読み込みコードを挿入")) }
                                     TextButton(enabled = !busy, onClick = { clipboard.setText(AnnotatedString("assets/$name")) }) { Text(text("パスをコピー")) }
-                                    TextButton(enabled = !busy, onClick = { renaming = name; newName = name }) { Text(text("名前を変更")) }
+                                    TextButton(enabled = !busy, onClick = {
+                                        selectedReferences = emptySet(); renameCandidates = null; renamePending = false
+                                        renaming = name; newName = name
+                                    }) { Text(text("名前を変更")) }
                                     TextButton(enabled = !busy, onClick = { deleting = name }) { Text(text("削除")) }
                                 }
                             }
@@ -62,15 +74,57 @@ internal fun AssetManagerDialog(
     )
     renaming?.let { old ->
         val valid = validAssetName(newName) && (newName == old || newName !in assets)
-        EditSettingsDialog(onDismissRequest = { renaming = null }, title = { Text(text("名前を変更")) },
-            text = { Column {
-                OutlinedTextField(value = newName, onValueChange = { newName = it }, singleLine = true,
+        LaunchedEffect(referenceSources, old) {
+            renameCandidates = null
+            selectedReferences = emptySet()
+            renameCandidates = withContext(Dispatchers.Default) { assetRenameCandidates(referenceSources, old) }
+        }
+        EditSettingsDialog(onDismissRequest = { if (!busy) renaming = null }, title = { Text(text("名前を変更")) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = newName, onValueChange = { newName = it }, enabled = !busy, singleLine = true,
                     label = { Text(text("ファイル名")) }, isError = !valid)
-                Text(text("コード内のパスも新しい名前に変更してください"), style = MaterialTheme.typography.bodySmall)
-                AssetReferenceSummary(referenceSources, old, text)
+                Text(text("一緒に更新する参照を選択してください。未選択のコードは変更しません。"),
+                    style = MaterialTheme.typography.bodySmall)
+                Text(text("完全一致する文字列のパスだけを表示します。動的なパスやテンプレート文字列は対象外です。"),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val candidates = renameCandidates
+                when {
+                    candidates == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    candidates.isEmpty() -> Text(text("更新できる参照候補はありません"), style = MaterialTheme.typography.bodySmall)
+                    else -> {
+                        Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(candidates, key = { "${it.file}:${it.start}" }) { candidate ->
+                                val checked = candidate in selectedReferences
+                                fun toggle() {
+                                    selectedReferences = if (checked) selectedReferences - candidate else selectedReferences + candidate
+                                }
+                                Row(Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = ::toggle)) {
+                                    Checkbox(checked = checked, enabled = !busy, onCheckedChange = { toggle() })
+                                    Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                                        Text("${candidate.file}:${candidate.line}", style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary)
+                                        Text(candidate.excerpt, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                                        if (valid) Text("${candidate.original} → " +
+                                            (if (candidate.original.startsWith("./")) "./" else "") + "assets/$newName",
+                                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } },
-            confirmButton = { TextButton(enabled = valid, onClick = { onRename(old, newName); renaming = null }) { Text(text("保存")) } },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text(text("閉じる")) } })
+            confirmButton = { TextButton(enabled = valid && !busy && renameCandidates != null, onClick = {
+                if (old == newName) { renaming = null; renamePending = false }
+                else {
+                    renamePending = true
+                    onRename(AssetRenameRequest(old, newName, selectedReferences.toList()))
+                }
+            }) { Text(text("保存")) } },
+            dismissButton = { TextButton(enabled = !busy, onClick = { renaming = null }) { Text(text("閉じる")) } })
     }
     deleting?.let { name ->
         EditSettingsDialog(onDismissRequest = { deleting = null }, title = { Text(text("素材を削除")) },

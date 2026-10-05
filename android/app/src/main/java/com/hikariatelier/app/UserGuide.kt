@@ -38,19 +38,34 @@ internal data class GuideSection(
 /** English is the source text for the in-app user guide. */
 internal val userGuideSections = listOf(
     GuideSection(
-        title = "Getting Started",
-        summary = "Edit:RiN is a p5.js creative coding editor designed for mobile creativity. Each work encapsulates your code, supporting scripts, media assets, and runtime configurations.",
+        title = "Getting Started & Folders",
+        summary = "Edit:RiN is a p5.js creative coding environment designed for touch devices. Organize works in folders, explore read-only bundled samples, and execute sketches in real time.",
         iconRes = R.drawable.ic_play,
         tag = "Basics",
         steps = listOf(
-            "Work Picker: Tap the title bar to open the gallery, switch between saved sketches, create new works, or search and sort your library.",
-            "Live Preview: Edit sketch.js and tap the Play button. Your generative artwork compiles and executes instantly in real time.",
-            "Work Menu: Access the dropdown menu next to the title to rename, duplicate, export, delete, or configure aspect ratios (device landscape, 16:9, 4:3, 1:1, 9:16, or device portrait)."
+            "Work Picker: Tap the title bar to open the gallery, switch between sketches, create new works, or search and tag your collection.",
+            "Folder Organization: Group user works into custom one-level folders. Long-press any folder chip and drag horizontally to swap and reorder with adjacent tabs (My works is always fixed at the start). Deleting a folder keeps all contained works safely in Unfiled.",
+            "Bundled Samples Protection: Official bundled samples are read-only originals. Experiment freely with live parameters, then tap Copy to edit to duplicate into your personal works before modifying code.",
+            "Batch Operations: Select multiple works to move them into a folder, apply or remove tags, export as ZIP, or delete together.",
+            "Canvas Sizing & Menu: Customize canvas aspect ratios (Device landscape, 16:9, 4:3, 1:1, 9:16, Device portrait) and access duplicate, export, or settings from the title menu."
+        )
+    ),
+    GuideSection(
+        title = "Code Editor & Smart Tools",
+        summary = "A touchscreen-optimized development environment featuring session persistence, smart inline search, and live preview state synchronization.",
+        iconRes = R.drawable.ic_code,
+        tag = "Editor",
+        steps = listOf(
+            "Session State Preservation: Switching between works retains your active file, exact cursor position, scroll offset, and Undo/Redo history for smooth multitasking.",
+            "Compact Search & Replace: Use the streamlined editor bar to search and replace text with match highlighting and preserved cursor position. Whole-work search remains available.",
+            "Stale Preview Indication: An unapplied changes indicator appears when edits have not reached the running canvas. Tap Run changes to execute, with clear separation between current edits and previous errors.",
+            "Multi-File Tabs: Switch effortlessly between JavaScript modules and HTML/CSS files configured under Work settings → Project files.",
+            "Editing Utilities: Enjoy Prettier-style automatic formatting, bracket and block folding, intelligent p5.js autocompletion, and jump-to-line navigation."
         )
     ),
     GuideSection(
         title = "Live Parameters",
-        summary = "Generate interactive sliders, color pickers, and toggle switches directly from comments in your code without building manual UI.",
+        summary = "Generate interactive sliders, color pickers, and toggle switches directly from code comments without writing custom UI widgets.",
         iconRes = R.drawable.ic_tune,
         tag = "Interactive",
         codeSnippet = """// @rin number speed "Speed" 0 3 1 0.1
@@ -64,39 +79,14 @@ function draw() {
   circle(width/2, height/2, 60 * rinParams.speed);
 }""",
         steps = listOf(
-            "Syntax: Declare parameters at the top of your scripts using // @rin followed by type (number, color, or boolean).",
-            "Real-time Binding: Values are automatically mapped to rinParams.<name>. Adjusting parameters updates your canvas without restarting the sketch.",
-            "Controls: Use the parameter panel for fine-tuning with +/- step buttons, reset to defaults individually or all at once, or copy parameter templates."
+            "Syntax: Declare parameters at the top of your scripts using // @rin followed by type (number, color, or boolean), name, title, and initial value.",
+            "Real-time Binding: Access values instantly in code via rinParams.<name>. Adjusting sliders dynamically alters your canvas without restarting.",
+            "Controls & Fine-Tuning: Use +/- step buttons, reset to defaults individually or all at once, or copy parameter templates from the panel."
         )
     ),
     GuideSection(
-        title = "Share Card & QR Web Play",
-        summary = "Turn your sketches into stunning 1080p shareable artwork cards with scannable QR codes that run directly in any web browser.",
-        iconRes = R.drawable.ic_share_card,
-        tag = "New",
-        steps = listOf(
-            "Generate Card: Open Share Card from the preview toolbar. The app takes a crisp screenshot and embeds a high-resolution QR code.",
-            "Customization: Choose from stylish card themes (Dark, Midnight, Cyber, Light) and add your author name or social handle (by @...).",
-            "Instant Web Play: Anyone scanning the QR code with their phone camera can view and interact with your sketch in their web browser—no app installation required.",
-            "Source Visibility: Toggle whether recipients can inspect your sketch's source code in the web viewer or keep it private."
-        )
-    ),
-    GuideSection(
-        title = "Code Editor",
-        summary = "A powerful coding environment optimized for touchscreens, offering desktop-grade editor features.",
-        iconRes = R.drawable.ic_code,
-        tag = "Editor",
-        steps = listOf(
-            "File Tabs: Effortlessly switch between multiple JavaScript modules. Manage project files via Work settings → Project files.",
-            "Toolbar Actions: Quick access to Undo/Redo, Find & Replace, Go to Line, Code Formatting (Prettier-style), and Block Folding.",
-            "Intelligent Completion: Context-aware suggestions for p5.js functions, mathematical constants, and your custom identifiers.",
-            "Interactive Console: Inspect logs and error traces. Tap any error message to jump directly to the offending file and line.",
-            "Revision History: Browse past saves side-by-side with diff inspection to safely revert unwanted modifications."
-        )
-    ),
-    GuideSection(
-        title = "Assets & Media",
-        summary = "Bundle images, audio, video, custom fonts (TTF/OTF), and datasets (JSON/CSV) directly inside each work.",
+        title = "Assets & Path Sync",
+        summary = "Bundle images, audio, video, fonts, and data files, and keep code references automatically synchronized when renaming.",
         iconRes = R.drawable.ic_assets,
         tag = "Assets",
         codeSnippet = """let img, snd;
@@ -105,45 +95,58 @@ function preload() {
   snd = loadSound('assets/beat.mp3');
 }""",
         steps = listOf(
-            "Import Files: Open Work settings → Work assets to add files from your device storage. Tap any item to inspect and preview.",
-            "One-tap Code Insert: Tap 'Insert loading code' in the preview to auto-generate the exact preload code at your editor cursor.",
-            "Relative Paths: Reference assets easily using 'assets/<filename>' relative URLs in standard p5.js loaders.",
+            "Import Files: Add assets via Work settings → Work assets from device storage, with instant visual and audio previews.",
+            "One-tap Code Insert: Tap 'Insert loading code' in the asset inspector to generate the exact preload loader at your cursor.",
+            "Synchronized Asset Rename: Renaming an asset scans your project files and lets you update matching literal paths together with preview verification and safe rollback.",
             "Capacity: Supports up to 50 MB per file, and up to 100 files / 200 MB total per individual work."
         )
     ),
     GuideSection(
-        title = "Runtime & Libraries",
-        summary = "Fine-tune the runtime engine and library ecosystem to match your creative needs.",
+        title = "Runtime, WebGPU & Hardware",
+        summary = "Choose between modern and legacy p5.js engines, next-generation WebGPU, and integrate device camera and microphone inputs.",
         iconRes = R.drawable.ic_terminal,
         tag = "Runtimes",
         steps = listOf(
-            "p5.js Versioning: Select between p5.js 2.3.4 (modern web standards and WebGL improvements) and 1.11.5 (legacy compatibility).",
-            "p5.sound: Enable audio playback, audio synthesis, and FFT frequency analyzers (audio begins smoothly on first user touch).",
-            "p5.brush: Includes the expressive p5.brush library for realistic watercolor, ink, and pencil strokes in WebGL mode."
+            "p5.js Versioning: Select between p5.js 2.3.4 (modern web standards and WebGL/WebGPU) and 1.11.5 (legacy compatibility).",
+            "Next-Gen WebGPU: Leverage WebGPU hardware rendering with automatic fallback to WebGL on unsupported hardware.",
+            "Device Camera & Microphone: Capture live mobile camera video (createCapture) and live audio input (p5.AudioIn) directly in your sketches.",
+            "Sound & Shaders: Audio synthesis (including MONO SYNTH SCOPE) starts smoothly on first touch, and bundled libraries like Matter.js and p5.brush provide rich physical and expressive brush strokes."
         )
     ),
     GuideSection(
-        title = "Capture & Recording",
-        summary = "Capture high-fidelity still images or fluid video loops to showcase your creations.",
+        title = "Capture, Video & Recovery",
+        summary = "Export high-resolution still images or smooth animated loops, backed by crash-proof recording recovery.",
         iconRes = R.drawable.ic_camera,
         tag = "Media",
         steps = listOf(
-            "Screenshots: Instantly save crystal-clear PNG snapshots to your device's Pictures folder.",
-            "Video Recording: Capture animated loops as MP4 (up to 60s) or animated GIF (up to 15s) directly from the preview bar.",
-            "Configuration: Tailor MP4 bitrates (up to 16 Mbps) and recording countdown timers under Settings → Storage.",
-            "Quick Sharing: Send recorded media immediately to social media, messaging apps, or cloud storage via the system share sheet."
+            "High-Resolution PNG: Capture crisp screenshots with 1x, 2x, or 4x offscreen rendering (up to 16 MP), with direct Open and Share buttons on save completion.",
+            "Video & GIF Recording: Record fluid MP4 video (up to 60s) or animated GIFs (up to 15s) directly from the running preview canvas.",
+            "Recording Recovery: If a recording save fails, the captured data is preserved in temporary storage so you can retry, select an alternate folder, or explicitly discard.",
+            "Quality Settings: Adjust MP4 bitrate (up to 16 Mbps) and recording countdown delays in Settings."
+        )
+    ),
+    GuideSection(
+        title = "Share Card & QR Web Play",
+        summary = "Turn sketches into 1080p shareable artwork cards with scannable QR codes that run instantly in any mobile or desktop web browser.",
+        iconRes = R.drawable.ic_share_card,
+        tag = "Share",
+        steps = listOf(
+            "Generate Card: Open Share Card from the preview toolbar to produce a high-resolution card featuring your canvas artwork and a QR code.",
+            "Card Customization: Pick from four sleek themes (Dark, Midnight, Cyber, Light) and add your author name or handle (by @...).",
+            "Instant Web Play: Anyone scanning the QR code with their phone camera can play and interact with your sketch in a browser without installing the app.",
+            "Source Visibility: Choose whether viewers can inspect the sketch's JavaScript source code in the web player or keep it hidden."
         )
     ),
     GuideSection(
         title = "Backup & Cloud Sync",
-        summary = "Keep your sketches safe with robust local backups and cloud-friendly project management.",
+        summary = "Safeguard your creative portfolio with versatile backup tools and automated external sync support.",
         iconRes = R.drawable.ic_save,
         tag = "Storage",
         steps = listOf(
-            "Single Work ZIP: Export or import an individual work with all its scripts, assets, and settings bundled together.",
-            "Full Backup: Package all your works and preferences into a single archive before switching phones or factory resetting.",
-            "External Storage Folder: Direct your work storage to a custom folder or SD card. By pointing this to a folder managed by sync tools (such as FolderSync or Nextcloud), works can automatically sync to cloud storage (note: cloud drives like Google Drive cannot be directly selected in Android's directory picker).",
-            "p5.js Web Editor Import: Import public sketches from any web editor username without needing login credentials."
+            "Single Work ZIP: Export or import an individual sketch with all scripts, assets, and metadata bundled together.",
+            "Full Backup Archive: Package all works, custom templates, and settings into a single backup file before device migration.",
+            "External Storage Folder: Direct your work storage to an external folder or SD card. By pointing this to a folder monitored by third-party sync apps (like FolderSync or Nextcloud), projects sync continuously to cloud storage.",
+            "p5.js Web Editor Import: Import public sketches from any p5.js Web Editor username without requiring credentials."
         )
     )
 )

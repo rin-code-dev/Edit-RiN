@@ -225,28 +225,41 @@ internal fun PreviewActionsTray(
                 }
             }
 
-            // 1. Parameters
+            // View controls
             ActionChip(
                 iconRes = R.drawable.ic_tune,
                 label = uiText("パラメータ"),
                 onClick = onOpenParameters
             )
+            ActionChip(
+                iconRes = R.drawable.ic_fullscreen,
+                label = uiText("全画面"),
+                onClick = onFullscreen
+            )
 
-            // 2. Screenshot
+            // Export group: everything that produces a file or a card
+            Box(
+                Modifier
+                    .padding(horizontal = 2.dp)
+                    .width(1.dp)
+                    .height(22.dp)
+                    .background(colors.outlineVariant)
+            )
+            Text(
+                text = uiText("書き出し"),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant
+            )
             ActionChip(
                 iconRes = R.drawable.ic_camera,
                 label = uiText("スクショ"),
                 onClick = onScreenshot
             )
-
-            // 3. Share card
             ActionChip(
                 iconRes = R.drawable.ic_share_card,
                 label = uiText("シェアカード"),
                 onClick = onShareCard
             )
-
-            // 4. Record
             ActionChip(
                 iconRes = if (isRecordingOrCountingDown) R.drawable.ic_stop else R.drawable.ic_record,
                 label = when {
@@ -257,13 +270,6 @@ internal fun PreviewActionsTray(
                 active = isRecordingOrCountingDown,
                 destructive = isRecordingOrCountingDown,
                 onClick = onRecordToggle
-            )
-
-            // 5. Fullscreen
-            ActionChip(
-                iconRes = R.drawable.ic_fullscreen,
-                label = uiText("全画面"),
-                onClick = onFullscreen
             )
         }
     }
@@ -280,7 +286,8 @@ internal fun RunStatusControls(
     onTogglePause: () -> Unit,
     onReload: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hasPendingChanges: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -301,6 +308,7 @@ internal fun RunStatusControls(
                 .clip(CircleShape)
                 .background(
                     when {
+                        hasPendingChanges -> colors.tertiary
                         isError -> colors.error
                         isPaused -> colors.outline
                         else -> colors.primary
@@ -310,13 +318,15 @@ internal fun RunStatusControls(
         Spacer(Modifier.width(5.dp))
         Text(
             text = when {
+                hasPendingChanges -> uiText("変更未反映")
                 isError -> "ERR"
                 isPaused -> "PAUSE"
                 else -> "RUN"
             },
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (isError) colors.error else colors.onSurfaceVariant,
+            color = if (hasPendingChanges) colors.tertiary else if (isError) colors.error else colors.onSurfaceVariant,
+            modifier = if (hasPendingChanges) Modifier.clickable(onClick = onReload) else Modifier,
             letterSpacing = 0.6.sp
         )
         IconButton(
@@ -336,7 +346,7 @@ internal fun RunStatusControls(
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_reload),
-                contentDescription = uiText("再読み込み"),
+                contentDescription = uiText(if (hasPendingChanges) "変更を実行" else "再読み込み"),
                 tint = colors.onSurface,
                 modifier = Modifier.size(iconSize)
             )
@@ -402,6 +412,7 @@ internal fun SaveRestoreControls(
     height: Dp,
     buttonSize: Dp,
     iconSize: Dp,
+    onSnapshot: (() -> Unit)? = null,
     onRestore: () -> Unit,
     onSave: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
@@ -416,7 +427,22 @@ internal fun SaveRestoreControls(
             .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
+        if (onSnapshot != null) {
+            TooltipIconButton(
+                label = uiText("スナップショット"),
+                onClick = onSnapshot,
+                modifier = Modifier.size(buttonSize)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_snapshot),
+                    contentDescription = uiText("スナップショット"),
+                    tint = colors.onSurface,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+        }
+        TooltipIconButton(
+            label = uiText("保存済み状態に戻す"),
             onClick = onRestore,
             modifier = Modifier.size(buttonSize)
         ) {
@@ -427,7 +453,8 @@ internal fun SaveRestoreControls(
                 modifier = Modifier.size(iconSize)
             )
         }
-        IconButton(
+        TooltipIconButton(
+            label = uiText("作品の全ファイルを保存"),
             onClick = onSave,
             modifier = Modifier.size(buttonSize)
         ) {
@@ -796,4 +823,3 @@ internal fun LandscapeSplitDivider(
         Spacer(modifier.width(8.dp))
     }
 }
-

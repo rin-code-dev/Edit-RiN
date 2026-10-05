@@ -68,6 +68,7 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     var compactAccessoryKeys by setting({ it.compactAccessoryKeys }, { old, value -> old.copy(compactAccessoryKeys = value) })
     var editorWordWrap by setting({ it.editorWordWrap }, { old, value -> old.copy(editorWordWrap = value) })
     var landscapeEditorOnLeft by setting({ it.landscapeEditorOnLeft }, { old, value -> old.copy(landscapeEditorOnLeft = value) })
+    var autoSaveOnLeave by setting({ it.autoSaveOnLeave }, { old, value -> old.copy(autoSaveOnLeave = value) })
     var draftRecovery by setting({ it.draftRecovery }, { old, value -> old.copy(draftRecovery = value) })
     var mp4BitrateMbps by setting({ it.mp4BitrateMbps }, { old, value -> old.copy(mp4BitrateMbps = value) })
     var xShareText by setting({ it.xShareText }, { old, value -> old.copy(xShareText = value) })

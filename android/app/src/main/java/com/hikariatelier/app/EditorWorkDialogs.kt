@@ -52,6 +52,7 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) workManagementViewModel.chooseFolder(uri)
     }
+    WorkOrganizationDialogs(workManagementViewModel, works, assetBusy, { uiText(it) }) { KeepLandscapeDialogImmersive() }
     WorkRecoveryDialogs(workManagementViewModel, { uiText(it) }) { folderLauncher.launch(selectedFolderUri) }
     if (workManagementViewModel.showTemplateManager) UserTemplateManagerSheet(
         templates = workManagementViewModel.userTemplates, currentWorkTitle = activeWork?.title,
@@ -79,7 +80,8 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
             isLandscape = isLandscape,
             dismissEnabled = !sessionViewModel.snapshotRestoring,
             onRetry = { snapshotViewModel.load() },
-            onCreateSnapshot = { snapshotViewModel.create() },
+            onCreateSnapshot = { title, note -> snapshotViewModel.create(title, note) },
+            onUpdateSnapshotDetails = { snapshot, title, note -> snapshotViewModel.updateDetails(snapshot, title, note) },
             onRestoreSnapshot = { snapshotViewModel.restore(it) },
             onDeleteSnapshot = { snapshotViewModel.delete(it) },
             onDismiss = { if (!sessionViewModel.snapshotRestoring) showSnapshotSheet = false },
@@ -150,14 +152,6 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
         )
     }
 
-    val missingOfficialSamples = remember(works) {
-        val existingIds = works.map { it.id }.toSet()
-        val existingTitles = works.map { it.title.lowercase() }.toSet()
-        workManagementViewModel.officialSamples.filter { sample ->
-            sample.id !in existingIds && sample.title.lowercase() !in existingTitles
-        }
-    }
-    var showSampleUpdateDialog by workManagementViewModel::showSamplePrompt
     val showReleaseNotesPrompt = settingsViewModel.releaseNotesPromptVersion < BuildConfig.VERSION_CODE &&
         workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null && selectedFolderUri != null
 
@@ -168,21 +162,6 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
             onDismiss = {
                 settingsViewModel.dismissReleaseNotesPrompt(BuildConfig.VERSION_CODE)
             },
-            windowSetup = { KeepLandscapeDialogImmersive() }
-        )
-    } else if (showSampleUpdateDialog && workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null &&
-        missingOfficialSamples.isNotEmpty() && selectedFolderUri != null &&
-        settingsViewModel.samplePromptVersion < BuildConfig.VERSION_CODE) {
-        val sampleNames = missingOfficialSamples.joinToString(", ") { it.title }
-        SampleUpdatePromptDialog(
-            sampleNames = sampleNames,
-            onAddSamples = {
-                workManagementViewModel.addSamples(missingOfficialSamples, fromPrompt = true)
-            },
-            onDismiss = {
-                workManagementViewModel.dismissSamplePrompt()
-            },
-            textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }

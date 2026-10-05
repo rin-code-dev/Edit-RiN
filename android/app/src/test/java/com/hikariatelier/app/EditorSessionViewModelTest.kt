@@ -7,6 +7,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EditorSessionViewModelTest {
+    @Test fun replacingStoreWithReusedIdsDoesNotResurrectPreviousStoreHistory() {
+        val session = EditorSessionViewModel()
+        session.initialize(listOf(Work("one", "One", "same"), Work("two", "Two", "second")), "one")
+        session.editorValueState.value = TextFieldValue("same", androidx.compose.ui.text.TextRange(3))
+        session.undoStack.add(TextFieldValue("private history from previous store"))
+        session.editorFileState("one").value = "previous.js"
+        session.clearAuxiliaryEditors()
+        session.activateWorkEditor("two", "second", false, setOf("one", "two"))
+        session.activateWorkEditor("one", "same", true, setOf("one", "two"))
+        assertTrue(session.undoStack.isEmpty())
+        assertEquals(androidx.compose.ui.text.TextRange.Zero, session.editorValueState.value.selection)
+        assertEquals("sketch.js", session.editorFileState("one").value)
+    }
     private fun seed(session: EditorSessionViewModel, key: String) {
         session.fileDrafts[key] = "draft"
         session.fileEditorValues[key] = mutableStateOf(TextFieldValue("draft"))

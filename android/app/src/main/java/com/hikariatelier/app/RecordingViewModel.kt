@@ -2,6 +2,7 @@ package com.hikariatelier.app
 
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -22,6 +23,18 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
     var isPreviewRecording by mutableStateOf(false)
     val notices = UiNotices()
     private var savingJob: Job? = null
+    private val recoveryStore = RecordingRecoveryStore(mediaRepository.recordingRecoveryDirectory)
+    var pendingRecording by mutableStateOf<PendingRecording?>(null)
+        private set
+    var recordingRecoveryVisible by mutableStateOf(false)
+        private set
+    private var recoveryReady = false
+    private val recoveryJob = viewModelScope.launch {
+        try {
+            pendingRecording = withContext(Dispatchers.IO) { recoveryStore.restoreAndClean() }
+            recordingRecoveryVisible = pendingRecording != null
+        } finally { recoveryReady = true }
+    }
     var isRecordingSaving by mutableStateOf(false)
     var pendingRecordingFormat by mutableStateOf<String?>(null)
     var recordingCountdownRemaining by mutableIntStateOf(0)
@@ -31,6 +44,7 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
         mp4BitrateMbps: Int,
         evaluateJavascript: (String) -> Unit
     ) {
+        if (!canStartRecording()) return
         savedPreviewMedia = null
         recordingFormatLabel = format.uppercase()
         recordingLimitMillis = if (format == "gif") 15_000L else 60_000L
@@ -47,6 +61,7 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
         mp4BitrateMbps: Int,
         evaluateJavascript: (String) -> Unit
     ) {
+        if (!canStartRecording()) return
         recordingFormatLabel = format.uppercase()
         recordingLimitMillis = if (format == "gif") 15_000L else 60_000L
         if (countdownSeconds == 0) {
@@ -58,37 +73,102 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
     }
 
     fun saveTransferredRecording(file: File?, mimeType: String) {
-        if (savingJob?.isActive == true) return
+        if (savingJob?.isActive == true || pendingRecording != null) {
+            viewModelScope.launch(Dispatchers.IO) { file?.delete() }
+            return
+        }
         isPreviewRecording = false
         isRecordingSaving = true
         val elapsed = recordingElapsedMillis
         savingJob = viewModelScope.launch {
             try {
-                val media = completeRecordingSave({ isRecordingSaving = it }) {
-                    withContext(Dispatchers.IO) {
-                        if (file == null) return@withContext null
-                        val mime = mimeType.substringBefore(';').lowercase()
-                        val extension = when (mime) {
-                            "image/gif" -> "gif"
-                            "video/mp4" -> "mp4"
-                            "video/webm" -> "webm"
-                            else -> return@withContext null
-                        }
-                        val name = "EditRiN_${java.util.UUID.randomUUID()}.$extension"
-                        val thumbnail = recordingThumbnail(file, mime)
-                        val uri = mediaRepository.save(mimeType = mime, displayName = name,
-                            video = mime != "image/gif", sourceFile = file)
-                        uri?.let { SavedPreviewMedia(it, mime, name, file.length(), elapsed, thumbnail) }
-                    }
+                recoveryJob.join()
+                if (pendingRecording != null) {
+                    withContext(Dispatchers.IO) { file?.delete() }
+                    notices.send("保存待ちの録画を保存または破棄してください")
+                    return@launch
                 }
-                savedPreviewMedia = media
-                if (media == null) notices.send("録画を保存できませんでした")
+                val mime = mimeType.substringBefore(';').lowercase()
+                val extension = recordingExtension(mime)
+                if (file == null || extension == null || !file.isFile || file.length() == 0L) {
+                    withContext(Dispatchers.IO) { file?.delete() }
+                    notices.send("録画を保存できませんでした")
+                    return@launch
+                }
+                val name = "EditRiN_${java.util.UUID.randomUUID()}.$extension"
+                val pending = withContext(Dispatchers.IO) {
+                    runCatching { recoveryStore.retain(file, mime, name, elapsed) }
+                        .getOrElse { PendingRecording(file, mime, name, elapsed) }
+                }
+                finishRecordingSave(pending)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { notices.send("録画を保存できませんでした") }
-            finally {
-                isRecordingSaving = false
-                withContext(NonCancellable + Dispatchers.IO) { file?.delete() }
+            finally { isRecordingSaving = false }
+        }
+    }
+
+    private fun canStartRecording(): Boolean {
+        if (!recoveryReady) { notices.send("録画の準備中です"); return false }
+        if (pendingRecording != null) { notices.send("保存待ちの録画を保存または破棄してください"); return false }
+        return !isRecordingSaving
+    }
+
+    fun retryPendingRecording(destination: Uri? = null, expectedName: String? = null) {
+        val pending = pendingRecording
+        if (pending == null || (expectedName != null && pending.displayName != expectedName) ||
+            savingJob?.isActive == true) {
+            if (destination != null) viewModelScope.launch(Dispatchers.IO) { mediaRepository.deleteCreatedDocument(destination) }
+            return
+        }
+        isRecordingSaving = true
+        savingJob = viewModelScope.launch {
+            try { finishRecordingSave(pending, destination) }
+            finally { isRecordingSaving = false }
+        }
+    }
+
+    private suspend fun finishRecordingSave(pending: PendingRecording, destination: Uri? = null) {
+        // State owns the source before I/O begins, so all failure paths still offer recovery.
+        pendingRecording = pending
+        val media = try {
+            withContext(Dispatchers.IO) {
+                val thumbnail = recordingThumbnail(pending.file, pending.mimeType)
+                val uri = if (destination != null) mediaRepository.saveRecordingToDocument(pending, destination)
+                else mediaRepository.save(mimeType = pending.mimeType, displayName = pending.displayName,
+                    video = pending.mimeType != "image/gif", sourceFile = pending.file)
+                uri?.let { SavedPreviewMedia(it, pending.mimeType, pending.displayName,
+                    pending.sizeBytes, pending.durationMillis, thumbnail) }
             }
+        } catch (cancelled: CancellationException) {
+            if (destination != null) withContext(NonCancellable + Dispatchers.IO) { mediaRepository.deleteCreatedDocument(destination) }
+            throw cancelled
+        } catch (_: Exception) {
+            if (destination != null) withContext(Dispatchers.IO) { mediaRepository.deleteCreatedDocument(destination) }
+            null
+        }
+        if (media == null) {
+            recordingRecoveryVisible = true
+            notices.send("録画を保存できませんでした")
+        } else {
+            savedPreviewMedia = media
+            pendingRecording = null
+            recordingRecoveryVisible = false
+            withContext(NonCancellable + Dispatchers.IO) { runCatching { recoveryStore.complete(pending) } }
+        }
+    }
+
+    fun discardPendingRecording() {
+        val pending = pendingRecording ?: return
+        if (savingJob?.isActive == true) return
+        isRecordingSaving = true
+        savingJob = viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { recoveryStore.discard(pending) }
+                pendingRecording = null
+                recordingRecoveryVisible = false
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { notices.send("録画を破棄できませんでした") }
+            finally { isRecordingSaving = false }
         }
     }
 
@@ -128,14 +208,24 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
                     if (bitmap == null) notices.send("スクリーンショットを保存できませんでした")
                     else shareCardArtwork = bitmap
                 } else {
-                    val uri = withContext(Dispatchers.IO) {
-                        mediaRepository.save(dataUrl = dataUrl, sourceFile = sourceFile, mimeType = "image/png",
-                            displayName = "EditRiN_${System.currentTimeMillis()}.png", video = false,
-                            directoryName = if (width > 0) "Edit-RiN" else "EditRiN")
+                    val media = withContext(Dispatchers.IO) {
+                        val name = "EditRiN_${System.currentTimeMillis()}.png"
+                        val uri = mediaRepository.save(dataUrl = dataUrl, sourceFile = sourceFile, mimeType = "image/png",
+                            displayName = name, video = false, directoryName = if (width > 0) "Edit-RiN" else "EditRiN")
+                        uri?.let {
+                            val bytes = if (sourceFile == null) runCatching { android.util.Base64.decode(
+                                dataUrl.substringAfter(',', dataUrl), android.util.Base64.DEFAULT) }.getOrNull() else null
+                            val thumbnail = runCatching {
+                                if (sourceFile != null) recordingThumbnail(sourceFile, "image/png")
+                                else bytes?.let(::imageThumbnail)
+                            }.getOrNull()
+                            val size = runCatching { sourceFile?.length() ?: bytes?.size?.toLong() ?: 0L }.getOrDefault(0L)
+                            SavedPreviewMedia(it, "image/png", name, size,
+                                thumbnail = thumbnail)
+                        }
                     }
-                    if (uri == null) notices.send("スクリーンショットを保存できませんでした")
-                    else if (width > 0 && height > 0) notices.send("%s × %s のPNG画像を保存しました", width, height)
-                    else notices.send("スクリーンショットをPictures/EditRiNへ保存しました")
+                    if (media == null) notices.send("スクリーンショットを保存できませんでした")
+                    else savedPreviewMedia = media
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { notices.send("スクリーンショットを保存できませんでした") }

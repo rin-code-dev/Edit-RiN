@@ -40,7 +40,10 @@ internal class PreviewMediaActions(
         }
         runCatching { startActivity(intent) }
             .onFailure {
-                Toast.makeText(activity, uiText("録画を開けませんでした"), Toast.LENGTH_SHORT).show()
+                val message = if (media.mimeType.startsWith("image/") && media.mimeType != "image/gif") {
+                    uiText("画像を開けませんでした")
+                } else uiText("録画を開けませんでした")
+                Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
             }
     }
 

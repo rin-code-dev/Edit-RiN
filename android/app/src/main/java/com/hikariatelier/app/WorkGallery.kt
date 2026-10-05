@@ -32,6 +32,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
+import java.util.Collections
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
@@ -134,13 +141,20 @@ internal class WorkGalleryState internal constructor(
     selectedTagState: MutableState<String?>,
     val gridState: LazyGridState,
     selectingState: MutableState<Boolean>,
-    selectedIdsState: MutableState<Set<String>>
+    selectedIdsState: MutableState<Set<String>>,
+    selectedFolderState: MutableState<String?> = mutableStateOf(null)
 ) {
     var searching by searchingState
     var query by queryState
     var selectedTag by selectedTagState
     var selecting by selectingState
     var selectedIds by selectedIdsState
+    var selectedFolder by selectedFolderState
+    fun inFolder(work: Work): Boolean = if (selectedFolder == SAMPLE_FOLDER) work.isSample
+        else !work.isSample && (selectedFolder == null || work.folderName == selectedFolder)
+    fun changeFolder(folder: String?) {
+        selectedFolder = folder; selectedTag = null; cardMenuWorkId = null; finishSelection()
+    }
     var jumpWorkId by mutableStateOf<String?>(null)
     var jumpSequence by mutableIntStateOf(0)
 
@@ -178,7 +192,8 @@ internal fun rememberWorkGalleryState(): WorkGalleryState {
     val grid = rememberLazyGridState()
     val selecting = rememberSaveable { mutableStateOf(false) }
     val selectedIds = rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
-    return remember { WorkGalleryState(searching, query, selectedTag, grid, selecting, selectedIds) }
+    val selectedFolder = rememberSaveable { mutableStateOf<String?>(null) }
+    return remember { WorkGalleryState(searching, query, selectedTag, grid, selecting, selectedIds, selectedFolder) }
 }
 
 /** Shared actions with compact portrait and larger landscape touch targets. */
@@ -195,12 +210,16 @@ internal fun WorkGalleryActions(
     canDeleteSelection: Boolean = true,
     onTagSelection: () -> Unit = {},
     onExportSelection: () -> Unit = {},
-    onDeleteSelection: () -> Unit = {}
+    onDeleteSelection: () -> Unit = {},
+    onMoveSelection: () -> Unit = {}
 ) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (state.selecting) {
             val enabled = state.selectedIds.isNotEmpty() && !busy
+            IconButton(onClick = onMoveSelection, enabled = enabled, modifier = Modifier.size(buttonSize)) {
+                Icon(painterResource(R.drawable.ic_folder_code), text("フォルダーへ移動"), Modifier.size(20.dp))
+            }
             IconButton(onClick = onTagSelection, enabled = enabled, modifier = Modifier.size(buttonSize)) {
                 Icon(painterResource(R.drawable.ic_tag), text("選択した作品にタグ付け"), Modifier.size(20.dp))
             }
@@ -248,7 +267,7 @@ private fun WorkGalleryActionButtons(
                 text("並び替え"), Modifier.size(20.dp))
         }
         DropdownMenu(expanded = state.sorting, onDismissRequest = { state.sorting = false }) {
-            listOf("更新順", "名前順").forEach { value ->
+            listOf("更新順", "最近開いた順", "名前順").forEach { value ->
                 DropdownMenuItem(text = { Text(text(value)) },
                     modifier = Modifier.semantics { selected = sort == value },
                     trailingIcon = { if (sort == value) Text("✓") },
@@ -314,12 +333,17 @@ internal fun InlineWorkGallery(
     onActiveThumbnailBounds: (Rect?) -> Unit = {},
     morphWorkId: String? = activeId,
     suppressMorphThumbnail: Boolean = false,
-    morphProgress: Float = 0f
+    morphProgress: Float = 0f,
+    folders: List<String> = emptyList(),
+    tabs: List<String> = emptyList(),
+    onManageFolders: () -> Unit = {},
+    onMove: (Work) -> Unit = {},
+    onReorderTabs: (List<String>) -> Unit = {}
 ) {
     WorkGalleryContent(works, activeId, unsaved, sort, cacheDir, previewRevision, updatedPreviewId,
         text, onOpen, onAdd, state, modifier, MaterialTheme.colorScheme.background, onTogglePin,
         onEditTags, onDeleteGlobalTag, busy, onRename, onDuplicate, onDelete,
-        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress)
+        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -343,7 +367,12 @@ private fun WorkGalleryContent(
     morphWorkId: String?,
     onActiveThumbnailBounds: (Rect?) -> Unit,
     suppressMorphThumbnail: Boolean = false,
-    morphProgress: Float = 0f
+    morphProgress: Float = 0f,
+    folders: List<String> = emptyList(),
+    tabs: List<String> = emptyList(),
+    onManageFolders: () -> Unit = {},
+    onMove: (Work) -> Unit = {},
+    onReorderTabs: (List<String>) -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
     val configuration = LocalConfiguration.current
@@ -367,24 +396,37 @@ private fun WorkGalleryContent(
         if (!busy) state.finishSelection()
     }
     LaunchedEffect(works) {
-        state.selectedIds = state.selectedIds.intersect(works.map { it.id }.toSet())
+        state.selectedIds = state.selectedIds.intersect(works.filterNot { it.isSample }.map { it.id }.toSet())
     }
     val currentBoundsCallback by rememberUpdatedState(onActiveThumbnailBounds)
-    val allTags = remember(works) {
-        works.flatMap { it.tags }.distinct().sorted()
+    LaunchedEffect(state.selectedFolder, folders) {
+        if (state.selectedFolder != null && state.selectedFolder != SAMPLE_FOLDER &&
+            state.selectedFolder != "" && state.selectedFolder !in folders) state.changeFolder(null)
+        state.gridState.scrollToItem(0)
+    }
+    val allTags = remember(works, state.selectedFolder) {
+        works.filter(state::inFolder).flatMap { it.tags }.distinct().sorted()
     }
 
-    val visibleWorks = remember(works, sort, state.query, state.selectedTag) {
+    val galleryContext = androidx.compose.ui.platform.LocalContext.current
+    val recentRevision = RecentWorks.revision
+    val visibleWorks = remember(works, sort, state.query, state.selectedTag, state.selectedFolder, recentRevision) {
         val trimmed = state.query.trim()
+        val scoped = works.filter(state::inFolder)
         val byTag = if (state.selectedTag != null) {
-            works.filter { work -> work.tags.any { it.equals(state.selectedTag, ignoreCase = true) } }
-        } else works
+            scoped.filter { work -> work.tags.any { it.equals(state.selectedTag, ignoreCase = true) } }
+        } else scoped
         val filtered = if (trimmed.isEmpty()) byTag else byTag.filter { work ->
             work.title.contains(trimmed, ignoreCase = true) ||
             work.tags.any { it.contains(trimmed.removePrefix("#"), ignoreCase = true) }
         }
         val baseComparator: Comparator<Work> = if (sort == "名前順") {
             Comparator { a, b -> a.title.lowercase().compareTo(b.title.lowercase()) }
+        } else if (sort == "最近開いた順") {
+            Comparator { a, b ->
+                val opened = RecentWorks.lastOpened(galleryContext, b.id).compareTo(RecentWorks.lastOpened(galleryContext, a.id))
+                if (opened != 0) opened else b.updatedAt.compareTo(a.updatedAt)
+            }
         } else {
             Comparator { a, b -> b.updatedAt.compareTo(a.updatedAt) }
         }
@@ -418,6 +460,98 @@ private fun WorkGalleryContent(
         }
     }
     Column(modifier) {
+        val density = LocalDensity.current
+        val haptic = LocalHapticFeedback.current
+        val effectiveTabs = remember(tabs, folders) {
+            if (tabs.isNotEmpty()) tabs else (listOf(SAMPLE_FOLDER) + (if (folders.isNotEmpty()) listOf("") + folders else emptyList()))
+        }
+        var currentTabs by remember(effectiveTabs) { mutableStateOf(effectiveTabs) }
+        var draggingTab by remember { mutableStateOf<String?>(null) }
+        var dragOffset by remember { mutableFloatStateOf(0f) }
+
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            fun choose(folder: String?) { finishSearchInput(); state.changeFolder(folder) }
+            FilterChip(selected = state.selectedFolder == null, enabled = !busy,
+                onClick = { choose(null) }, label = { Text(text("自分の作品")) })
+
+            currentTabs.forEach { tab ->
+                val isDragging = draggingTab == tab
+                val chipModifier = Modifier
+                    .graphicsLayer {
+                        if (isDragging) {
+                            translationX = dragOffset
+                            scaleX = 1.08f
+                            scaleY = 1.08f
+                            shadowElevation = 8f
+                        }
+                    }
+                    .zIndex(if (isDragging) 1f else 0f)
+                    .pointerInput(tab, currentTabs, busy) {
+                        if (!busy) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggingTab = tab
+                                    dragOffset = 0f
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    dragOffset += dragAmount.x
+                                    val threshold = with(density) { 54.dp.toPx() }
+                                    val currentIndex = currentTabs.indexOf(tab)
+                                    if (currentIndex != -1) {
+                                        if (dragOffset > threshold && currentIndex < currentTabs.lastIndex) {
+                                            val next = currentTabs.toMutableList()
+                                            Collections.swap(next, currentIndex, currentIndex + 1)
+                                            currentTabs = next
+                                            dragOffset -= threshold
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        } else if (dragOffset < -threshold && currentIndex > 0) {
+                                            val next = currentTabs.toMutableList()
+                                            Collections.swap(next, currentIndex, currentIndex - 1)
+                                            currentTabs = next
+                                            dragOffset += threshold
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggingTab = null
+                                    dragOffset = 0f
+                                    if (currentTabs != effectiveTabs) {
+                                        onReorderTabs(currentTabs)
+                                    }
+                                },
+                                onDragCancel = {
+                                    draggingTab = null
+                                    dragOffset = 0f
+                                    if (currentTabs != effectiveTabs) {
+                                        onReorderTabs(currentTabs)
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                val labelText = when (tab) {
+                    SAMPLE_FOLDER -> text("サンプル・閲覧専用")
+                    "" -> text("未分類")
+                    else -> tab
+                }
+                FilterChip(
+                    selected = state.selectedFolder == tab,
+                    enabled = !busy,
+                    onClick = { choose(tab) },
+                    label = { Text(labelText) },
+                    modifier = chipModifier
+                )
+            }
+
+            IconButton(onClick = onManageFolders, enabled = !busy) {
+                Icon(painterResource(R.drawable.ic_folder_code), text("フォルダー管理"), Modifier.size(20.dp))
+            }
+        }
         if (state.searching && !landscape) {
             WorkGallerySearch(state, text, interactive,
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp))
@@ -586,6 +720,11 @@ private fun WorkGalleryContent(
                                         color = colors.onSurfaceVariant, fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace)
                                     HorizontalDivider()
+                                    if (work.isSample) {
+                                        DropdownMenuItem(text = { Text(text("コピーして編集")) },
+                                            leadingIcon = { Icon(painterResource(R.drawable.ic_duplicate), null, Modifier.size(18.dp)) },
+                                            onClick = { state.cardMenuWorkId = null; onDuplicate(work) })
+                                    } else {
                                     DropdownMenuItem(text = { Text(text("選択")) },
                                         leadingIcon = { Icon(painterResource(R.drawable.ic_select), null, Modifier.size(18.dp)) },
                                         onClick = { finishSearchInput(); state.startSelection(work.id) })
@@ -629,6 +768,10 @@ private fun WorkGalleryContent(
                                             onEditTags?.invoke(work)
                                         }
                                     )
+                                    DropdownMenuItem(text = { Text(text("フォルダーへ移動")) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_folder_code), null, Modifier.size(18.dp)) },
+                                        onClick = { state.cardMenuWorkId = null; onMove(work) })
+                                    }
                                     HorizontalDivider()
                                     DropdownMenuItem(
                                         text = { Text(text("開く")) },
