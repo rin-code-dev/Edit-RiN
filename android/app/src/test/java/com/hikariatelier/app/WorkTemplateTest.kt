@@ -37,8 +37,12 @@ class WorkTemplateTest {
             val template = WorkTemplate("1:1", 800, 800, kind)
             val fixed = template.code(CanvasSizingMode.FIXED)
             val responsive = template.code(CanvasSizingMode.RESPONSIVE)
-            val webgl = kind in listOf(WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER)
-            assertTrue(fixed.contains(if (webgl) "createCanvas(800, 800, WEBGL)" else "createCanvas(800, 800)"))
+            val expectedCanvas = when (kind) {
+                WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER -> "createCanvas(800, 800, WEBGL)"
+                WorkTemplateKind.WEBGPU -> "createCanvas(800, 800, navigator.gpu ? WEBGPU : WEBGL)"
+                else -> "createCanvas(800, 800)"
+            }
+            assertTrue("$kind must keep its renderer and fixed dimensions", fixed.contains(expectedCanvas))
             assertFalse(fixed.contains("function windowResized()"))
             assertTrue(responsive.contains("resizeCanvas(windowWidth, windowHeight)"))
             assertEquals(if (kind == WorkTemplateKind.PHYSICS_MATTER) mapOf("matter-js" to "0.20.0") else emptyMap<String, String>(), template.libraries)

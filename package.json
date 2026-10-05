@@ -6,7 +6,7 @@
     "build:apk": "./scripts/build-apk.sh debug",
     "build:release": "./scripts/build-apk.sh release",
     "build:check": "./scripts/build-apk.sh debug --test",
-    "test": "node tests/runner.test.cjs",
+    "test": "node tests/runner.test.cjs && node tests/translations.test.cjs",
     "clean": "cd android && ./gradlew clean"
   }
 }

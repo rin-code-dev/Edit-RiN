@@ -3,46 +3,49 @@ package com.hikariatelier.app
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal fun serializeWorkJson(work: Work): JSONObject {
+    validateAssetSet(work.assets)
+    return JSONObject()
+        .put("id", work.id)
+        .put("title", work.title)
+        .put("code", work.code)
+        .put("files", JSONObject(work.files as Map<*, *>))
+        .put("assets", JSONObject().apply {
+            work.assets.forEach { (name, asset) ->
+                put(name, JSONObject().put("hash", asset.hash).put("size", asset.size).put("mime", asset.mime))
+            }
+        })
+        .put(
+            "revisions",
+            JSONArray().apply {
+                work.revisions.takeLast(3).forEach { revision ->
+                    put(
+                        JSONObject()
+                            .put("code", revision.code)
+                            .put("savedAt", revision.savedAt)
+                    )
+                }
+            }
+        )
+        .put("previewAspectRatio", work.previewAspectRatio)
+        .put("p5Version", work.p5Version)
+        .put("p5SoundEnabled", work.p5SoundEnabled)
+        .put("libraries", JSONObject(work.libraries))
+        .put("parameterValues", JSONObject(work.parameterValues as Map<*, *>))
+        .put("createdAt", work.createdAt)
+        .put("updatedAt", work.updatedAt)
+        .put("folderName", work.folderName)
+        .put("isPinned", work.isPinned)
+        .put("tags", JSONArray(work.tags))
+}
+
 internal fun serializeWorkStore(
     works: List<Work>,
     activeWorkId: String
 ): String {
     val array = JSONArray()
     works.forEach { work ->
-        validateAssetSet(work.assets)
-        array.put(
-            JSONObject()
-                .put("id", work.id)
-                .put("title", work.title)
-                .put("code", work.code)
-                .put("files", JSONObject(work.files as Map<*, *>))
-                .put("assets", JSONObject().apply {
-                    work.assets.forEach { (name, asset) ->
-                        put(name, JSONObject().put("hash", asset.hash).put("size", asset.size).put("mime", asset.mime))
-                    }
-                })
-                .put(
-                    "revisions",
-                    JSONArray().apply {
-                        work.revisions.takeLast(3).forEach { revision ->
-                            put(
-                                JSONObject()
-                                    .put("code", revision.code)
-                                    .put("savedAt", revision.savedAt)
-                            )
-                        }
-                    }
-                )
-                .put("previewAspectRatio", work.previewAspectRatio)
-                .put("p5Version", work.p5Version)
-                .put("p5SoundEnabled", work.p5SoundEnabled)
-                .put("libraries", JSONObject(work.libraries))
-                .put("parameterValues", JSONObject(work.parameterValues as Map<*, *>))
-                .put("createdAt", work.createdAt)
-                .put("updatedAt", work.updatedAt)
-                .put("isPinned", work.isPinned)
-                .put("tags", JSONArray(work.tags))
-        )
+        array.put(serializeWorkJson(work))
     }
     return JSONObject()
         .put("format", "hikari-atelier")
@@ -111,6 +114,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
             }.orEmpty(),
             createdAt = item.optLong("createdAt", now),
             updatedAt = item.optLong("updatedAt", now),
+            folderName = item.optString("folderName", ""),
             isPinned = item.optBoolean("isPinned", false),
             tags = item.optJSONArray("tags")?.let { tagsArray ->
                 List(tagsArray.length()) { tagsArray.optString(it) }.filter { it.isNotBlank() }

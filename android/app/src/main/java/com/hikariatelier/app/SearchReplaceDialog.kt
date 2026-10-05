@@ -18,7 +18,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
@@ -37,28 +36,11 @@ internal fun SearchReplaceDialog(
     codeFontFamily: FontFamily,
     textTranslator: (String, Array<out Any?>) -> String
 ) {
-    if (!viewModel.showSearchDialog) return
+    if (!viewModel.showSearchDialog || !viewModel.searchWholeWork) return
 
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg arguments: Any?): String =
         textTranslator(source, arguments)
-    val request = FileSearchRequest(editingValue.text, viewModel.searchQuery, viewModel.searchMatchCase)
-    val searchResult by produceState<Pair<FileSearchRequest, List<IntRange>>?>(null, request, viewModel.searchWholeWork) {
-        value = null
-        if (!viewModel.searchWholeWork) {
-            if (request.source.length >= 8_000) delay(120)
-            value = request to withContext(Dispatchers.Default) { findFileMatches(request) }
-        }
-    }
-    val searching = !viewModel.searchWholeWork && searchResult?.first != request
-    val matches = searchResult?.takeIf { it.first == request }?.second.orEmpty()
-    val scope = rememberCoroutineScope()
-    val currentValue by rememberUpdatedState(editingValue)
-    var replacing by remember { mutableStateOf(false) }
-    val selectedMatchIndex = matches.indexOfFirst {
-        it.first == editingValue.selection.min && it.last + 1 == editingValue.selection.max
-    }
-
     AlertDialog(
         onDismissRequest = {
             viewModel.showSearchDialog = false
@@ -70,7 +52,7 @@ internal fun SearchReplaceDialog(
             )
         },
         title = {
-            Text(uiText("検索・置換"))
+            Text(uiText("作品全体"))
         },
         text = {
             Column(
@@ -110,186 +92,50 @@ internal fun SearchReplaceDialog(
                         text = uiText("大文字・小文字を区別"),
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    Spacer(Modifier.weight(1f))
-                    if (!viewModel.searchWholeWork) {
-                        Text(
-                            text = if (searching || replacing) {
-                                uiText("検索中…")
-                            } else if (matches.isEmpty()) {
-                                uiText("0件")
-                            } else if (selectedMatchIndex >= 0) {
-                                "${selectedMatchIndex + 1} / ${matches.size}"
-                            } else {
-                                uiText("%s件", matches.size)
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.onSurfaceVariant
-                        )
-                    }
                 }
 
-                if (viewModel.searchWholeWork) {
-                    val sources = projectSearchSources(activeWorkId, editorText, activeWorkFiles, fileDrafts)
-                    key(sources, viewModel.searchQuery, viewModel.searchMatchCase) {
-                        val results by produceState<ProjectSearchResults?>(null) {
-                            delay(150)
-                            value = withContext(Dispatchers.Default) {
-                                searchProject(sources, viewModel.searchQuery, viewModel.searchMatchCase)
-                            }
-                        }
-                        val found = results
-                        Text(
-                            text = if (found == null) uiText("検索中…")
-                            else if (found.truncated) uiText("先頭%s件を表示", found.matches.size)
-                            else uiText("%s件", found.matches.size),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.onSurfaceVariant
-                        )
-                        if (found != null && found.matches.isNotEmpty()) {
-                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
-                                items(found.matches, key = { "${it.file}:${it.start}" }, contentType = { "search_match" }) { match ->
-                                    Column(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                viewModel.showSearchDialog = false
-                                                onNavigateToSource(match.file, match.line, TextRange(match.start, match.end))
-                                            }
-                                            .padding(vertical = 10.dp)
-                                    ) {
-                                        Text(
-                                            "${match.file}:${match.line}",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = colors.primary
-                                        )
-                                        Text(
-                                            match.excerpt,
-                                            fontFamily = codeFontFamily,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
+                val sources = projectSearchSources(activeWorkId, editorText, activeWorkFiles, fileDrafts)
+                key(sources, viewModel.searchQuery, viewModel.searchMatchCase) {
+                    val results by produceState<ProjectSearchResults?>(null) {
+                        delay(150)
+                        value = withContext(Dispatchers.Default) {
+                            searchProject(sources, viewModel.searchQuery, viewModel.searchMatchCase)
                         }
                     }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            shape = ButtonDefaults.outlinedShape,
-                            onClick = {
-                                viewModel.selectSearchMatch(editingValue.text, editingValue.selection, -1, matches)?.let {
-                                    onApplyChange(editingValue.copy(selection = it))
-                                    editorFocusRequester.requestFocus()
-                                }
-                            },
-                            enabled = !searching && !replacing && matches.isNotEmpty(),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(uiText("前へ"))
-                        }
-                        Button(
-                            shape = ButtonDefaults.shape,
-                            onClick = {
-                                viewModel.selectSearchMatch(editingValue.text, editingValue.selection, 1, matches)?.let {
-                                    onApplyChange(editingValue.copy(selection = it))
-                                    editorFocusRequester.requestFocus()
-                                }
-                            },
-                            enabled = !searching && !replacing && matches.isNotEmpty(),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(uiText("次へ"))
-                        }
-                    }
-
-                    HorizontalDivider(color = colors.outlineVariant)
-
-                    OutlinedTextField(
-                        value = viewModel.replacementText,
-                        onValueChange = { viewModel.replacementText = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(uiText("置換後の文字列")) },
-                        singleLine = true
+                    val found = results
+                    Text(
+                        text = if (found == null) uiText("検索中…")
+                        else if (found.truncated) uiText("先頭%s件を表示", found.matches.size)
+                        else uiText("%s件", found.matches.size),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant
                     )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            shape = ButtonDefaults.outlinedShape,
-                            onClick = {
-                                val (nextValue, replaced) = viewModel.replaceSelectedMatch(editingValue)
-                                if (replaced) {
-                                    onApplyChange(nextValue)
-                                } else {
-                                    viewModel.selectSearchMatch(editingValue.text, editingValue.selection, 1, matches)?.let {
-                                        onApplyChange(editingValue.copy(selection = it))
-                                        editorFocusRequester.requestFocus()
-                                    }
-                                }
-                            },
-                            enabled = !searching && !replacing && matches.isNotEmpty(),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(uiText("置換"))
-                        }
-                        OutlinedButton(
-                            shape = ButtonDefaults.outlinedShape,
-                            onClick = {
-                                val before = editingValue
-                                val replacement = viewModel.replacementText
-                                replacing = true
-                                scope.launch {
-                                    try {
-                                        val next = withContext(Dispatchers.Default) {
-                                            replaceFileMatches(before, matches, replacement)
+                    if (found != null && found.matches.isNotEmpty()) {
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
+                            items(found.matches, key = { "${it.file}:${it.start}" }, contentType = { "search_match" }) { match ->
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.showSearchDialog = false
+                                            onNavigateToSource(match.file, match.line, TextRange(match.start, match.end))
                                         }
-                                        // Never overwrite text typed while the replacement was being built.
-                                        if (currentValue == before && viewModel.searchQuery == request.query &&
-                                            viewModel.searchMatchCase == request.matchCase && viewModel.replacementText == replacement) {
-                                            onApplyChange(next)
-                                        }
-                                    } finally { replacing = false }
+                                        .padding(vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        "${match.file}:${match.line}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = colors.primary
+                                    )
+                                    Text(
+                                        match.excerpt,
+                                        fontFamily = codeFontFamily,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                            },
-                            enabled = !searching && !replacing && matches.isNotEmpty(),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(uiText("すべて置換"))
-                        }
-                    }
-
-                    HorizontalDivider(color = colors.outlineVariant)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = viewModel.goToLineText,
-                            onValueChange = {
-                                viewModel.goToLineText = it.filter(Char::isDigit)
-                            },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(uiText("行番号")) },
-                            singleLine = true
-                        )
-                        FilledTonalButton(
-                            shape = ButtonDefaults.filledTonalShape,
-                            onClick = {
-                                viewModel.goToLineText.toIntOrNull()?.let(onJumpToLine)
-                                viewModel.showSearchDialog = false
-                            },
-                            enabled = viewModel.goToLineText.toIntOrNull()?.let { it > 0 } == true
-                        ) {
-                            Text(uiText("移動"))
+                            }
                         }
                     }
                 }

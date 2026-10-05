@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal const val MAX_SNAPSHOTS = 15
+internal const val MAX_SNAPSHOT_TITLE = 120
+internal const val MAX_SNAPSHOT_NOTE = 1000
 
 /** Returns on the caller's UI context; failed IO never invokes the session mutation. */
 internal suspend fun persistSnapshotRestore(save: () -> Boolean, commit: () -> Unit): Boolean {
@@ -26,7 +28,8 @@ data class WorkSnapshot(
     val parameterValues: Map<String, String> = emptyMap(),
     val note: String? = null,
     // Legacy revisions only recorded sketch.js; do not erase other files when restoring them.
-    val mainCodeOnly: Boolean = false
+    val mainCodeOnly: Boolean = false,
+    val title: String? = null
 )
 
 internal data class SnapshotContent(
@@ -84,6 +87,7 @@ internal fun encodeSnapshots(snapshots: List<WorkSnapshot>): JSONArray = JSONArr
             .put("parameterValues", JSONObject(snapshot.parameterValues))
             .put("mainCodeOnly", snapshot.mainCodeOnly).apply {
                 snapshot.note?.let { put("note", it) }
+                snapshot.title?.let { put("title", it) }
             })
     }
 }
@@ -107,7 +111,8 @@ internal fun decodeSnapshots(array: JSONArray): List<WorkSnapshot> {
         val params = stringMap(obj.optJSONObject("parameterValues"), obj.has("parameterValues"))
         WorkSnapshot(id, obj.optLong("savedAt", 0), obj.getString("code"), files, params,
             obj.optString("note").takeIf { it.isNotBlank() },
-            obj.optBoolean("mainCodeOnly", id.startsWith("migrated_") && files.isEmpty() && params.isEmpty()))
+            obj.optBoolean("mainCodeOnly", id.startsWith("migrated_") && files.isEmpty() && params.isEmpty()),
+            obj.optString("title").takeIf { it.isNotBlank() })
     }.sortedByDescending { it.savedAt }
 }
 
@@ -193,10 +198,23 @@ internal object WorkSnapshotStore {
 
     @Synchronized
     fun addSnapshot(filesDir: File, workId: String, content: SnapshotContent,
-                    fallbackRevisions: List<WorkRevision> = emptyList()): List<WorkSnapshot> {
+                    fallbackRevisions: List<WorkRevision> = emptyList(),
+                    title: String? = null, note: String? = null): List<WorkSnapshot> {
+        val details = normalizedSnapshotDetails(title, note)
         val current = loadSnapshots(filesDir, workId, fallbackRevisions)
         val updated = (listOf(WorkSnapshot(code = content.code, files = content.files,
-            parameterValues = content.parameterValues)) + current).take(MAX_SNAPSHOTS)
+            parameterValues = content.parameterValues, title = details.first, note = details.second)) + current).take(MAX_SNAPSHOTS)
+        saveSnapshots(filesDir, workId, updated)
+        return updated
+    }
+
+    @Synchronized
+    fun updateSnapshotDetails(filesDir: File, workId: String, snapshotId: String, title: String?, note: String?,
+                              fallbackRevisions: List<WorkRevision> = emptyList()): List<WorkSnapshot> {
+        val details = normalizedSnapshotDetails(title, note)
+        val current = loadSnapshots(filesDir, workId, fallbackRevisions)
+        require(current.any { it.id == snapshotId }) { "Snapshot no longer exists" }
+        val updated = current.map { if (it.id == snapshotId) it.copy(title = details.first, note = details.second) else it }
         saveSnapshots(filesDir, workId, updated)
         return updated
     }
@@ -235,4 +253,12 @@ internal object WorkSnapshotStore {
             throw error
         }
     }
+}
+
+internal fun normalizedSnapshotDetails(title: String?, note: String?): Pair<String?, String?> {
+    val name = title?.trim()?.takeIf { it.isNotEmpty() }
+    val memo = note?.trim()?.takeIf { it.isNotEmpty() }
+    require(name == null || (name.length <= MAX_SNAPSHOT_TITLE && name.none { it == '\n' || it == '\r' || it.isISOControl() }))
+    require(memo == null || memo.length <= MAX_SNAPSHOT_NOTE)
+    return name to memo
 }

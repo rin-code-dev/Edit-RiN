@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PreviewSessionTest {
+    @Test fun previewFreshnessTracksDraftFilesRuntimeAndWorkWithoutConfusingSaveState() {
+        val work = Work("one", "One", "main", files = mutableMapOf("helper.js" to "helper", "index.html" to "<p>original</p>"))
+        val input = capturePreviewRun(work, work.code, work.files, work.assets)
+        assertTrue(previewRunMatches(input, work, "main", emptyMap()))
+        work.code = "saved after running"
+        assertFalse(previewRunMatches(input, work, work.code, emptyMap()))
+        assertFalse(previewRunMatches(input, work, "main", mapOf("one/helper.js" to "changed")))
+        assertFalse(previewRunMatches(input, Work("two", "Two", "main", files = work.files.toMutableMap()), "main", emptyMap()))
+        work.parameterValues["speed"] = "3"
+        assertTrue(previewRunMatches(input, work, "main", emptyMap()))
+        work.p5SoundEnabled = true
+        assertFalse(previewRunMatches(input, work, "main", emptyMap()))
+        assertFalse(previewRunMatches(null, work, "main", emptyMap()))
+    }
     @Test fun onlyLatestPreparationCanPublishAndOldBridgeReadsAreRejected() {
         val session = PreviewSession()
         val old = capturePreviewRun(Work("one", "One", "old"), "old", emptyMap(), emptyMap(), token = "old")

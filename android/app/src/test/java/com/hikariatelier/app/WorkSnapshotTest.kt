@@ -24,6 +24,54 @@ class WorkSnapshotTest {
     @get:Rule val temp = TemporaryFolder()
     private fun content(code: String = "main") = SnapshotContent(code, mapOf("shader.frag" to "shader"), mapOf("speed" to "2"))
 
+    @Test fun optionalNamesAndNotesRoundTripAndOldRecordsRemainReadable() {
+        val dir = temp.newFolder()
+        val created = WorkSnapshotStore.addSnapshot(dir, "a", content(), title = "  色調整前  ", note = "  基本の動き\n速度 2  ").single()
+        assertEquals("色調整前", created.title)
+        assertEquals("基本の動き\n速度 2", created.note)
+        assertEquals(created, WorkSnapshotStore.loadSnapshots(dir, "a").single())
+        val old = JSONArray().put(JSONObject().put("id", "old").put("code", "old code"))
+        val decoded = decodeSnapshots(old).single()
+        assertNull(decoded.title)
+        assertNull(decoded.note)
+    }
+
+    @Test fun editingDetailsPreservesSnapshotIdentityTimeContentAndRestoreScope() {
+        val dir = temp.newFolder()
+        val original = WorkSnapshot(id = "keep-id", savedAt = 123, code = "main", files = mapOf("helper.js" to "helper"),
+            parameterValues = mapOf("speed" to "2"), mainCodeOnly = true, title = "Before", note = "Old note")
+        WorkSnapshotStore.saveSnapshots(dir, "a", listOf(original))
+        val updated = WorkSnapshotStore.updateSnapshotDetails(dir, "a", original.id, "After", "New note").single()
+        assertEquals(original.copy(title = "After", note = "New note"), updated)
+        val cleared = WorkSnapshotStore.updateSnapshotDetails(dir, "a", original.id, " ", "\n ").single()
+        assertEquals(original.copy(title = null, note = null), cleared)
+        assertEquals(cleared, WorkSnapshotStore.loadSnapshots(dir, "a").single())
+    }
+
+    @Test fun detailUpdatesRejectMissingTargetsAndPreservePreviousHistoryOnWriteFailure() {
+        val dir = temp.newFolder()
+        val original = WorkSnapshotStore.addSnapshot(dir, "a", content(), title = "Before").single()
+        val file = File(dir, "snapshots/a.json")
+        val previous = file.readBytes()
+        assertTrue(runCatching { WorkSnapshotStore.updateSnapshotDetails(dir, "a", "missing", "After", null) }.isFailure)
+        assertArrayEquals(previous, file.readBytes())
+        File(file.path + ".new").mkdir()
+        assertTrue(runCatching { WorkSnapshotStore.updateSnapshotDetails(dir, "a", original.id, "After", "new") }.isFailure)
+        assertArrayEquals(previous, file.readBytes())
+        assertEquals(original, WorkSnapshotStore.loadSnapshots(dir, "a").single())
+    }
+
+    @Test fun invalidDetailsNeverCreateOrOverwriteHistory() {
+        val dir = temp.newFolder()
+        assertTrue(runCatching { WorkSnapshotStore.addSnapshot(dir, "a", content(), title = "x".repeat(MAX_SNAPSHOT_TITLE + 1)) }.isFailure)
+        assertFalse(File(dir, "snapshots/a.json").exists())
+        val created = WorkSnapshotStore.addSnapshot(dir, "a", content()).single()
+        val previous = File(dir, "snapshots/a.json").readBytes()
+        assertTrue(runCatching { WorkSnapshotStore.updateSnapshotDetails(dir, "a", created.id, "bad\nname", null) }.isFailure)
+        assertTrue(runCatching { WorkSnapshotStore.updateSnapshotDetails(dir, "a", created.id, null, "x".repeat(MAX_SNAPSHOT_NOTE + 1)) }.isFailure)
+        assertArrayEquals(previous, File(dir, "snapshots/a.json").readBytes())
+    }
+
     @Test fun capturesUnsavedSupportingFilesWithoutSharingDraftMaps() {
         val work = Work("a", "A", "old", files = mutableMapOf("helper.js" to "old helper", "shader.frag" to "old shader"))
         val drafts = mutableMapOf("a/helper.js" to "new helper", "a/shader.frag" to "new shader", "b/helper.js" to "other")
@@ -118,6 +166,7 @@ class WorkSnapshotTest {
         assertTrue(runCatching { WorkSnapshotStore.loadSnapshots(dir, "a") }.isFailure)
         assertTrue(runCatching { WorkSnapshotStore.addSnapshot(dir, "a", content()) }.isFailure)
         assertTrue(runCatching { WorkSnapshotStore.deleteSnapshot(dir, "a", "x") }.isFailure)
+        assertTrue(runCatching { WorkSnapshotStore.updateSnapshotDetails(dir, "a", "x", "Name", "Note") }.isFailure)
         assertEquals("{broken", file.readText())
     }
 

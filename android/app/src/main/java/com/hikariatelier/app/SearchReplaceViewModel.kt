@@ -18,6 +18,16 @@ class SearchReplaceViewModel : ViewModel() {
     private var cachedRequest: FileSearchRequest? = null
     private var cachedMatches: List<IntRange> = emptyList()
 
+    fun openSearch(currentValue: TextFieldValue) {
+        val selection = currentValue.selection
+        if (!selection.collapsed && selection.length <= 500) {
+            val selected = currentValue.text.substring(selection.min, selection.max)
+            if ('\n' !in selected && '\r' !in selected) searchQuery = selected
+        }
+        searchWholeWork = false
+        showSearchDialog = true
+    }
+
     fun searchMatches(source: String): List<IntRange> {
         val request = FileSearchRequest(source, searchQuery, searchMatchCase)
         if (request != cachedRequest) {
@@ -126,5 +136,19 @@ internal fun replaceFileMatches(value: TextFieldValue, matches: List<IntRange>, 
         }
         append(source, from, source.length)
     }
-    return TextFieldValue(result, TextRange(0))
+    fun adjustedOffset(offset: Int): Int {
+        var delta = 0
+        for (range in matches) {
+            if (offset <= range.first) return offset + delta
+            val end = range.last + 1
+            if (offset < end) {
+                return range.first + delta + (offset - range.first).coerceAtMost(replacement.length)
+            }
+            delta += replacement.length - (end - range.first)
+        }
+        return offset + delta
+    }
+    return TextFieldValue(result, TextRange(
+        adjustedOffset(value.selection.start), adjustedOffset(value.selection.end)
+    ))
 }

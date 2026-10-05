@@ -19,7 +19,7 @@ private fun newGalleryWork(source: Work, title: String = source.title): Work = W
     previewAspectRatio = source.previewAspectRatio, p5Version = source.p5Version,
     p5SoundEnabled = source.p5SoundEnabled, libraries = source.libraries.toMap(),
     parameterValues = source.parameterValues.toMap(), isPinned = source.isPinned,
-    tags = source.tags.toList()
+    tags = source.tags.toList(), folderName = source.folderName
 )
 
 /** Restore only deleted works; retain newer edits, additions, selection and editor Undo. */

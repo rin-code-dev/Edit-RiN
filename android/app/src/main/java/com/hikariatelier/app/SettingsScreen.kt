@@ -97,7 +97,7 @@ internal fun SettingsScreen(
                 }
             )
         }
-        val categoryScrolls = List(4) { rememberScrollState() }
+        val categoryScrolls = List(5) { rememberScrollState() }
         val settingsScroll = categoryScrolls[settingsTab]
 
         Row(
@@ -139,6 +139,7 @@ internal fun SettingsScreen(
                             R.drawable.ic_settings to uiText("外観"),
                             R.drawable.ic_code to uiText("エディター"),
                             R.drawable.ic_folder_code to uiText("保存とバックアップ"),
+                            R.drawable.ic_record to uiText("録画と共有"),
                             R.drawable.ic_more_horizontal to "About"
                         ).forEachIndexed { index, (icon, label) ->
                             Surface(
@@ -268,6 +269,7 @@ internal fun SettingsScreen(
                         R.drawable.ic_settings to uiText("外観"),
                         R.drawable.ic_code to uiText("エディター"),
                         R.drawable.ic_folder_code to uiText("保存とバックアップ"),
+                        R.drawable.ic_record to uiText("録画と共有"),
                         R.drawable.ic_more_horizontal to "About"
                     ).forEachIndexed { index, (icon, label) ->
                         FilterChip(
@@ -770,6 +772,15 @@ internal fun SettingsScreen(
 
                 SettingsDivider()
 
+                SettingSwitchRow(
+                    title = uiText("アプリを離れるときに自動保存"),
+                    description = uiText("別のアプリへ切り替えたとき、編集中の作品を自動で保存します"),
+                    checked = state.autoSaveOnLeave,
+                    onCheckedChange = { value -> onSettingsChange { copy(autoSaveOnLeave = value) } }
+                )
+
+                SettingsDivider()
+
                 Column(
                     modifier =
                         Modifier
@@ -855,9 +866,9 @@ internal fun SettingsScreen(
                         onValueChange =
                             { value -> onSettingsChange { copy(editorFontSize = value) } },
                         valueRange =
-                            12f..20f,
+                            12f..28f,
                         steps =
-                            7
+                            15
                     )
                 }
             }
@@ -869,78 +880,6 @@ internal fun SettingsScreen(
                 title = uiText("保存とバックアップ"),
                 description = uiText("保存先とファイル入出力")
             ) {
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = uiText("録画と共有"),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Text(
-                        text = uiText("MP4ビットレート"),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    Text(
-                        text = uiText("高い値ほど画質とファイルサイズが大きくなります"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        MP4_BITRATE_OPTIONS.forEach { bitrate ->
-                            ThemeChip(
-                                modifier = Modifier.widthIn(min = 88.dp),
-                                label = "$bitrate Mbps",
-                                selected = state.mp4BitrateMbps == bitrate,
-                                onClick = { onSettingsChange { copy(mp4BitrateMbps = bitrate) } }
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = uiText("録画開始カウントダウン"),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        RECORDING_COUNTDOWN_OPTIONS.forEach { seconds ->
-                            ThemeChip(
-                                modifier = Modifier.widthIn(min = 88.dp),
-                                label = if (seconds == 0) uiText("なし") else uiText("%s秒", seconds),
-                                selected = state.recordingCountdownSeconds == seconds,
-                                onClick = { onSettingsChange { copy(recordingCountdownSeconds = seconds) } }
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = state.xShareText,
-                        onValueChange = onXShareTextChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(uiText("X共有の定型文")) },
-                        supportingText = {
-                            Text(uiText("Xで共有するときに録画と一緒に入力します"))
-                        },
-                        minLines = 3,
-                        maxLines = 6
-                    )
-                    TextButton(
-                        onClick = { onXShareTextChange(DEFAULT_X_SHARE_TEXT) },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text(uiText("初期値に戻す"))
-                    }
-                }
-
-                SettingsDivider()
 
                 Column(
                     modifier =
@@ -1049,7 +988,7 @@ internal fun SettingsScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            uiText("公式サンプル作品を追加")
+                            uiText("サンプルフォルダーを開く")
                         )
                     }
                 }
@@ -1210,11 +1149,91 @@ internal fun SettingsScreen(
             }
 
             if (settingsTab == 3) {
+            SettingsSection(
+                title = uiText("録画と共有"),
+                description = uiText("録画の画質と共有時の定型文")
+            ) {
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = uiText("録画と共有"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Text(
+                        text = uiText("MP4ビットレート"),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        text = uiText("高い値ほど画質とファイルサイズが大きくなります"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MP4_BITRATE_OPTIONS.forEach { bitrate ->
+                            ThemeChip(
+                                modifier = Modifier.widthIn(min = 88.dp),
+                                label = "$bitrate Mbps",
+                                selected = state.mp4BitrateMbps == bitrate,
+                                onClick = { onSettingsChange { copy(mp4BitrateMbps = bitrate) } }
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = uiText("録画開始カウントダウン"),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RECORDING_COUNTDOWN_OPTIONS.forEach { seconds ->
+                            ThemeChip(
+                                modifier = Modifier.widthIn(min = 88.dp),
+                                label = if (seconds == 0) uiText("なし") else uiText("%s秒", seconds),
+                                selected = state.recordingCountdownSeconds == seconds,
+                                onClick = { onSettingsChange { copy(recordingCountdownSeconds = seconds) } }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = state.xShareText,
+                        onValueChange = onXShareTextChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(uiText("X共有の定型文")) },
+                        supportingText = {
+                            Text(uiText("Xで共有するときに録画と一緒に入力します"))
+                        },
+                        minLines = 3,
+                        maxLines = 6
+                    )
+                    TextButton(
+                        onClick = { onXShareTextChange(DEFAULT_X_SHARE_TEXT) },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(uiText("初期値に戻す"))
+                    }
+                }
+            }
+            }
+
+            if (settingsTab == 4) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 SettingsAboutSection(updateViewModel,
                     onShowGuide = { showUserGuide = true },
                     onShowLicenses = { showLicenses = true },
                     onShowReleaseNotes = { showReleaseNotes = true },
-                    openExternalUrl = actions.openExternalUrl, textTranslator = textTranslator)
+                    openExternalUrl = actions.openExternalUrl,
+                    textTranslator = textTranslator)
 
             }
         }

@@ -22,7 +22,7 @@ import java.io.File
 import java.util.Locale
 
 internal fun recordingThumbnail(file: File, mime: String): Bitmap? = runCatching {
-    if (mime == "image/gif") {
+    if (mime.startsWith("image/")) {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, options)
         options.inSampleSize = 1
@@ -40,6 +40,15 @@ internal fun recordingThumbnail(file: File, mime: String): Bitmap? = runCatching
             } else null
         } finally { reader.release() }
     }
+}.getOrNull()
+
+internal fun imageThumbnail(bytes: ByteArray): Bitmap? = runCatching {
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    options.inSampleSize = 1
+    while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > 480) options.inSampleSize *= 2
+    options.inJustDecodeBounds = false
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
 }.getOrNull()
 
 private fun recordingSize(bytes: Long) =
@@ -92,6 +101,54 @@ internal fun RecordingOptionsSheet(
             }
             Button(shape = ButtonDefaults.shape, onClick = { onStart(format) }, modifier = Modifier.fillMaxWidth()) {
                 Text(text("録画を開始"))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RecordingRecoverySheet(
+    pending: PendingRecording,
+    saving: Boolean,
+    text: (String) -> String,
+    onRetry: () -> Unit,
+    onChooseDestination: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    var confirmDiscard by rememberSaveable(pending.displayName) { mutableStateOf(false) }
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text(text("保存待ちの録画を破棄しますか？")) },
+            text = { Text(text("この録画はまだ保存されていません。破棄すると復元できません。")) },
+            confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscard() }) { Text(text("破棄")) } },
+            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(text("キャンセル")) } }
+        )
+    }
+    ModalBottomSheet(
+        onDismissRequest = {},
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = false
+    ) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(text("録画を保存できませんでした"), style = MaterialTheme.typography.titleLarge)
+            Text(text("録画は保持されています。再保存するか、別の保存先を選んでください。"),
+                style = MaterialTheme.typography.bodyMedium)
+            Text(pending.displayName, style = MaterialTheme.typography.bodySmall)
+            Text("${pending.mimeType.substringAfter('/').uppercase()} · ${formatRecordingDuration(pending.durationMillis)} · ${recordingSize(pending.sizeBytes)}",
+                style = MaterialTheme.typography.bodySmall)
+            if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Button(onClick = onRetry, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+                Text(text("再保存"))
+            }
+            OutlinedButton(onClick = onChooseDestination, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+                Text(text("別の保存先を選ぶ"))
+            }
+            TextButton(onClick = { confirmDiscard = true }, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+                Text(text("録画を破棄"), color = MaterialTheme.colorScheme.error)
             }
         }
     }

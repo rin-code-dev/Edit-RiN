@@ -6,7 +6,7 @@ internal data class WorkMergeResult(val works: List<Work>, val activeId: String,
 internal fun mergeConcurrentWorks(base: List<Work>, local: List<Work>, remote: List<Work>, activeId: String): WorkMergeResult {
     fun same(a: Work?, b: Work?): Boolean = when {
         a == null || b == null -> a == b
-        else -> serializeWorkStore(listOf(a), a.id) == serializeWorkStore(listOf(b), b.id)
+        else -> serializeWorkJson(a).toString() == serializeWorkJson(b).toString()
     }
     val before = base.associateBy { it.id }
     val edited = local.associateBy { it.id }
@@ -28,7 +28,7 @@ internal fun mergeConcurrentWorks(base: List<Work>, local: List<Work>, remote: L
                         files = it.files.toMutableMap(), assets = it.assets.toMap(), revisions = it.revisions.toMutableList(),
                         previewAspectRatio = it.previewAspectRatio, p5Version = it.p5Version,
                         p5SoundEnabled = it.p5SoundEnabled, libraries = it.libraries.toMap(),
-                        parameterValues = it.parameterValues.toMap(), isPinned = it.isPinned, tags = it.tags.toList())
+                        parameterValues = it.parameterValues.toMap(), isPinned = it.isPinned, tags = it.tags.toList(), folderName = it.folderName)
                     merged += copy
                     copies++
                     if (selected == id) selected = copy.id

@@ -38,6 +38,42 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "2.2.1",
+        versionCode = 28,
+        titleEn = "What's New in v2.2.1",
+        titleJa = "v2.2.1 の新機能",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_folder_code,
+                titleEn = "Folders & Organization",
+                titleJa = "作品フォルダー機能",
+                descEn = "Organize user works with 1-level folders. Create, rename, move, and drag to reorder folders effortlessly.",
+                descJa = "1階層のフォルダーで作品を分類・整理。フォルダー作成・名前変更・移動やドラッグでの並び替えに対応。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Protected Official Samples",
+                titleJa = "公式サンプルの保護・刷新",
+                descEn = "Official samples are kept safe in a read-only section. Freely test parameters and copy anytime to edit.",
+                descJa = "公式サンプル原本を保護。パラメータを自由に動かして試し、コピーして自分用に編集可能。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_search,
+                titleEn = "Inline Search & Replace",
+                titleJa = "行内 検索・置換バー",
+                descEn = "A compact search and replace bar directly above the keyboard with match count and highlighting.",
+                descJa = "キーボード直上に常駐するコンパクトな検索バー。ヒット数・強調表示・置換に対応。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_rename,
+                titleEn = "Asset Rename & Refactoring",
+                titleJa = "素材名と参照コードの一括置換",
+                descEn = "Rename project assets with automatic updates to code references across your project files.",
+                descJa = "素材（画像・音声等）の名前変更時に、コード内の参照パス文字列も一括で安全に置換。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.2.0",
         versionCode = 27,
         titleEn = "What's New in v2.2.0",

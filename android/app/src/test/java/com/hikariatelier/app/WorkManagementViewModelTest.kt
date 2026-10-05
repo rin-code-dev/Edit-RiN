@@ -115,6 +115,65 @@ class WorkManagementViewModelTest {
         assertTrue(vm.workActionsMenuExpanded)
         assertFalse(vm.events.first().rerun)
     }
+    @Test fun returningToWorkRestoresCursorUndoSelectedFileAndAuxiliaryHistory() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        session.editorFileState("one").value = "helper.js"
+        val helper = TextFieldValue("unsaved helper", TextRange(5))
+        session.fileEditorValues["one/helper.js"] = androidx.compose.runtime.mutableStateOf(helper)
+        session.fileUndoStacks["one/helper.js"] = androidx.compose.runtime.mutableStateListOf(TextFieldValue("old helper"))
+        val main = session.editorValueState.value
+        vm.selectWork("two", false)!!.join()
+        session.editorValueState.value = session.editorValueState.value.copy(selection = TextRange(4))
+        vm.selectWork("one", false)!!.join()
+        assertEquals(main, session.editorValueState.value)
+        assertEquals("before editing", session.undoStack.single().text)
+        assertEquals("helper.js", session.editorFileState("one").value)
+        assertEquals(helper, session.fileEditorValues.getValue("one/helper.js").value)
+        assertEquals("old helper", session.fileUndoStacks.getValue("one/helper.js").single().text)
+        assertEquals("before editing", session.undo(session.editorValueState.value)?.text)
+    }
+    @Test fun changedSavedSourceNeverRestoresOldContentOrUndoFromAnotherVisit() = runBlocking {
+        val session = session(); val vm = vm(session, Store(), this)
+        vm.selectWork("two", false)!!.join()
+        session.worksState.value.first().code = "externally replaced"
+        vm.selectWork("one", false)!!.join()
+        assertEquals("externally replaced", session.editorValueState.value.text)
+        assertTrue(session.undoStack.isEmpty())
+    }
+    @Test fun assetRenamePersistsSelectedUnsavedReferencesTogetherAndIsUndoable() = runBlocking {
+        val session = cleanSession(); val store = Store(); val vm = vm(session, store, this)
+        val work = session.worksState.value.first()
+        val asset = ProjectAsset("a".repeat(64), 1, "image/png")
+        work.assets["old.png"] = asset
+        val main = "loadImage('assets/old.png');\nlet keep = 1;"
+        val helper = "loadImage(\"assets/old.png\"); // draft"
+        session.editorValueState.value = TextFieldValue(main, TextRange(main.length))
+        session.fileDrafts["one/helper.js"] = helper
+        val candidates = assetRenameCandidates(mapOf("sketch.js" to main, "helper.js" to helper), "old.png")
+        vm.renameAsset(AssetRenameRequest("old.png", "renamed.png", candidates))!!.join()
+        val saved = store.persisted!!.works.first()
+        assertFalse(saved.assets.containsKey("old.png")); assertEquals(asset, saved.assets["renamed.png"])
+        assertTrue(saved.code.contains("assets/renamed.png"))
+        assertTrue(saved.files.getValue("helper.js").contains("assets/renamed.png"))
+        assertEquals(saved.code.length, session.editorValueState.value.selection.start)
+        assertEquals(main, session.undoStack.last().text)
+        assertEquals(helper, session.fileUndoStacks.getValue("one/helper.js").last().text)
+        assertFalse(session.fileDrafts.containsKey("one/helper.js"))
+    }
+    @Test fun failedAssetRenameKeepsAssetAndUnsavedCodeSelectionAndHistory() = runBlocking {
+        val session = cleanSession(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
+        val work = session.worksState.value.first()
+        work.assets["old.png"] = ProjectAsset("a".repeat(64), 1, "image/png")
+        val value = TextFieldValue("loadImage('assets/old.png');", TextRange(7))
+        session.editorValueState.value = value
+        session.undoStack.add(TextFieldValue("earlier"))
+        val candidates = assetRenameCandidates(mapOf("sketch.js" to value.text), "old.png")
+        vm.renameAsset(AssetRenameRequest("old.png", "new.png", candidates))!!.join()
+        assertEquals(value, session.editorValueState.value)
+        assertTrue(work.assets.containsKey("old.png")); assertFalse(work.assets.containsKey("new.png"))
+        assertEquals("earlier", session.undoStack.single().text)
+        assertSame(work, session.worksState.value.first())
+    }
     @Test fun unchangedAuxiliaryDraftDoesNotRequireWritingAllWorks() = runBlocking {
         val session = cleanSession(); session.fileDrafts["one/helper.js"] = "helper"
         val store = Store(); val vm = vm(session, store, this)

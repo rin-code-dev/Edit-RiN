@@ -58,6 +58,7 @@ internal class WorkSnapshotViewModel(
     private fun operate(errorMessage: String, restoring: Boolean = false, action: suspend (Work) -> Unit) {
         if (session.snapshotOperationWorkId != null || session.assetBusy || loading || error != null) return
         val work = session.worksState.value.find { it.id == session.activeWorkIdState.value } ?: return
+        if (work.isSample) return
         session.snapshotOperationWorkId = work.id
         session.snapshotRestoring = restoring
         if (restoring) { session.assetBusy = true; session.editorInputLocked = true }
@@ -73,12 +74,20 @@ internal class WorkSnapshotViewModel(
         }
     }
 
-    fun create() = operate("スナップショットを保存できませんでした。編集内容は保持されています。") { work ->
+    fun create(title: String? = null, note: String? = null) = operate("スナップショットを保存できませんでした。編集内容は保持されています。") { work ->
         val revisions = work.revisions.toList()
         val content = currentSnapshotContent(workOperations.workForSnapshot(work), session.editorValueState.value.text, session.fileDrafts)
-        val saved = withContext(Dispatchers.IO) { WorkSnapshotStore.addSnapshot(filesDir, work.id, content, revisions) }
+        val saved = withContext(Dispatchers.IO) { WorkSnapshotStore.addSnapshot(filesDir, work.id, content, revisions, title, note) }
         if (session.activeWorkIdState.value == work.id) { loadedWorkId = work.id; snapshots = saved }
         notices.sendWithHaptic("スナップショットを記録しました")
+    }
+    fun updateDetails(snapshot: WorkSnapshot, title: String?, note: String?) = operate("スナップショットの名前・メモを保存できませんでした。") { work ->
+        val revisions = work.revisions.toList()
+        val saved = withContext(Dispatchers.IO) {
+            WorkSnapshotStore.updateSnapshotDetails(filesDir, work.id, snapshot.id, title, note, revisions)
+        }
+        if (session.activeWorkIdState.value == work.id) { loadedWorkId = work.id; snapshots = saved }
+        notices.send("スナップショットの名前・メモを保存しました")
     }
     fun restore(snapshot: WorkSnapshot) = operate("復元を保存できませんでした。元の編集内容は保持されています。", restoring = true) {
         workOperations.commitSnapshotRestore(snapshot)

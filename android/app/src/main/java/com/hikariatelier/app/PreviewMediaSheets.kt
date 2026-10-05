@@ -3,11 +3,14 @@ package com.hikariatelier.app
 import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.core.os.ConfigurationCompat
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -34,10 +37,35 @@ internal fun PreviewMediaSheets(
     var savedPreviewMedia by models.recording::savedPreviewMedia
     var shareCardAuthor by models.settings::shareCardAuthor
     val xShareText = models.settings.xShareText
+    val pendingRecording = models.recording.pendingRecording
+    var destinationRecordingName by rememberSaveable { mutableStateOf<String?>(null) }
+    val recordingDestination = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(pendingRecording?.mimeType ?: "video/mp4")
+    ) { uri ->
+        val expectedName = destinationRecordingName
+        destinationRecordingName = null
+        if (uri != null) models.recording.retryPendingRecording(uri, expectedName)
+    }
     fun uiText(source: String, vararg arguments: Any?): String {
         val language = ConfigurationCompat.getLocales(context.resources.configuration)[0]?.language ?: "en"
         val translated = translateUi(source, resolveUiLanguage(models.settings.appLanguage, language))
         return if (arguments.isEmpty()) translated else String.format(java.util.Locale.ROOT, translated, *arguments)
+    }
+    if (pendingRecording != null && models.recording.recordingRecoveryVisible) {
+        RecordingRecoverySheet(
+            pending = pendingRecording,
+            saving = models.recording.isRecordingSaving,
+            text = { uiText(it) },
+            onRetry = { models.recording.retryPendingRecording() },
+            onChooseDestination = {
+                destinationRecordingName = pendingRecording.displayName
+                runCatching { recordingDestination.launch(pendingRecording.displayName) }.onFailure {
+                    destinationRecordingName = null
+                    Toast.makeText(context, uiText("保存先を開けませんでした"), Toast.LENGTH_LONG).show()
+                }
+            },
+            onDiscard = { models.recording.discardPendingRecording() }
+        )
     }
     shareCardArtwork?.let { artwork ->
         val fullCode = if (preview.session.sketchCode.isNotBlank()) {

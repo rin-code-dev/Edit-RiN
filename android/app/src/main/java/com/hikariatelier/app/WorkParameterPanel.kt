@@ -47,6 +47,7 @@ internal fun WorkParameterPanel(
     text: (String) -> String,
     onResetParameter: ((WorkParameter) -> Unit)? = null,
     onResetAll: (() -> Unit)? = null,
+    onApplyDefaults: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     onAddParameter: (() -> Unit)? = null,
     onInsertSample: (() -> Unit)? = null
@@ -105,6 +106,25 @@ internal fun WorkParameterPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                if (hasModified && onApplyDefaults != null) {
+                    TextButton(
+                        onClick = onApplyDefaults,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_save),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text("現在値を初期値にする"),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 if (hasModified && onResetAll != null) {
                     TextButton(
                         onClick = onResetAll,
@@ -489,6 +509,7 @@ internal fun WorkParameterBottomSheet(
     onChange: (WorkParameter, String) -> Unit,
     onResetParameter: (WorkParameter) -> Unit,
     onResetAll: () -> Unit,
+    onApplyDefaults: (() -> Unit)? = null,
     onCommit: () -> Unit,
     onDismiss: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
@@ -507,6 +528,7 @@ internal fun WorkParameterBottomSheet(
             text = { s -> textTranslator(s, emptyArray()) },
             onResetParameter = onResetParameter,
             onResetAll = onResetAll,
+            onApplyDefaults = onApplyDefaults,
             onDismiss = onDismiss,
             onAddParameter = onAddParameter,
             onInsertSample = onInsertSample

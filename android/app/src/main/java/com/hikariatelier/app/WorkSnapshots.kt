@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +33,8 @@ internal fun SnapshotSheet(
     error: String?,
     onRetry: () -> Unit,
     codeFontFamily: FontFamily,
-    onCreateSnapshot: () -> Unit,
+    onCreateSnapshot: (String?, String?) -> Unit,
+    onUpdateSnapshotDetails: (WorkSnapshot, String?, String?) -> Unit,
     onRestoreSnapshot: (WorkSnapshot) -> Unit,
     onDeleteSnapshot: (WorkSnapshot) -> Unit,
     text: (String) -> String
@@ -40,6 +42,23 @@ internal fun SnapshotSheet(
     val colors = MaterialTheme.colorScheme
     var diffTarget by remember { mutableStateOf<WorkSnapshot?>(null) }
     var snapshotToDelete by remember { mutableStateOf<WorkSnapshot?>(null) }
+    var detailsOpen by rememberSaveable { mutableStateOf(false) }
+    var detailsTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var detailsTitle by rememberSaveable { mutableStateOf("") }
+    var detailsNote by rememberSaveable { mutableStateOf("") }
+    var detailsPending by rememberSaveable { mutableStateOf(false) }
+    var beforeCreateIds by rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(snapshots, busy, detailsPending) {
+        if (detailsPending && !busy) {
+            val expected = runCatching { normalizedSnapshotDetails(detailsTitle, detailsNote) }.getOrNull()
+            val saved = if (detailsTargetId == null) snapshots.firstOrNull { it.id !in beforeCreateIds }
+                else snapshots.firstOrNull { it.id == detailsTargetId }
+            if (expected != null && saved != null && saved.title == expected.first && saved.note == expected.second) {
+                detailsOpen = false
+                detailsPending = false
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -48,7 +67,10 @@ internal fun SnapshotSheet(
     ) {
         // Create Snapshot Action
         FilledTonalButton(
-            onClick = onCreateSnapshot,
+            onClick = {
+                detailsTargetId = null; detailsTitle = ""; detailsNote = ""
+                detailsPending = false; detailsOpen = true
+            },
             enabled = !loading && !busy && error == null,
             modifier = Modifier
                 .fillMaxWidth()
@@ -110,6 +132,11 @@ internal fun SnapshotSheet(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(Modifier.padding(12.dp)) {
+                            snapshot.title?.let { title ->
+                                Text(title, style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(4.dp))
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
@@ -158,6 +185,11 @@ internal fun SnapshotSheet(
                             }
 
                             Spacer(Modifier.height(4.dp))
+                            snapshot.note?.let { note ->
+                                Text(note, style = MaterialTheme.typography.bodySmall, maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis, color = colors.onSurfaceVariant)
+                                Spacer(Modifier.height(4.dp))
+                            }
                             Text(
                                 text = snapshot.code.lineSequence()
                                     .firstOrNull { it.isNotBlank() }
@@ -172,6 +204,13 @@ internal fun SnapshotSheet(
                             )
 
                             Spacer(Modifier.height(8.dp))
+                            TextButton(enabled = !busy && !loading && error == null, onClick = {
+                                detailsTargetId = snapshot.id
+                                detailsTitle = snapshot.title.orEmpty(); detailsNote = snapshot.note.orEmpty()
+                                detailsPending = false; detailsOpen = true
+                            }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) {
+                                Text(text("名前・メモを編集"), fontSize = 12.sp)
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End,
@@ -200,6 +239,45 @@ internal fun SnapshotSheet(
                 }
             }
         }
+    }
+
+    if (detailsOpen) {
+        val target = snapshots.firstOrNull { it.id == detailsTargetId }
+        val normalized = runCatching { normalizedSnapshotDetails(detailsTitle, detailsNote) }.getOrNull()
+        val enabled = !busy && !loading && error == null && normalized != null &&
+            (detailsTargetId == null || target != null)
+        EditSettingsDialog(onDismissRequest = { if (!busy) { detailsOpen = false; detailsPending = false } },
+            title = { Text(text(if (detailsTargetId == null) "スナップショットを記録" else "名前・メモを編集")) },
+            text = {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(value = detailsTitle, onValueChange = { detailsTitle = it },
+                        enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        label = { Text(text("名前（任意）")) },
+                        supportingText = { Text("${detailsTitle.length}/$MAX_SNAPSHOT_TITLE") },
+                        isError = detailsTitle.trim().length > MAX_SNAPSHOT_TITLE)
+                    OutlinedTextField(value = detailsNote, onValueChange = { detailsNote = it },
+                        enabled = !busy, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 5,
+                        label = { Text(text("メモ（任意）")) },
+                        supportingText = { Text("${detailsNote.length}/$MAX_SNAPSHOT_NOTE") },
+                        isError = detailsNote.trim().length > MAX_SNAPSHOT_NOTE)
+                    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = { TextButton(enabled = enabled, onClick = {
+                val details = normalized ?: return@TextButton
+                detailsPending = true
+                if (detailsTargetId == null) {
+                    beforeCreateIds = snapshots.map { it.id }.toSet()
+                    onCreateSnapshot(details.first, details.second)
+                } else target?.let {
+                    if (it.title == details.first && it.note == details.second) {
+                        detailsOpen = false; detailsPending = false
+                    } else onUpdateSnapshotDetails(it, details.first, details.second)
+                }
+            }) { Text(text("保存")) } },
+            dismissButton = { TextButton(enabled = !busy, onClick = { detailsOpen = false; detailsPending = false }) {
+                Text(text("キャンセル"))
+            } })
     }
 
     diffTarget?.let { target ->

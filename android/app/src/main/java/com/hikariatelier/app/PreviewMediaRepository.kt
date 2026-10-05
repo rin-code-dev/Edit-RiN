@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.DocumentsContract
 import android.media.MediaScannerConnection
 import android.util.Base64
 import androidx.core.content.FileProvider
@@ -13,6 +14,23 @@ import java.io.File
 /** Uses only Application Context so recording saves can finish across recreation. */
 internal class PreviewMediaRepository(context: Context) {
     private val context = context.applicationContext
+    val recordingRecoveryDirectory: File get() = File(context.filesDir, "recording-recovery")
+
+    fun deleteCreatedDocument(uri: Uri) {
+        runCatching {
+            if (DocumentsContract.isDocumentUri(context, uri)) {
+                DocumentsContract.deleteDocument(context.contentResolver, uri)
+            } else context.contentResolver.delete(uri, null, null)
+        }
+    }
+
+    fun saveRecordingToDocument(pending: PendingRecording, uri: Uri): Uri? = runCatching {
+        copyRecordingToDestination(pending.file,
+            openOutput = { context.contentResolver.openOutputStream(uri, "wt") },
+            deleteFailedDestination = { deleteCreatedDocument(uri) })
+        uri
+    }.getOrNull()
+
     fun save(
         dataUrl: String = "",
         mimeType: String,

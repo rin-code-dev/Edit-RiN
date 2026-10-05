@@ -17,13 +17,13 @@ private data class SavedWork(
     val assets: Map<String, ProjectAsset>, val revisions: List<WorkRevision>,
     val ratio: String, val runtime: String, val sound: Boolean, val libraries: Map<String, String>,
     val parameters: Map<String, String>, val createdAt: Long, val updatedAt: Long,
-    val pinned: Boolean, val tags: List<String>
+    val pinned: Boolean, val tags: List<String>, val folder: String
 ) {
     companion object {
         fun of(work: Work) = SavedWork(work.id, work.title, work.code, work.files.toMap(), work.assets.toMap(),
             work.revisions.takeLast(3), work.previewAspectRatio, work.p5Version, work.p5SoundEnabled,
             work.libraries.toMap(), work.parameterValues.toMap(), work.createdAt, work.updatedAt,
-            work.isPinned, work.tags.toList())
+            work.isPinned, work.tags.toList(), work.folderName)
     }
 }
 
@@ -51,6 +51,7 @@ private fun decodeIndex(json: String): WorkIndex {
             libraries.keys().asSequence().associateWith(libraries::getString)
         }.orEmpty(),
             createdAt = item.getLong("createdAt"), updatedAt = item.getLong("updatedAt"),
+            folderName = item.optString("folderName", ""),
             isPinned = item.optBoolean("isPinned"), tags = item.optJSONArray("tags")?.let { tags ->
                 List(tags.length()) { tags.getString(it) }
             }.orEmpty(), previewAspectRatio = item.optString("previewAspectRatio", "1:1"),
@@ -77,6 +78,7 @@ private fun encodeIndex(works: List<Work>, entries: List<WorkEntry>, activeId: S
             works.zip(entries).forEach { (work, entry) ->
                 put(JSONObject().put("id", entry.id).put("file", entry.file).put("title", work.title)
                     .put("createdAt", work.createdAt).put("updatedAt", work.updatedAt)
+                    .put("folderName", work.folderName)
                     .put("isPinned", work.isPinned).put("tags", JSONArray(work.tags))
                     .put("previewAspectRatio", work.previewAspectRatio).put("p5Version", work.p5Version)
                     .put("p5SoundEnabled", work.p5SoundEnabled).put("fileNames", JSONArray(work.files.keys.sorted()))
@@ -102,9 +104,7 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
         check(sha256(text) == entry.file.substringAfter('-').removeSuffix(".json")) { "Damaged work document" }
         val store = checkNotNull(parseWorkStoreJson(text)) { "Invalid work document" }
         check(store.works.size == 1 && store.works.single().id == entry.id)
-        return store.works.single().also { work ->
-            if (work.id == "gravity" && work.p5Version == P5_VERSION_CURRENT) work.p5Version = P5_VERSION_LEGACY
-        }
+        return store.works.single()
     }
 
     private fun readIndex(index: WorkIndex, source: String, primary: String?, eager: Boolean, selectedId: String?): LoadedWorkIndex {
@@ -177,6 +177,7 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
 
     private fun overlayPlaceholder(incoming: Work, base: SavedWork, full: Work): Work = snapshotWork(full).apply {
         title = incoming.title; updatedAt = incoming.updatedAt; isPinned = incoming.isPinned
+        folderName = incoming.folderName
         tags.clear(); tags.addAll(incoming.tags)
         if (incoming.previewAspectRatio != base.ratio) previewAspectRatio = incoming.previewAspectRatio
         if (incoming.p5Version != base.runtime) p5Version = incoming.p5Version

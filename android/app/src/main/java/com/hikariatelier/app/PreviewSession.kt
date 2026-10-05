@@ -29,6 +29,16 @@ internal fun capturePreviewRun(
     work?.libraries.orEmpty().toMap(), parameterValues.toMap()
 )
 
+/** Live parameters are applied independently; compare the authored source and runtime. */
+internal fun previewRunMatches(input: PreviewRunInput?, work: Work?, source: String,
+                              drafts: Map<String, String>): Boolean {
+    if (input == null || work == null || input.workId != work.id || input.source != source) return false
+    return input.files.size == work.files.size && work.files.all { (name, saved) ->
+        input.files[name] == (drafts["${work.id}/$name"] ?: saved)
+    } && input.assets == work.assets.toMap() && input.p5Version == normalizedP5Version(work.p5Version) &&
+        input.soundEnabled == work.p5SoundEnabled && input.libraries == work.libraries
+}
+
 /** CPU-only work. Publication is separate so an obsolete background result cannot win. */
 internal fun preparePreviewRun(input: PreviewRunInput): PreparedPreviewRun {
     validateProjectTextFiles(input.files, input.source)

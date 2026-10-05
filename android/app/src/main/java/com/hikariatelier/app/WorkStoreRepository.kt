@@ -116,8 +116,7 @@ internal class WorkStoreRepository(
     }
 
     private fun normalizeLegacyRuntime(store: WorkStore) {
-        store.works.filter { it.id == "gravity" && it.p5Version == P5_VERSION_CURRENT }
-            .forEach { it.p5Version = P5_VERSION_LEGACY }
+        // Every loaded work is user-authored; never migrate by a former sample ID.
     }
 
     @Synchronized

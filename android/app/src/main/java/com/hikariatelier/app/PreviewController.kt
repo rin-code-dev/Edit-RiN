@@ -37,6 +37,8 @@ internal class PreviewController(
     private val models: EditorModels
 ) {
     val session = PreviewSession()
+    var runInput by mutableStateOf<PreviewRunInput?>(null)
+        private set
     private val transfer = RecordingTransfer(File(activity.cacheDir, "recording-transfer"))
     private val screenshotTransfer = RecordingTransfer(File(activity.cacheDir, "screenshot-transfer"))
     private val fileTransfer = RecordingTransfer(File(activity.cacheDir, "sketch-download-transfer"), allowEmpty = true)
@@ -157,6 +159,7 @@ internal class PreviewController(
                 val preparedRun = withContext(Dispatchers.Default) { preparePreviewRun(input) }
                 ensureActive()
                 if (disposed || !session.publish(preparedRun)) return@launch
+                runInput = input
                 prepared = true
                 webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
             } catch (cancelled: CancellationException) { throw cancelled }

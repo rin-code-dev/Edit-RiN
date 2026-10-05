@@ -78,6 +78,11 @@ internal fun LiveParameterSheet(
             }
             scheduleSave()
         },
+        onApplyDefaults = {
+            if (workManagementViewModel.applyParameterDefaults()) {
+                android.widget.Toast.makeText(context, uiText("現在値をコードの初期値に反映しました"), android.widget.Toast.LENGTH_SHORT).show()
+            }
+        },
         onAddParameter = { showAddParameter = true },
         onInsertSample = {
             if (!workManagementViewModel.insertParameterDeclarations(PARAMETER_SAMPLE)) {
