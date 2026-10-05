@@ -14,7 +14,9 @@
 
 - **Live Code Editing & Preview**: Interactive p5.js canvas with split-view and fullscreen mode.
 - **Live Parameters**: Tweak variables on the fly with dynamic sliders and color pickers generated directly from code comments.
-- **Multiple p5.js Runtimes**: Switch between **p5.js 2.3.3** (modern, async setup) and **p5.js 1.11.5** (classic compatibility) per work.
+- **Multiple p5.js Runtimes**: Switch between **p5.js 2.3.4** (modern, async setup) and **p5.js 1.11.5** (classic compatibility) per work.
+- **HTML & Modules**: Edit HTML/CSS and nested project files; run ES modules, instance sketches, and multiple canvases. Add HTTPS libraries in Runtime settings.
+- **Browser Features**: Camera/microphone permissions, sketch file pickers, native file downloads, and sketch fullscreen.
 - **Audio & Sound**: Built-in support for `p5.sound` for audio synthesis, playback, and FFT analysis.
 - **Work & Asset Management**:
   - Store multiple works with revision history and ZIP backup/export.
@@ -63,24 +65,28 @@ function draw() {
 
 ### Prerequisites
 - JDK 25 (Java toolchain)
-- Android SDK Platform 35
-- Android SDK Build Tools 36.0.0
-- Gradle 9.5.0 (via included wrapper)
+- Android SDK matching `compileSdkVersion` in [android/variables.gradle](android/variables.gradle) (currently API 37)
+- Gradle via the included wrapper (currently 9.8.0); no separate Gradle installation is needed
 
 ### Build Commands
 ```sh
-cd android
-./gradlew assembleDebug
+./scripts/build-apk.sh debug
+# Include Android unit tests:
+./scripts/build-apk.sh debug --test
 ```
 
 For signed release builds and configuration, refer to [RELEASE.md](RELEASE.md).
+For source ownership, runtime flow, generated files, and focused checks, see
+[Development guide / 保守ガイド](docs/DEVELOPMENT.md).
 
 ---
 
 ## Documentation
 
+- [Development Guide (保守ガイド)](docs/DEVELOPMENT.md): Source map, state ownership, and validation commands.
 - [Asset Guide (素材ガイド)](ASSETS.md): Managing images, audio, fonts, and data files.
 - [p5.js Runtime & Sound](P5_RUNTIME_AND_SOUND.md): Runtime versions and audio setup.
+- [p5.js Compatibility](P5_COMPATIBILITY.md): HTML/modules, browser features, configuration, and limits.
 - [Language Support](LANGUAGE_SUPPORT.md): Localization details and supported languages.
 - [Changelog](CHANGELOG.md): Release history and notes.
 - [Contributing](CONTRIBUTING.md): Issues, feedback, and contribution guidelines.
@@ -96,7 +102,7 @@ For signed release builds and configuration, refer to [RELEASE.md](RELEASE.md).
 ### 主な機能
 - **ライブプレビュー**: コードを書きながらその場で動作確認。全画面表示、録画（MP4/GIF）、高解像度スクリーンショット撮影に対応。
 - **ライブパラメータ**: コード内に `// @rin number ...` や `// @rin color ...` のように注釈を書くだけで、スライダーやカラーピッカーが自動生成され、リアルタイムに数値を調整可能。
-- **ランタイム切り替え**: 作品ごとに `p5.js 2.3.3` と `1.11.5` を選択可能。`p5.sound` によるサウンドの再生・合成・解析にも対応。
+- **ランタイム切り替え**: 作品ごとに `p5.js 2.3.4` と `1.11.5` を選択可能。`p5.sound` によるサウンドの再生・合成・解析にも対応。
 - **素材（アセット）管理**: 画像・音声・フォント・JSON などを作品内に取り込み、ワンタップで読み込みコードを挿入。単一作品の ZIP 書き出し・取り込みによる共有も可能。
 - **シェアカード＆Web Player**: スケッチのプレビュー画像、コードスニペット、QRコードを美しくレイアウトした画像カードを生成。QRを読み取るだけでブラウザ上で即座に作品を再現・実行可能。
 - **p5.js Web Editor 連携**: ユーザー名を入力するだけで公開作品を直接インポート。

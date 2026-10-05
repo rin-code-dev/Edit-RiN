@@ -22,8 +22,8 @@ android {
         applicationId "com.hikariatelier.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 26
-        versionName "2.1.0"
+        versionCode 27
+        versionName "2.2.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -43,7 +43,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
-            versionNameSuffix "-runtime-debug"
+            versionNameSuffix "-p5-compat-debug"
             resValue "string", "app_name", "Edit:RiN Dev"
         }
         release {
@@ -90,9 +90,14 @@ apply from: 'release-notices.gradle'
 def syncWebAssets = tasks.register("syncWebAssets", Sync) {
     from(webSourceDir) {
         include 'p5_runner.html'
+        include 'p5_host.js'
+        include 'p5_bootstrap.js'
+        include 'p5_sketch.js'
+        include 'p5.webgpu.js'
         include 'p5-v1.min.js'
         include 'p5-v2.min.js'
         include 'p5.sound.min.js'
+        include 'p5.sound-v1.min.js'
         include 'p5.brush-2.2.1.js'
         include 'matter-0.20.0.min.js'
         include 'samples/*.js'

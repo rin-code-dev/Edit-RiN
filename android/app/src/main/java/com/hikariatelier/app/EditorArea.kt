@@ -88,9 +88,10 @@ internal fun EditorArea(
         }
     }
 
-    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines)
+    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile)
 
-    val parsedFoldRegions = editorFoldRegions(editingText, editingKey)
+    val parsedFoldRegions = if (isJavaScriptProjectFile(editingFile) ||
+        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingText, editingKey) else emptyList()
     val foldRegions = parsedFoldRegions.orEmpty()
     val storedFolds = sessionViewModel.codeFoldStates[editingKey]
     val collapsedFolds = remember(storedFolds, editingText, parsedFoldRegions) {
@@ -351,7 +352,9 @@ internal fun EditorArea(
                                         deletesFoldedCode(editingText, it.text, projection.hidden)) {
                                         sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
                                     } else onApplyEditorChange(
-                                        if (autoIndent && editingValue.composition == null && it.composition == null) {
+                                        if (autoIndent && (isJavaScriptProjectFile(editingFile) ||
+                                            projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) &&
+                                            editingValue.composition == null && it.composition == null) {
                                             applyAutomaticIndent(editingValue, it)
                                         } else {
                                             it

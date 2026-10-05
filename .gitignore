@@ -1,0 +1,47 @@
+# Generated Android and Node files
+node_modules/
+.gradle/
+.kotlin/
+build/
+.externalNativeBuild/
+.cxx/
+captures/
+/outputs/
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+
+# Machine-specific IDE / SDK configuration
+.idea/
+.vscode/
+*.iml
+local.properties
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Private signing material and environment overrides
+release-signing.properties
+/private-signing/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+.envrc
+
+# Editor backups and diagnostics
+*~
+*.swp
+*.swo
+*.tmp
+*.log
+*.hprof
+__pycache__/
+*.pyc

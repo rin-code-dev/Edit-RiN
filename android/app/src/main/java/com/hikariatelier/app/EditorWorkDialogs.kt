@@ -115,9 +115,14 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
         initialP5Version = normalizedP5Version(activeWork?.p5Version),
         initialSoundEnabled = activeWork?.p5SoundEnabled == true,
         initialLibraries = activeWork?.libraries.orEmpty(),
+        initialFiles = activeWork?.files.orEmpty().mapValues { (name, saved) ->
+            sessionViewModel.fileDrafts["$activeWorkId/$name"] ?: saved
+        },
+        initialSource = editorText,
+        busy = workManagementViewModel.workSaving || assetBusy || snapshotBusy,
         uiText = { uiText(it) },
-        onSave = { version, soundEnabled, libraries ->
-            workManagementViewModel.saveRuntime(version, soundEnabled, libraries)
+        onSave = { version, soundEnabled, libraries, config ->
+            workManagementViewModel.saveRuntime(version, soundEnabled, libraries, config)
         },
         onDismiss = { showRuntimeDialog = false }
     )
@@ -153,8 +158,19 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
         }
     }
     var showSampleUpdateDialog by workManagementViewModel::showSamplePrompt
+    val showReleaseNotesPrompt = settingsViewModel.releaseNotesPromptVersion < BuildConfig.VERSION_CODE &&
+        workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null && selectedFolderUri != null
 
-    if (showSampleUpdateDialog && workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null &&
+    if (showReleaseNotesPrompt) {
+        val deviceLanguage = ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en"
+        ReleaseNotesDialog(
+            language = resolveUiLanguage(settingsViewModel.state.appLanguage, deviceLanguage),
+            onDismiss = {
+                settingsViewModel.dismissReleaseNotesPrompt(BuildConfig.VERSION_CODE)
+            },
+            windowSetup = { KeepLandscapeDialogImmersive() }
+        )
+    } else if (showSampleUpdateDialog && workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null &&
         missingOfficialSamples.isNotEmpty() && selectedFolderUri != null &&
         settingsViewModel.samplePromptVersion < BuildConfig.VERSION_CODE) {
         val sampleNames = missingOfficialSamples.joinToString(", ") { it.title }

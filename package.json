@@ -1,11 +1,12 @@
 {
   "name": "edit-rin",
   "private": true,
-  "version": "2.0.7",
   "scripts": {
     "sync": "cd android && ./gradlew syncWebAssets",
-    "build:apk": "cd android && ./gradlew assembleDebug",
-    "build:release": "cd android && ./gradlew assembleRelease",
+    "build:apk": "./scripts/build-apk.sh debug",
+    "build:release": "./scripts/build-apk.sh release",
+    "build:check": "./scripts/build-apk.sh debug --test",
+    "test": "node tests/runner.test.cjs",
     "clean": "cd android && ./gradlew clean"
   }
 }

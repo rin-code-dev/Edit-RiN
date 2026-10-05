@@ -14,7 +14,8 @@ internal data class PreviewRunInput(
 internal data class PreparedPreviewRun(
     val assets: PreviewAssets, val workId: String?, val sketchCode: String,
     val p5Version: String, val soundEnabled: Boolean, val libraries: String,
-    val parameters: String, val shaders: String, val sourceFiles: List<PreviewSourceFile>
+    val parameters: String, val shaders: String, val sourceFiles: List<PreviewSourceFile>,
+    val projectConfig: String = "{}"
 )
 
 internal fun capturePreviewRun(
@@ -30,13 +31,21 @@ internal fun capturePreviewRun(
 
 /** CPU-only work. Publication is separate so an obsolete background result cannot win. */
 internal fun preparePreviewRun(input: PreviewRunInput): PreparedPreviewRun {
+    validateProjectTextFiles(input.files, input.source)
+    val config = readProjectDocumentConfig(input.files)
+    val run = resolveProjectRun(input.files, config, input.source)
+    val virtualFiles = (input.files + ("sketch.js" to input.source)).mapValues { (name, code) ->
+        when { isHtmlProjectFile(name) -> prepareProjectHtml(code, input.token)
+            name == run.modulePath -> code + moduleCallbackRegistrationTail()
+            else -> code }
+    }
     val declarations = workParameters(input.files.toSortedMap() + ("sketch.js" to input.source))
     return PreparedPreviewRun(
-        PreviewAssets(input.token, input.assets, input.files), input.workId,
+        PreviewAssets(input.token, input.assets, virtualFiles, run.documentPath), input.workId,
         composeProjectSource(input.source, input.files), input.p5Version, input.soundEnabled,
         JSONObject(input.libraries).toString(), parameterValuesJson(declarations, input.parameterValues),
-        JSONObject(input.files.filter { !it.key.endsWith(".js", ignoreCase = true) } as Map<*, *>).toString(),
-        previewSourceFiles(input.source, input.files)
+        JSONObject(input.files.filter { it.key.substringAfterLast('.', "").lowercase() in setOf("frag", "vert", "glsl", "wgsl") } as Map<*, *>).toString(),
+        if (run.usesSeparateFiles) emptyList() else previewSourceFiles(input.source, input.files), run.runtimeConfig(input.token)
     )
 }
 
@@ -55,6 +64,7 @@ internal class PreviewSession {
     val parameters get() = current.parameters
     val shaders get() = current.shaders
     val sourceFiles get() = current.sourceFiles
+    val projectConfig get() = current.projectConfig
 
     fun request(token: String) { requestedToken = token }
     fun isRequested(token: String) = requestedToken == token
@@ -82,7 +92,7 @@ internal class PreviewSession {
 // A newline ends line comments; a semicolon prevents ASI from joining independent files.
 internal const val PREVIEW_FILE_SEPARATOR = "\n;\n"
 internal fun composeProjectSource(mainCode: String, files: Map<String, String>): String = buildString {
-    files.filter { it.key.endsWith(".js", ignoreCase = true) }.toSortedMap().forEach { (_, code) ->
+    files.filter { isClassicJavaScriptProjectFile(it.key) }.toSortedMap().forEach { (_, code) ->
         append(code)
         append(PREVIEW_FILE_SEPARATOR)
     }

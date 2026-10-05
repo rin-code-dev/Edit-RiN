@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.2.0 — 2026-10-05
+
+### English
+- **Refreshed Selection UI & Work Gallery**:
+  - Overhauled the work picker and gallery layout for improved visual clarity and faster navigation across large sketch collections.
+  - Redesigned work sort options, modal sheets, and dialog interactions to provide a cleaner and more responsive mobile editing experience.
+- **Android Device Features (Live Camera & Microphone)**:
+  - Added full hardware camera and audio recording support via Android WebView media permissions.
+  - Introduced bundled **Camera** (dot matrix video reflection) and **Microphone** (car audio graphic equalizer with peak hold) samples to jumpstart reactive multimedia coding.
+- **WebGPU Graphics Acceleration**:
+  - Added native WebGPU support with p5.js 2.x, enabling modern next-generation compute and graphics shaders on supported devices.
+  - Bundled high-performance **WebGPU** sample sketch with automatic fallback to WebGL for older hardware.
+- **Stabilized Audio Analysis & New Feature Samples**:
+  - Resolved `p5.FFT` initialization errors and improved audio spectrum stability.
+  - Added new bundled sample sketches to easily explore and verify newly introduced features.
+- **In-App Release Notes ("What's New")**:
+  - Added an automatic "What's New" popup after app updates so users can immediately discover newly added features.
+  - Available anytime from **Settings → About → What's New**.
+
+### 日本語
+- **選択UIの刷新・作品ギャラリーの再設計**:
+  - 作品選択画面（ギャラリー）のレイアウトを全面的に刷新し、作品数が増えても一覧性・視認性を維持できる洗練されたデザインへ強化。
+  - ソートメニューや各種ダイアログの操作性を最適化し、モバイルでの制作作業をより軽快かつ直感的に改善。
+- **Android端末機能の対応（カメラ・マイク入力）**:
+  - Android ネイティブのメディア権限ハンドリングに対応し、端末のカメラ映像およびマイク音声のリアルタイム取得が可能に。
+  - 端末機能をすぐに試せる公式サンプル **Camera**（ドットマトリクス映像）と **Microphone**（ピークホールド付きカーオーディオ風グラフィックEQ）を新規収録。
+- **WebGPU 次世代グラフィックス対応**:
+  - p5.js 2.x に対応し、対応端末において WebGPU による高性能なグラフィックス描画・シェーダー演算が利用可能に。
+  - WebGPU 非対応端末でも自動的に WebGL へフォールバックする公式サンプル **WebGPU** を同梱。
+- **オーディオ解析の安定化・新機能サンプル作品の追加**:
+  - `p5.FFT` の初期化エラーを解消し、オーディオ解析の安定性を向上。
+  - 新機能を確認出来るサンプル作品を追加。
+- **アプリ内「更新内容（What's New）」表示機能**:
+  - アップデート後の初回起動時に新機能をフワッと確認できるダイアログを新設。
+  - 設定画面の **About →「更新履歴 (What's New)」** からいつでも再確認可能。
+
 ## 2.0.6 — 2026-09-29
 
 ### English

@@ -8,6 +8,8 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.Toast
@@ -19,6 +21,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.os.ConfigurationCompat
 import java.io.File
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -35,6 +39,9 @@ internal class PreviewController(
     val session = PreviewSession()
     private val transfer = RecordingTransfer(File(activity.cacheDir, "recording-transfer"))
     private val screenshotTransfer = RecordingTransfer(File(activity.cacheDir, "screenshot-transfer"))
+    private val fileTransfer = RecordingTransfer(File(activity.cacheDir, "sketch-download-transfer"), allowEmpty = true)
+    private val fileTransferLock = Any()
+    private var fileTransferMetadata: SketchDownloadMetadata? = null
     var generation by mutableIntStateOf(0)
         private set
     var isLoading by mutableStateOf(false)
@@ -52,6 +59,27 @@ internal class PreviewController(
     @Volatile private var captureForShareCard = false
     var screenshotBusy by mutableStateOf(false)
         private set
+    private val downloads = ViewModelProvider(activity)[SketchDownloadsViewModel::class.java]
+    private val browserFeatures = PreviewBrowserFeatures(activity,
+        currentOwner = { session.assets.token.takeIf { !disposed && session.isCurrent(it) } },
+        currentView = { webView }, downloads = downloads,
+        report = { message -> if (!disposed) Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show() })
+
+    private var downloadToast: Toast? = null
+    private val downloadResultsJob = activity.lifecycleScope.launch {
+            downloads.results.collect { result ->
+                if (!disposed) {
+                    val message = text(if (result.saved) "ファイルを保存しました" else "ファイルを保存できませんでした")
+                    // A saveFrames batch should not leave a backlog of per-frame toasts.
+                    downloadToast?.cancel()
+                    downloadToast = Toast.makeText(activity, "$message: ${result.metadata.name}", Toast.LENGTH_SHORT)
+                        .also { it.show() }
+                    if (session.isCurrent(result.metadata.owner)) {
+                        evaluate("window.__editRinFileDownloadResult?.(${JSONObject.quote(result.metadata.id)},${result.saved},${JSONObject.quote(message)})")
+                    }
+                }
+            }
+    }
 
     private fun text(source: String): String {
         val language = ConfigurationCompat.getLocales(activity.resources.configuration)[0]?.language ?: "en"
@@ -110,6 +138,8 @@ internal class PreviewController(
         // A transfer can begin before its recording-status callback reaches the UI thread.
         transfer.abort()
         screenshotTransfer.abort()
+        abortFileTransfer()
+        browserFeatures.invalidatePage()
         screenshotBusy = false
         captureForShareCard = false
         preparationJob?.cancel()
@@ -128,10 +158,11 @@ internal class PreviewController(
                 ensureActive()
                 if (disposed || !session.publish(preparedRun)) return@launch
                 prepared = true
-                webView?.loadUrl(previewUrl(input.token)) ?: run { generation++ }
+                webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
-                if (!disposed && session.isRequested(input.token)) append(ConsoleLevel.ERROR, text("プレビューを準備できませんでした"))
+            catch (error: Exception) {
+                if (!disposed && session.isRequested(input.token)) append(ConsoleLevel.ERROR,
+                    error.message ?: text("プレビューを準備できませんでした"))
             }
         }
     }
@@ -167,9 +198,19 @@ internal class PreviewController(
             view.settings.domStorageEnabled = true
             view.settings.allowFileAccess = false
             view.settings.allowContentAccess = false
+            view.settings.mediaPlaybackRequiresUserGesture = false
             view.setBackgroundColor(android.graphics.Color.BLACK)
             view.addJavascriptInterface(Bridge(), "Android")
             view.webChromeClient = object : WebChromeClient() {
+                override fun getDefaultVideoPoster(): android.graphics.Bitmap? =
+                    android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+                override fun onPermissionRequest(request: PermissionRequest) = browserFeatures.requestMedia(request)
+                override fun onPermissionRequestCanceled(request: PermissionRequest) = browserFeatures.cancelMedia(request)
+                override fun onShowFileChooser(webView: WebView?, callback: ValueCallback<Array<android.net.Uri>>,
+                    params: FileChooserParams?): Boolean = browserFeatures.chooseFiles(webView, callback, params)
+                override fun onShowCustomView(view: android.view.View, callback: CustomViewCallback) =
+                    browserFeatures.showFullscreen(view, callback)
+                override fun onHideCustomView() = browserFeatures.hideFullscreen()
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
                     message?.let {
                         val content = it.message().orEmpty()
@@ -181,9 +222,9 @@ internal class PreviewController(
                             }
                             val sourceId = it.sourceId().orEmpty()
                             val token = previewTokenFromSource(sourceId) ?: return@let
-                            val location = if (sourceId.contains("sketch.js?run=")) {
+                            val location = if (sourceId.contains("sketch.js?run=") && session.sourceFiles.isNotEmpty()) {
                                 previewSourceLocation(session.sourceFiles, it.lineNumber())
-                            } else null
+                            } else previewProjectSourceLocation(session.assets, sourceId, it.lineNumber())
                             onMain(token) { append(level, content, location?.line, location?.file) }
                         }
                     }
@@ -196,6 +237,8 @@ internal class PreviewController(
                     webView = null
                     transfer.abort()
                     screenshotTransfer.abort()
+                    abortFileTransfer()
+                    browserFeatures.invalidatePage()
                     recording.onPreviewDestroyed()
                     screenshotBusy = false
                     captureForShareCard = false
@@ -204,11 +247,11 @@ internal class PreviewController(
                     } else text("描画プロセスがメモリ不足等により終了されました")
                     append(ConsoleLevel.ERROR, message)
                 }
-            }) { session.assets }
+            }, onExternalNavigation = browserFeatures::openExternal) { session.assets }
             webView = view
             // Read the current session, rather than capturing a work from the first composition.
             if (prepared && session.isCurrent(session.assets.token)) {
-                view.loadUrl(previewUrl(session.assets.token))
+                view.loadUrl(previewUrl(session.assets))
             } else if (preparationJob?.isActive != true) runSketch()
         }
         preview.setOnTouchListener { view, event ->
@@ -232,6 +275,10 @@ internal class PreviewController(
         captureForShareCard = false
         transfer.abort()
         screenshotTransfer.abort()
+        abortFileTransfer()
+        browserFeatures.close()
+        downloadResultsJob.cancel()
+        downloadToast?.cancel()
         recording.onPreviewDestroyed()
         webView?.let {
             it.stopLoading()
@@ -242,6 +289,11 @@ internal class PreviewController(
             it.destroy()
         }
         webView = null
+    }
+
+    private fun abortFileTransfer() = synchronized(fileTransferLock) {
+        fileTransfer.abort()
+        fileTransferMetadata = null
     }
 
     /** Called on the WebView bridge thread; UI changes are dispatched and guarded by close(). */
@@ -261,6 +313,42 @@ internal class PreviewController(
         @JavascriptInterface fun getWorkLibraries(token: String): String = session.snapshotFor(token)?.libraries ?: "{}"
         @JavascriptInterface fun getWorkParameters(token: String): String = session.snapshotFor(token)?.parameters ?: "{}"
         @JavascriptInterface fun getWorkShaders(token: String): String = session.snapshotFor(token)?.shaders ?: "{}"
+        @JavascriptInterface fun getProjectConfig(token: String): String = session.snapshotFor(token)?.projectConfig ?: "{}"
+        @JavascriptInterface fun supportsFileDownloadResult(): Boolean = true
+
+        @JavascriptInterface fun beginFileDownload(owner: String, id: String, filename: String, mime: String): Boolean =
+            synchronized(fileTransferLock) {
+                val metadata = sketchDownloadMetadata(owner, id, filename, mime) ?: return@synchronized false
+                if (disposed || !session.isCurrent(owner) || fileTransferMetadata != null || !fileTransfer.begin(id)) false
+                else { fileTransferMetadata = metadata; true }
+            }
+        @JavascriptInterface fun appendFileDownloadChunk(owner: String, id: String, encoded: String): Boolean =
+            synchronized(fileTransferLock) {
+                if (disposed || !session.isCurrent(owner) || fileTransferMetadata?.id != id || fileTransferMetadata?.owner != owner) false
+                else fileTransfer.append(id, encoded).also { if (!it) fileTransferMetadata = null }
+            }
+        @JavascriptInterface fun abortFileDownload(owner: String, id: String) {
+            synchronized(fileTransferLock) {
+                if (fileTransferMetadata?.id == id && fileTransferMetadata?.owner == owner) abortFileTransfer()
+            }
+        }
+        @JavascriptInterface fun finishFileDownload(owner: String, id: String) {
+            val completed = synchronized(fileTransferLock) {
+                val metadata = fileTransferMetadata
+                if (disposed || !session.isCurrent(owner) || metadata?.id != id || metadata.owner != owner) null
+                else fileTransfer.finish(id)?.let { PendingSketchDownload(metadata, it) }
+                    .also { fileTransferMetadata = null }
+            }
+            if (completed == null) {
+                onMain(owner) {
+                    evaluate("window.__editRinFileDownloadResult?.(${JSONObject.quote(id)},false,${JSONObject.quote(text("ファイルを保存できませんでした"))})")
+                }
+                return
+            }
+            activity.runOnUiThread {
+                if (disposed || !session.isCurrent(owner)) completed.file.delete() else browserFeatures.saveFile(completed)
+            }
+        }
 
         @JavascriptInterface fun onError(token: String, message: String) {
             onMain(token) { Log.e("P5JS", message); append(ConsoleLevel.ERROR, message) }
@@ -270,6 +358,15 @@ internal class PreviewController(
                 val location = previewSourceLocation(session.sourceFiles, line)
                 Log.e("P5JS", "$message ($line)")
                 append(ConsoleLevel.ERROR, message, location?.line, location?.file)
+            }
+        }
+        @JavascriptInterface fun onRuntimeErrorFile(token: String, message: String, file: String, line: Int) {
+            onMain(token) {
+                val location = previewProjectSourceLocation(session.assets, file, line)
+                val relativeFile = location?.file ?: file.takeIf {
+                    validProjectPath(it) && (it == "sketch.js" || it in session.assets.virtualFiles)
+                }
+                append(ConsoleLevel.ERROR, message, line.takeIf { relativeFile != null && it > 0 }, relativeFile)
             }
         }
         @JavascriptInterface fun onStatusChanged(token: String, status: String) {

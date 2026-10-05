@@ -57,12 +57,13 @@ internal fun parseP5Sketches(json: String): List<P5Sketch> {
             val file = rawFiles.getJSONObject(fileIndex)
             val id = file.optString("id").ifBlank { file.optString("_id") }
             if (id.isNotBlank()) {
+                require(id !in nodes) { "Duplicate project file IDs" }
                 val children = file.optJSONArray("children")?.let { childArray ->
                     List(childArray.length()) { childArray.getString(it) }
                 }.orEmpty()
                 nodes[id] = P5Node(
                     id = id,
-                    name = file.optString("name").take(200),
+                    name = file.optString("name"),
                     content = file.optString("content"),
                     url = file.optString("url").takeIf(String::isNotBlank),
                     folder = file.optString("fileType") == "folder",
@@ -86,6 +87,8 @@ internal fun parseP5Sketches(json: String): List<P5Sketch> {
         nodes.values.filter { it.folder && it.name == "root" }.forEach { visit(it, "") }
         nodes.values.filter { it.id !in visited }.forEach { visit(it, "") }
 
+        require(result.map { it.path }.distinct().size == result.size) { "Duplicate project file paths" }
+        require(result.all { validProjectPath(it.path) }) { "Invalid relative project path" }
         P5Sketch(
             id = project.optString("id").ifBlank { project.getString("_id") },
             name = project.optString("name", "p5.js sketch").take(160),
@@ -145,79 +148,67 @@ private fun importRemoteAsset(source: String, name: String, storage: AssetStorag
     error("Asset request failed")
 }
 
-private fun safeImportedName(path: String): String {
-    val raw = path.substringAfterLast('/').ifBlank { "asset" }
-    val safe = raw.map { character ->
-        if (character.isISOControl() || character in "/\\?#%") '_' else character
-    }.joinToString("").trim().trimStart('.').take(160)
-    return safe.ifBlank { "asset" }
+private fun importRemoteText(source: String): String {
+    var url = URL(source)
+    require(url.protocol == "https") { "Only HTTPS text files are supported" }
+    repeat(4) { redirectCount ->
+        val connection = url.openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 12_000; connection.readTimeout = 25_000
+            connection.instanceFollowRedirects = false
+            when (val status = connection.responseCode) {
+                200 -> return String(readBounded(connection.inputStream, MAX_PROJECT_TEXT_BYTES), Charsets.UTF_8)
+                301, 302, 303, 307, 308 -> {
+                    check(redirectCount < 3) { "Too many redirects" }
+                    url = URL(url, connection.getHeaderField("Location"))
+                    require(url.protocol == "https") { "Unsafe redirect" }
+                }
+                else -> error("Text request failed: $status")
+            }
+        } finally { connection.disconnect() }
+    }
+    error("Text request failed")
 }
 
-private fun replaceImportedPaths(source: String, replacements: Map<String, String>): String {
-    var result = source
-    replacements.entries.sortedByDescending { it.key.length }.forEach { (original, replacement) ->
-        result = result.replace("./$original", replacement).replace(original, replacement)
-    }
-    return result
-}
+private val binaryProjectExtensions = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif", "mp3", "wav",
+    "ogg", "m4a", "mp4", "webm", "mov", "ttf", "otf", "woff", "woff2", "wasm", "pdf", "zip", "bin")
 
 internal fun importP5Sketch(sketch: P5Sketch, storage: AssetStorage): ImportedP5Sketch {
-    val indexHtml = sketch.files.firstOrNull {
-        it.path.substringAfterLast('/').equals("index.html", true)
-    }?.content.orEmpty()
-    val p5Version = if (
-        Regex("""(?:p5@|/p5/|p5-)(2)(?:\.|/)""", RegexOption.IGNORE_CASE)
-            .containsMatchIn(indexHtml)
-    ) P5_VERSION_CURRENT else P5_VERSION_LEGACY
-    val p5SoundEnabled = indexHtml.contains("p5.sound", ignoreCase = true)
-    val assetFiles = sketch.files.filter { file ->
+    require(sketch.files.size <= MAX_PROJECT_TEXT_FILES) { "A project supports up to 500 files" }
+    require(sketch.files.all { validProjectPath(it.path) }) { "Invalid relative project path" }
+    require(sketch.files.map { it.path }.distinct().size == sketch.files.size) { "Duplicate project file paths" }
+    val textFiles = sketch.files.filter { file ->
         val extension = file.path.substringAfterLast('.', "").lowercase()
-        extension !in setOf("js", "html", "htm", "css") && (file.content.isNotEmpty() || file.url != null)
+        isProjectTextFile(file.path) || extension !in binaryProjectExtensions && file.url == null
     }
-    require(assetFiles.size <= 100) { "Too many assets" }
-
-    val names = mutableSetOf<String>()
-    val replacements = LinkedHashMap<String, String>()
-    val assets = LinkedHashMap<String, ProjectAsset>()
-    assetFiles.forEach { file ->
-        val name = uniqueAssetName(safeImportedName(file.path), names)
-        names += name
-        val asset = if (file.url != null) {
-            importRemoteAsset(file.url, name, storage)
-        } else {
-            ByteArrayInputStream(file.content.toByteArray(Charsets.UTF_8)).use {
-                storage.put(it, assetMimeType(name, null))
-            }
+    val assetFiles = sketch.files.filterNot { it in textFiles }
+    require(assetFiles.size <= 100) { "A project supports up to 100 binary assets" }
+    val supporting = linkedMapOf<String, String>()
+    var textBytes = 0L
+    textFiles.forEach { file ->
+        val content = if (file.content.isEmpty() && file.url != null) importRemoteText(file.url) else file.content
+        textBytes += content.toByteArray(Charsets.UTF_8).size
+        require(textBytes <= MAX_PROJECT_TEXT_BYTES) { "Project text exceeds the 16 MiB limit" }
+        supporting[file.path] = content
+    }
+    val main = supporting.remove("sketch.js").orEmpty()
+    val config = readProjectDocumentConfig(supporting)
+    val indexHtml = projectEntryDocument(supporting, config)?.let(supporting::get).orEmpty()
+    require(main.isNotEmpty() || supporting.keys.any { isJavaScriptProjectFile(it) || isHtmlProjectFile(it) }) { "Project has no HTML or JavaScript entry" }
+    val p5Version = if (Regex("""(?:p5@|/(?:p5|p5\.js)/|p5-)(2)(?:\.|/)""", RegexOption.IGNORE_CASE)
+        .containsMatchIn(indexHtml)) P5_VERSION_CURRENT else P5_VERSION_LEGACY
+    validateProjectTextFiles(supporting, main)
+    val stagingDirectory = storage.stagingDirectory()
+    val staged = AssetStorage(stagingDirectory)
+    try {
+        val assets = linkedMapOf<String, ProjectAsset>()
+        assetFiles.forEach { file ->
+            assets[file.path] = if (file.url != null) importRemoteAsset(file.url, file.path, staged)
+                else ByteArrayInputStream(file.content.toByteArray(Charsets.UTF_8)).use { staged.put(it, assetMimeType(file.path, null)) }
+            validateAssetSet(assets)
         }
-        assets[name] = asset
-        replacements[file.path] = "assets/$name"
-    }
-    validateAssetSet(assets)
-
-    val javaScript = sketch.files.filter { it.path.substringAfterLast('.', "").equals("js", true) }
-    val main = javaScript.firstOrNull { it.path == "sketch.js" }
-        ?: javaScript.firstOrNull { it.path.endsWith("/sketch.js") }
-        ?: javaScript.firstOrNull()
-        ?: error("sketch.js is missing")
-    val supportNames = mutableSetOf<String>()
-    val supporting = LinkedHashMap<String, String>()
-    javaScript.filterNot { it === main }.forEach { file ->
-        val base = file.path.substringAfterLast('/').ifBlank { "library.js" }
-        var name = base.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        if (!name.endsWith(".js", true)) name += ".js"
-        name = generateSequence(name to 1) { (candidate, number) ->
-            val stem = candidate.removeSuffix(".js").substringBeforeLast("-$number", candidate.removeSuffix(".js"))
-            "$stem-${number + 1}.js" to number + 1
-        }.map { it.first }.first { it != "sketch.js" && supportNames.add(it) }
-        supporting[name] = replaceImportedPaths(file.content, replacements)
-    }
-
-    return ImportedP5Sketch(
-        name = sketch.name.ifBlank { "p5.js sketch" },
-        code = replaceImportedPaths(main.content, replacements),
-        supportingFiles = supporting,
-        assets = assets,
-        p5Version = p5Version,
-        p5SoundEnabled = p5SoundEnabled
-    )
+        storage.commitStaged(staged, assets.values)
+        return ImportedP5Sketch(sketch.name.ifBlank { "p5.js sketch" }, main, supporting, assets, p5Version,
+            indexHtml.contains("p5.sound", ignoreCase = true))
+    } finally { stagingDirectory.deleteRecursively() }
 }

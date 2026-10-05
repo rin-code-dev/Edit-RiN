@@ -23,14 +23,6 @@ internal fun completionPrefix(value: TextFieldValue): String {
     return value.text.substring(start, end)
 }
 
-internal fun editorCompletions(value: TextFieldValue): List<String> {
-    val prefix = completionPrefix(value)
-    if (prefix.length < 2) return emptyList()
-    return P5_COMPLETIONS.asSequence()
-        .filter { it.startsWith(prefix, ignoreCase = true) && it != prefix }
-        .take(8).toList()
-}
-
 internal data class ProjectSymbol(val name: String, val file: String)
 internal data class CompletionCandidate(val name: String, val file: String? = null)
 
@@ -42,7 +34,7 @@ internal class ProjectCompletionCache(
     private val entries = mutableMapOf<String, Entry>()
 
     @Synchronized fun symbols(sources: Map<String, String>, checkActive: () -> Unit = {}): List<ProjectSymbol> {
-        val files = sources.filterKeys { it.endsWith(".js", ignoreCase = true) }
+        val files = sources.filterKeys { isJavaScriptProjectFile(it) }
         checkActive()
         entries.keys.retainAll(files.keys)
         return buildList {
@@ -62,7 +54,7 @@ internal class ProjectCompletionCache(
 /** Collect declarations without treating words in comments and literals as code. */
 internal fun projectSymbols(sources: Map<String, String>): List<ProjectSymbol> = buildList {
     val seen = HashSet<Pair<String, String>>()
-    for ((file, source) in sources.filter { it.key.endsWith(".js", ignoreCase = true) }) {
+    for ((file, source) in sources.filterKeys { isJavaScriptProjectFile(it) }) {
         var index = 0
         var expectedName = false
         var previousToken = ""
@@ -80,7 +72,7 @@ internal fun projectSymbols(sources: Map<String, String>): List<ProjectSymbol> =
                     index = if (end < 0) source.length else end + 2
                 }
                 character == '/' && previousToken in REGEX_PREFIXES -> {
-                    val end = regexLiteralEnd(source, index)
+                    val end = javaScriptRegexLiteralEnd(source, index)
                     index = end ?: index + 1
                     expectedName = false
                     previousToken = if (end == null) "/" else "literal"
@@ -119,28 +111,12 @@ internal fun projectSymbols(sources: Map<String, String>): List<ProjectSymbol> =
     }
 }
 
-private fun regexLiteralEnd(source: String, start: Int): Int? {
-    var index = start + 1
-    var inCharacterClass = false
-    while (index < source.length && source[index] != '\n' && source[index] != '\r') {
-        when (source[index++]) {
-            '\\' -> index = (index + 1).coerceAtMost(source.length)
-            '[' -> inCharacterClass = true
-            ']' -> inCharacterClass = false
-            '/' -> if (!inCharacterClass) {
-                while (index < source.length && source[index].isLetter()) index++
-                return index
-            }
-        }
-    }
-    return null
-}
-
 internal fun projectCompletions(
     value: TextFieldValue,
     symbols: List<ProjectSymbol>,
     currentFile: String
 ): List<CompletionCandidate> {
+    if (!isJavaScriptProjectFile(currentFile)) return emptyList()
     val prefix = completionPrefix(value)
     if (prefix.length < 2) return emptyList()
     val result = ArrayList<CompletionCandidate>(8)

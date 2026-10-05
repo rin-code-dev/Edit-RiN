@@ -16,11 +16,11 @@ data class WorkRevision(
 )
 
 internal const val P5_VERSION_LEGACY = "1.11.5"
-internal const val P5_VERSION_CURRENT = "2.3.3"
+internal const val P5_VERSION_CURRENT = "2.3.4"
 internal val SUPPORTED_P5_VERSIONS = listOf(P5_VERSION_CURRENT, P5_VERSION_LEGACY)
 
 internal fun normalizedP5Version(value: String?): String =
-    value?.takeIf(SUPPORTED_P5_VERSIONS::contains) ?: P5_VERSION_LEGACY
+    if (value == "2.3.3") P5_VERSION_CURRENT else value?.takeIf(SUPPORTED_P5_VERSIONS::contains) ?: P5_VERSION_LEGACY
 
 class Work(
     val id: String,
