@@ -77,7 +77,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
         } ?: emptyMap()
         validateAssetSet(assetMap)
         val now = System.currentTimeMillis()
-        result += Work(
+        val work = Work(
             id = id,
             title = item.getString("title"),
             assets = assetMap,
@@ -116,6 +116,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
                 List(tagsArray.length()) { tagsArray.optString(it) }.filter { it.isNotBlank() }
             } ?: emptyList()
         )
+        result += work
     }
     WorkStore(
         works = result,

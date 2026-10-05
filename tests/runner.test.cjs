@@ -3,9 +3,12 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
-const html = readFileSync(`${__dirname}/../www/p5_runner.html`, 'utf8');
-const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
-  .map(match => match[1]).filter(Boolean);
+const runnerHtml = readFileSync(`${__dirname}/../www/p5_runner.html`, 'utf8');
+const hostSource = readFileSync(`${__dirname}/../www/p5_host.js`, 'utf8');
+const bootstrapSource = readFileSync(`${__dirname}/../www/p5_bootstrap.js`, 'utf8');
+const sketchSource = readFileSync(`${__dirname}/../www/p5_sketch.js`, 'utf8');
+const html = runnerHtml + hostSource + bootstrapSource;
+const scripts = [hostSource, bootstrapSource, sketchSource];
 
 test('recording streams bounded chunks in order and finishes only after final data', async () => {
   const r = runner();
@@ -73,7 +76,7 @@ test('sound starts from preview interaction without visible language text', () =
   assert.match(html, /addEventListener\('pointerdown', unlockAudio, true\)/);
 });
 
-function runner(code = 'function setup() {}') {
+function runner(code = 'function setup() {}', config = {}, extras = {}) {
   const events = {}, hooks = {}, frames = new Map(), statuses = [], errors = [];
   let frameId = 0, resizes = 0, painted = 0, removed = false, stoppedTracks = 0;
   const drawing = { save() {}, restore() {}, setTransform() {}, drawImage() { painted++; } };
@@ -87,6 +90,7 @@ function runner(code = 'function setup() {}') {
     width: 320, height: 180, drawingContext: drawing,
     Android: {
       getSketchCode: () => code,
+      getProjectConfig: () => JSON.stringify(config),
       getP5Version: () => '1.11.5',
       isP5SoundEnabled: () => false,
       onStatusChanged: (owner, status) => statuses.push(status),
@@ -98,7 +102,10 @@ function runner(code = 'function setup() {}') {
     requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
     cancelAnimationFrame(id) { frames.delete(id); },
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 2, clearInterval() {},
-    addEventListener(name, callback) { events[name] = callback; },
+    addEventListener(name, callback) {
+      const previous = events[name];
+      events[name] = previous ? (...args) => { previous(...args); callback(...args); } : callback;
+    },
     isLooping: () => true,
     resizeCanvas(w, h) { resizes++; context.width = w; context.height = h; canvas.width = w; canvas.height = h; },
     p5: function P5() {},
@@ -114,13 +121,15 @@ function runner(code = 'function setup() {}') {
       } }
     }
   };
+  Object.assign(context, extras);
   context.p5.prototype.registerMethod = (name, callback) => { hooks[name] = callback; };
   context.window = context;
   vm.createContext(context);
   scripts.forEach(source => vm.runInContext(source, context));
   return {
     context, events, canvas, statuses, errors,
-    setup() { hooks.afterSetup.call({ _isGlobal: true }); },
+    hooks,
+    setup(instance = { _isGlobal: true }) { hooks.afterSetup.call(instance); },
     flush() { for (const [id, callback] of [...frames]) { frames.delete(id); callback(); } },
     stats: () => ({ resizes, painted, removed, stoppedTracks })
   };
@@ -328,71 +337,95 @@ test('orientation repaints paused drawings and preserves setup-only 2D content',
   assert.equal(staticWork.stats().painted, 2);
 });
 
-test('bundled Parameters.js parses declarations and draws with rinParams', () => {
-  const source = readFileSync(`${__dirname}/../www/samples/Parameters.js`, 'utf8');
-  assert.ok(source.includes('// @rin number speed'));
-  assert.ok(source.includes('// @rin boolean glow'));
-  assert.ok(source.includes('// @rin color theme'));
-  const c = {
-    TWO_PI: Math.PI * 2, CLOSE: 1, width: 600, height: 600, frameCount: 1,
-    createCanvas() {}, background() {}, translate() {}, push() {}, pop() {},
-    rotate() {}, beginShape() {}, endShape() {}, vertex() {}, bezierVertex() {},
-    circle() {}, stroke() {}, noStroke() {}, strokeWeight() {}, fill() {}, noFill() {},
-    sin: Math.sin, cos: Math.cos, red: () => 0, green: () => 229, blue: () => 255,
-    color: () => ({}),
-    rinParams: { speed: 2, petals: 6, theme: '#00e5ff', bg: '#000000', glow: true, filled: true }
-  };
-  vm.createContext(c);
-  vm.runInContext(source + '\nsetup(); draw();', c);
-  assert.ok(vm.runInContext('angle', c) > 0);
-});
-
-test('bundled Wave.js parses declarations and draws with rinParams', () => {
-  const source = readFileSync(`${__dirname}/../www/samples/Wave.js`, 'utf8');
-  assert.ok(source.includes('// @rin number speed'));
-  assert.ok(source.includes('// @rin number lineWidth'));
-  assert.ok(source.includes('// @rin color ink'));
-  const c = {
-    width: 800, height: 800, frameCount: 1,
-    createCanvas() {}, background() {},
-    beginShape() {}, endShape() {}, vertex() {},
-    circle() {}, stroke() {}, noStroke() {}, strokeWeight() {}, fill() {}, noFill() {},
-    sin: Math.sin, cos: Math.cos,
-    rinParams: { speed: 1, lineWidth: 4, ink: '#BA90E2' }
-  };
-  vm.createContext(c);
-  vm.runInContext(source + '\nsetup(); draw();', c);
-  assert.ok(vm.runInContext('phase', c) > 0);
-});
-
-test('bundled Sound.js parses and initializes with p5.sound APIs', () => {
-  const source = readFileSync(`${__dirname}/../www/samples/Sound.js`, 'utf8');
-  assert.ok(source.includes('p5.Oscillator'));
-  assert.ok(source.includes('p5.FFT'));
-  const c = {
-    TWO_PI: Math.PI * 2, width: 600, height: 600, frameCount: 1,
-    HSB: 1, CLOSE: 2, CENTER: 3, mouseIsPressed: false, mouseX: 0, mouseY: 0,
-    createCanvas() {}, colorMode() {}, background() {}, translate() {}, push() {}, pop() {},
-    line() {}, stroke() {}, noStroke() {}, strokeWeight() {}, fill() {}, noFill() {},
-    beginShape() {}, endShape() {}, curveVertex() {}, textAlign() {}, textSize() {}, text() {},
-    min: Math.min, map: (v, a, b, c, d) => c + ((v - a) / (b - a)) * (d - c),
-    cos: Math.cos, sin: Math.sin, floor: Math.floor,
-    p5: {
-      Oscillator: function() {
-        return { start() {}, amp() {}, freq() {} };
-      },
-      FFT: function() {
-        return {
-          waveform: () => new Float32Array(128),
-          analyze: () => new Uint8Array(64)
-        };
-      }
+const noop = () => {};
+function sampleContext(extra = {}) {
+  const context = {
+    TWO_PI: Math.PI * 2, POINTS: 0, CENTER: 3, LEFT: 0, RIGHT: 2, VIDEO: 'video', WEBGL: 'webgl', WEBGPU: 'webgpu', width: 600, height: 600, frameCount: 1,
+    mouseIsPressed: false, mouseX: 300, mouseY: 300,
+    sin: Math.sin, cos: Math.cos, sqrt: Math.sqrt, exp: Math.exp, atan2: Math.atan2, pow: Math.pow,
+    round: Math.round, floor: Math.floor, sq: value => value * value,
+    map: (v, a, b, c, d) => c + ((v - a) / (b - a)) * (d - c),
+    createCapture: (type, cb) => {
+      if (cb) cb();
+      return { size: noop, hide: noop, loadPixels: noop, width: 50, height: 50, pixels: new Uint8Array(50 * 50 * 4), loadedmetadata: true };
     }
   };
-  vm.createContext(c);
-  vm.runInContext(source + '\nsetup(); draw();', c);
-  assert.ok(vm.runInContext('osc', c));
-  assert.ok(vm.runInContext('fft', c));
+  for (const name of ['createCanvas', 'background', 'translate', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'push', 'pop',
+    'fill', 'noFill', 'stroke', 'noStroke', 'strokeWeight', 'ellipse', 'circle', 'rect', 'line', 'beginShape', 'endShape', 'vertex',
+    'textAlign', 'text', 'textSize', 'ambientLight', 'directionalLight', 'torus', 'box', 'userStartAudio']) context[name] = noop;
+  return Object.assign(context, extra);
+}
+async function runSample(name, extra = {}) {
+  const source = readFileSync(`${__dirname}/../www/samples/${name}.js`, 'utf8');
+  assert.ok(source.startsWith(`// ${name} — `), `${name} starts with a one-line concept`);
+  assert.ok(source.split('\n').length <= 120, `${name} stays clean and minimal`);
+  const context = vm.createContext(sampleContext(extra));
+  vm.runInContext(source, context);
+  await vm.runInContext('(async () => { await setup(); draw(); draw(); })()', context);
+  return { context, source };
+}
+
+test('bundled Halo.js and Gravity.js draw frames', async () => {
+  for (const name of ['Halo', 'Gravity']) {
+    const { context } = await runSample(name);
+    assert.ok(vm.runInContext('t', context) > 0, name);
+  }
+});
+
+test('bundled Parameters.js declares each parameter type and draws with rinParams', async () => {
+  const { context, source } = await runSample('Parameters',
+    { rinParams: { speed: 2, petals: 6, accent: '#A8C7FA', filled: true } });
+  for (const type of ['number speed', 'number petals', 'color accent', 'boolean filled']) {
+    assert.ok(source.includes('// @rin ' + type), type);
+  }
+  assert.ok(vm.runInContext('t', context) > 0);
+});
+
+test('bundled Wave.js draws with rinParams', async () => {
+  const { context, source } = await runSample('Wave', { rinParams: { speed: 1, lineWidth: 4, ink: '#A8C7FA' } });
+  for (const type of ['number speed', 'number lineWidth', 'color ink']) assert.ok(source.includes('// @rin ' + type), type);
+  assert.ok(vm.runInContext('t', context) > 0);
+});
+
+test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async () => {
+  for (const [gpu, expected] of [[{}, 'webgpu'], [undefined, 'webgl']]) {
+    let renderer = null;
+    const { context, source } = await runSample('WebGPU', {
+      navigator: { gpu }, createCanvas(w, h, kind) { renderer = kind; },
+      rinParams: { speed: 1.5, size: 1.2, accent: '#A8C7FA' }
+    });
+    for (const type of ['number speed', 'number size', 'color accent']) assert.ok(source.includes('// @rin ' + type), type);
+    assert.equal(renderer, expected);
+    assert.ok(vm.runInContext('t', context) > 0);
+  }
+});
+
+test('bundled Sound.js initializes p5.sound objects', async () => {
+  const { context, source } = await runSample('Sound', {
+    p5: {
+      Oscillator: function () { return { start: noop, amp: noop, freq: noop }; },
+      FFT: function () { return { analyze: () => new Uint8Array(64), waveform: () => new Float32Array(1024) }; }
+    }
+  });
+  assert.ok(source.includes('p5.Oscillator') && source.includes('p5.FFT'));
+  assert.ok(vm.runInContext('osc', context));
+  assert.ok(vm.runInContext('fft', context));
+});
+
+test('bundled Camera.js and Microphone.js initialize media features', async () => {
+  const { context: camContext, source: camSource } = await runSample('Camera');
+  assert.ok(camSource.includes('createCapture'));
+  assert.ok(vm.runInContext('capture', camContext));
+
+  const { context: micContext, source: micSource } = await runSample('Microphone', {
+    p5: {
+      AudioIn: function () { return { start: noop }; },
+      FFT: function () { return { setInput: noop, analyze: () => new Uint8Array(64) }; }
+    }
+  });
+  assert.ok(micSource.includes('p5.AudioIn') && micSource.includes('p5.FFT'));
+  assert.ok(vm.runInContext('mic', micContext));
+  assert.ok(vm.runInContext('fft', micContext));
 });
 
 test('hiding and restoring portrait preview preserves artwork and paused pixels', () => {
@@ -432,9 +465,8 @@ test('bundled matter.js and rinShaders are available in runner environment', () 
   const matterContent = fs.readFileSync('www/matter-0.20.0.min.js', 'utf8');
   assert.ok(matterContent.includes('matter-js'), 'matter-js header should be present');
 
-  const runnerHtml = fs.readFileSync('www/p5_runner.html', 'utf8');
-  assert.ok(runnerHtml.includes("libraries['matter-js'] === '0.20.0'"), 'runner should support matter-js library loading');
-  assert.ok(runnerHtml.includes('window.rinShaders ='), 'runner should expose window.rinShaders');
+  assert.ok(bootstrapSource.includes("libraries['matter-js'] === '0.20.0'"), 'runner should support matter-js library loading');
+  assert.ok(hostSource.includes('window.rinShaders ='), 'runner should expose window.rinShaders');
 });
 
 
@@ -659,4 +691,249 @@ test('separate JS files remain valid at ASI-sensitive IIFE and array boundaries'
   assert.deepEqual(r.errors, []);
   assert.equal(r.context.first, 1);
   assert.equal(r.context.second, 2);
+});
+
+function instanceRunner(config = {}) {
+  const r = runner('', config);
+  const drawn = [];
+  const instances = [2, 4].map((density, index) => {
+    let running = index === 0, currentDensity = density;
+    const densities = [], calls = { loop: 0, noLoop: 0 };
+    const canvas = { width: 100 * density, height: 50 * density, style: {}, isConnected: true,
+      toDataURL: () => 'data:image/png;base64,AA==' };
+    const instance = { width: 100, height: 50, canvas, densities, calls,
+      isLooping: () => running,
+      noLoop() { running = false; calls.noLoop++; }, loop() { running = true; calls.loop++; },
+      draw() {}, redraw() {},
+      pixelDensity(value) {
+        if (value === undefined) return currentDensity;
+        currentDensity = value; densities.push(value); canvas.width = 100 * value; canvas.height = 50 * value;
+      } };
+    r.hooks.init.call(instance);
+    return instance;
+  });
+  r.context.document.querySelectorAll = () => instances.map(instance => instance.canvas);
+  r.context.document.createElement = () => ({ width: 0, height: 0,
+    getContext: () => ({ clearRect() { drawn.length = 0; }, drawImage(canvas) { drawn.push(canvas); } }),
+    toDataURL() { return `data:image/png;${this.width}x${this.height};base64,AA==`; } });
+  return Object.assign(r, { instances, drawn });
+}
+
+test('instance readiness waits for every pending setup and fits all canvases without resizing buffers', () => {
+  const r = instanceRunner();
+  let ready = 0; r.context.Android.onPreviewReady = () => ready++;
+  r.setup(r.instances[0]); r.flush();
+  assert.deepEqual(r.statuses, []);
+  r.setup(r.instances[1]); r.flush();
+  assert.equal(ready, 1);
+  assert.deepEqual(r.statuses, ['実行中']);
+  assert.equal(r.instances[0].canvas.style.width, '160px');
+  assert.equal(r.instances[1].canvas.style.left, '160px');
+  assert.equal(r.instances[0].canvas.width, 200);
+  assert.equal(r.instances[1].canvas.width, 400);
+});
+
+test('p5 1 global hooks resolve window to the instance previously tracked by init', () => {
+  const r = runner();
+  const instance = { _isGlobal: true, canvas: r.canvas };
+  r.context.p5.instance = instance;
+  r.hooks.init.call(instance);
+  r.context.__testAfterSetup = r.hooks.afterSetup;
+  vm.runInContext('__testAfterSetup.call(window)', r.context);
+  r.flush();
+  assert.deepEqual(r.statuses, ['実行中']);
+});
+
+test('pause and resume preserve each instance noLoop state and gate artwork RAFs', () => {
+  const r = instanceRunner();
+  r.instances.forEach(instance => r.setup(instance)); r.flush();
+  let frames = 0;
+  r.context.requestAnimationFrame(() => frames++);
+  r.context.pauseSketch(); r.flush();
+  assert.equal(frames, 0);
+  assert.equal(r.instances.every(instance => !instance.isLooping()), true);
+  r.context.resumeSketch(); r.flush();
+  assert.equal(frames, 1);
+  assert.equal(r.instances[0].isLooping(), true);
+  assert.equal(r.instances[1].isLooping(), false);
+});
+
+test('multi-instance 2x PNG redraws every density and restores each playback state', async () => {
+  const r = instanceRunner();
+  r.instances.forEach(instance => r.setup(instance)); r.flush();
+  const exports = [];
+  r.context.Android.onScreenshotExportReady = (owner, data, width, height) => exports.push({ owner, width, height });
+  await r.context.__editKiroCaptureScreenshot(2);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(exports, [{ owner: 'run-one', width: 1600, height: 400 }]);
+  assert.deepEqual(r.instances.map(instance => instance.densities), [[4, 2], [8, 4]]);
+  assert.deepEqual(r.instances.map(instance => instance.isLooping()), [true, false]);
+  assert.equal(new Set(r.drawn).size, 2);
+});
+
+test('global callbacks use window.draw while redraw and density use the concrete p5 instance', async () => {
+  const r = instanceRunner();
+  r.instances[0]._isGlobal = true;
+  delete r.instances[0].draw;
+  r.context.draw = () => {};
+  r.instances.forEach(instance => r.setup(instance)); r.flush();
+  let completed = 0;
+  r.context.Android.onScreenshotExportReady = () => completed++;
+  await r.context.__editKiroCaptureScreenshot(4);
+  assert.equal(completed, 1);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.instances.map(instance => instance.densities), [[8, 2], [16, 4]]);
+});
+
+test('HTML readiness preserves authored canvas CSS and does not require global setup', () => {
+  const r = runner('', { documentMode: true });
+  r.canvas.style = { position: 'relative', width: '77px', left: '9px' };
+  r.events.load(); r.flush(); r.flush();
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.statuses, ['実行中']);
+  assert.deepEqual(r.canvas.style, { position: 'relative', width: '77px', left: '9px' });
+});
+
+test('module readiness is held until the entry signals completion', () => {
+  const r = runner('', { moduleMode: true });
+  r.events.load(); r.flush();
+  assert.deepEqual(r.statuses, []);
+  r.context.__editRinModuleReady(); r.flush();
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.statuses, ['実行中']);
+});
+
+function downloadsRunner(extras = {}) {
+  const r = runner('', {}, extras), writes = [], finished = [], begins = [], aborts = [];
+  r.context.FileReader = class {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then(bytes => { this.result = 'data:;base64,' + Buffer.from(bytes).toString('base64'); this.onload(); });
+    }
+  };
+  r.context.Android.beginFileDownload = (owner, id, name, mime) => { begins.push({owner,id,name,mime}); return true; };
+  r.context.Android.appendFileDownloadChunk = (owner, id, data) => { writes.push({owner,id,bytes:Buffer.from(data,'base64')}); return true; };
+  r.context.Android.finishFileDownload = (owner,id) => finished.push({owner,id});
+  r.context.Android.abortFileDownload = (owner,id) => aborts.push({owner,id});
+  return Object.assign(r, { writes, finished, begins, aborts });
+}
+
+test('generic downloads serialize bounded chunks, preserve filenames/MIME and permit empty files', async () => {
+  const r = downloadsRunner();
+  const bytes = Buffer.alloc(600000, 51);
+  await Promise.all([r.context.__editRinDownload(new Blob([bytes]), 'data', 'csv'),
+    r.context.__editRinDownload(new Blob([], {type:'application/json'}), 'empty.json')]);
+  assert.equal(r.finished.length, 2);
+  assert.deepEqual(r.begins.map(item => [item.name,item.mime]), [['data.csv','text/csv'],['empty.json','application/json']]);
+  assert.deepEqual(Buffer.concat(r.writes.map(item => item.bytes)), bytes);
+  assert.equal(r.writes.every(item => item.bytes.length <= 192*1024 && item.owner === 'run-one' && item.id === r.begins[0].id), true);
+});
+
+test('revoking a Blob URL cannot invalidate a queued anchor download', async () => {
+  let clicked = 0, next = 0;
+  class Anchor {
+    hasAttribute(name) { return name === 'download'; }
+    click() { clicked++; }
+  }
+  const r = downloadsRunner({ URL: { createObjectURL: () => `blob:${++next}`, revokeObjectURL() {} }, HTMLAnchorElement: Anchor });
+  const url = r.context.URL.createObjectURL(new Blob(['retained']));
+  const anchor = new Anchor(); anchor.href = url; anchor.download = 'retained.txt'; anchor.click();
+  r.context.URL.revokeObjectURL(url);
+  await r.context.__editRinDownload(new Blob(['second']), 'second.txt');
+  assert.equal(clicked, 0);
+  assert.deepEqual(r.begins.map(item => item.name), ['retained.txt','second.txt']);
+  assert.equal(Buffer.concat(r.writes.filter(item => item.id === r.begins[0].id).map(item => item.bytes)).toString(), 'retained');
+});
+
+test('a rejected generic chunk aborts its transfer and allows the next queued file', async () => {
+  const r = downloadsRunner();
+  r.context.Android.appendFileDownloadChunk = () => false;
+  await r.context.__editRinDownload(new Blob(['first']), 'first.txt');
+  assert.equal(r.aborts.length, 1); assert.equal(r.finished.length, 0); assert.equal(r.errors.length, 1);
+  r.context.Android.appendFileDownloadChunk = () => true;
+  await r.context.__editRinDownload(new Blob(['second']), 'second.txt');
+  assert.equal(r.finished.length, 1);
+});
+
+test('generic URL downloads report CORS errors without publishing partial native files', async () => {
+  const r = downloadsRunner({ fetch: async () => { throw new Error('Failed to fetch'); } });
+  await r.context.__editRinDownload('https://example.com/private.csv', 'private.csv');
+  assert.equal(r.begins.length, 0); assert.match(r.errors[0], /CORS/);
+});
+
+test('file downloads wait for native save completion, reject stale ACKs and recover after cancellation', async () => {
+  const r = downloadsRunner();
+  r.context.Android.supportsFileDownloadResult = () => true;
+  const first = r.context.__editRinDownload(new Blob(['a']), 'first.txt');
+  const second = r.context.__editRinDownload(new Blob(['b']), 'second.txt');
+  for (let i = 0; i < 10 && !r.finished.length; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(r.begins.length, 1); assert.equal(r.finished.length, 1);
+  r.context.__editRinFileDownloadResult('newer-run:download-other', true, '');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(r.begins.length, 1);
+  r.context.__editRinFileDownloadResult(r.begins[0].id, false, 'save cancelled');
+  await first;
+  for (let i = 0; i < 10 && r.finished.length < 2; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(r.begins.length, 2);
+  r.context.__editRinFileDownloadResult(r.begins[1].id, true, ''); await second;
+  assert.equal(r.aborts.length, 1); assert.deepEqual(r.errors, ['save cancelled']);
+});
+
+test('a 90-frame batch is queued without the former 32-file drop', async () => {
+  const r = downloadsRunner();
+  await Promise.all(Array.from({length:90}, (_, i) => r.context.__editRinDownload(new Blob([String(i)]), `frame-${i}.png`)));
+  assert.deepEqual(r.errors, []); assert.equal(r.finished.length, 90);
+  assert.deepEqual(r.begins.map(item => item.name), Array.from({length:90}, (_, i) => `frame-${i}.png`));
+});
+
+test('queued payload memory has a 256MiB budget and reports overload before beginning a transfer', async () => {
+  const r = downloadsRunner();
+  class OversizedBlob extends Blob { get size() { return 256*1024*1024+1; } }
+  await r.context.__editRinDownload(new OversizedBlob([]), 'large.bin');
+  assert.equal(r.begins.length, 0); assert.match(r.errors[0], /256MiB/);
+  await r.context.__editRinDownload(new Blob(['fine']), 'small.txt');
+  assert.equal(r.finished.length, 1);
+});
+
+test('unloading aborts an active native save ACK and releases queued downloads', async () => {
+  const r = downloadsRunner();
+  r.context.Android.supportsFileDownloadResult = () => true;
+  const first = r.context.__editRinDownload(new Blob(['a']), 'first.txt');
+  const second = r.context.__editRinDownload(new Blob(['b']), 'second.txt');
+  for (let i = 0; i < 10 && !r.finished.length; i++) await new Promise(resolve => setImmediate(resolve));
+  r.events.beforeunload();
+  await Promise.all([first, second]);
+  assert.equal(r.begins.length, 1); assert.ok(r.aborts.length >= 1);
+  assert.deepEqual(r.errors, []);
+});
+
+test('individual module runtime errors retain their actual project file and line', () => {
+  const r = runner('', {moduleMode:true}), errors = [];
+  r.context.Android.onRuntimeErrorFile = (owner,message,file,line) => errors.push([owner,message,file,line]);
+  r.context.onerror('helper failed','https://appassets.androidplatform.net/project/run-one/lib/helper.mjs',4);
+  r.events.unhandledrejection({reason:{message:'async failed',stack:'Error\n at task (https://appassets.androidplatform.net/project/run-one/lib/helper.mjs:12:3)'}});
+  assert.deepEqual(errors,[['run-one','helper failed','lib/helper.mjs',4],['run-one','async failed','lib/helper.mjs',12]]);
+});
+
+test('WEBGPU fails clearly before invoking the renderer when no GPU API exists', () => {
+  const r = runner(); let invoked = false;
+  function LaterP5() {}
+  LaterP5.prototype.registerMethod = () => {};
+  LaterP5.prototype.createCanvas = () => { invoked = true; };
+  r.context.p5 = LaterP5;
+  assert.throws(() => LaterP5.prototype.createCanvas(10,10,'webgpu'), /WEBGPU/);
+  assert.equal(invoked,false);
+});
+
+test('addon selection follows the actual custom p5 version rather than the work version', () => {
+  const r = runner('', {p5Url:'https://example.com/custom-p5.js'}), writes = [];
+  r.context.document.write = value => writes.push(value);
+  r.context.__editKiroSoundEnabled = true;
+  r.context.p5.VERSION = '1.11.5';r.context.__editRinLoadP5Addons();
+  assert.equal(writes.some(value=>value.includes('p5.sound-v1.min.js')),true);
+  assert.equal(writes.some(value=>value.includes('p5.webgpu.js')),false);
+  writes.length=0;r.context.p5.VERSION = '2.3.4';r.context.__editRinLoadP5Addons();
+  assert.equal(writes.some(value=>value.includes('p5.sound.min.js')),true);
+  assert.equal(writes.some(value=>value.includes('p5.webgpu.js')),true);
+  writes.length=0;r.context.p5.VERSION = '';r.context.__editRinLoadP5Addons();
+  assert.equal(writes.length,0);assert.match(r.errors[0],/p5.VERSION/);
 });

@@ -254,6 +254,53 @@ class WorkManagementViewModelTest {
         assertFalse(work.p5SoundEnabled)
         assertTrue(vm.showRuntimeDialog)
     }
+    @Test fun projectRuntimeSettingsPreserveDraftContentAndUnknownConfigurationKeys() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        session.worksState.value.first().files[PROJECT_CONFIG_FILE] = "{\"custom\":1}"
+        session.fileDrafts["one/$PROJECT_CONFIG_FILE"] = "{\"custom\":7}"
+        val config = ProjectDocumentConfig(libraries = listOf(ProjectLibraryScript("https://example.org/a.js")), executionMode = "classic")
+        vm.saveRuntime(P5_VERSION_CURRENT, false, emptyMap(), config)!!.join()
+        val saved = store.persisted!!.works.first()
+        assertEquals(7, org.json.JSONObject(saved.files.getValue(PROJECT_CONFIG_FILE)).getInt("custom"))
+        assertEquals("unsaved helper", saved.files["helper.js"])
+        assertEquals("unsaved", session.editorValueState.value.text)
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        assertEquals(config, readProjectDocumentConfig(saved.files))
+    }
+    @Test fun failedProjectRuntimeSettingsKeepConfigurationDraftsAndHistory() = runBlocking {
+        val session = session(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
+        session.worksState.value.first().files[PROJECT_CONFIG_FILE] = "{\"custom\":1}"
+        session.fileDrafts["one/$PROJECT_CONFIG_FILE"] = "{\"custom\":7}"
+        vm.saveRuntime(P5_VERSION_LEGACY, true, emptyMap(), ProjectDocumentConfig(executionMode = "module"))!!.join()
+        assertEquals("{\"custom\":1}", session.worksState.value.first().files[PROJECT_CONFIG_FILE])
+        assertEquals("{\"custom\":7}", session.fileDrafts["one/$PROJECT_CONFIG_FILE"])
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        assertEquals(1, session.undoStack.size)
+    }
+    @Test fun laterConfigurationInputIsPreservedWhileRuntimeSettingsAreSaving() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        session.worksState.value.first().files[PROJECT_CONFIG_FILE] = "{\"custom\":1}"
+        session.fileDrafts["one/$PROJECT_CONFIG_FILE"] = "{\"custom\":7}"
+        store.duringSave = { session.fileDrafts["one/$PROJECT_CONFIG_FILE"] = "{\"late\":9}" }
+        vm.saveRuntime(P5_VERSION_CURRENT, false, emptyMap(), ProjectDocumentConfig(executionMode = "classic"))!!.join()
+        assertEquals("{\"late\":9}", session.fileDrafts["one/$PROJECT_CONFIG_FILE"])
+        assertEquals(7, org.json.JSONObject(store.persisted!!.works.first().files.getValue(PROJECT_CONFIG_FILE)).getInt("custom"))
+    }
+    @Test fun runtimeSaveDoesNotRequeueTheSupersededConfigurationDraftForStartupRecovery() = runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("runtime-config-draft").toFile()
+        val drafts = DraftSnapshotRepository(java.io.File(directory, "draft.json"))
+        try {
+            val session = session(); val store = Store()
+            val vm = WorkManagementViewModel(session, store, drafts = drafts, io = Dispatchers.Unconfined, operationScope = this)
+            session.worksState.value.first().files[PROJECT_CONFIG_FILE] = "{\"custom\":1}"
+            session.fileDrafts["one/$PROJECT_CONFIG_FILE"] = "{\"custom\":7}"
+            vm.saveRuntime(P5_VERSION_CURRENT, false, emptyMap(), ProjectDocumentConfig(executionMode = "classic"))!!.join()
+            drafts.awaitPendingWrites()
+            val recovered = drafts.loadCompatible("local", session.worksState.value)!!
+            assertFalse(recovered.second.containsKey("one/$PROJECT_CONFIG_FILE"))
+            assertEquals("unsaved", recovered.first.code)
+        } finally { drafts.close(); directory.deleteRecursively() }
+    }
     @Test fun addingAFileDoesNotDiscardOtherFilesUnsavedDrafts() = runBlocking {
         val session = session(); val store = Store(); val vm = vm(session, store, this)
         vm.saveAuxiliaryFiles(mapOf("helper.js" to "old helper", "new.js" to "new file"))!!.join()
@@ -555,4 +602,155 @@ class WorkManagementViewModelTest {
         vm.saveUserTemplate("New")!!.join()
         assertEquals("New", vm.userTemplates.single().title)
     }
+    @Test fun galleryDuplicateKeepsTheActiveEditorAndSavesItsDrafts() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        model.workMenuExpanded = true
+        model.duplicateGalleryWork("two")!!.join()
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals(TextFieldValue("unsaved", TextRange(3)), session.editorValueState.value)
+        assertEquals(1, session.undoStack.size)
+        assertTrue(model.workMenuExpanded)
+        val copy = session.worksState.value.last()
+        assertNotEquals("two", copy.id)
+        assertEquals("second saved", copy.code)
+        assertEquals("unsaved helper", session.worksState.value.first().files["helper.js"])
+    }
+
+    @Test fun failedGalleryDuplicateDoesNotAddWorkOrCommitEditingState() = runBlocking {
+        val session = session(); val store = Store().apply { succeed = false }; val model = vm(session, store, this)
+        val before = session.worksState.value
+        model.duplicateGalleryWork("two")!!.join()
+        assertSame(before, session.worksState.value)
+        assertEquals("saved", session.lastSavedTextState.value)
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        assertEquals(1, session.undoStack.size)
+    }
+
+    @Test fun galleryRenameDoesNotSwitchOrDiscardTheCurrentEditor() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        model.galleryRenameWorkId = "two"
+        model.renameWork("two", "Renamed")!!.join()
+        assertEquals("Renamed", session.worksState.value[1].title)
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals("unsaved", session.editorValueState.value.text)
+        assertEquals(1, session.undoStack.size)
+        assertNull(model.galleryRenameWorkId)
+    }
+
+    @Test fun bulkTagsAreAtomicCaseInsensitiveAndLeaveUnselectedWorksAlone() = runBlocking {
+        val session = cleanSession(); val store = Store(); val model = vm(session, store, this)
+        session.worksState.value = session.worksState.value + Work("three", "Third", "third", tags = listOf("keep"))
+        model.galleryTagIds = setOf("one", "two")
+        store.succeed = false
+        model.tagGalleryWorks(setOf("one", "two"), " #Test ")!!.join()
+        assertTrue(session.worksState.value.first().tags.isEmpty())
+        assertEquals(setOf("one", "two"), model.galleryTagIds)
+        store.succeed = true
+        model.tagGalleryWorks(setOf("one", "two"), " #Test ")!!.join()
+        model.tagGalleryWorks(setOf("one", "two"), "test")!!.join()
+        assertEquals(listOf("Test"), session.worksState.value[0].tags.toList())
+        assertEquals(listOf("Test"), session.worksState.value[1].tags.toList())
+        assertEquals(listOf("keep"), session.worksState.value[2].tags.toList())
+        model.tagGalleryWorks(setOf("one", "two"), "TEST", remove = true)!!.join()
+        assertTrue(session.worksState.value[0].tags.isEmpty())
+        assertTrue(session.worksState.value[1].tags.isEmpty())
+    }
+
+    @Test fun inactiveDeleteAndUndoPreserveNewerEditorTextSelectionAndUndo() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        model.deleteGalleryWorks(setOf("two"))!!.join()
+        val token = model.deletionUndoToken!!
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals(1, session.undoStack.size)
+        session.editorValueState.value = TextFieldValue("newer", TextRange(2))
+        model.undoGalleryDeletion(token)!!.join()
+        assertEquals(listOf("one", "two"), session.worksState.value.map { it.id })
+        assertEquals(TextFieldValue("newer", TextRange(2)), session.editorValueState.value)
+        assertEquals("newer", store.persisted!!.works.first().code)
+        assertEquals(1, session.undoStack.size)
+        assertNull(model.deletionUndoToken)
+    }
+
+    @Test fun bulkDeleteUndoRetainsUnsavedFilesConfigurationAndOriginalIds() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        session.worksState.value = session.worksState.value + Work("three", "Third", "third")
+        model.draftPreviewRatio("16:9")
+        model.deleteGalleryWorks(setOf("one", "two"))!!.join()
+        assertEquals("three", session.activeWorkIdState.value)
+        val token = model.deletionUndoToken!!
+        model.undoGalleryDeletion(token)!!.join()
+        assertEquals(listOf("one", "two", "three"), session.worksState.value.map { it.id })
+        assertEquals("unsaved", session.worksState.value[0].code)
+        assertEquals("unsaved helper", session.worksState.value[0].files["helper.js"])
+        assertEquals("16:9", session.worksState.value[0].previewAspectRatio)
+        assertEquals("three", session.activeWorkIdState.value)
+    }
+
+    @Test fun failedDeleteAndFailedUndoKeepDataAndAllowRetry() = runBlocking {
+        val session = session(); val store = Store().apply { succeed = false }; val model = vm(session, store, this)
+        model.galleryDeleteIds = setOf("two")
+        model.deleteGalleryWorks(setOf("two"))!!.join()
+        assertEquals(2, session.worksState.value.size)
+        assertNull(model.deletionUndoToken)
+        assertEquals(setOf("two"), model.galleryDeleteIds)
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        store.succeed = true
+        model.deleteGalleryWorks(setOf("two"))!!.join()
+        val token = model.deletionUndoToken!!
+        store.succeed = false
+        model.undoGalleryDeletion(token)!!.join()
+        assertEquals(1, session.worksState.value.size)
+        assertEquals(token, model.deletionUndoToken)
+        store.succeed = true
+        model.undoGalleryDeletion(token)!!.join()
+        assertEquals(2, session.worksState.value.size)
+    }
+
+    @Test fun selectingEveryWorkForDeletionNeverWritesAnEmptyStore() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        model.deleteGalleryWorks(setOf("one", "two"))!!.join()
+        assertEquals(0, store.calls)
+        assertEquals(2, session.worksState.value.size)
+        assertEquals("unsaved", session.editorValueState.value.text)
+    }
+
+    private class LazyGalleryStore : WorkPersistence {
+        val originals = listOf(Work("one", "First", "saved"),
+            Work("two", "Second", "deferred code", files = mutableMapOf("helper.js" to "deferred helper")))
+        var calls = 0
+        var missing = false
+        override fun loadLocal() = WorkStore(originals, "one")
+        override fun loadFolder(folderUri: Uri) = loadLocal()
+        override fun loadResult(folderUri: Uri?, eager: Boolean): WorkLoadResult = WorkLoadResult.Loaded(
+            WorkStore(listOf(originals[0], Work("two", "Second", "").also { it.bodyLoaded = false }), "one"),
+            deferredWorkIds = setOf("two"))
+        override fun loadWork(folderUri: Uri?, workId: String): Work? =
+            if (missing) null else originals.find { it.id == workId }?.let(::snapshotWork)
+        override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean { calls++; return true }
+    }
+
+    @Test fun galleryOperationsLoadDeferredBodiesBeforeCopyingOrDeleting() = runBlocking {
+        val session = EditorSessionViewModel(); val store = LazyGalleryStore()
+        val model = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = this)
+        model.initialize { emptyList() }
+        model.duplicateGalleryWork("two")!!.join()
+        assertEquals("deferred code", session.worksState.value.last().code)
+        assertEquals("deferred helper", session.worksState.value.last().files["helper.js"])
+        model.deleteGalleryWorks(setOf("two"))!!.join()
+        model.undoGalleryDeletion(model.deletionUndoToken!!)!!.join()
+        assertEquals("deferred code", session.worksState.value.first { it.id == "two" }.code)
+    }
+
+    @Test fun missingReplacementBodyFailsBeforeDurableDeletion() = runBlocking {
+        val session = EditorSessionViewModel(); val store = LazyGalleryStore()
+        val model = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = this)
+        model.initialize { emptyList() }
+        store.missing = true
+        model.deleteGalleryWorks(setOf("one"))!!.join()
+        assertEquals(0, store.calls)
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals(2, session.worksState.value.size)
+        assertNull(model.deletionUndoToken)
+    }
+
 }

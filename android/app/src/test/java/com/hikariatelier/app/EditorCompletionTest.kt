@@ -6,6 +6,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EditorCompletionTest {
+    @Test fun modulesContributeSymbolsButMarkupStylesAndDataDoNot() {
+        val sources = linkedMapOf(
+            "scripts/helper.mjs" to "export function createModule() {}",
+            "scripts/legacy.cjs" to "const createLegacy = 1",
+            "index.html" to "function createMarkup() {}",
+            "style.css" to "const createStyle = 1",
+            "data.json" to "const createData = 1"
+        )
+        assertEquals(listOf("createModule", "createLegacy"), ProjectCompletionCache().symbols(sources).map { it.name })
+        val value = TextFieldValue("cre", TextRange(3))
+        assertTrue(projectCompletions(value, projectSymbols(sources), "index.html").isEmpty())
+        assertEquals(CompletionCandidate("createModule", "scripts/helper.mjs"),
+            projectCompletions(value, projectSymbols(sources), "scripts/helper.mjs").first())
+    }
     @Test fun cacheReparsesOnlyChangedFilesAndRemovesDeletedFiles() {
         val parsed = mutableListOf<String>()
         val cache = ProjectCompletionCache { file, source -> parsed.add(file); projectSymbols(mapOf(file to source)) }
@@ -34,12 +48,13 @@ class EditorCompletionTest {
         val code = "// long document\n".repeat(100000) + "cre"
         val value = TextFieldValue(code, TextRange(code.length))
         assertEquals("cre", completionPrefix(value))
-        assertEquals(listOf("createCanvas"), editorCompletions(value))
+        assertEquals(listOf(CompletionCandidate("createCanvas")), projectCompletions(value, emptyList(), "sketch.js"))
     }
     @Test fun suggestionsIgnoreCaseButExcludeExactMatchAndShortPrefix() {
-        assertEquals(listOf("createCanvas"), editorCompletions(TextFieldValue("CRE", TextRange(3))))
-        assertTrue(editorCompletions(TextFieldValue("createCanvas", TextRange(12))).isEmpty())
-        assertTrue(editorCompletions(TextFieldValue("c", TextRange(1))).isEmpty())
+        assertEquals(listOf(CompletionCandidate("createCanvas")),
+            projectCompletions(TextFieldValue("CRE", TextRange(3)), emptyList(), "sketch.js"))
+        assertTrue(projectCompletions(TextFieldValue("createCanvas", TextRange(12)), emptyList(), "sketch.js").isEmpty())
+        assertTrue(projectCompletions(TextFieldValue("c", TextRange(1)), emptyList(), "sketch.js").isEmpty())
     }
 
     @Test fun projectCompletionUsesCurrentAndOtherFilesBeforeBundledNames() {

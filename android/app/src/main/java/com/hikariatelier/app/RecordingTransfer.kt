@@ -5,7 +5,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 /** Only one capture owns this bounded, temporary stream at a time. */
-internal class RecordingTransfer(private val directory: File) {
+internal class RecordingTransfer(private val directory: File, private val allowEmpty: Boolean = false) {
     private var id = ""
     private var file: File? = null
     private var output: FileOutputStream? = null
@@ -39,7 +39,7 @@ internal class RecordingTransfer(private val directory: File) {
         if (token != id || output == null) return null
         return try {
             output!!.close()
-            check(bytes > 0)
+            check(allowEmpty || bytes > 0)
             file.also { file = null; output = null; id = "" }
         } catch (_: Exception) { abort(token); null }
     }

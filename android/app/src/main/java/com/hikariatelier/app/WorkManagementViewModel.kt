@@ -72,6 +72,13 @@ internal class WorkManagementViewModel(
     var showSnapshotSheet by mutableStateOf(false)
     var showAspectRatioDialog by mutableStateOf(false)
     var showRuntimeDialog by mutableStateOf(false)
+    var galleryRenameWorkId by mutableStateOf<String?>(null)
+    var galleryDeleteIds by mutableStateOf<Set<String>>(emptySet())
+    var galleryTagIds by mutableStateOf<Set<String>>(emptySet())
+    private var deletionUndo: DeletedWorkBatch? = null
+    private var deletionSequence = 0L
+    var deletionUndoToken by mutableStateOf<Long?>(null)
+        private set
     var editingTagsWorkId by mutableStateOf<String?>(null)
     val editingTagsWork get() = session.worksState.value.find { it.id == editingTagsWorkId }
     var previewRevision by mutableIntStateOf(0)
@@ -526,6 +533,7 @@ internal class WorkManagementViewModel(
         persist(next, session.activeWorkIdState.value)
         commit(next)
         showRenameDialog = false
+        galleryRenameWorkId = null
         emit(WorkEvent())
     }
     fun togglePin(workId: String) = changeWork(workId) { it.isPinned = !it.isPinned }
@@ -542,19 +550,97 @@ internal class WorkManagementViewModel(
         commit(next)
         emit(WorkEvent())
     }
-    fun deleteCurrentWork() = execute(locksEditor = true) {
-        val id = session.activeWorkIdState.value
-        val next = snapshots().filter { it.id != id }
-        require(next.isNotEmpty())
-        persist(next, next.first().id)
-        hydrate(next.first().id)
-        session.clearAuxiliaryEditors(id)
-        parameterDrafts.remove(id); ratioDrafts.remove(id); parameterJobs.remove(id)?.cancel()
-        val hydrated = next.map { work -> session.worksState.value.first { it.id == work.id } }
-        commit(hydrated, next.first().id, replaceEditor = true)
-        showDeleteDialog = false
-        emit(WorkEvent(rerun = true))
+    /** Load bodies before deletion/duplication/export without committing placeholder content. */
+    private suspend fun operationWorks(ids: Set<String>): List<Work> {
+        val captured = snapshots(includeEdits = true, copyIds = ids)
+        require(ids.isNotEmpty() && ids.all { id -> captured.any { it.id == id } })
+        return captured.map { work ->
+            if (work.id in ids && !work.bodyLoaded) {
+                withContext(io) { persistence.loadWork(selectedFolderUri, work.id) }
+                    ?: error("Missing work body")
+            } else work
+        }
     }
+
+    fun duplicateGalleryWork(workId: String) = execute("作品を複製できませんでした", locksEditor = true) {
+        val captured = operationWorks(setOf(workId))
+        val copy = copyGalleryWork(captured.first { it.id == workId }, captured.map { it.title }.toSet())
+        val next = captured + copy
+        persist(next, session.activeWorkIdState.value)
+        commit(next, savedEdits = true)
+        emit(WorkEvent(message = "作品を複製しました"))
+    }
+
+    fun tagGalleryWorks(ids: Set<String>, rawTag: String, remove: Boolean = false) = execute(blockUi = false) {
+        val tag = rawTag.trim().removePrefix("#").trim()
+        require(tag.isNotBlank())
+        val next = snapshots(copyIds = ids)
+        require(ids.isNotEmpty() && ids.all { id -> next.any { it.id == id } })
+        next.filter { it.id in ids }.forEach { work ->
+            val changed = if (remove) work.tags.removeAll { it.equals(tag, true) }
+                else if (work.tags.none { it.equals(tag, true) }) { work.tags.add(tag); true } else false
+            if (changed) work.updatedAt = System.currentTimeMillis()
+        }
+        persist(next, session.activeWorkIdState.value)
+        commit(next)
+        galleryTagIds = emptySet()
+        emit(WorkEvent())
+    }
+
+    fun deleteCurrentWork() = deleteGalleryWorks(setOf(session.activeWorkIdState.value))
+
+    fun deleteGalleryWorks(ids: Set<String>) = execute("作品を削除できませんでした", locksEditor = true) {
+        val before = operationWorks(ids)
+        val survivors = before.filterNot { it.id in ids }
+        require(survivors.isNotEmpty()) // Keep the existing last-work protection.
+        val oldId = session.activeWorkIdState.value
+        val replacingEditor = oldId in ids
+        val nextId = if (replacingEditor) survivors.first().id else oldId
+        // A missing replacement body must fail before writing the deletion to disk.
+        val next = survivors.map { work ->
+            if (work.id == nextId && !work.bodyLoaded) {
+                withContext(io) { persistence.loadWork(selectedFolderUri, work.id) }
+                    ?: error("Missing replacement work")
+            } else work
+        }
+        val removed = before.mapIndexedNotNull { index, work ->
+            if (work.id in ids) RemovedGalleryWork(index, snapshotWork(work)) else null
+        }
+        persist(next, nextId)
+        ids.forEach { id ->
+            session.clearAuxiliaryEditors(id)
+            parameterDrafts.remove(id); ratioDrafts.remove(id); parameterJobs.remove(id)?.cancel()
+        }
+        deferredWorkIds.removeAll(ids + nextId)
+        commit(next, nextId, replaceEditor = replacingEditor, savedEdits = true)
+        showDeleteDialog = false
+        galleryDeleteIds = emptySet()
+        val token = ++deletionSequence
+        deletionUndo = DeletedWorkBatch(token, selectedFolderUri?.toString(), removed)
+        deletionUndoToken = token
+        emit(WorkEvent(rerun = replacingEditor))
+    }
+
+    fun undoGalleryDeletion(token: Long) = execute("作品を復元できませんでした", locksEditor = true) {
+        val batch = deletionUndo ?: return@execute
+        require(batch.token == token && batch.folder == selectedFolderUri?.toString())
+        val next = restoreGalleryWorks(snapshots(includeEdits = true), batch.removed)
+        persist(next, session.activeWorkIdState.value)
+        commit(next, savedEdits = true)
+        batch.removed.forEach { deferredWorkIds.remove(it.work.id) }
+        dismissGalleryDeletion(token)
+        emit(WorkEvent(message = "作品を復元しました"))
+    }
+
+    fun dismissGalleryDeletion(token: Long) {
+        if (deletionUndoToken == token) {
+            deletionUndo = null
+            deletionUndoToken = null
+        }
+    }
+
+    private fun retainedUndoWorks(): List<Work> = deletionUndo?.removed?.map { it.work }.orEmpty()
+
     fun addSamples(samples: List<Work>, fromPrompt: Boolean = false) = execute {
         val next = snapshots() + samples.map(::snapshotWork)
         persist(next, session.activeWorkIdState.value)
@@ -625,7 +711,7 @@ internal class WorkManagementViewModel(
         execute("素材を追加できませんでした。ファイル名・サイズ・保存先を確認してください") {
             val next = snapshots()
             val target = next.first { it.id == workId }
-            withContext(io) { (persistence as? WorkStoreRepository)?.pruneUnusedAssets(next, preview) }
+            withContext(io) { (persistence as? WorkStoreRepository)?.pruneUnusedAssets(next + retainedUndoWorks(), preview) }
             val updated = requireNotNull(transfer).readAssets(uris, target.assets.toMap())
             target.assets.clear(); target.assets.putAll(updated)
             target.updatedAt = System.currentTimeMillis()
@@ -649,6 +735,7 @@ internal class WorkManagementViewModel(
     }
 
     fun saveAuxiliaryFiles(updatedFiles: Map<String, String>) = execute {
+        validateProjectTextFiles(updatedFiles, session.editorValueState.value.text)
         val id = session.activeWorkIdState.value
         val original = session.worksState.value.first { it.id == id }
         val changedNames = (original.files.keys + updatedFiles.keys).filter { original.files[it] != updatedFiles[it] }
@@ -664,14 +751,25 @@ internal class WorkManagementViewModel(
         auxiliaryFileContent = ""
         emit(WorkEvent(forceRun = true, closeAuxiliary = true))
     }
-    fun saveRuntime(version: String, sound: Boolean, libraries: Map<String, String>) = execute {
+    fun saveRuntime(version: String, sound: Boolean, libraries: Map<String, String>,
+                    config: ProjectDocumentConfig? = null) = execute {
         val next = snapshots()
         val id = session.activeWorkIdState.value
+        val configKey = "$id/$PROJECT_CONFIG_FILE"
+        val capturedConfigDraft = session.fileDrafts[configKey]
         next.first { it.id == id }.apply {
-            p5Version = version; p5SoundEnabled = sound; this.libraries = libraries
+            p5Version = normalizedP5Version(version); p5SoundEnabled = sound; this.libraries = normalizedWorkLibraries(libraries)
+            if (config != null) {
+                val latest = files.mapValues { (name, saved) -> session.fileDrafts["$id/$name"] ?: saved }
+                val configured = withProjectDocumentConfig(latest, config)
+                files.clear(); files.putAll(configured)
+            }
             updatedAt = System.currentTimeMillis()
         }
-        persist(next, id); commit(next)
+        persist(next, id)
+        if (config != null && session.fileDrafts[configKey] == capturedConfigDraft)
+            session.clearAuxiliaryEditor(id, PROJECT_CONFIG_FILE)
+        commit(next)
         showRuntimeDialog = false
         emit(WorkEvent(forceRun = true))
     }
@@ -773,6 +871,7 @@ internal class WorkManagementViewModel(
         }
         folderRepository.select(uri)
         selectedFolderUri = uri
+        deletionUndoToken?.let(::dismissGalleryDeletion)
         loadFailure = null
         if (stored != null && stored.works.isNotEmpty()) {
             val id = stored.activeWorkId.takeIf { candidate -> stored.works.any { it.id == candidate } }
@@ -821,6 +920,7 @@ internal class WorkManagementViewModel(
         })
         session.clearAuxiliaryEditors()
         clearMetadataDrafts()
+        deletionUndoToken?.let(::dismissGalleryDeletion)
         commit(backup.store.works, id, replaceEditor = true)
         deferredWorkIds.clear()
         loadFailure = null
@@ -834,6 +934,14 @@ internal class WorkManagementViewModel(
         requireNotNull(transfer).writeBackup(uri, listOf(work), work.id, "{}", includeTemplates = false)
         emit(WorkEvent(message = "作品ZIPを保存しました"))
     }
+    fun exportGalleryWorks(uri: Uri, ids: Set<String>, folderAtRequest: String?) =
+        execute("作品ZIPを保存できませんでした") {
+            require(folderAtRequest == selectedFolderUri?.toString())
+            val selected = operationWorks(ids).filter { it.id in ids }
+            requireNotNull(transfer).writeBackup(uri, selected, selected.first().id, "{}", includeTemplates = false)
+            emit(WorkEvent(message = "作品ZIPを保存しました"))
+        }
+
     fun importWorkZip(uri: Uri) = execute("作品ZIPを読み込めませんでした") {
         val repository = requireNotNull(transfer)
         val backup = repository.readWorkZip(uri)
@@ -871,7 +979,7 @@ internal class WorkManagementViewModel(
             p5Busy = true; p5Error = null
             try {
                 val existingWorks = snapshots()
-                withContext(io) { (persistence as? WorkStoreRepository)?.pruneUnusedAssets(existingWorks, preview) }
+                withContext(io) { (persistence as? WorkStoreRepository)?.pruneUnusedAssets(existingWorks + retainedUndoWorks(), preview) }
                 val work = requireNotNull(transfer).readP5(sketch)
                 val next = snapshots(includeEdits = true) + work
                 persistAndSwitch(next, work.id)

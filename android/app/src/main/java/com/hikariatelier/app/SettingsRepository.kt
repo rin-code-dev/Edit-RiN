@@ -9,6 +9,8 @@ import org.json.JSONObject
 internal interface SettingsPersistence {
     val samplePromptVersion: Int get() = 0
     fun dismissSamplePrompt(version: Int) {}
+    val releaseNotesPromptVersion: Int get() = 0
+    fun dismissReleaseNotesPrompt(version: Int) {}
     fun load(): SettingsUiState
     fun save(state: SettingsUiState)
 }
@@ -19,6 +21,11 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
     override val samplePromptVersion get() = preferences.getInt("dismissed_sample_prompt_version", 0)
     override fun dismissSamplePrompt(version: Int) {
         preferences.edit().putInt("dismissed_sample_prompt_version", version).apply()
+    }
+
+    override val releaseNotesPromptVersion get() = preferences.getInt("dismissed_release_notes_version", 0)
+    override fun dismissReleaseNotesPrompt(version: Int) {
+        preferences.edit().putInt("dismissed_release_notes_version", version).apply()
     }
 
     override fun load(): SettingsUiState = SettingsUiState(

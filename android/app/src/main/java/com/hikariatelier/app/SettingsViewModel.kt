@@ -29,6 +29,12 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
         repository.dismissSamplePrompt(version)
         samplePromptVersion = version
     }
+    var releaseNotesPromptVersion by mutableIntStateOf(repository.releaseNotesPromptVersion)
+        private set
+    fun dismissReleaseNotesPrompt(version: Int) {
+        repository.dismissReleaseNotesPrompt(version)
+        releaseNotesPromptVersion = version
+    }
 
     private fun <T> setting(read: (SettingsUiState) -> T, write: (SettingsUiState, T) -> SettingsUiState) =
         object : ReadWriteProperty<Any?, T> {

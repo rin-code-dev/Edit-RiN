@@ -1,92 +1,31 @@
-// Live Parameters Showcase
-// Edit:RiN supports live real-time parameter tweaking.
-// Open "Parameters" from the work menu to adjust values without reloading!
-
-// @rin number speed "Speed" 0.2 4.0 1.0 0.1
+// Parameters — controls generated from "@rin" comments
+// Open Parameters from the work menu and move the controls.
+// @rin number speed "Speed" 0.2 4 1 0.1
 // @rin number petals "Petals" 3 16 8 1
-// @rin color theme "Color" #00E5FF
-// @rin color bg "Background" #0F111A
-// @rin boolean glow "Glow Mode" true
-// @rin boolean filled "Fill Shapes" false
+// @rin color accent "Color" #A8C7FA
+// @rin boolean filled "Fill" false
 
-let angle = 0;
-
-function hexToRgb(hex) {
-  if (typeof hex !== 'string') return [0, 229, 255];
-  const c = hex.replace('#', '');
-  const n = parseInt(c.length === 3 ? c.split('').map(x => x + x).join('') : c, 16);
-  if (isNaN(n)) return [0, 229, 255];
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
+let t = 0;
 
 function setup() {
   createCanvas(600, 600);
+  strokeWeight(2);
 }
 
 function draw() {
-  const p = (typeof rinParams !== 'undefined') ? rinParams : {};
-  const speed = Number(p.speed ?? 1.0);
-  const petalCount = Math.max(3, Math.min(16, Math.round(Number(p.petals ?? 8))));
-  const themeHex = (typeof p.theme === 'string' && p.theme) ? p.theme : '#00E5FF';
-  const bgHex = (typeof p.bg === 'string' && p.bg) ? p.bg : '#0F111A';
-  const glow = Boolean(p.glow ?? true);
-  const fillShape = Boolean(p.filled ?? false);
+  background(9, 9, 11);
+  translate(width / 2, height / 2);
+  t += 0.02 * rinParams.speed;
 
-  const [bgR, bgG, bgB] = hexToRgb(bgHex);
-  const [r, g, b] = hexToRgb(themeHex);
+  stroke(rinParams.accent);
+  if (rinParams.filled) fill(rinParams.accent);
+  else noFill();
 
-  background(bgR, bgG, bgB);
-  translate(width * 0.5, height * 0.5);
-
-  angle += 0.015 * speed;
-
-  // Glow layer
-  if (glow) {
-    noFill();
-    for (let glowPass = 3; glowPass >= 1; glowPass--) {
-      strokeWeight(glowPass * 5);
-      stroke(r, g, b, 25 / glowPass);
-      drawMandala(petalCount, angle, false);
-    }
-  }
-
-  // Core mandala
-  if (fillShape) {
-    fill(r, g, b, 50);
-  } else {
-    noFill();
-  }
-  strokeWeight(2);
-  stroke(r, g, b, 230);
-  drawMandala(petalCount, angle, fillShape);
-
-  // Center core
-  noStroke();
-  fill(r, g, b, 200);
-  circle(0, 0, 12 + sin(angle * 3) * 4);
-}
-
-function drawMandala(petals, t, isFilled) {
-  const step = TWO_PI / petals;
-  for (let i = 0; i < petals; i++) {
+  const count = round(rinParams.petals);
+  for (let i = 0; i < count; i++) {
     push();
-    rotate(i * step + t * 0.3);
-
-    const len = 160 + sin(t * 2 + i) * 35;
-    const w = 50 + cos(t * 1.5 + i) * 20;
-
-    beginShape();
-    vertex(0, 0);
-    bezierVertex(w, len * 0.35, w * 0.8, len * 0.75, 0, len);
-    bezierVertex(-w * 0.8, len * 0.75, -w, len * 0.35, 0, 0);
-    endShape(CLOSE);
-
-    // Inner orbital rings
-    if (!isFilled) {
-      const orbitDist = len * 0.6;
-      circle(0, orbitDist, w * 0.4);
-    }
-
+    rotate(TWO_PI * i / count + t);
+    ellipse(110, 0, 160, 60);
     pop();
   }
 }

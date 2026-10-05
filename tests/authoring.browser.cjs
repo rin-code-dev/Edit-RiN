@@ -1,5 +1,6 @@
 // Optional integration check with a real Chromium browser (Node.js 22+).
 // BROWSER_BIN=/path/to/chromium node tests/authoring.browser.cjs
+// BROWSER_ARTIFACT_DIR=/path/to/output retains results and browser diagnostics.
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -12,7 +13,7 @@ for (const name of ['WEBGL', 'SHADER', 'MATTER']) {
 }
 templates.CIRCLE = JSON.parse(kotlin.match(/internal const val CIRCLE_TEMPLATE = (".*")/)[1]);
 const runner = fs.readFileSync(path.join(root, 'www/p5_runner.html'), 'utf8');
-const baseCases = ['1.11.5', '2.3.3'].flatMap(version => Object.keys(templates).flatMap(kind => ['fixed', 'responsive'].map(mode => ({ version, kind, mode }))));
+const baseCases = ['1.11.5', '2.3.4'].flatMap(version => Object.keys(templates).flatMap(kind => ['fixed', 'responsive'].map(mode => ({ version, kind, mode }))));
 const cases = baseCases.flatMap(c => [false, true].map(chunked => ({...c, chunked})));
 const caseTest = `<script>
 (async () => {
@@ -118,12 +119,14 @@ const server = http.createServer((req, res) => {
 server.listen(0,'127.0.0.1',async ()=>{
   const profile=fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'edit-rin-browser-'));
   const args=['--headless','--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-networking','--no-first-run','--no-default-browser-check','--user-data-dir='+profile,'--remote-debugging-port=0',`http://127.0.0.1:${server.address().port}`];
-  const child=spawn(process.env.BROWSER_BIN || '/opt/brave.com/brave/brave',args);let errors='';
+  const child=spawn(process.env.BROWSER_BIN || '/opt/brave.com/brave/brave',args);let errors='',spawnError;
   child.stderr.on('data',d=>errors+=d);
+  child.once('error',error=>{spawnError=error;errors+=String(error);});
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-  let ws;
+  let ws,results=[],passed=false;
   try {
-    for(let i=0;i<100&&!fs.existsSync(profile+'/DevToolsActivePort');i++)await sleep(100);
+    for(let i=0;i<100&&!spawnError&&!fs.existsSync(profile+'/DevToolsActivePort');i++)await sleep(100);
+    if(spawnError)throw spawnError;
     const port=fs.readFileSync(profile+'/DevToolsActivePort','utf8').split('\n')[0];
     const tabs=await (await fetch('http://127.0.0.1:'+port+'/json/list')).json();
     ws=new WebSocket(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);
@@ -131,7 +134,7 @@ server.listen(0,'127.0.0.1',async ()=>{
     let id=0;const pending=new Map();
     ws.onmessage=e=>{const data=JSON.parse(e.data);if(pending.has(data.id)){pending.get(data.id)(data.result);pending.delete(data.id);}};
     const evaluate=expression=>new Promise((resolve,reject)=>{const key=++id;const timer=setTimeout(()=>{pending.delete(key);reject(new Error('Browser evaluation timeout'));},5000);pending.set(key,value=>{clearTimeout(timer);resolve(value);});ws.send(JSON.stringify({id:key,method:'Runtime.evaluate',params:{expression,returnByValue:true}}));});
-    let results=[],last=0;
+    let last=0;
     for(let i=0;i<cases.length*16;i++){
       const r=await evaluate('JSON.stringify(window.__browserResults || [])');
       results=JSON.parse(r.result.value);
@@ -139,10 +142,32 @@ server.listen(0,'127.0.0.1',async ()=>{
       if(results.length===cases.length)break;
       await sleep(250);
     }
-    fs.writeFileSync(path.join(profile, 'results.json'),JSON.stringify(results,null,2));
-    if(results.length!==cases.length||results.some(x=>!x.ok))process.exitCode=1;
+    passed=results.length===cases.length&&results.every(x=>x.ok);
+    if(!passed)process.exitCode=1;
     console.log('BROWSER: '+results.filter(x=>x.ok).length+'/'+cases.length+' passed');
     if(results.length!==cases.length)console.log((await evaluate('document.querySelector("iframe")?.contentWindow.__test')).result);
-  }catch(e){console.log(String(e),errors.slice(-600));process.exitCode=1;}
-  finally {ws?.close();child.kill('SIGKILL');server.close();}
+  }catch(e){passed=false;console.log(String(e),errors.slice(-600));process.exitCode=1;}
+  finally {
+    ws?.close();
+    // Wait for Chromium to release the profile before deleting a successful run.
+    if(child.pid&&child.exitCode===null&&child.signalCode===null)await new Promise(resolve=>{
+      child.once('exit',resolve);child.kill('SIGKILL');
+    });
+    server.close();
+    const writeDiagnostics=directory=>{
+      fs.mkdirSync(directory,{recursive:true});
+      fs.writeFileSync(path.join(directory,'results.json'),JSON.stringify(results,null,2));
+      fs.writeFileSync(path.join(directory,'browser.stderr.log'),errors);
+    };
+    try {
+      if(process.env.BROWSER_ARTIFACT_DIR){
+        const directory=path.resolve(process.env.BROWSER_ARTIFACT_DIR);
+        fs.mkdirSync(directory,{recursive:true});
+        const output=fs.mkdtempSync(path.join(directory,'authoring-'));
+        writeDiagnostics(output);console.log('BROWSER ARTIFACTS: '+output);
+      }
+    }catch(error){passed=false;process.exitCode=1;errors+='\n'+String(error);console.log(String(error));}
+    if(passed)fs.rmSync(profile,{recursive:true,force:true});
+    else {writeDiagnostics(profile);console.log('BROWSER DIAGNOSTICS: '+profile);}
+  }
 });

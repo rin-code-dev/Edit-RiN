@@ -21,14 +21,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>): VisualTransformation {
-    val immediate = remember(dark, errors) { JavaScriptHighlighter(dark, errors) }
+internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>, file: String = "sketch.js"): VisualTransformation {
+    val immediate = remember(file, dark, errors) { projectFileHighlighter(file, dark, errors) }
     if (source.length < 8_000) return immediate
-    val result by produceState<Pair<String, TransformedText>?>(null, source, dark, errors) {
-        // Rapid typing supersedes this job before a full-document scan begins.
-        delay(120)
-        value = withContext(Dispatchers.Default) {
-            source to JavaScriptHighlighter(dark, errors).filter(AnnotatedString(source))
+    val result by key(file, dark, errors) {
+        produceState<Pair<String, TransformedText>?>(null, source) {
+            // Rapid typing supersedes this job before a full-document scan begins.
+            delay(120)
+            value = withContext(Dispatchers.Default) {
+                source to projectFileHighlighter(file, dark, errors).filter(AnnotatedString(source))
+            }
         }
     }
     return remember(source, result) {

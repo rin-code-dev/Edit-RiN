@@ -95,16 +95,7 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
 
     suspend fun readWorkZip(uri: Uri): AssetBackup {
         val backup = readBackup(uri)
-        require(backup.store.works.size == 1)
-        val original = backup.store.works.single()
-        val imported = Work(id = java.util.UUID.randomUUID().toString(), title = original.title,
-            code = original.code, files = original.files.toMutableMap(), assets = original.assets.toMap(),
-            previewAspectRatio = original.previewAspectRatio, p5Version = original.p5Version,
-            p5SoundEnabled = original.p5SoundEnabled, libraries = original.libraries.toMap(),
-            parameterValues = original.parameterValues.toMap(), isPinned = original.isPinned,
-            tags = original.tags.toList())
-        return AssetBackup(WorkStore(listOf(imported), imported.id), null,
-            mapOf(imported.id to backup.snapshots[original.id].orEmpty()))
+        return reidentifyGalleryImport(backup)
     }
 
     suspend fun fetchAccount(username: String): List<P5Sketch> = withContext(Dispatchers.IO) {

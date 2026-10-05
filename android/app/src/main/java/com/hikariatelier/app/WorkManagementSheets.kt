@@ -201,7 +201,8 @@ internal fun WorkSelectorChip(
     modifier: Modifier = Modifier,
     saveLabel: String? = null,
     saveFailed: Boolean = false,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    labelText: String? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -255,7 +256,8 @@ internal fun WorkSelectorChip(
                         .widthIn(max = if (manualRotation) 160.dp else 220.dp)
                 ) {
                     Text(
-                        saveLabel?.let { uiText("作品") + " · " + it } ?: if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
+                        labelText ?: saveLabel?.let { uiText("作品") + " · " + it } ?:
+                            if (hasUnsavedChanges) uiText("作品・未保存") else uiText("作品"),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (saveFailed) colors.error else if (hasUnsavedChanges) colors.tertiary else colors.onSurfaceVariant,
                         maxLines = 1,
@@ -666,53 +668,6 @@ internal fun WorkActionsMenu(
             }
         }
     }
-}
-
-@Composable
-internal fun WorkGallerySheet(
-    visible: Boolean,
-    works: List<Work>,
-    activeWorkId: String,
-    hasUnsavedChanges: Boolean,
-    initialSort: String,
-    cacheDir: java.io.File,
-    previewRevision: Int,
-    updatedPreviewId: String?,
-    assetBusy: Boolean,
-    onSortChange: (String) -> Unit,
-    onSelectWork: (Work, Boolean) -> Unit,
-    onAddWork: () -> Unit,
-    onDismiss: () -> Unit,
-    onTogglePin: (Work) -> Unit,
-    onEditTags: (Work) -> Unit,
-    onDeleteGlobalTag: (String) -> Unit,
-    textTranslator: (String, Array<out Any?>) -> String,
-    windowSetup: @Composable () -> Unit = {}
-) {
-    if (!visible) return
-
-    WorkGallery(
-        works = works,
-        activeId = activeWorkId,
-        unsaved = hasUnsavedChanges,
-        sort = initialSort,
-        cacheDir = cacheDir,
-        previewRevision = previewRevision,
-        updatedPreviewId = updatedPreviewId,
-        text = { s -> textTranslator(s, emptyArray()) },
-        onSort = onSortChange,
-        onOpen = { work, openMenu ->
-            if (!assetBusy) {
-                onSelectWork(work, openMenu)
-            }
-        },
-        onAdd = onAddWork,
-        onDismiss = onDismiss,
-        onTogglePin = onTogglePin,
-        onEditTags = onEditTags,
-        onDeleteGlobalTag = onDeleteGlobalTag,
-        windowSetup = windowSetup
-    )
 }
 
 @Composable

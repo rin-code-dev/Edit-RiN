@@ -1,36 +1,27 @@
-// Edit:RiN Live Parameters Test
-// Run the preview, then open Preview Actions -> Parameters.
+// Wave — layered sine lines
 // @rin number speed "Speed" 0 3 1 0.1
 // @rin number lineWidth "Line Width" 1 16 4 1
-// @rin color ink "Ink Color" #BA90E2
+// @rin color ink "Ink Color" #A8C7FA
 
-let phase = 0;
+let t = 0;
 
 function setup() {
-  createCanvas(800, 800);
+  createCanvas(600, 600);
+  noFill();
 }
 
 function draw() {
-  background(12, 15, 24);
-  phase += 0.025 * rinParams.speed;
+  background(9, 9, 11);
+  t += 0.025 * rinParams.speed;
 
-  noFill();
   stroke(rinParams.ink);
   strokeWeight(rinParams.lineWidth);
 
   for (let band = 0; band < 5; band++) {
     beginShape();
-    for (let x = 50; x <= 750; x += 8) {
-      const wave = sin(x * 0.015 + phase + band * 0.55) * 55;
-      const ripple = sin(x * 0.036 - phase * 0.7) * 15;
-      vertex(x, 260 + band * 70 + wave + ripple);
+    for (let x = 50; x <= 550; x += 8) {
+      vertex(x, 180 + band * 60 + sin(x * 0.015 + t + band * 0.55) * 40);
     }
     endShape();
   }
-
-  const orbitX = 400 + cos(phase) * 210;
-  const orbitY = 400 + sin(phase * 1.3) * 170;
-  fill(rinParams.ink);
-  noStroke();
-  circle(orbitX, orbitY, 20 + rinParams.lineWidth * 2);
 }

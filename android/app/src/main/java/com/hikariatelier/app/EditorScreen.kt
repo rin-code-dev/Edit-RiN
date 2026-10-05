@@ -1,9 +1,12 @@
 package com.hikariatelier.app
 
 import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -12,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
@@ -24,17 +28,31 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -162,10 +180,23 @@ internal fun EditorScreen(
     var showAddDialog by workManagementViewModel::showAddDialog
     var showDeleteDialog by workManagementViewModel::showDeleteDialog
     var showRenameDialog by workManagementViewModel::showRenameDialog
-    val editingTagsWork = workManagementViewModel.editingTagsWork
     var workMenuExpanded by workManagementViewModel::workMenuExpanded
-    var workSettingsMenuExpanded by workManagementViewModel::workSettingsMenuExpanded
-    var workActionsMenuExpanded by workManagementViewModel::workActionsMenuExpanded
+
+    val workGalleryState = rememberWorkGalleryState()
+    val galleryTarget = workMenuExpanded
+    val galleryProgress by animateFloatAsState(
+        targetValue = if (galleryTarget) 1f else 0f,
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "inlineWorkGallery"
+    )
+    val galleryPresent = galleryTarget || galleryProgress > 0f
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val galleryDensity = LocalDensity.current
+    var galleryPreviewBitmap by remember(isLandscape, galleryDensity) { mutableStateOf<Bitmap?>(null) }
+    var galleryPreviewBounds by remember(isLandscape, galleryDensity) { mutableStateOf<Rect?>(null) }
+    var galleryThumbnailBounds by remember(isLandscape, galleryDensity) { mutableStateOf<Rect?>(null) }
+    var galleryPreviewOwner by remember(isLandscape) { mutableStateOf<String?>(null) }
+    var galleryPreviewToken by remember(isLandscape) { mutableStateOf<String?>(null) }
 
     var showConsole by consoleViewModel::showConsole
     var showSearchDialog by searchReplaceViewModel::showSearchDialog
@@ -197,7 +228,6 @@ internal fun EditorScreen(
         mutableStateOf(Color(0xFFE91E63))
     }
 
-    val currentSnapshots = snapshotViewModel.currentSnapshots
     val snapshotBusy = sessionViewModel.snapshotOperationWorkId != null
     LaunchedEffect(activeWorkId) { snapshotViewModel.migrateLegacy() }
     LaunchedEffect(showSnapshotSheet, activeWorkId, sessionViewModel.snapshotOperationWorkId) {
@@ -239,15 +269,10 @@ internal fun EditorScreen(
         mutableStateOf(false)
     }
     var recordingFormatLabel by recordingViewModel::recordingFormatLabel
-    var recordingStartedAt by recordingViewModel::recordingStartedAt
     var recordingLimitMillis by recordingViewModel::recordingLimitMillis
     var recordingElapsedMillis by recordingViewModel::recordingElapsedMillis
-    var savedPreviewMedia by recordingViewModel::savedPreviewMedia
-    var shareCardArtwork by recordingViewModel::shareCardArtwork
-    var shareCardAuthor by settingsViewModel::shareCardAuthor
     var isRecordingSaving by recordingViewModel::isRecordingSaving
     var mp4BitrateMbps by settingsViewModel::mp4BitrateMbps
-    var xShareText by settingsViewModel::xShareText
     var recordingCountdownSeconds by settingsViewModel::recordingCountdownSeconds
     var pendingRecordingFormat by recordingViewModel::pendingRecordingFormat
     var recordingCountdownRemaining by recordingViewModel::recordingCountdownRemaining
@@ -275,6 +300,46 @@ internal fun EditorScreen(
         mutableStateOf(false)
     }
 
+    fun stopPreviewRecording() {
+        preview.webView?.evaluateJavascript("window.__editKiroStopRecording?.()", null)
+    }
+
+    fun togglePreviewRecording() {
+        if (pendingRecordingFormat != null) {
+            cancelRecordingCountdown()
+        } else if (isRecordingSaving) {
+            // Wait for the current recording to finish saving.
+        } else if (isPreviewRecording) {
+            stopPreviewRecording()
+        } else {
+            showRecordingFormatDialog = true
+        }
+        previewActionsExpanded = false
+    }
+
+    fun togglePreviewPlayback() {
+        isPaused = !isPaused
+        preview.webView?.evaluateJavascript(
+            if (isPaused) "pauseSketch()" else "resumeSketch()", null
+        )
+    }
+
+    fun showScreenshotOptions() {
+        showScreenshotScale = true
+        previewActionsExpanded = false
+    }
+
+    fun sharePreviewCard() {
+        preview.requestScreenshot(forShareCard = true)
+        previewActionsExpanded = false
+    }
+
+    fun openPreviewParameters() {
+        previewActionsExpanded = false
+        showExpandedPreview = false
+        showParameterSheet = true
+    }
+
     LaunchedEffect(showExpandedPreview) {
         previewActionsExpanded = false
         if (!showExpandedPreview && expandedCanvasSwapped) {
@@ -295,11 +360,6 @@ internal fun EditorScreen(
 
     var auxiliaryFileContent by workManagementViewModel::auxiliaryFileContent
 
-    var searchQuery by searchReplaceViewModel::searchQuery
-    var replacementText by searchReplaceViewModel::replacementText
-    var searchWholeWork by searchReplaceViewModel::searchWholeWork
-    var searchMatchCase by searchReplaceViewModel::searchMatchCase
-    var goToLineText by searchReplaceViewModel::goToLineText
     val consoleEntries = consoleViewModel.entries
 
     val editorFocusRequester =
@@ -307,7 +367,6 @@ internal fun EditorScreen(
             FocusRequester()
         }
 
-    val lastSavedText by sessionViewModel.lastSavedTextState
 
     val hasUnsavedChanges by remember(activeWorkId) {
         derivedStateOf {
@@ -321,6 +380,7 @@ internal fun EditorScreen(
 
     var selectedEditorFile by rememberSaveable(activeWorkId) { mutableStateOf("sketch.js") }
     val editingFile = selectedEditorFile.takeIf { it in activeWork?.files.orEmpty() } ?: "sketch.js"
+    val editingJavaScript = isJavaScriptProjectFile(editingFile)
     val editingKey = "$activeWorkId/$editingFile"
     val editingState = if (editingFile == "sketch.js") sessionViewModel.editorValueState else
         remember(editingKey, sessionViewModel.auxiliaryEditorGeneration) {
@@ -350,7 +410,6 @@ internal fun EditorScreen(
             sessionViewModel.fileRedoStacks.getOrPut(editingKey) { mutableStateListOf() }
         }
     var pendingRevision by remember { mutableStateOf<WorkRevision?>(null) }
-    var consoleHeight by consoleViewModel::consoleHeight
     var consoleExpanded by consoleViewModel::consoleExpanded
     val workSaving = workManagementViewModel.workSaving
     var previewAsset by remember { mutableStateOf<Pair<String, ProjectAsset>?>(null) }
@@ -375,6 +434,16 @@ internal fun EditorScreen(
         editingValue = nextValue
     }
 
+    fun formatEditingFile() {
+        if (!editingJavaScript) {
+            Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
+            return
+        }
+        val formatted = formatJavaScript(editingText)
+        if (formatted != editingText) applyEditorChange(TextFieldValue(formatted, TextRange(0)))
+        editorFocusRequester.requestFocus()
+    }
+
     fun undoEditorChange() {
         if (sessionViewModel.editorInputLocked) return
         val restored = sessionViewModel.undo(editingValue, undoStack, redoStack) ?: return
@@ -389,7 +458,9 @@ internal fun EditorScreen(
         editorFocusRequester.requestFocus()
     }
 
-    BackHandler(enabled = editorFocused && !showSettings && !showUserGuide) { focusManager.clearFocus(force = true) }
+    BackHandler(enabled = editorFocused && !galleryPresent && !showSettings && !showUserGuide) {
+        focusManager.clearFocus(force = true)
+    }
 
     BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = showUserGuide) { showUserGuide = false }
@@ -531,6 +602,32 @@ internal fun EditorScreen(
     val importWorkZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) workManagementViewModel.importWorkZip(uri)
     }
+    var pendingGalleryExportIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var pendingGalleryExportFolder by rememberSaveable { mutableStateOf<String?>(null) }
+    val exportGalleryZip = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val ids = pendingGalleryExportIds.toSet()
+        if (uri != null && ids.isNotEmpty()) {
+            workManagementViewModel.exportGalleryWorks(uri, ids, pendingGalleryExportFolder)
+        }
+        pendingGalleryExportIds = emptyList()
+        pendingGalleryExportFolder = null
+    }
+    val deletionSnackbar = remember { SnackbarHostState() }
+    val deletionUndoToken = workManagementViewModel.deletionUndoToken
+    LaunchedEffect(deletionUndoToken) {
+        val token = deletionUndoToken ?: return@LaunchedEffect
+        while (workManagementViewModel.deletionUndoToken == token) {
+            val result = deletionSnackbar.showSnackbar(uiText("作品を削除しました"),
+                actionLabel = uiText("元に戻す"), withDismissAction = true, duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) {
+                workManagementViewModel.undoGalleryDeletion(token)?.join()
+                // Persistence failure keeps the same batch available for another attempt.
+            } else {
+                workManagementViewModel.dismissGalleryDeletion(token)
+                break
+            }
+        }
+    }
     val currentWorkEventHandler = rememberUpdatedState<(WorkEvent) -> Unit> { event ->
         if (event.haptic) hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
         event.message?.let { Toast.makeText(context, uiText(it), Toast.LENGTH_LONG).show() }
@@ -606,47 +703,154 @@ internal fun EditorScreen(
             modifier = modifier
         )
 
-        if (workMenuExpanded) {
-            var sort by settingsViewModel::workSort
-            val previewRevision = workManagementViewModel.previewRevision
-            val updatedPreviewId = workManagementViewModel.updatedPreviewId
-            LaunchedEffect(Unit) {
-                val view = preview.webView
-                val workId = preview.session.workId
-                val token = preview.session.assets.token
-                if (view != null && workId != null && !isError && view.url == previewUrl(token)) {
-                    captureWorkPreview(view) { encoded ->
-                        if (preview.session.workId == workId && preview.session.assets.token == token) {
-                            lifecycleScope.launch {
-                                if (storeWorkPreview(workPreviewFile(cacheDir, workId), encoded)) {
-                                    workManagementViewModel.notifyPreviewUpdated(workId)
-                                }
-                            }
-                        }
-                    }
+    }
+
+    fun closeWorkGallery() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        workMenuExpanded = false
+    }
+
+    // Capture the renderer's owner, which can differ from the selected work when auto-run is off.
+    LaunchedEffect(workMenuExpanded, isLandscape) {
+        if (!workMenuExpanded) return@LaunchedEffect
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        navigationTarget = null
+        navigationSequence++
+        galleryPreviewBitmap = null
+        galleryThumbnailBounds = null
+        galleryPreviewOwner = null
+        galleryPreviewToken = null
+        val webView = preview.webView ?: return@LaunchedEffect
+        val owner = preview.session.workId ?: return@LaunchedEffect
+        val token = preview.session.assets.token
+        if (isError || webView.url != previewUrl(preview.session.assets)) return@LaunchedEffect
+        galleryPreviewOwner = owner
+        galleryPreviewToken = token
+        webView.clearFocus()
+        galleryPreviewBitmap = withContext(Dispatchers.IO) {
+            runCatching { BitmapFactory.decodeFile(workPreviewFile(cacheDir, owner).path) }.getOrNull()
+        }
+        captureWorkPreview(webView) { encoded ->
+            lifecycleScope.launch {
+                if (preview.session.workId != owner || preview.session.assets.token != token) return@launch
+                val bitmap = withContext(Dispatchers.Default) {
+                    runCatching {
+                        val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }.getOrNull()
+                }
+                if (preview.session.workId != owner || preview.session.assets.token != token) return@launch
+                if (galleryPreviewToken == token && workMenuExpanded) galleryPreviewBitmap = bitmap
+                if (storeWorkPreview(workPreviewFile(cacheDir, owner), encoded)) {
+                    workManagementViewModel.notifyPreviewUpdated(owner)
                 }
             }
-            WorkGallerySheet(
-                visible = true,
-                works = works,
-                activeWorkId = activeWorkId,
-                hasUnsavedChanges = hasUnsavedChanges,
-                initialSort = sort,
-                cacheDir = cacheDir,
-                previewRevision = previewRevision,
-                updatedPreviewId = updatedPreviewId,
-                assetBusy = assetBusy,
-                onSortChange = { sort = it },
-                onSelectWork = { work, openMenu -> workManagementViewModel.selectWork(work.id, openMenu) },
-                onAddWork = { workMenuExpanded = false; showAddDialog = true },
-                onDismiss = { workMenuExpanded = false },
-                onTogglePin = { target -> workManagementViewModel.togglePin(target.id) },
-                onEditTags = { target -> workManagementViewModel.editingTagsWorkId = target.id },
-                onDeleteGlobalTag = { tag -> workManagementViewModel.deleteGlobalTag(tag) },
-                textTranslator = { s, args -> uiText(s, *args) },
-                windowSetup = { KeepLandscapeDialogImmersive() }
-            )
         }
+    }
+
+    DisposableEffect(galleryPresent, preview.generation) {
+        val webView = preview.webView
+        val accessibility = webView?.importantForAccessibility
+        val focusable = webView?.isFocusable
+        val touchFocusable = webView?.isFocusableInTouchMode
+        if (galleryPresent) {
+            webView?.clearFocus()
+            webView?.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            webView?.isFocusable = false
+        }
+        onDispose {
+            if (galleryPresent && webView != null && preview.webView === webView) {
+                webView.importantForAccessibility = accessibility!!
+                webView.isFocusable = focusable!!
+                webView.isFocusableInTouchMode = touchFocusable!!
+            }
+        }
+    }
+    LaunchedEffect(galleryPresent) {
+        if (!galleryPresent) {
+            galleryPreviewBitmap = null
+            // Preserve the filtered thumbnail's position until the closing motion finishes.
+            workGalleryState.closeSearch()
+            workGalleryState.finishSelection()
+        }
+    }
+    BackHandler(enabled = galleryTarget && !keyboardVisible && !showSettings && !showUserGuide) {
+        closeWorkGallery()
+    }
+
+    val galleryMorphActive = galleryPresent && galleryProgress > 0f &&
+        galleryProgress < 1f && galleryPreviewBitmap?.isRecycled == false &&
+        galleryPreviewBounds?.usableGalleryBounds() == true &&
+        galleryThumbnailBounds?.usableGalleryBounds() == true &&
+        preview.session.workId == galleryPreviewOwner &&
+        preview.session.assets.token == galleryPreviewToken
+
+    fun jumpToEditingWork() {
+        if (assetBusy) return
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        workGalleryState.jumpToWork(activeWorkId)
+    }
+    fun toggleAllGallerySelection() {
+        if (assetBusy) return
+        val allIds = works.map { it.id }.toSet()
+        workGalleryState.selectedIds = if (workGalleryState.selectedIds == allIds) emptySet() else allIds
+    }
+
+    @Composable
+    fun GalleryActions(modifier: Modifier = Modifier, buttonSize: androidx.compose.ui.unit.Dp = 38.dp) {
+        WorkGalleryActions(state = workGalleryState, onDismiss = ::closeWorkGallery,
+            text = { uiText(it) }, sort = settingsViewModel.workSort,
+            onSort = { settingsViewModel.workSort = it }, modifier = modifier, buttonSize = buttonSize,
+            busy = assetBusy, canDeleteSelection = workGalleryState.selectedIds.size < works.size,
+            onTagSelection = {
+                focusManager.clearFocus(force = true); keyboardController?.hide()
+                workManagementViewModel.galleryTagIds = workGalleryState.selectedIds
+            },
+            onDeleteSelection = {
+                focusManager.clearFocus(force = true); keyboardController?.hide()
+                workManagementViewModel.galleryDeleteIds = workGalleryState.selectedIds
+            },
+            onExportSelection = {
+                focusManager.clearFocus(force = true); keyboardController?.hide()
+                pendingGalleryExportIds = workGalleryState.selectedIds.toList()
+                pendingGalleryExportFolder = selectedFolderUri?.toString()
+                exportGalleryZip.launch("Edit-RiN-works.zip")
+            })
+    }
+
+    @Composable
+    fun InlineGallery(modifier: Modifier) {
+        InlineWorkGallery(
+            works = works, activeId = activeWorkId, unsaved = hasUnsavedChanges,
+            sort = settingsViewModel.workSort, cacheDir = cacheDir,
+            previewRevision = workManagementViewModel.previewRevision,
+            updatedPreviewId = workManagementViewModel.updatedPreviewId,
+            text = { uiText(it) },
+            onOpen = { work, openMenu ->
+                if (!assetBusy) {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    workManagementViewModel.selectWork(work.id, openMenu)
+                }
+            },
+            onAdd = { closeWorkGallery(); showAddDialog = true },
+            state = workGalleryState,
+            modifier = modifier.semantics { paneTitle = uiText("作品") },
+            onTogglePin = { workManagementViewModel.togglePin(it.id) },
+            onEditTags = { workManagementViewModel.editingTagsWorkId = it.id },
+            onDeleteGlobalTag = { workManagementViewModel.deleteGlobalTag(it) },
+            busy = assetBusy,
+            onRename = { workManagementViewModel.galleryRenameWorkId = it.id },
+            onDuplicate = { workManagementViewModel.duplicateGalleryWork(it.id) },
+            onDelete = { workManagementViewModel.galleryDeleteIds = setOf(it.id) },
+            onActiveThumbnailBounds = { if (galleryTarget) galleryThumbnailBounds = it },
+            morphWorkId = galleryPreviewOwner,
+            suppressMorphThumbnail = galleryMorphActive,
+            morphProgress = galleryProgress
+        )
     }
 
     @Composable
@@ -679,14 +883,10 @@ internal fun EditorScreen(
             onRedo = { redoEditorChange() },
             onSearch = { showSearchDialog = true },
             onFormat = {
-                val formatted = formatJavaScript(editingText)
-                if (formatted != editingText) {
-                    applyEditorChange(TextFieldValue(formatted, TextRange(0)))
-                }
-                editorFocusRequester.requestFocus()
+                formatEditingFile()
             },
             onSnippets = {
-                if (editingFile.endsWith(".js", ignoreCase = true)) showSnippets = true
+                if (editingJavaScript) showSnippets = true
                 else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             },
             onSnapshot = { showSnapshotSheet = true },
@@ -725,33 +925,41 @@ internal fun EditorScreen(
 
     @Composable
     fun WorkBar() {
-
         Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal =
-                            12.dp,
-
-                        vertical =
-                            2.dp
-                    ),
-
-            verticalAlignment =
-                Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-
-            Box(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp)
-            ) {
-                WorkSelector()
+            Box(Modifier.weight(1f).padding(end = 8.dp)) {
+                Box(Modifier.graphicsLayer { alpha = 1f - galleryProgress }
+                    .blockGalleryInput(galleryPresent)) {
+                    WorkSelector()
+                }
+                if (galleryPresent) {
+                    WorkSelectorChip(
+                        activeWorkTitle = if (workGalleryState.selecting) uiText("すべて選択 / 解除") else activeWork?.title,
+                        hasUnsavedChanges = false,
+                        isLandscape = false, manualRotation = manualRotation, colors = colors,
+                        textTranslator = { s, args -> uiText(s, *args) },
+                        onClick = { if (workGalleryState.selecting) toggleAllGallerySelection() else jumpToEditingWork() },
+                        labelText = if (workGalleryState.selecting)
+                            "${workGalleryState.selectedIds.size} · ${uiText("選択中")}"
+                            else uiText("作品") + " · " + works.size,
+                        modifier = Modifier.graphicsLayer { alpha = galleryProgress }
+                            .blockGalleryInput(galleryProgress < 1f)
+                    )
+                }
             }
-
-            WorkActions()
+            // Four fixed slots let the glyphs change without moving the toolbar.
+            Box(Modifier.width(164.dp), contentAlignment = Alignment.CenterEnd) {
+                Box(Modifier.graphicsLayer { alpha = 1f - galleryProgress }
+                    .blockGalleryInput(galleryPresent)) {
+                    WorkActions()
+                }
+                if (galleryPresent) {
+                    GalleryActions(Modifier.graphicsLayer { alpha = galleryProgress }
+                        .blockGalleryInput(galleryProgress < 1f))
+                }
+            }
         }
     }
 
@@ -780,34 +988,10 @@ internal fun EditorScreen(
             isPreviewRecording = isPreviewRecording,
             pendingRecordingFormat = pendingRecordingFormat,
             colors = colors,
-            onOpenParameters = {
-                previewActionsExpanded = false
-                showExpandedPreview = false
-                showParameterSheet = true
-            },
-            onScreenshot = {
-                showScreenshotScale = true
-                previewActionsExpanded = false
-            },
-            onShareCard = {
-                preview.requestScreenshot(forShareCard = true)
-                previewActionsExpanded = false
-            },
-            onRecordToggle = {
-                if (pendingRecordingFormat != null) {
-                    cancelRecordingCountdown()
-                } else if (isRecordingSaving) {
-                    // wait
-                } else if (isPreviewRecording) {
-                    preview.webView?.evaluateJavascript(
-                        "window.__editKiroStopRecording?.()",
-                        null
-                    )
-                } else {
-                    showRecordingFormatDialog = true
-                }
-                previewActionsExpanded = false
-            },
+            onOpenParameters = ::openPreviewParameters,
+            onScreenshot = ::showScreenshotOptions,
+            onShareCard = ::sharePreviewCard,
+            onRecordToggle = ::togglePreviewRecording,
             onFullscreen = {
                 previewActionsExpanded = false
                 focusManager.clearFocus(force = true)
@@ -816,6 +1000,34 @@ internal fun EditorScreen(
             textTranslator = { s, args -> uiText(s, *args) },
             modifier = modifier
         )
+    }
+
+    @Composable
+    fun LandscapeGalleryBar() {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (workGalleryState.searching && !workGalleryState.selecting) {
+                WorkGallerySearch(workGalleryState, { uiText(it) }, galleryProgress >= 1f,
+                    Modifier.weight(1f))
+            } else {
+                Column(Modifier.weight(1f).heightIn(min = 48.dp)
+                    .clickable(enabled = !assetBusy) {
+                        if (workGalleryState.selecting) toggleAllGallerySelection() else jumpToEditingWork()
+                    },
+                    verticalArrangement = Arrangement.Center) {
+                    Text(if (workGalleryState.selecting)
+                        "${workGalleryState.selectedIds.size} · ${uiText("選択中")}"
+                        else "${uiText("作品")} · ${works.size}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (workGalleryState.selecting) uiText("すべて選択 / 解除") else activeWork?.title.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            GalleryActions(buttonSize = 48.dp)
+        }
     }
 
     @Composable
@@ -840,12 +1052,7 @@ internal fun EditorScreen(
                 height = 34.dp,
                 buttonSize = 32.dp,
                 iconSize = 17.dp,
-                onTogglePause = {
-                    isPaused = !isPaused
-                    preview.webView?.evaluateJavascript(
-                        if (isPaused) "pauseSketch()" else "resumeSketch()", null
-                    )
-                },
+                onTogglePause = ::togglePreviewPlayback,
                 onReload = { runSketch() },
                 textTranslator = { s, args -> uiText(s, *args) }
             )
@@ -921,34 +1128,10 @@ internal fun EditorScreen(
                         }
                         previewActionsExpanded = false
                     },
-                    onScreenshot = {
-                        showScreenshotScale = true
-                        previewActionsExpanded = false
-                    },
-                    onShareCard = {
-                        preview.requestScreenshot(forShareCard = true)
-                        previewActionsExpanded = false
-                    },
-                    onOpenParameters = {
-                        previewActionsExpanded = false
-                        showExpandedPreview = false
-                        showParameterSheet = true
-                    },
-                    onToggleRecording = {
-                        if (pendingRecordingFormat != null) {
-                            cancelRecordingCountdown()
-                        } else if (isRecordingSaving) {
-                            // Wait for the current recording to finish saving.
-                        } else if (isPreviewRecording) {
-                            preview.webView?.evaluateJavascript(
-                                "window.__editKiroStopRecording?.()",
-                                null
-                            )
-                        } else {
-                            showRecordingFormatDialog = true
-                        }
-                        previewActionsExpanded = false
-                    },
+                    onScreenshot = ::showScreenshotOptions,
+                    onShareCard = ::sharePreviewCard,
+                    onOpenParameters = ::openPreviewParameters,
+                    onToggleRecording = ::togglePreviewRecording,
                     onCancelCountdown = { cancelRecordingCountdown() },
                     onToggleFullscreen = {
                         previewActionsExpanded = false
@@ -967,9 +1150,7 @@ internal fun EditorScreen(
                             }
                         }
                     },
-                    onStopRecording = {
-                        preview.webView?.evaluateJavascript("window.__editKiroStopRecording?.()", null)
-                    },
+                    onStopRecording = ::stopPreviewRecording,
                     colors = colors,
                     textTranslator = { s, args -> uiText(s, *args) }
                 )
@@ -984,7 +1165,14 @@ internal fun EditorScreen(
             Box(modifier = modifier)
         } else {
             PreviewArea(
-                modifier = modifier.onSizeChanged { size ->
+                modifier = modifier.graphicsLayer {
+                    alpha = if (galleryMorphActive)
+                        (1f - galleryProgress / GALLERY_EDGE_FADE).coerceIn(0f, 1f)
+                    else 1f
+                }
+                    .onGloballyPositioned { coordinates ->
+                    if (!galleryPresent) galleryPreviewBounds = coordinates.boundsInRoot()
+                }.onSizeChanged { size ->
                     if (size.width > 0 && size.height > 0) {
                         normalPreviewSize = size
                     }
@@ -1009,12 +1197,7 @@ internal fun EditorScreen(
                 height = if (isLandscape) 34.dp else 38.dp,
                 buttonSize = 34.dp,
                 iconSize = 19.dp,
-                onTogglePause = {
-                    isPaused = !isPaused
-                    preview.webView?.evaluateJavascript(
-                        if (isPaused) "pauseSketch()" else "resumeSketch()", null
-                    )
-                },
+                onTogglePause = ::togglePreviewPlayback,
                 onReload = { runSketch() },
                 textTranslator = { s, args -> uiText(s, *args) }
             )
@@ -1079,14 +1262,10 @@ internal fun EditorScreen(
             onRedo = { redoEditorChange() },
             onSearch = { showSearchDialog = true },
             onFormat = {
-                val formatted = formatJavaScript(editingText)
-                if (formatted != editingText) {
-                    applyEditorChange(TextFieldValue(formatted, TextRange(0)))
-                    editorFocusRequester.requestFocus()
-                }
+                formatEditingFile()
             },
             onSnippets = {
-                if (editingFile.endsWith(".js", ignoreCase = true)) showSnippets = true
+                if (editingJavaScript) showSnippets = true
                 else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             },
             onApplyEdit = { value ->
@@ -1095,9 +1274,11 @@ internal fun EditorScreen(
             },
             lastColorPickerColor = lastColorPickerColor,
             onOpenColorPicker = { target, color ->
-                activeColorTarget = target
-                colorPickerInitial = color
-                showColorPickerDialog = true
+                if (editingJavaScript) {
+                    activeColorTarget = target
+                    colorPickerInitial = color
+                    showColorPickerDialog = true
+                } else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             },
             showAccessoryNavigation = showAccessoryNavigation,
             showAccessorySymbols = showAccessorySymbols,
@@ -1108,11 +1289,11 @@ internal fun EditorScreen(
 
     val projectCompletionSymbols = rememberProjectCompletionSymbols(
         activeWorkId, editingFile, editingText, editorText, activeWork?.files.orEmpty(),
-        sessionViewModel, codeCompletion
+        sessionViewModel, codeCompletion && editingJavaScript
     )
     val editorSuggestions = remember(editingValue.text, editingValue.selection, editorFocused,
         codeCompletion, editingFile, projectCompletionSymbols) {
-        if (!editorFocused || !codeCompletion) emptyList()
+        if (!editorFocused || !codeCompletion || !editingJavaScript) emptyList()
         else projectCompletions(editingValue, projectCompletionSymbols, editingFile)
     }
 
@@ -1124,7 +1305,7 @@ internal fun EditorScreen(
             suggestions = editorSuggestions,
             editingValue = editingValue,
             editingText = editingText,
-            visible = editorFocused && codeCompletion,
+            visible = editorFocused && codeCompletion && editingJavaScript,
             codeFontFamily = codeFontFamily,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
@@ -1150,8 +1331,8 @@ internal fun EditorScreen(
             editingKey = editingKey,
             editingText = editingText,
             editingValue = editingValue,
-            onUpdateEditingValue = { if (!sessionViewModel.editorInputLocked) editingValue = it },
-            onApplyEditorChange = { applyEditorChange(it) },
+            onUpdateEditingValue = { if (!sessionViewModel.editorInputLocked && !galleryPresent) editingValue = it },
+            onApplyEditorChange = { if (!galleryPresent) applyEditorChange(it) },
             editorFocused = editorFocused,
             onFocusChange = { editorFocused = it },
             editorFocusRequester = editorFocusRequester,
@@ -1165,9 +1346,9 @@ internal fun EditorScreen(
             showLineNumbers = showLineNumbers,
             fontFeatures = fontFeatures,
             navigationSequence = navigationSequence,
-            navigationTarget = navigationTarget,
+            navigationTarget = navigationTarget.takeUnless { galleryPresent },
             onClearNavigationTarget = { navigationTarget = null },
-            readOnly = sessionViewModel.editorInputLocked,
+            readOnly = sessionViewModel.editorInputLocked || galleryPresent,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
             modifier = modifier
@@ -1184,6 +1365,7 @@ internal fun EditorScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(deletionSnackbar, Modifier.imePadding()) },
         containerColor =
             colors.background,
 
@@ -1229,8 +1411,8 @@ internal fun EditorScreen(
             EditorWorkspaceLayout(
                 state = EditorWorkspaceState(
                     isLandscape = isLandscape,
-                    editorFocused = editorFocused,
-                    keyboardVisible = keyboardVisible,
+                    editorFocused = editorFocused && !galleryPresent,
+                    keyboardVisible = keyboardVisible && !galleryPresent,
                     showResizeHandles = showResizeHandles,
                     showConsole = showConsole,
                     showEditorAccessoryBar = showEditorAccessoryBar,
@@ -1247,7 +1429,9 @@ internal fun EditorScreen(
                     previewRatioSelection = previewRatioSelection,
                     portraitRatioDragging = portraitRatioDragging,
                     codeFontFamily = codeFontFamily,
-                    hasVisibleCompletions = editorSuggestions.isNotEmpty()
+                    hasVisibleCompletions = editorSuggestions.isNotEmpty(),
+                    galleryVisible = galleryPresent,
+                    galleryProgress = galleryProgress
                 ),
                 actions = EditorWorkspaceActions(
                     onSplitChanged = { landscapePreviewFraction = it },
@@ -1262,7 +1446,18 @@ internal fun EditorScreen(
                     controlBar = { ControlBar() }, console = { ConsolePanel(it) },
                     previewActions = { PreviewActionsTray(it) }, editor = { EditorArea(it) },
                     completions = { CompletionBar(it) }, accessory = { EditorAccessoryBar(it) },
-                    preview = { MainPreviewArea(it) }
+                    preview = { MainPreviewArea(it) },
+                    gallery = { InlineGallery(it) },
+                    landscapeGalleryBar = { LandscapeGalleryBar() },
+                    galleryPreview = { modifier ->
+                        val sameRenderer = preview.session.workId == galleryPreviewOwner &&
+                            preview.session.assets.token == galleryPreviewToken
+                        WorkGalleryPreview(
+                            bitmap = galleryPreviewBitmap.takeIf { sameRenderer },
+                            start = galleryPreviewBounds, end = galleryThumbnailBounds,
+                            progress = galleryProgress, modifier = modifier
+                        )
+                    }
                 ),
                 textTranslator = { source, args -> uiText(source, *args) },
                 modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
@@ -1270,6 +1465,9 @@ internal fun EditorScreen(
     }
 
     }
+
+    GalleryWorkDialogs(workManagementViewModel, works, assetBusy, { uiText(it) },
+        windowSetup = { KeepLandscapeDialogImmersive() })
 
     if (showExpandedPreview) {
         Dialog(
@@ -1407,8 +1605,12 @@ internal fun EditorScreen(
             onClose = { showAssets = false },
             onPreview = { name, asset -> previewAsset = name to asset },
             onInsert = { name, asset ->
-                applyEditorChange(insertAtSelection(editingValue, assetLoaderCode(name, asset)))
-                showAssets = false
+                if (editingJavaScript) {
+                    applyEditorChange(insertAtSelection(editingValue, assetLoaderCode(name, asset)))
+                    showAssets = false
+                } else {
+                    Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
+                }
             },
             referenceSources = projectSearchSources(activeWorkId, editorText, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
         )
@@ -1436,6 +1638,13 @@ internal fun EditorScreen(
                 showProjectFilesDialog = false
                 showAuxiliaryFileEditor = true
             },
+            onEditFile = { name, content ->
+                originalAuxiliaryFileName = name
+                auxiliaryFileName = name
+                auxiliaryFileContent = sessionViewModel.fileDrafts["$activeWorkId/$name"] ?: content
+                showProjectFilesDialog = false
+                showAuxiliaryFileEditor = true
+            },
             onDismiss = { showProjectFilesDialog = false },
             textTranslator = { s, args -> uiText(s, *args) }
         )
@@ -1451,6 +1660,7 @@ internal fun EditorScreen(
             codeFontFamily = codeFontFamily,
             colors = colors,
             busy = workSaving || assetBusy,
+            existingFileNames = activeWork?.files.orEmpty().keys,
             onSave = { normalizedName, content ->
                 val updated = activeWork?.files?.toMutableMap() ?: return@AuxiliaryFileEditorDialog
                 originalAuxiliaryFileName?.takeIf { it != normalizedName }?.let(updated::remove)
@@ -1516,3 +1726,16 @@ internal fun EditorScreen(
         }
     }
 }
+
+/** Alpha leaves controls interactive; disable their input and accessibility while covered. */
+private fun Modifier.blockGalleryInput(blocked: Boolean): Modifier =
+    then(if (blocked) Modifier.clearAndSetSemantics { hideFromAccessibility() } else Modifier)
+        .focusProperties { if (blocked) canFocus = false }
+        .onPreviewKeyEvent { blocked }
+        .pointerInput(blocked) {
+            if (blocked) awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                }
+            }
+        }

@@ -3,7 +3,7 @@ package com.hikariatelier.app
 internal enum class CanvasSizingMode { FIXED, RESPONSIVE }
 
 internal enum class WorkTemplateKind(val title: String) {
-    BASIC_2D("2D基本"), WEBGL_3D("3D WebGL"), SHADER("シェーダー"), PHYSICS_MATTER("物理演算"), PARAMETERS("パラメータ")
+    BASIC_2D("2D基本"), WEBGL_3D("3D WebGL"), SHADER("シェーダー"), PHYSICS_MATTER("物理演算"), PARAMETERS("パラメータ"), WEBGPU("WebGPU")
 }
 
 internal data class WorkTemplate(val ratio: String, val width: Int, val height: Int,
@@ -18,6 +18,7 @@ internal data class WorkTemplate(val ratio: String, val width: Int, val height: 
             WorkTemplateKind.SHADER -> SHADER_TEMPLATE
             WorkTemplateKind.PHYSICS_MATTER -> MATTER_TEMPLATE
             WorkTemplateKind.PARAMETERS -> WAVE_PARAMETERS_TEMPLATE
+            WorkTemplateKind.WEBGPU -> WEBGPU_TEMPLATE
         }
         if (mode == CanvasSizingMode.RESPONSIVE) return source
         return source.substringBefore("\nfunction windowResized()")
@@ -172,3 +173,31 @@ function windowResized() {
 }
 """.trimIndent() + "\n"
 
+internal val WEBGPU_TEMPLATE = """
+// WebGPU — a lit torus and cube (falls back to WebGL)
+let t = 0;
+
+async function setup() {
+  await createCanvas(windowWidth, windowHeight, navigator.gpu ? WEBGPU : WEBGL);
+  noStroke();
+}
+
+function draw() {
+  background(9, 9, 11);
+  t += 0.015;
+
+  ambientLight(60);
+  directionalLight(255, 255, 255, 0.5, 1, -0.8);
+  rotateX(t * 0.8);
+  rotateY(t);
+
+  const s = min(width, height) * 0.2;
+  fill(168, 199, 250);
+  torus(s, s * 0.12, 36, 24);
+  box(s * 0.7);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"

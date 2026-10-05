@@ -36,79 +36,10 @@ internal fun SettingsScreen(
     textTranslator: (String, Array<out Any?>) -> String,
     modifier: Modifier = Modifier
 ) {
-    val themeMode = state.themeMode
     val onThemeModeChange: (AppThemeMode) -> Unit = { value -> onSettingsChange { copy(themeMode = value) } }
-    val appLanguage = state.appLanguage
-    val onAppLanguageChange: (String) -> Unit = { value -> onSettingsChange { copy(appLanguage = value) } }
-    val customBackground = state.customBackground
-    val onCustomBackgroundChange: (Int) -> Unit = { value -> onSettingsChange { copy(customBackground = value) } }
-    val customAccent = state.customAccent
-    val onCustomAccentChange: (Int) -> Unit = { value -> onSettingsChange { copy(customAccent = value) } }
-    val showStatusBar = state.showStatusBar
-    val onShowStatusBarChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(showStatusBar = value) } }
-    val landscapeUseCutout = state.landscapeUseCutout
-    val onLandscapeUseCutoutChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(landscapeUseCutout = value) } }
-    val manualRotation = state.manualRotation
-    val onManualRotationChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(manualRotation = value) } }
-    val autoRun = state.autoRun
-    val onAutoRunChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(autoRun = value) } }
-    val hideEditingPreview = state.hideEditingPreview
-    val onHideEditingPreviewChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(hideEditingPreview = value) } }
-    val compactPreview = state.compactPreview
-    val onCompactPreviewChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(compactPreview = value) } }
-    val preserveExpandedPreview = state.preserveExpandedPreview
-    val onPreserveExpandedPreviewChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(preserveExpandedPreview = value) } }
-    val landscapePreviewFraction = state.landscapePreviewFraction
-    val onLandscapePreviewFractionChange: (Float) -> Unit = { value -> onSettingsChange { copy(landscapePreviewFraction = normalizedLandscapeSplit(value)) } }
-    val showResizeHandles = state.showResizeHandles
-    val onShowResizeHandlesChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(showResizeHandles = value) } }
-    val editorFontSize = state.editorFontSize
-    val onEditorFontSizeChange: (Float) -> Unit = { value -> onSettingsChange { copy(editorFontSize = value) } }
-    val autoIndent = state.autoIndent
-    val onAutoIndentChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(autoIndent = value) } }
-    val showLineNumbers = state.showLineNumbers
-    val onShowLineNumbersChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(showLineNumbers = value) } }
-    val showEditorAccessoryBar = state.showEditorAccessoryBar
-    val onShowEditorAccessoryBarChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(showEditorAccessoryBar = value) } }
-    val codeCompletion = state.codeCompletion
-    val onCodeCompletionChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(codeCompletion = value) } }
-    val showAccessoryNavigation = state.showAccessoryNavigation
-    val onShowAccessoryNavigationChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(showAccessoryNavigation = value) } }
-    val showAccessorySymbols = state.showAccessorySymbols
-    val onShowAccessorySymbolsChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(showAccessorySymbols = value) } }
-    val compactAccessoryKeys = state.compactAccessoryKeys
-    val onCompactAccessoryKeysChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(compactAccessoryKeys = value) } }
-    val editorWordWrap = state.editorWordWrap
-    val onEditorWordWrapChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(editorWordWrap = value) } }
-    val landscapeEditorOnLeft = state.landscapeEditorOnLeft
-    val onLandscapeEditorOnLeftChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(landscapeEditorOnLeft = value) } }
-    val draftRecovery = state.draftRecovery
-    val onDraftRecoveryChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(draftRecovery = value) } }
-    val mp4BitrateMbps = state.mp4BitrateMbps
-    val onMp4BitrateChange: (Int) -> Unit = { value -> onSettingsChange { copy(mp4BitrateMbps = value) } }
-    val xShareText = state.xShareText
     val onXShareTextChange: (String) -> Unit = { value -> onSettingsChange { copy(xShareText = value.take(1000)) } }
-    val recordingCountdownSeconds = state.recordingCountdownSeconds
-    val onRecordingCountdownChange: (Int) -> Unit = { value -> onSettingsChange { copy(recordingCountdownSeconds = value) } }
-    val p5Username = state.p5Username
-    val fontLigatures = state.fontLigatures
-    val onFontLigaturesChange: (Boolean) -> Unit = { value -> onSettingsChange { copy(fontLigatures = value) } }
-    val customFontFamily = font.family
-    val importedFontName = font.name
-    val fontImportBusy = font.busy
     val codeFontFamily = font.family ?: FontFamily.Monospace
-    val fontFeatures = if (fontLigatures) "'liga' 1, 'clig' 1, 'calt' 1" else "'liga' 0, 'clig' 0, 'calt' 0"
-    val onBack = actions.onBack
-    val onChooseFolder = actions.onChooseFolder
-    val onImportOfficialSamples = actions.onImportOfficialSamples
-    val onImportFont = actions.onImportFont
-    val onResetFont = actions.onResetFont
-    val onImportP5 = actions.onImportP5
-    val onImportJs = actions.onImportJs
-    val onExportJs = actions.onExportJs
-    val onExportBackup = actions.onExportBackup
-    val onImportBackup = actions.onImportBackup
-    val openExternalUrl = actions.openExternalUrl
+    val fontFeatures = if (state.fontLigatures) "'liga' 1, 'clig' 1, 'calt' 1" else "'liga' 0, 'clig' 0, 'calt' 0"
 
     fun uiText(source: String, vararg arguments: Any?): String =
         textTranslator(source, arguments)
@@ -124,6 +55,14 @@ internal fun SettingsScreen(
         var settingsTab by rememberSaveable { mutableStateOf(0) }
         var showLicenses by remember { mutableStateOf(false) }
         var showUserGuide by remember { mutableStateOf(false) }
+        var showReleaseNotes by remember { mutableStateOf(false) }
+        if (showReleaseNotes) {
+            val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
+            ReleaseNotesDialog(
+                language = resolveUiLanguage(state.appLanguage, deviceLanguage),
+                onDismiss = { showReleaseNotes = false }
+            )
+        }
         if (showUserGuide) {
             Dialog(
                 onDismissRequest = { showUserGuide = false },
@@ -131,7 +70,7 @@ internal fun SettingsScreen(
             ) {
                 val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
                 UserGuideScreen(
-                    language = resolveUiLanguage(appLanguage, deviceLanguage),
+                    language = resolveUiLanguage(state.appLanguage, deviceLanguage),
                     onClose = { showUserGuide = false }
                 )
             }
@@ -187,7 +126,7 @@ internal fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = onBack) {
+                            IconButton(onClick = actions.onBack) {
                                 Icon(painterResource(R.drawable.ic_back), uiText("戻る"), Modifier.size(20.dp))
                             }
                             IconButton(onClick = { showUserGuide = true }) {
@@ -259,7 +198,7 @@ internal fun SettingsScreen(
 
                 IconButton(
                     onClick =
-                        onBack
+                        actions.onBack
                 ) {
 
                     Icon(
@@ -358,9 +297,9 @@ internal fun SettingsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { (code, label) ->
                                 FilterChip(
-                                    selected = appLanguage == code,
+                                    selected = state.appLanguage == code,
                                     onClick = {
-                                        onAppLanguageChange(code)
+                                        onSettingsChange { copy(appLanguage = code) }
                                     },
                                     label = { Text(label) },
                                     modifier = Modifier.weight(1f)
@@ -385,10 +324,10 @@ internal fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant
                     )
-                    if (p5Username.isNotBlank()) {
+                    if (state.p5Username.isNotBlank()) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "@$p5Username",
+                            text = "@${state.p5Username}",
                             style = MaterialTheme.typography.labelMedium,
                             color = colors.primary
                         )
@@ -396,7 +335,7 @@ internal fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
                     FilledTonalButton(shape = ButtonDefaults.filledTonalShape,
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = onImportP5
+                        onClick = actions.onImportP5
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_import_js),
@@ -438,7 +377,7 @@ internal fun SettingsScreen(
 
                     Text(
                         text =
-                            when (themeMode) {
+                            when (state.themeMode) {
                                 AppThemeMode.SYSTEM ->
                                     uiText("端末の設定とMaterial Youに合わせます")
 
@@ -484,7 +423,7 @@ internal fun SettingsScreen(
                                 Modifier.weight(1f),
                             label = uiText("自動"),
                             selected =
-                                themeMode ==
+                                state.themeMode ==
                                     AppThemeMode.SYSTEM,
                             onClick = {
                                 onThemeModeChange(
@@ -498,7 +437,7 @@ internal fun SettingsScreen(
                                 Modifier.weight(1f),
                             label = uiText("ダーク"),
                             selected =
-                                themeMode ==
+                                state.themeMode ==
                                     AppThemeMode.DARK,
                             onClick = {
                                 onThemeModeChange(
@@ -512,7 +451,7 @@ internal fun SettingsScreen(
                                 Modifier.weight(1f),
                             label = uiText("ライト"),
                             selected =
-                                themeMode ==
+                                state.themeMode ==
                                     AppThemeMode.LIGHT,
                             onClick = {
                                 onThemeModeChange(
@@ -526,7 +465,7 @@ internal fun SettingsScreen(
                                 Modifier.weight(1f),
                             label = uiText("カスタム"),
                             selected =
-                                themeMode ==
+                                state.themeMode ==
                                     AppThemeMode.CUSTOM,
                             onClick = {
                                 onThemeModeChange(
@@ -539,10 +478,10 @@ internal fun SettingsScreen(
 
                 SettingsDivider()
 
-                if (themeMode == AppThemeMode.CUSTOM) {
+                if (state.themeMode == AppThemeMode.CUSTOM) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        CustomColorSetting(uiText("背景色"), customBackground, { onCustomBackgroundChange(it) }, { s -> uiText(s) })
-                        CustomColorSetting(uiText("アクセントカラー"), customAccent, { onCustomAccentChange(it) }, { s -> uiText(s) })
+                        CustomColorSetting(uiText("背景色"), state.customBackground, { onSettingsChange { copy(customBackground = it) } }, { s -> uiText(s) })
+                        CustomColorSetting(uiText("アクセントカラー"), state.customAccent, { onSettingsChange { copy(customAccent = it) } }, { s -> uiText(s) })
                     }
                     SettingsDivider()
                 }
@@ -550,18 +489,18 @@ internal fun SettingsScreen(
                 Column(Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(uiText("アプリのフォント"), fontWeight = FontWeight.SemiBold)
-                    Text(if (customFontFamily == null) uiText("標準フォント") else importedFontName,
+                    Text(if (font.family == null) uiText("標準フォント") else font.name,
                         style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                     Text(uiText("TTF・OTF・TTCをインポート。設定画面とエディターに反映します"),
                         style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = onImportFont, enabled = !fontImportBusy,
+                        OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = actions.onImportFont, enabled = !font.busy,
                             modifier = Modifier.weight(1f)) {
-                            Text(uiText(if (fontImportBusy) "読み込み中" else "フォントをインポート"))
+                            Text(uiText(if (font.busy) "読み込み中" else "フォントをインポート"))
                         }
                         TextButton(onClick = {
-                            onResetFont()
-                        }, enabled = customFontFamily != null && !fontImportBusy,
+                            actions.onResetFont()
+                        }, enabled = font.family != null && !font.busy,
                             modifier = Modifier.weight(1f)) { Text(uiText("標準に戻す")) }
                     }
                     Text("EDIT:RiN  Aa 0123  日本語 中文\n->  =>  !=  ===  <=  >=",
@@ -574,9 +513,9 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("フォントの連字"),
                     description = uiText("対応フォントの連字を有効にします。コードの文字列は変わりません"),
-                    checked = fontLigatures,
+                    checked = state.fontLigatures,
                     onCheckedChange = {
-                        onFontLigaturesChange(it)
+                        onSettingsChange { copy(fontLigatures = it) }
                     }
                 )
                 SettingsDivider()
@@ -584,8 +523,8 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("ステータスバーを非表示"),
                     description = uiText("時刻と通知アイコンの表示を切り替えます") + "\n" + uiText("横画面では両方のバーが常に非表示になります"),
-                    checked = !showStatusBar,
-                    onCheckedChange = { hide -> onShowStatusBarChange(!hide) }
+                    checked = !state.showStatusBar,
+                    onCheckedChange = { hide -> onSettingsChange { copy(showStatusBar = !hide) } }
                 )
                 SettingSwitchRow(
                     title = uiText("ナビゲーションバーを非表示"),
@@ -598,11 +537,11 @@ internal fun SettingsScreen(
 
                 SettingSwitchRow(
                     title = uiText("横画面でノッチ部分まで使用"),
-                    description = if (landscapeUseCutout)
+                    description = if (state.landscapeUseCutout)
                         uiText("余白なしで表示します。ノッチの位置は内容が隠れる場合があります")
                     else uiText("ノッチを避ける余白を確保します"),
-                    checked = landscapeUseCutout,
-                    onCheckedChange = onLandscapeUseCutoutChange
+                    checked = state.landscapeUseCutout,
+                    onCheckedChange = { value -> onSettingsChange { copy(landscapeUseCutout = value) } }
                 )
 
                 SettingsDivider()
@@ -611,15 +550,15 @@ internal fun SettingsScreen(
                     title =
                         uiText("画面の向きを固定"),
                     description =
-                        if (manualRotation) {
+                        if (state.manualRotation) {
                             uiText("自動回転を停止し、上部の↻ボタンで縦横を切り替えます")
                         } else {
                             uiText("端末の向きに合わせて画面を回転します")
                         },
                     checked =
-                        manualRotation,
+                        state.manualRotation,
                     onCheckedChange =
-                        onManualRotationChange
+                        { value -> onSettingsChange { copy(manualRotation = value) } }
                 )
             }
 
@@ -637,9 +576,9 @@ internal fun SettingsScreen(
                     description =
                         uiText("作品を選択するとプレビューを更新します"),
                     checked =
-                        autoRun,
+                        state.autoRun,
                     onCheckedChange =
-                        onAutoRunChange
+                        { value -> onSettingsChange { copy(autoRun = value) } }
                 )
 
                 SettingsDivider()
@@ -647,36 +586,36 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("編集時にプレビューを隠す"),
                     description = uiText("縦画面でコード欄を選ぶと非表示になり、編集を終えると戻ります"),
-                    checked = hideEditingPreview,
-                    onCheckedChange = onHideEditingPreviewChange
+                    checked = state.hideEditingPreview,
+                    onCheckedChange = { value -> onSettingsChange { copy(hideEditingPreview = value) } }
                 )
 
                 SettingsDivider()
 
                 SettingSwitchRow(
-                    enabled = !hideEditingPreview,
+                    enabled = !state.hideEditingPreview,
                     title =
                         uiText("編集時にプレビューを縮小"),
                     description =
-                        if (hideEditingPreview) uiText("プレビューを隠す設定が優先されます")
+                        if (state.hideEditingPreview) uiText("プレビューを隠す設定が優先されます")
                         else uiText("縦画面の編集中だけプレビューを低く表示します"),
                     checked =
-                        compactPreview,
+                        state.compactPreview,
                     onCheckedChange =
-                        onCompactPreviewChange
+                        { value -> onSettingsChange { copy(compactPreview = value) } }
                 )
 
                 SettingsDivider()
 
                 SettingSwitchRow(
                     title = uiText("サイズ調整バー"),
-                    description = if (showResizeHandles) {
+                    description = if (state.showResizeHandles) {
                         uiText("プレビューとエディターの間にドラッグ操作を表示します")
                     } else {
                         uiText("境界線とドラッグ操作を非表示にします")
                     },
-                    checked = showResizeHandles,
-                    onCheckedChange = onShowResizeHandlesChange
+                    checked = state.showResizeHandles,
+                    onCheckedChange = { value -> onSettingsChange { copy(showResizeHandles = value) } }
                 )
 
                 if (settingsLandscape) {
@@ -708,10 +647,10 @@ internal fun SettingsScreen(
                                     modifier = Modifier.weight(1f),
                                     label = "${kotlin.math.round(fraction * 100).toInt()}%",
                                     selected = kotlin.math.abs(
-                                        landscapePreviewFraction - fraction
+                                        state.landscapePreviewFraction - fraction
                                     ) < 0.01f,
                                     onClick = {
-                                        onLandscapePreviewFractionChange(fraction)
+                                        onSettingsChange { copy(landscapePreviewFraction = normalizedLandscapeSplit(fraction)) }
                                     }
                                 )
                             }
@@ -723,11 +662,11 @@ internal fun SettingsScreen(
 
                 SettingSwitchRow(
                     title = uiText("横画面の配置（エディターを左）"),
-                    description = if (landscapeEditorOnLeft)
+                    description = if (state.landscapeEditorOnLeft)
                         uiText("左にエディター、右にプレビューを表示します")
                     else uiText("左にプレビュー、右にエディターを表示します（従来）"),
-                    checked = landscapeEditorOnLeft,
-                    onCheckedChange = onLandscapeEditorOnLeftChange
+                    checked = state.landscapeEditorOnLeft,
+                    onCheckedChange = { value -> onSettingsChange { copy(landscapeEditorOnLeft = value) } }
                 )
 
                 SettingsDivider()
@@ -735,8 +674,8 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("全画面でも描画サイズを維持"),
                     description = uiText("通常プレビューと同じ座標・縦横比で実行し、表示だけを拡大します"),
-                    checked = preserveExpandedPreview,
-                    onCheckedChange = onPreserveExpandedPreviewChange
+                    checked = state.preserveExpandedPreview,
+                    onCheckedChange = { value -> onSettingsChange { copy(preserveExpandedPreview = value) } }
                 )
 
                 SettingsDivider()
@@ -744,8 +683,8 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("自動インデント"),
                     description = uiText("改行時に現在の字下げを引き継ぎ、括弧内を一段下げます"),
-                    checked = autoIndent,
-                    onCheckedChange = onAutoIndentChange
+                    checked = state.autoIndent,
+                    onCheckedChange = { value -> onSettingsChange { copy(autoIndent = value) } }
                 )
 
                 SettingsDivider()
@@ -753,19 +692,19 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("行番号"),
                     description = uiText("コードの各行に番号を表示します"),
-                    checked = showLineNumbers,
-                    onCheckedChange = onShowLineNumbersChange
+                    checked = state.showLineNumbers,
+                    onCheckedChange = { value -> onSettingsChange { copy(showLineNumbers = value) } }
                 )
 
                 SettingsDivider()
 
                 SettingSwitchRow(
                     title = uiText("コードを画面幅で折り返す"),
-                    description = if (editorWordWrap)
+                    description = if (state.editorWordWrap)
                         uiText("長い行を画面幅に合わせて下段に折り返します")
                     else uiText("折り返さずに1行で表示し、横スクロールできるようにします"),
-                    checked = editorWordWrap,
-                    onCheckedChange = onEditorWordWrapChange
+                    checked = state.editorWordWrap,
+                    onCheckedChange = { value -> onSettingsChange { copy(editorWordWrap = value) } }
                 )
 
                 SettingsDivider()
@@ -773,8 +712,8 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("編集キー"),
                     description = uiText("編集中にTAB、カーソル移動、記号ボタンを表示します"),
-                    checked = showEditorAccessoryBar,
-                    onCheckedChange = onShowEditorAccessoryBarChange
+                    checked = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(showEditorAccessoryBar = value) } }
                 )
 
                 SettingsDivider()
@@ -782,8 +721,8 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("入力候補"),
                     description = uiText("p5.jsの関数名や変数名の候補を表示します"),
-                    checked = codeCompletion,
-                    onCheckedChange = onCodeCompletionChange
+                    checked = state.codeCompletion,
+                    onCheckedChange = { value -> onSettingsChange { copy(codeCompletion = value) } }
                 )
 
                 SettingsDivider()
@@ -791,9 +730,9 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("移動キーを表示"),
                     description = uiText("操作パネルにTABとカーソルキーを表示します"),
-                    checked = showAccessoryNavigation,
-                    enabled = showEditorAccessoryBar,
-                    onCheckedChange = onShowAccessoryNavigationChange
+                    checked = state.showAccessoryNavigation,
+                    enabled = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(showAccessoryNavigation = value) } }
                 )
 
                 SettingsDivider()
@@ -801,9 +740,9 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("記号キーを表示"),
                     description = uiText("操作パネルに括弧や記号キーを表示します"),
-                    checked = showAccessorySymbols,
-                    enabled = showEditorAccessoryBar,
-                    onCheckedChange = onShowAccessorySymbolsChange
+                    checked = state.showAccessorySymbols,
+                    enabled = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(showAccessorySymbols = value) } }
                 )
 
                 SettingsDivider()
@@ -811,9 +750,9 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("編集キーを小さくする"),
                     description = uiText("操作パネルの高さとキー幅を小さくします"),
-                    checked = compactAccessoryKeys,
-                    enabled = showEditorAccessoryBar,
-                    onCheckedChange = onCompactAccessoryKeysChange
+                    checked = state.compactAccessoryKeys,
+                    enabled = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(compactAccessoryKeys = value) } }
                 )
 
                 SettingsDivider()
@@ -824,9 +763,9 @@ internal fun SettingsScreen(
                     description =
                         uiText("未保存の変更を一時保存し、次回起動時に復元します"),
                     checked =
-                        draftRecovery,
+                        state.draftRecovery,
                     onCheckedChange =
-                        onDraftRecoveryChange
+                        { value -> onSettingsChange { copy(draftRecovery = value) } }
                 )
 
                 SettingsDivider()
@@ -886,7 +825,7 @@ internal fun SettingsScreen(
 
                             Text(
                                 text =
-                                    "${editorFontSize.toInt()} sp",
+                                    "${state.editorFontSize.toInt()} sp",
                                 modifier =
                                     Modifier.padding(
                                         horizontal = 10.dp,
@@ -912,9 +851,9 @@ internal fun SettingsScreen(
 
                     Slider(
                         value =
-                            editorFontSize,
+                            state.editorFontSize,
                         onValueChange =
-                            onEditorFontSizeChange,
+                            { value -> onSettingsChange { copy(editorFontSize = value) } },
                         valueRange =
                             12f..20f,
                         steps =
@@ -958,8 +897,8 @@ internal fun SettingsScreen(
                             ThemeChip(
                                 modifier = Modifier.widthIn(min = 88.dp),
                                 label = "$bitrate Mbps",
-                                selected = mp4BitrateMbps == bitrate,
-                                onClick = { onMp4BitrateChange(bitrate) }
+                                selected = state.mp4BitrateMbps == bitrate,
+                                onClick = { onSettingsChange { copy(mp4BitrateMbps = bitrate) } }
                             )
                         }
                     }
@@ -976,14 +915,14 @@ internal fun SettingsScreen(
                             ThemeChip(
                                 modifier = Modifier.widthIn(min = 88.dp),
                                 label = if (seconds == 0) uiText("なし") else uiText("%s秒", seconds),
-                                selected = recordingCountdownSeconds == seconds,
-                                onClick = { onRecordingCountdownChange(seconds) }
+                                selected = state.recordingCountdownSeconds == seconds,
+                                onClick = { onSettingsChange { copy(recordingCountdownSeconds = seconds) } }
                             )
                         }
                     }
 
                     OutlinedTextField(
-                        value = xShareText,
+                        value = state.xShareText,
                         onValueChange = onXShareTextChange,
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(uiText("X共有の定型文")) },
@@ -1068,7 +1007,7 @@ internal fun SettingsScreen(
                         modifier =
                             Modifier.fillMaxWidth(),
                         onClick =
-                            onChooseFolder
+                            actions.onChooseFolder
                     ) {
                         Icon(
                             painter =
@@ -1096,7 +1035,7 @@ internal fun SettingsScreen(
                         modifier =
                             Modifier.fillMaxWidth(),
                         onClick =
-                            onImportOfficialSamples
+                            actions.onImportOfficialSamples
                     ) {
                         Icon(
                             painter =
@@ -1175,7 +1114,7 @@ internal fun SettingsScreen(
                                     1f
                                 ),
                             onClick =
-                                onImportJs
+                                actions.onImportJs
                         ) {
                             Icon(
                                 painter =
@@ -1199,7 +1138,7 @@ internal fun SettingsScreen(
                                     1f
                                 ),
                             onClick =
-                                onExportJs
+                                actions.onExportJs
                         ) {
                             Icon(
                                 painter =
@@ -1241,7 +1180,7 @@ internal fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(shape = ButtonDefaults.outlinedShape,
-                            onClick = onImportBackup,
+                            onClick = actions.onImportBackup,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
@@ -1253,7 +1192,7 @@ internal fun SettingsScreen(
                             Text(uiText("復元"))
                         }
                         FilledTonalButton(shape = ButtonDefaults.filledTonalShape,
-                            onClick = onExportBackup,
+                            onClick = actions.onExportBackup,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
@@ -1274,7 +1213,8 @@ internal fun SettingsScreen(
                 SettingsAboutSection(updateViewModel,
                     onShowGuide = { showUserGuide = true },
                     onShowLicenses = { showLicenses = true },
-                    openExternalUrl = openExternalUrl, textTranslator = textTranslator)
+                    onShowReleaseNotes = { showReleaseNotes = true },
+                    openExternalUrl = actions.openExternalUrl, textTranslator = textTranslator)
 
             }
         }

@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ internal fun ProjectFilesDialog(
     colors: ColorScheme,
     codeFontFamily: FontFamily,
     onSelectFile: (name: String, content: String) -> Unit,
+    onEditFile: (name: String, content: String) -> Unit,
     onAddNewFile: () -> Unit,
     onDismiss: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String
@@ -76,6 +78,10 @@ internal fun ProjectFilesDialog(
                             Text(name, modifier = Modifier.weight(1f), fontFamily = codeFontFamily)
                             Spacer(Modifier.width(8.dp))
                             Text(textTranslator("編集", emptyArray()), style = MaterialTheme.typography.labelSmall)
+                            IconButton(onClick = { onEditFile(name, content) }, modifier = Modifier.size(32.dp)) {
+                                Icon(painterResource(R.drawable.ic_more_vertical),
+                                    textTranslator("ファイル設定", emptyArray()), Modifier.size(18.dp))
+                            }
                         }
                     }
                 }
@@ -110,6 +116,7 @@ internal fun AuxiliaryFileEditorDialog(
     codeFontFamily: FontFamily,
     colors: ColorScheme,
     busy: Boolean,
+    existingFileNames: Set<String> = emptySet(),
     onSave: (fileName: String, content: String) -> Unit,
     onDelete: (fileName: String) -> Unit,
     onDismiss: () -> Unit,
@@ -119,14 +126,13 @@ internal fun AuxiliaryFileEditorDialog(
     val fileContent = initialContent
 
     val normalizedName = fileName.trim()
-    val isShader = normalizedName.endsWith(".frag", ignoreCase = true) ||
-        normalizedName.endsWith(".vert", ignoreCase = true) ||
-        normalizedName.endsWith(".glsl", ignoreCase = true)
-    val validName = normalizedName.matches(Regex("[A-Za-z0-9._-]+\\.(js|frag|vert|glsl)", RegexOption.IGNORE_CASE)) &&
-        normalizedName != "sketch.js"
+    val syntax = projectTextSyntax(normalizedName)
+    val nameExists = normalizedName != originalFileName && normalizedName in existingFileNames
+    val validName = validProjectPath(normalizedName) && normalizedName != "sketch.js" && !nameExists
+    val highlighter = editorHighlight(fileContent, colors.surface.luminance() < 0.5f, emptySet(), normalizedName)
 
     EditSettingsDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = {
             Text(
                 if (originalFileName == null) textTranslator("ファイルを追加", emptyArray())
@@ -137,27 +143,38 @@ internal fun AuxiliaryFileEditorDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = fileName,
-                    onValueChange = { fileName = it },
+                    onValueChange = { if (!busy) fileName = it },
+                    enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(textTranslator("ファイル名（.js / .frag / .vert）", emptyArray())) },
+                    label = { Text(textTranslator("ファイル名・相対パス", emptyArray())) },
                     isError = fileName.isNotBlank() && !validName,
+                    supportingText = if (nameExists) {
+                        { Text(textTranslator("同じ名前のファイルが存在します", emptyArray())) }
+                    } else null,
                     singleLine = true
                 )
                 OutlinedTextField(
                     value = fileContent,
-                    onValueChange = onContentChange,
+                    onValueChange = { if (!busy) onContentChange(it) },
+                    enabled = !busy,
                     modifier = Modifier.fillMaxWidth().height(260.dp),
                     label = {
                         Text(
-                            if (isShader) textTranslator("シェーダーコード", emptyArray())
-                            else textTranslator("JavaScriptコード", emptyArray())
+                            textTranslator(when (syntax) {
+                                ProjectTextSyntax.JAVASCRIPT -> "JavaScriptコード"
+                                ProjectTextSyntax.SHADER -> "シェーダーコード"
+                                ProjectTextSyntax.HTML -> "HTML・マークアップ"
+                                ProjectTextSyntax.CSS -> "CSSコード"
+                                ProjectTextSyntax.JSON -> "JSONデータ"
+                                ProjectTextSyntax.PLAIN -> "テキスト"
+                            }, emptyArray())
                         )
                     },
-                    textStyle = TextStyle(fontFeatureSettings = fontFeatures, fontFamily = codeFontFamily, fontSize = 13.sp)
+                    textStyle = TextStyle(fontFeatureSettings = fontFeatures, fontFamily = codeFontFamily, fontSize = 13.sp),
+                    visualTransformation = highlighter
                 )
                 Text(
-                    if (isShader) textTranslator("シェーダーは loadShader() や rinShaders で読み込み可能です。", emptyArray())
-                    else textTranslator("追加ファイルは名前順にsketch.jsより先に実行されます。", emptyArray()),
+                    textTranslator("index.html、style.css、.mjs、.json などのテキストと、scripts/main.js のような相対パスを使用できます。読み込み方法は実行環境で設定します。", emptyArray()),
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant
                 )
@@ -166,7 +183,7 @@ internal fun AuxiliaryFileEditorDialog(
         confirmButton = {
             Button(
                 shape = ButtonDefaults.shape,
-                onClick = { onSave(normalizedName, fileContent) },
+                onClick = { if (!busy && validName) onSave(normalizedName, fileContent) },
                 enabled = validName && !busy
             ) {
                 Text(textTranslator("保存", emptyArray()))
@@ -176,13 +193,13 @@ internal fun AuxiliaryFileEditorDialog(
             Row {
                 originalFileName?.let { existingName ->
                     TextButton(
-                        onClick = { onDelete(existingName) },
+                        onClick = { if (!busy) onDelete(existingName) },
                         enabled = !busy
                     ) {
                         Text(textTranslator("削除", emptyArray()), color = colors.error)
                     }
                 }
-                TextButton(onClick = onDismiss) {
+                TextButton(enabled = !busy, onClick = { if (!busy) onDismiss() }) {
                     Text(textTranslator("キャンセル", emptyArray()))
                 }
             }

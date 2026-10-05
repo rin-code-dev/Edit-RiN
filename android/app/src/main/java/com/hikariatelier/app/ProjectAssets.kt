@@ -28,22 +28,23 @@ data class ProjectAsset(val hash: String, val size: Long, val mime: String) {
     }
 }
 
-internal fun validAssetName(name: String): Boolean = name.isNotBlank() && name.length <= 160 &&
-    !name.startsWith('.') && name.none { it in "/\\?#%" || it.isISOControl() }
+internal fun validAssetName(name: String): Boolean = validProjectPath(name)
 
 internal fun uniqueAssetName(original: String, existing: Set<String>): String {
     require(validAssetName(original))
     if (original !in existing) return original
-    val dot = original.lastIndexOf('.').takeIf { it > 0 } ?: original.length
-    val base = original.substring(0, dot).take(140)
-    val suffix = original.substring(dot).take(16)
-    return generateSequence(2) { it + 1 }.map { "$base-$it$suffix" }.first { it !in existing }
+    val folder = original.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+    val filename = original.substringAfterLast('/')
+    val dot = filename.lastIndexOf('.').takeIf { it > 0 } ?: filename.length
+    val base = filename.substring(0, dot).take(140)
+    val suffix = filename.substring(dot).take(16)
+    return generateSequence(2) { it + 1 }.map { "$folder$base-$it$suffix" }.first { it !in existing }
 }
 
 internal fun validateAssetSet(assets: Map<String, ProjectAsset>) {
-    require(assets.size <= 100)
-    require(assets.keys.all(::validAssetName))
-    require(assets.values.sumOf { it.size } <= MAX_WORK_ASSET_BYTES)
+    require(assets.size <= 100) { "A project supports up to 100 binary assets" }
+    require(assets.keys.all(::validAssetName)) { "Invalid relative asset path" }
+    require(assets.values.sumOf { it.size } <= MAX_WORK_ASSET_BYTES) { "Project assets exceed the 200 MiB limit" }
 }
 
 internal fun copyBounded(input: InputStream, output: OutputStream, limit: Long): Long {
@@ -53,7 +54,7 @@ internal fun copyBounded(input: InputStream, output: OutputStream, limit: Long):
         val n = input.read(buffer)
         if (n < 0) return total
         total += n
-        require(total <= limit) { "File too large" }
+        require(total <= limit) { "File exceeds the ${limit / (1024 * 1024)} MiB limit" }
         output.write(buffer, 0, n)
     }
 }
@@ -127,7 +128,8 @@ internal fun writeAssetBackup(output: OutputStream, works: List<Work>, activeId:
         var totalBytes = (assets + templateAssets).sumOf { it.size }
         fun text(name: String, value: String) {
             val bytes = value.toByteArray(Charsets.UTF_8)
-            if (name != "snapshots.json") require(bytes.size <= 16L * 1024 * 1024) { "Backup metadata too large" }
+            if (name == "settings.json") require(bytes.size <= 16L * 1024 * 1024) { "Backup metadata too large" }
+            // Match the reader: retain older large works within the archive-wide bound.
             totalBytes += bytes.size
             require(totalBytes <= MAX_BACKUP_BYTES) { "Backup too large" }
             zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry()
@@ -176,7 +178,11 @@ internal fun readAssetBackup(input: InputStream, storage: AssetStorage): AssetBa
                 when {
                     entry.name in setOf("works.json", "settings.json", "snapshots.json", "templates.json") -> {
                         val output = java.io.ByteArrayOutputStream()
-                        total += copyBounded(zip, output, if (entry.name == "snapshots.json") MAX_BACKUP_BYTES - total else 16L * 1024 * 1024)
+                        // Existing works can exceed today's editing/preview caps. Retain them
+                        // in portable backups while keeping the archive-wide memory bound.
+                        val limit = if (entry.name == "settings.json") minOf(MAX_BACKUP_BYTES - total, 16L * 1024 * 1024)
+                            else MAX_BACKUP_BYTES - total
+                        total += copyBounded(zip, output, limit)
                         val text = output.toString("UTF-8")
                         when (entry.name) {
                             "works.json" -> works = text
@@ -266,7 +272,7 @@ private val knownAssetMimeTypes = mapOf("png" to "image/png", "jpg" to "image/jp
         "mtl" to "text/plain", "vert" to "text/plain", "frag" to "text/plain", "glsl" to "text/plain")
 
 internal fun assetMimeType(name: String, provided: String?): String {
-
+    if (isProjectTextFile(name)) return projectTextMimeType(name)
     return knownAssetMimeTypes[name.substringAfterLast('.', "").lowercase()]
         ?: provided?.takeIf { assetMimePattern.matches(it) }
         ?: "application/octet-stream"

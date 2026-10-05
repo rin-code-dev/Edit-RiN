@@ -1,110 +1,63 @@
-// Sound Synthesizer & FFT Visualizer
-// Edit:RiN sample work with p5.sound
-
+// Sound — touch to play tones; an oscilloscope sweeps the screen
+const SIZE = 600;
 let osc;
 let fft;
-let isPlaying = false;
-
-// p5.sound does not provide midiToFreq globally in all builds
-function midiToFreq(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
+let t = 0;
 
 function setup() {
-  createCanvas(600, 600);
-  colorMode(HSB, 360, 100, 100, 100);
-
-  osc = new p5.Oscillator('sine');
+  createCanvas(SIZE, SIZE);
+  osc = new p5.Oscillator('triangle');
   osc.amp(0);
   osc.start();
-
-  // p5.sound takes fftSize (power of 2 between 32 and 32768)
-  fft = new p5.FFT(128);
+  fft = new p5.FFT(0.8, 1024);
 }
 
 function draw() {
-  background(225, 40, 12, 35);
+  t += 0.02;
+  background(9, 9, 11);
 
-  const touching = mouseIsPressed && mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height;
-
-  if (touching) {
-    if (!isPlaying) {
-      if (typeof userStartAudio === 'function') {
-        userStartAudio();
-      }
-      osc.amp(0.35, 0.05);
-      isPlaying = true;
-    }
-    // Pentatonic scale note mapping
-    const pentatonic = [0, 2, 4, 7, 9];
-    const step = floor(map(mouseX, 0, width, 0, 20, true));
-    const octave = floor(step / 5);
-    const noteInScale = pentatonic[step % 5];
-    const midi = 48 + octave * 12 + noteInScale; // C3 to C7
-    const freq = midiToFreq(midi);
-    osc.freq(freq, 0.04);
-  } else if (isPlaying) {
+  if (mouseIsPressed) {
+    const midi = floor(map(mouseX, 0, width, 45, 81, true));
+    osc.freq(440 * pow(2, (midi - 69) / 12), 0.04);
+    osc.amp(map(mouseY, height, 0, 0.1, 0.4, true), 0.05);
+  } else {
     osc.amp(0, 0.15);
-    isPlaying = false;
   }
 
-  // Audio visualization
-  const waveform = fft.waveform();
-  const spectrum = fft.analyze();
+  const wave = fft.waveform();
 
-  // Center coordinate
-  push();
-  translate(width * 0.5, height * 0.5);
-
-  // Frequency spectrum bars in circle
-  const barCount = min(spectrum.length, 64);
-  noStroke();
-  for (let i = 0; i < barCount; i++) {
-    const angle = map(i, 0, barCount, 0, TWO_PI);
-    const rawAmp = spectrum[i];
-    const amp = (rawAmp <= 1.0) ? rawAmp * 255 : rawAmp;
-    const r = map(amp, 0, 255, 60, 220);
-    const hue = (i * 5 + frameCount * 0.5) % 360;
-
-    fill(hue, 80, 95, 60);
-    const x1 = cos(angle) * 60;
-    const y1 = sin(angle) * 60;
-    const x2 = cos(angle) * r;
-    const y2 = sin(angle) * r;
-    strokeWeight(3);
-    stroke(hue, 80, 95, 70);
-    line(x1, y1, x2, y2);
-  }
-
-  // Circular waveform
+  // 背景の淡い余韻波
   noFill();
-  strokeWeight(2.5);
-  stroke(185, 90, 100, 90);
+  stroke(168, 199, 250, 40);
+  strokeWeight(1);
   beginShape();
-  for (let i = 0; i < waveform.length; i++) {
-    const angle = map(i, 0, waveform.length, 0, TWO_PI);
-    const wave = waveform[i];
-    const r = 100 + wave * 50;
-    const x = cos(angle) * r;
-    const y = sin(angle) * r;
-    curveVertex(x, y);
+  for (let i = 0; i < wave.length; i += 4) {
+    const x = map(i, 0, wave.length, 0, width);
+    const y = height / 2 + wave[i] * 180 + sin(t + i * 0.02) * 15;
+    vertex(x, y);
   }
-  endShape(CLOSE);
+  endShape();
 
-  pop();
+  // メインのオシロスコープ波形（画面全体を横断）
+  stroke(168, 199, 250);
+  strokeWeight(3);
+  beginShape();
+  for (let i = 0; i < wave.length; i += 2) {
+    const x = map(i, 0, wave.length, 0, width);
+    const idle = !mouseIsPressed ? sin(t * 2 + (x / width) * TWO_PI * 2) * 8 : 0;
+    const y = height / 2 + wave[i] * 220 + idle;
+    vertex(x, y);
+  }
+  endShape();
 
-  // Touch hint
-  if (!touching) {
+  if (!mouseIsPressed) {
     noStroke();
-    fill(0, 0, 90, 75);
+    fill(168, 199, 250, 160);
     textAlign(CENTER, CENTER);
-    textSize(18);
-    text('Tap & drag to play synth', width * 0.5, height * 0.88);
+    text('Touch to play', width / 2, height - 40);
   }
 }
 
 function touchStarted() {
-  if (typeof userStartAudio === 'function') {
-    userStartAudio();
-  }
+  userStartAudio();
 }

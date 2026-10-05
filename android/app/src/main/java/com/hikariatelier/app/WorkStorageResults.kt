@@ -19,5 +19,3 @@ internal sealed interface WorkSaveResult {
     data object Conflict : WorkSaveResult
     data object Failed : WorkSaveResult
 }
-
-internal class WorkStoreConflictException : IllegalStateException("Saved works changed outside this session")

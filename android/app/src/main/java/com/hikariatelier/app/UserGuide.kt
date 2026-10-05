@@ -117,7 +117,7 @@ function preload() {
         iconRes = R.drawable.ic_terminal,
         tag = "Runtimes",
         steps = listOf(
-            "p5.js Versioning: Select between p5.js 2.3.3 (modern web standards and WebGL improvements) and 1.11.5 (legacy compatibility).",
+            "p5.js Versioning: Select between p5.js 2.3.4 (modern web standards and WebGL improvements) and 1.11.5 (legacy compatibility).",
             "p5.sound: Enable audio playback, audio synthesis, and FFT frequency analyzers (audio begins smoothly on first user touch).",
             "p5.brush: Includes the expressive p5.brush library for realistic watercolor, ink, and pencil strokes in WebGL mode."
         )

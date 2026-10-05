@@ -16,6 +16,7 @@ internal fun SettingsAboutSection(
     updateViewModel: UpdateViewModel,
     onShowGuide: () -> Unit,
     onShowLicenses: () -> Unit,
+    onShowReleaseNotes: () -> Unit,
     openExternalUrl: (String) -> Unit,
     textTranslator: (String, Array<out Any?>) -> String
 ) {
@@ -50,6 +51,12 @@ internal fun SettingsAboutSection(
                 contentPadding = PaddingValues(horizontal = 0.dp)
             ) {
                 Text(uiText(if (updateViewModel.manualChecking) "確認中…" else "アップデートを確認"))
+            }
+            TextButton(
+                onClick = onShowReleaseNotes,
+                contentPadding = PaddingValues(horizontal = 0.dp)
+            ) {
+                Text(uiText("更新履歴 (What's New)"))
             }
             TextButton(
                 onClick = onShowGuide,

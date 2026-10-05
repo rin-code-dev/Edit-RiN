@@ -17,9 +17,11 @@ class ProjectAssetsTest {
     }.toByteArray()
 
     @Test fun namesStayWithinAssetDirectoryAndDuplicatesAreRenamed() {
-        for (name in listOf("../x", "a/b", "a\\b", ".", "", "a%2fb", "a?x", "a#x", "a\n")) assertFalse(name, validAssetName(name))
+        for (name in listOf("../x", "a/../b", "a\\b", ".", "", "a%2fb", "a?x", "a#x", "a\n")) assertFalse(name, validAssetName(name))
         assertTrue(validAssetName("空の写真.png"))
+        assertTrue(validAssetName("images/空の写真.png"))
         assertEquals("photo-3.png", uniqueAssetName("photo.png", setOf("photo.png", "photo-2.png")))
+        assertEquals("images/photo-3.png", uniqueAssetName("images/photo.png", setOf("images/photo.png", "images/photo-2.png")))
     }
     @Test fun binaryAssetsRoundTripWithoutSharingMutableNames() {
         val source = storage()
@@ -35,6 +37,44 @@ class ProjectAssetsTest {
         val restored = readAssetBackup(ByteArrayInputStream(bytes.toByteArray()), target)
         assertEquals(asset, restored.store.works.single().assets["photo.png"])
         assertArrayEquals(binary, target.file(asset).readBytes())
+    }
+    @Test fun nestedHtmlModulesConfigurationAndAssetsRoundTripInExistingBackupFormat() {
+        val source = storage()
+        val asset = source.put(ByteArrayInputStream(byteArrayOf(1, 3, 9)), "image/png")
+        val text = withProjectDocumentConfig(mapOf("pages/index.html" to "<script type='module' src='../src/entry.mjs'></script>",
+            "styles/style.css" to "canvas { width: 40%; }", "src/entry.mjs" to "import './helpers/paint.mjs';",
+            "src/helpers/paint.mjs" to "export const paint = 1;", "data/settings.json" to "{\"size\":4}"),
+            ProjectDocumentConfig(entryDocument = "pages/index.html", executionMode = "html"))
+        val work = Work("unchanged-id", "Nested", "main code", files = text.toMutableMap(), assets = mapOf("images/photo.png" to asset))
+        val bytes = ByteArrayOutputStream()
+        writeAssetBackup(bytes, listOf(work), work.id, "{}", source)
+        val target = storage()
+        val restored = readAssetBackup(ByteArrayInputStream(bytes.toByteArray()), target).store.works.single()
+        assertEquals(work.id, restored.id)
+        assertEquals(work.code, restored.code)
+        assertEquals(work.files.toMap(), restored.files.toMap())
+        assertEquals(asset, restored.assets["images/photo.png"])
+        assertArrayEquals(byteArrayOf(1, 3, 9), target.file(asset).readBytes())
+    }
+    @Test fun legacyLargeSourceAndLongFileNameRemainLoadableWhileAnotherWorkIsSavedAndBackedUp() {
+        val oldFileName = "a".repeat(170) + ".js"
+        val oldSource = "x".repeat(MAX_PROJECT_TEXT_BYTES.toInt() + 1)
+        val oldWork = Work("legacy-id", "Legacy", oldSource, files = mutableMapOf(oldFileName to "const helper = 1;"))
+        val other = Work("other-id", "Other", "saved change")
+        val loaded = parseWorkStoreJson(serializeWorkStore(listOf(oldWork, other), other.id))!!
+        assertEquals(oldSource, loaded.works.first().code)
+        assertEquals("const helper = 1;", loaded.works.first().files[oldFileName])
+        loaded.works.last().code = "updated other work"
+        val bytes = ByteArrayOutputStream()
+        writeAssetBackup(bytes, loaded.works, other.id, "{}", storage())
+        val restored = readAssetBackup(ByteArrayInputStream(bytes.toByteArray()), storage()).store
+        assertEquals(other.id, restored.activeWorkId)
+        assertEquals(oldWork.id, restored.works.first().id)
+        assertEquals(oldSource, restored.works.first().code)
+        assertEquals("const helper = 1;", restored.works.first().files[oldFileName])
+        assertEquals("updated other work", restored.works.last().code)
+        assertTrue(validProjectPath(oldFileName))
+        assertTrue(runCatching { validateProjectTextFiles(oldWork.files, oldSource) }.isFailure)
     }
     @Test fun legacyBackupStillLoadsAndMissingOrCorruptAssetIsRejected() {
         val target = storage()

@@ -17,7 +17,7 @@ private val hexColor = Regex("#[0-9a-fA-F]{6}")
 /** Parameter declarations are comments, so older app versions can still run the sketch. */
 internal fun workParameters(sources: Map<String, String>): List<WorkParameter> = buildList {
     val names = mutableSetOf<String>()
-    for (source in sources.values) for (line in source.lineSequence()) {
+    for ((file, source) in sources) if (isJavaScriptProjectFile(file)) for (line in source.lineSequence()) {
         if (size >= 16) return@buildList
         val match = parameterLine.matchEntire(line) ?: continue
         val kind = match.groupValues[1]
@@ -70,4 +70,3 @@ internal fun parameterValuesJson(parameters: List<WorkParameter>, values: Map<St
             }
         }
     }.toString()
-

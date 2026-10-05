@@ -16,7 +16,10 @@ internal fun defaultWorks(assets: AssetManager): List<Work> {
         DefaultWorkDef("gravity", "Gravity", "1:1", p5Version = P5_VERSION_LEGACY),
         DefaultWorkDef("parameters", "Parameters", "1:1", p5Version = P5_VERSION_LEGACY),
         DefaultWorkDef("wave", "Wave", "1:1", p5Version = P5_VERSION_CURRENT),
-        DefaultWorkDef("sound", "Sound", "1:1", p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true)
+        DefaultWorkDef("webgpu", "WebGPU", "1:1", p5Version = P5_VERSION_CURRENT),
+        DefaultWorkDef("sound", "Sound", "1:1", p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true),
+        DefaultWorkDef("camera", "Camera", "1:1", p5Version = P5_VERSION_CURRENT),
+        DefaultWorkDef("microphone", "Microphone", "1:1", p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true)
     )
     return defs.map { def ->
         Work(
