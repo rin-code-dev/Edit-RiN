@@ -217,7 +217,10 @@ internal class PreviewController(
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
                     message?.let {
                         val content = it.message().orEmpty()
-                        if (!content.contains("Ignored attempt to cancel a touchmove event", ignoreCase = true)) {
+                        if (!content.contains("Ignored attempt to cancel a touchmove event", ignoreCase = true) &&
+                            !content.contains("android-webview-video-poster", ignoreCase = true) &&
+                            !content.contains("willReadFrequently", ignoreCase = true)
+                        ) {
                             val level = when (it.messageLevel()) {
                                 ConsoleMessage.MessageLevel.ERROR -> ConsoleLevel.ERROR
                                 ConsoleMessage.MessageLevel.WARNING -> ConsoleLevel.WARNING

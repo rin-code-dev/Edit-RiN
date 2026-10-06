@@ -153,6 +153,16 @@ internal fun EditorScreen(
             it.id == activeWorkId
         } ?: works.firstOrNull()
 
+    // Read observable drafts in composition and pass an immutable source snapshot to the worker.
+    val parameterSources = projectSearchSources(activeWorkId, editorText,
+        activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
+    val liveParameterCount by key(activeWorkId) {
+        produceState(initialValue = 0, key1 = parameterSources) {
+            if (parameterSources.values.sumOf { it.length } >= 8_000) kotlinx.coroutines.delay(120)
+            value = withContext(Dispatchers.Default) { workParameters(parameterSources).size }
+        }
+    }
+
     var isError by preview::isError
 
     var isPaused by preview::isPaused
@@ -186,7 +196,9 @@ internal fun EditorScreen(
     val galleryTarget = workMenuExpanded
     val galleryProgress by animateFloatAsState(
         targetValue = if (galleryTarget) 1f else 0f,
-        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        animationSpec = androidx.compose.animation.core.spring(
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+        ),
         label = "inlineWorkGallery"
     )
     val galleryPresent = galleryTarget || galleryProgress > 0f
@@ -544,7 +556,7 @@ internal fun EditorScreen(
     }
 
     var navigationSequence by remember { mutableIntStateOf(0) }
-    var navigationTarget by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var navigationTarget by remember { mutableStateOf<EditorNavigationTarget?>(null) }
     var navigationRequestsFocus by remember { mutableStateOf(true) }
 
     fun navigateToSource(file: String, line: Int, selection: TextRange? = null) {
@@ -561,7 +573,7 @@ internal fun EditorScreen(
             it.min >= 0 && it.max <= state.value.text.length
         } ?: TextRange(offset))
         selectedEditorFile = file
-        navigationTarget = file to line
+        navigationTarget = EditorNavigationTarget(file, line, state.value.selection)
         navigationRequestsFocus = true
         navigationSequence++
         showConsole = false
@@ -698,9 +710,8 @@ internal fun EditorScreen(
 
     val animatedLandscapePreviewFraction by animateFloatAsState(
         targetValue = landscapePreviewFraction,
-        animationSpec = tween(
-            durationMillis = 260,
-            easing = FastOutSlowInEasing
+        animationSpec = androidx.compose.animation.core.spring(
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
         ),
         label = "landscapePreviewSplit"
     )
@@ -1014,6 +1025,22 @@ internal fun EditorScreen(
     }
 
     @Composable
+    fun ParameterButton(
+        modifier: Modifier = Modifier
+    ) {
+        com.hikariatelier.app.ParameterButton(
+            parameterCount = liveParameterCount,
+            colors = colors,
+            height = if (isLandscape) 34.dp else 36.dp,
+            minWidth = if (isLandscape) 34.dp else 36.dp,
+            iconSize = if (isLandscape) 15.dp else 16.dp,
+            onClick = ::openPreviewParameters,
+            textTranslator = { s, args -> uiText(s, *args) },
+            modifier = modifier
+        )
+    }
+
+    @Composable
     fun PreviewActionsToggleButton(
         modifier: Modifier = Modifier
     ) {
@@ -1118,6 +1145,8 @@ internal fun EditorScreen(
                 onClick = { showConsole = !showConsole },
                 textTranslator = { s, args -> uiText(s, *args) }
             )
+
+            ParameterButton()
 
             PreviewActionsToggleButton()
 
@@ -1238,8 +1267,8 @@ internal fun EditorScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (isLandscape) 40.dp else 50.dp)
-                .padding(vertical = if (isLandscape) 2.dp else 6.dp),
+                .height(if (isLandscape) 36.dp else 46.dp)
+                .padding(vertical = if (isLandscape) 2.dp else 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             RunStatusControls(
@@ -1247,28 +1276,32 @@ internal fun EditorScreen(
                 isPaused = isPaused,
                 hasPendingChanges = previewHasChanges && !preview.isLoading,
                 colors = colors,
-                height = if (isLandscape) 34.dp else 38.dp,
-                buttonSize = 34.dp,
-                iconSize = 19.dp,
+                height = if (isLandscape) 32.dp else 36.dp,
+                buttonSize = if (isLandscape) 26.dp else 28.dp,
+                iconSize = if (isLandscape) 15.dp else 16.dp,
                 onTogglePause = ::togglePreviewPlayback,
                 onReload = { runSketch() },
                 textTranslator = { s, args -> uiText(s, *args) }
             )
 
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(4.dp))
 
             ConsoleButton(
                 hasError = consoleEntries.any { it.level == ConsoleLevel.ERROR },
                 entryCount = consoleEntries.size,
                 colors = colors,
-                height = if (isLandscape) 34.dp else 38.dp,
-                minWidth = 44.dp,
-                iconSize = 17.dp,
+                height = if (isLandscape) 32.dp else 36.dp,
+                minWidth = if (isLandscape) 32.dp else 36.dp,
+                iconSize = if (isLandscape) 15.dp else 16.dp,
                 onClick = { showConsole = !showConsole },
                 textTranslator = { s, args -> uiText(s, *args) }
             )
 
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(4.dp))
+
+            ParameterButton()
+
+            Spacer(Modifier.width(4.dp))
 
             PreviewActionsToggleButton()
 
@@ -1277,9 +1310,9 @@ internal fun EditorScreen(
             SaveRestoreControls(
                 hasUnsavedChanges = hasUnsavedChanges,
                 colors = colors,
-                height = if (isLandscape) 34.dp else 38.dp,
-                buttonSize = 34.dp,
-                iconSize = 20.dp,
+                height = if (isLandscape) 32.dp else 36.dp,
+                buttonSize = if (isLandscape) 26.dp else 28.dp,
+                iconSize = if (isLandscape) 16.dp else 17.dp,
                 onSnapshot = { editUserWork { showSnapshotSheet = true } },
                 onRestore = { restoreCurrentWork() },
                 onSave = { saveCurrentWork() },
@@ -1415,7 +1448,8 @@ internal fun EditorScreen(
                         onSearchMatchesChanged = { source, matches -> searchHighlightResult = source to matches },
                         onRevealMatch = { range ->
                             navigationRequestsFocus = false
-                            navigationTarget = editingFile to (1 + editingState.value.text.take(range.min).count { it == '\n' })
+                            navigationTarget = EditorNavigationTarget(editingFile,
+                                1 + editingState.value.text.take(range.min).count { it == '\n' }, range)
                             navigationSequence++
                         }
                     )

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.2.2 — 2026-10-06
+
+### English
+- Dedicated Parameters button directly in the preview bar with a live count badge indicating active sketch parameters.
+- Interactive error gutter that highlights erroneous lines and displays error details upon tap.
+- Incremental syntax highlighting cache to eliminate typing flicker during background re-parsing.
+- Compact preview control bar sizing and unified spring animations for panels and sheets.
+- Android WebView video poster fix and offscreen 2D canvas `willReadFrequently` acceleration to eliminate GPU stalls.
+- Refreshed settings icon to a standard gear design.
+- Accurate search match navigation and restored selection offsets.
+
+### 日本語
+- プレビューバーにパラメータボタンを独立配置し、作品内のパラメータ数をリアルタイムにバッジ表示。
+- 行番号（ガター）のエラー行強調表示およびタップ時のエラー詳細ダイアログ表示。
+- 入力中の再解析時にも既存ハイライトを再利用するキャッシュにより、エディタ編集時のチラつきを解消。
+- プレビュー操作バーのサイズ・余白をコンパクト化し、パネル開閉を滑らかなスプリングアニメーションに統一。
+- Android WebViewでの動画ポスターエラーを修正し、オフスクリーン描画の `willReadFrequently` 最適化によりGPUストールを抑止。
+- 設定アイコンを直感的に分かりやすい歯車アイコンへ刷新。
+- 検索マッチ位置へのスクロール・選択範囲の復元精度を向上。
+
 ## 2.2.1 — 2026-10-05
 
 ### English

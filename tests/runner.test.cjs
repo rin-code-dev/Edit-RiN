@@ -114,7 +114,15 @@ function runner(code = 'function setup() {}', config = {}, extras = {}) {
       write() {},
       getElementById: () => ({ remove() { removed = true; } }),
       querySelector: () => canvas,
-      createElement: () => ({ getContext: () => drawing }),
+      createElement: tag => {
+        const attrs = {};
+        return {
+          tagName: String(tag || '').toUpperCase(),
+          setAttribute(k, v) { attrs[k] = v; },
+          getAttribute(k) { return attrs[k]; },
+          getContext: () => drawing
+        };
+      },
       head: { appendChild(script) {
         try { vm.runInContext(script.textContent, context); }
         catch (error) { context.onerror(error.message, 'sketch.js', 1); }
@@ -953,3 +961,34 @@ test('addon selection follows the actual custom p5 version rather than the work 
   writes.length=0;r.context.p5.VERSION = '';r.context.__editRinLoadP5Addons();
   assert.equal(writes.length,0);assert.match(r.errors[0],/p5.VERSION/);
 });
+
+test('video elements receive transparent poster and offscreen canvas sets willReadFrequently', () => {
+  const recorded = [];
+  class FakeCanvas {
+    constructor(id = '', isConnected = false) {
+      this.id = id;
+      this.isConnected = isConnected;
+    }
+    getContext(type, attrs) {
+      recorded.push({ id: this.id, isConnected: this.isConnected, type, attrs });
+      return {};
+    }
+  }
+  const r = runner('', {}, {
+    HTMLCanvasElement: FakeCanvas
+  });
+  // 1. Video element automatically receives dummy transparent poster
+  const video = r.context.document.createElement('video');
+  assert.match(video.getAttribute('poster') || '', /^data:image\/gif/);
+
+  // 2. Offscreen canvas gets willReadFrequently: true
+  const offscreen = new FakeCanvas('', false);
+  offscreen.getContext('2d');
+  assert.equal(recorded[0].attrs.willReadFrequently, true);
+
+  // 3. Main presentation canvas does not get forced willReadFrequently
+  const main = new FakeCanvas('defaultCanvas0', true);
+  main.getContext('2d');
+  assert.equal(recorded[1].attrs, undefined);
+});
+

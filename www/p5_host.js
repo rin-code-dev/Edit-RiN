@@ -49,6 +49,7 @@
   };
   const observedErrors = new WeakSet();
   const handleError = (message, source, line, column, error) => {
+    if (String(message || '').includes('android-webview-video-poster')) return true;
     if (error && typeof error === 'object') {
       if (observedErrors.has(error)) return true;
       observedErrors.add(error);
@@ -74,6 +75,48 @@
     if (event.target?.tagName === 'SCRIPT') reportError(`Script load failed: ${event.target.src}`);
     else if (event.message) handleError(event.message, event.filename, event.lineno, event.colno, event.error);
   }, true);
+})();
+
+(() => {
+  // 1. Prevent Android WebView CORS errors on <video> elements by supplying a transparent poster.
+  // WebView tries to load an internal "android-webview-video-poster:" URL if poster is missing.
+  const DUMMY_VIDEO_POSTER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const origCreateElement = document.createElement.bind(document);
+    document.createElement = function (tagName, options) {
+      const el = origCreateElement(tagName, options);
+      if (typeof tagName === 'string' && tagName.toLowerCase() === 'video' && typeof el?.setAttribute === 'function') {
+        el.setAttribute('poster', DUMMY_VIDEO_POSTER);
+      }
+      return el;
+    };
+  }
+
+  // 2. Optimize offscreen 2D canvas readbacks (e.g. p5.MediaElement.loadPixels, image readbacks)
+  // by ensuring willReadFrequently is true for offscreen helper canvases, eliminating GPU stalls and Chromium warnings.
+  if (typeof HTMLCanvasElement !== 'undefined' && HTMLCanvasElement.prototype) {
+    const origGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, attributes) {
+      if (type === '2d') {
+        const isMainDisplay = Boolean(
+          this.id === 'defaultCanvas0' ||
+          this.classList?.contains('p5Canvas') ||
+          this.parentNode ||
+          this.isConnected
+        );
+        if (!isMainDisplay) {
+          if (attributes && typeof attributes === 'object') {
+            if (attributes.willReadFrequently === undefined) {
+              attributes = Object.assign({ willReadFrequently: true }, attributes);
+            }
+          } else {
+            attributes = { willReadFrequently: true };
+          }
+        }
+      }
+      return origGetContext.call(this, type, attributes);
+    };
+  }
 })();
   
 

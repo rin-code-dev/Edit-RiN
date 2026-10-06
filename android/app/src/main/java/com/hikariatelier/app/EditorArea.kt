@@ -72,7 +72,7 @@ internal fun EditorArea(
     showLineNumbers: Boolean,
     fontFeatures: String,
     navigationSequence: Int,
-    navigationTarget: Pair<String, Int>?,
+    navigationTarget: EditorNavigationTarget?,
     onClearNavigationTarget: () -> Unit,
     colors: ColorScheme,
     textTranslator: (String, Array<out Any?>) -> String,
@@ -96,6 +96,7 @@ internal fun EditorArea(
         sessionViewModel.editorValueState.value.text, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
     LaunchedEffect(readOnly) { if (readOnly) focusManager.clearFocus(force = true) }
 
+    var errorTooltipLine by remember(editingKey, errorsCurrent) { mutableStateOf<Int?>(null) }
     val editorErrorLines by remember(editingFile, activeWorkId, errorsCurrent, consoleEntries) {
         derivedStateOf {
             if (!errorsCurrent) emptySet() else consoleEntries.asSequence()
@@ -105,7 +106,8 @@ internal fun EditorArea(
         }
     }
 
-    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile)
+    val currentEditorErrorLines by rememberUpdatedState(editorErrorLines)
+    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile, editingKey)
 
     val parsedFoldRegions = if (isJavaScriptProjectFile(editingFile) ||
         projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingText, editingKey) else emptyList()
@@ -161,6 +163,7 @@ internal fun EditorArea(
         }
         sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, next, foldRegions)
     }
+    val currentToggleFold by rememberUpdatedState<(CodeFold) -> Unit>(::toggleFold)
     var gutterLayout by remember(editingKey) { mutableStateOf<TextLayoutResult?>(null) }
     var editorTextLayout by remember(editingKey) {
         mutableStateOf<TextLayoutResult?>(null)
@@ -177,65 +180,75 @@ internal fun EditorArea(
     val lineNumberDigits = maxOf(1, logicalLineStarts.size.toString().length)
     val hasFolds = foldRegions.isNotEmpty()
 
-    val gutterText = remember(
-        showLineNumbers,
-        hasFolds,
-        projection,
-        foldsByLine,
-        editorTextLayout,
-        logicalLineStarts,
-        lineNumberDigits,
-        editorErrorLines,
-        colors.error
-    ) {
-        val visualStarts = editorTextLayout?.takeIf {
-            it.layoutInput.text.text == displayText
-        }?.let { layout ->
-            List(layout.lineCount) { visualLine ->
-                projection.transformedToOriginal(layout.getLineStart(visualLine))
+    // Capture one layout for this source; the worker must not read changing Compose state.
+    val gutterSourceLayout = editorTextLayout
+    val gutterTextState = key(editingKey) {
+        produceState(
+            initialValue = AnnotatedString(""),
+            showLineNumbers,
+            hasFolds,
+            projection,
+            foldsByLine,
+            gutterSourceLayout,
+            logicalLineStarts,
+            lineNumberDigits,
+            editorErrorLines,
+            colors.error
+        ) {
+            // While BasicTextField measures the edited source, keep the last visual rows.
+            // Falling back to logical rows here shrinks wrapped gutters out of the viewport.
+            if (gutterSourceLayout != null && gutterSourceLayout.layoutInput.text.text != displayText) {
+                return@produceState
             }
-        } ?: logicalLineStarts.filter { offset -> projection.hidden.none { offset > it.open && offset < it.close } }
-
-        AnnotatedString.Builder().apply {
-            visualStarts.forEachIndexed { visualIndex, offset ->
-                val logicalIndex = logicalLineStarts.binarySearch(offset).let {
-                    if (it >= 0) it else -it - 2
-                }.coerceAtLeast(0)
-                val startsLogicalLine =
-                    logicalLineStarts.getOrNull(logicalIndex) == offset
-
-                if (startsLogicalLine) {
-                    if (hasFolds) {
-                        val fold = foldsByLine[logicalIndex]
-                        append(when {
-                            fold == null -> " "
-                            fold.open in collapsedFolds -> "▸"
-                            else -> "▾"
-                        })
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                val visualStarts = gutterSourceLayout?.let { layout ->
+                    List(layout.lineCount) { visualLine ->
+                        projection.transformedToOriginal(layout.getLineStart(visualLine))
                     }
-                    val numberStart = length
-                    if (showLineNumbers) {
-                        append((logicalIndex + 1).toString().padStart(lineNumberDigits))
-                    }
-                    if (logicalIndex + 1 in editorErrorLines) {
-                        addStyle(
-                            SpanStyle(
-                                color = colors.error,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            numberStart,
-                            length
-                        )
-                    }
-                } else {
-                    append(" ".repeat((if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)))
-                }
+                } ?: logicalLineStarts.filter { offset -> projection.hidden.none { offset > it.open && offset < it.close } }
 
-                if (visualIndex < visualStarts.lastIndex) {
-                    append('\n')
-                }
+                AnnotatedString.Builder().apply {
+                    visualStarts.forEachIndexed { visualIndex, offset ->
+                        val logicalIndex = logicalLineStarts.binarySearch(offset).let {
+                            if (it >= 0) it else -it - 2
+                        }.coerceAtLeast(0)
+                        val startsLogicalLine =
+                            logicalLineStarts.getOrNull(logicalIndex) == offset
+
+                        if (startsLogicalLine) {
+                            if (hasFolds) {
+                                val fold = foldsByLine[logicalIndex]
+                                append(when {
+                                    fold == null -> " "
+                                    fold.open in collapsedFolds -> "▸"
+                                    else -> "▾"
+                                })
+                            }
+                            val numberStart = length
+                            if (showLineNumbers) {
+                                append((logicalIndex + 1).toString().padStart(lineNumberDigits))
+                            }
+                            if (logicalIndex + 1 in editorErrorLines) {
+                                addStyle(
+                                    SpanStyle(
+                                        color = colors.error,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    numberStart,
+                                    length
+                                )
+                            }
+                        } else {
+                            append(" ".repeat((if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)))
+                        }
+
+                        if (visualIndex < visualStarts.lastIndex) {
+                            append('\n')
+                        }
+                    }
+                }.toAnnotatedString()
             }
-        }.toAnnotatedString()
+        }
     }
 
     Card(
@@ -380,8 +393,8 @@ internal fun EditorArea(
                 LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                     val target = navigationTarget ?: return@LaunchedEffect
                     val layout = editorTextLayout ?: return@LaunchedEffect
-                    if (target.first != editingFile || layout.layoutInput.text.text != displayText) return@LaunchedEffect
-                    val offset = sourceLineOffset(editingText, target.second) ?: return@LaunchedEffect
+                    if (target.file != editingFile || layout.layoutInput.text.text != displayText) return@LaunchedEffect
+                    val offset = target.sourceOffset(editingText) ?: return@LaunchedEffect
                     val containing = foldRegions.filter { it.open in collapsedFolds && offset > it.open && offset < it.close }
                     if (containing.isNotEmpty()) {
                         sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(
@@ -394,8 +407,7 @@ internal fun EditorArea(
                     if (navigationRequestsFocus) editorFocusRequester.requestFocus()
                     editorScrollState.scrollTo(layout.getLineTop(layout.getLineForOffset(projection.originalToTransformed(offset))).toInt())
                     if (!editorWordWrap) {
-                        val cursorOffset = if (navigationRequestsFocus) offset else editingValue.selection.min
-                        val cursor = layout.getCursorRect(projection.originalToTransformed(cursorOffset.coerceIn(0, editingText.length)))
+                        val cursor = layout.getCursorRect(projection.originalToTransformed(offset))
                         val left = editorHorizontalScrollState.value
                         if (cursor.right > left + viewportWidth) {
                             editorHorizontalScrollState.scrollTo((cursor.right - viewportWidth).toInt().coerceAtLeast(0))
@@ -417,20 +429,32 @@ internal fun EditorArea(
                 ) {
                     if (showLineNumbers || foldRegions.isNotEmpty()) {
                         Text(
-                            text = gutterText,
+                            text = gutterTextState.value,
                             onTextLayout = { if (!it.hasSameEditorLines(gutterLayout)) gutterLayout = it },
                             modifier = Modifier
                                 .width(gutterWidth)
-                                .pointerInput(projection, gutterLayout, editorTextLayout, foldsByLine) {
+                                .pointerInput(projection, gutterLayout, editorTextLayout, foldsByLine, readOnly, errorsCurrent) {
                                     detectTapGestures { position ->
                                         val gutter = gutterLayout ?: return@detectTapGestures
                                         val layout = editorTextLayout ?: return@detectTapGestures
-                                        if (layout.layoutInput.text.text != displayText || position.y > gutter.size.height) return@detectTapGestures
+                                        if (layout.layoutInput.text.text != displayText ||
+                                            position.y > gutter.getLineBottom(gutter.lineCount - 1)) return@detectTapGestures
                                         val visualLine = gutter.getLineForVerticalPosition(position.y)
                                         if (visualLine >= layout.lineCount) return@detectTapGestures
                                         val original = projection.transformedToOriginal(layout.getLineStart(visualLine))
                                         val line = logicalLineStarts.binarySearch(original)
-                                        if (line >= 0) foldsByLine[line]?.let(::toggleFold)
+                                        if (line >= 0) {
+                                            val fold = foldsByLine[line]
+                                            val gutterStart = gutter.getLineStart(visualLine)
+                                            val marker = gutter.layoutInput.text.text.getOrNull(gutterStart)
+                                            val onFoldControl = fold != null && (marker == '▸' || marker == '▾') &&
+                                                position.x <= gutter.getBoundingBox(gutterStart).right
+                                            when (editorGutterAction(fold != null, (line + 1) in currentEditorErrorLines, onFoldControl)) {
+                                                EditorGutterAction.FOLD -> fold?.let(currentToggleFold)
+                                                EditorGutterAction.ERROR -> errorTooltipLine = line + 1
+                                                null -> Unit
+                                            }
+                                        }
                                     }
                                 }
                                 .semantics {
@@ -473,8 +497,8 @@ internal fun EditorArea(
                         BasicTextField(
                             value = editingValue,
                             readOnly = readOnly,
-                            onValueChange = {
-                                if (!readOnly) {
+                            onValueChange = { next ->
+                                dispatchEditorValueChange(editingValue, next, readOnly, onUpdateEditingValue) {
                                     if (editingValue.selection.collapsed &&
                                         deletesFoldedCode(editingText, it.text, projection.hidden)) {
                                         sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
@@ -517,6 +541,24 @@ internal fun EditorArea(
                     }
                 }
             }
+        }
+    }
+    if (errorsCurrent && errorTooltipLine != null) {
+        val errorDetail = consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.file == editingFile && it.workId == activeWorkId && it.line == errorTooltipLine }
+        if (errorDetail != null) {
+            AlertDialog(
+                onDismissRequest = { errorTooltipLine = null },
+                title = { Text(textTranslator("エラー詳細", emptyArray())) },
+                text = { Text(errorDetail.message) },
+                confirmButton = {
+                    TextButton(onClick = { errorTooltipLine = null }) {
+                        Text(textTranslator("閉じる", emptyArray()))
+                    }
+                },
+                containerColor = colors.errorContainer,
+                titleContentColor = colors.onErrorContainer,
+                textContentColor = colors.onErrorContainer
+            )
         }
     }
 }

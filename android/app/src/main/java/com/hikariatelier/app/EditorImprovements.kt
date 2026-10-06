@@ -21,21 +21,25 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun editorHighlight(source: String, dark: Boolean, errors: Set<Int>, file: String = "sketch.js"): VisualTransformation {
-    val immediate = remember(file, dark, errors) { projectFileHighlighter(file, dark, errors) }
-    if (source.length < 8_000) return immediate
-    val result by key(file, dark, errors) {
-        produceState<Pair<String, TransformedText>?>(null, source) {
+internal fun editorHighlight(
+    source: String, dark: Boolean, errors: Set<Int>, file: String = "sketch.js", documentKey: String = file
+): VisualTransformation {
+    val immediate = remember(file, dark) { projectFileHighlighter(file, dark, emptySet()) }
+    val cache = remember(documentKey, file, dark) { EditorHighlightCache() }
+    val result = if (source.length < 500) null else key(documentKey, file, dark) {
+        produceState<AnnotatedString?>(null, source) {
             // Rapid typing supersedes this job before a full-document scan begins.
             delay(120)
             value = withContext(Dispatchers.Default) {
-                source to projectFileHighlighter(file, dark, errors).filter(AnnotatedString(source))
+                projectFileHighlighter(file, dark, emptySet()).filter(AnnotatedString(source)).text
             }
-        }
+        }.value
     }
-    return remember(source, result) {
+    return remember(source, result, immediate, cache, dark, errors) {
         VisualTransformation { text ->
-            result?.takeIf { it.first == text.text }?.second ?: TransformedText(text, OffsetMapping.Identity)
+            val completed = if (text.length < 500) immediate.filter(text).text else result
+            val syntax = cache.highlight(text, completed)
+            TransformedText(withEditorErrorLines(syntax, dark, errors), OffsetMapping.Identity)
         }
     }
 }
