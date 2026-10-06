@@ -29,10 +29,10 @@ internal fun Window.preferHighRefreshRate() {
     }
 }
 
-/** Height-only remeasurement does not change line positions or the line-number gutter. */
+/** Reuse height-only remeasurement, but never keep character offsets from an older source. */
 internal fun TextLayoutResult.hasSameEditorLines(other: TextLayoutResult?): Boolean {
     if (other == null) return false
-    return layoutInput.text == other.layoutInput.text &&
+    return layoutInput.text.text == other.layoutInput.text.text &&
         layoutInput.style == other.layoutInput.style &&
         layoutInput.density == other.layoutInput.density &&
         layoutInput.layoutDirection == other.layoutInput.layoutDirection &&
@@ -60,7 +60,9 @@ internal fun PortraitPreviewViewport(
     val childSize = if (hidden) visibleSize else targetSize
     val animatedHeight = animateFloatAsState(
         targetValue = if (hidden) 0f else height,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        animationSpec = androidx.compose.animation.core.spring(
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+        ),
         label = "boundedPortraitPreview"
     )
     Layout(

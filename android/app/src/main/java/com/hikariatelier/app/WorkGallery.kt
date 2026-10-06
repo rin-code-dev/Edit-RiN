@@ -625,7 +625,7 @@ private fun WorkGalleryContent(
                             }
                         }
                     }
-                    Column(Modifier.clip(RoundedCornerShape(6.dp))
+                    Column(Modifier.animateItem().clip(RoundedCornerShape(6.dp))
                         .combinedClickable(
                             onClick = { if (!busy) { if (state.selecting) state.toggleSelected(work.id) else onOpen(work, false) } },
                             onLongClickLabel = text("作品メニュー"),

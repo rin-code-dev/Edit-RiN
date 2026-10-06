@@ -103,8 +103,8 @@ internal fun PreviewActionsToggleButton(
 
     Box(
         modifier = modifier
-            .height(if (isLandscape) 34.dp else 38.dp)
-            .widthIn(min = if (isLandscape) 36.dp else 42.dp)
+            .height(if (isLandscape) 34.dp else 36.dp)
+            .widthIn(min = if (isLandscape) 34.dp else 36.dp)
             .clip(RoundedCornerShape(10.dp))
             .border(
                 width = 1.dp,
@@ -125,7 +125,7 @@ internal fun PreviewActionsToggleButton(
                 ),
                 contentDescription = uiText("プレビュー操作"),
                 tint = contentColor,
-                modifier = Modifier.size(if (isLandscape) 16.dp else 17.dp)
+                modifier = Modifier.size(if (isLandscape) 15.dp else 16.dp)
             )
             Spacer(Modifier.width(3.dp))
             Icon(
@@ -134,7 +134,7 @@ internal fun PreviewActionsToggleButton(
                 ),
                 contentDescription = null,
                 tint = contentColor.copy(alpha = 0.7f),
-                modifier = Modifier.size(if (isLandscape) 11.dp else 13.dp)
+                modifier = Modifier.size(if (isLandscape) 11.dp else 12.dp)
             )
         }
     }
@@ -147,7 +147,7 @@ internal fun PreviewActionsTray(
     isPreviewRecording: Boolean,
     pendingRecordingFormat: String?,
     colors: ColorScheme,
-    onOpenParameters: () -> Unit,
+    onOpenParameters: () -> Unit = {},
     onScreenshot: () -> Unit,
     onShareCard: () -> Unit,
     onRecordToggle: () -> Unit,
@@ -226,11 +226,6 @@ internal fun PreviewActionsTray(
             }
 
             // View controls
-            ActionChip(
-                iconRes = R.drawable.ic_tune,
-                label = uiText("パラメータ"),
-                onClick = onOpenParameters
-            )
             ActionChip(
                 iconRes = R.drawable.ic_fullscreen,
                 label = uiText("全画面"),
@@ -399,6 +394,61 @@ internal fun ConsoleButton(
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Medium,
                     color = if (hasError) colors.error else colors.outline
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ParameterButton(
+    parameterCount: Int,
+    colors: ColorScheme,
+    height: Dp,
+    minWidth: Dp,
+    iconSize: Dp,
+    onClick: () -> Unit,
+    textTranslator: (String, Array<out Any?>) -> String,
+    modifier: Modifier = Modifier
+) {
+    fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
+    val hasParameters = parameterCount > 0
+    val borderColor = if (hasParameters) colors.primary.copy(alpha = 0.9f) else colors.outlineVariant
+    val backgroundColor = if (hasParameters) colors.primaryContainer.copy(alpha = 0.22f) else Color.Transparent
+    val contentColor = if (hasParameters) colors.primary else colors.onSurfaceVariant
+
+    Box(
+        modifier = modifier
+            .height(height)
+            .widthIn(min = minWidth)
+            .clip(RoundedCornerShape(10.dp))
+            .background(backgroundColor)
+            .border(
+                width = 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(10.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_tune),
+                contentDescription = uiText("パラメータ"),
+                tint = contentColor,
+                modifier = Modifier.size(iconSize)
+            )
+            if (hasParameters) {
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    text = if (parameterCount > 99) "99+" else parameterCount.toString(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary
                 )
             }
         }

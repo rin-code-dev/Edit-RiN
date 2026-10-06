@@ -252,8 +252,8 @@ internal fun EditorWorkspaceLayout(
 
                                 AnimatedVisibility(
                                     visible = state.showConsole,
-                                    enter = fadeIn(tween(140)) + expandVertically(tween(180)),
-                                    exit = fadeOut(tween(110)) + shrinkVertically(tween(160))
+                                    enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                                    exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                 ) {
                                     slots.console(
                                         Modifier.padding(bottom = 6.dp)
@@ -262,8 +262,8 @@ internal fun EditorWorkspaceLayout(
 
                                 AnimatedVisibility(
                                     visible = state.previewActionsExpanded,
-                                    enter = fadeIn(tween(140)) + expandVertically(tween(180)),
-                                    exit = fadeOut(tween(110)) + shrinkVertically(tween(160))
+                                    enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                                    exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                 ) {
                                     slots.previewActions(
                                         Modifier.padding(bottom = 6.dp)
@@ -282,8 +282,8 @@ internal fun EditorWorkspaceLayout(
 
                                 AnimatedVisibility(
                                     visible = state.editorFocused && state.showEditorAccessoryBar,
-                                    enter = fadeIn(tween(120)) + expandVertically(tween(160)),
-                                    exit = fadeOut(tween(90)) + shrinkVertically(tween(130))
+                                    enter = fadeIn(tween(120)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                                    exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                 ) {
                                     slots.accessory(
                                         Modifier.padding(top = 6.dp)
@@ -655,8 +655,8 @@ internal fun EditorWorkspaceLayout(
 
                         AnimatedVisibility(
                             visible = state.editorFocused && state.showEditorAccessoryBar,
-                            enter = fadeIn(tween(120)) + expandVertically(tween(160)),
-                            exit = fadeOut(tween(90)) + shrinkVertically(tween(130))
+                            enter = fadeIn(tween(120)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                            exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                         ) {
                             slots.accessory(
                                 Modifier.padding(

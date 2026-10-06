@@ -10,6 +10,9 @@ function setup() {
   capture = createCapture(VIDEO, () => {
     ready = true;
   });
+  if (capture && capture.elt) {
+    capture.elt.setAttribute('poster', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+  }
   capture.size(SIZE / STEP, SIZE / STEP);
   capture.hide();
   noStroke();
@@ -18,7 +21,8 @@ function setup() {
 function draw() {
   background(9, 9, 11);
 
-  const videoReady = ready || (capture && (capture.loadedmetadata || capture.width > 0));
+  const videoReady = (ready || (capture && (capture.loadedmetadata || capture.width > 0))) &&
+    Boolean(capture && capture.width > 0 && capture.height > 0);
   if (videoReady) {
     capture.loadPixels();
     const cols = capture.width;

@@ -38,6 +38,42 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "2.2.2",
+        versionCode = 29,
+        titleEn = "What's New in v2.2.2",
+        titleJa = "v2.2.2 の新機能",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Live Parameters Button",
+                titleJa = "パラメータボタンの独立",
+                descEn = "Access sketch parameters directly from the preview bar with a live count badge indicating adjustable inputs.",
+                descJa = "プレビューバーからパラメータ調整へ直接アクセス。パラメータ数のリアルタイムバッジも表示。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_error_jump,
+                titleEn = "Gutter Error Details",
+                titleJa = "行番号エラー表示 & 詳細確認",
+                descEn = "Error lines are highlighted in the gutter. Tap any line number with an error to immediately inspect the issue.",
+                descJa = "エラー行を行番号で強調表示。行番号をタップするだけでエラーメッセージの詳細をその場で確認可能。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Smoother Editor Highlighting",
+                titleJa = "高速・安定したコードハイライト",
+                descEn = "Enjoy flicker-free editing with incremental syntax caching and responsive spring-based panel animations.",
+                descJa = "キャッシュ機構により入力中のチラつきを抑え、各種パネルの開閉も滑らかなスプリングアニメーションに刷新。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_camera,
+                titleEn = "WebView & Media Tuning",
+                titleJa = "動画・キャンバス描画の最適化",
+                descEn = "Resolved WebView video poster issues and accelerated canvas pixel operations for camera and generative media.",
+                descJa = "WebViewの動画エラーを防止し、カメラや画像処理を行うスケッチのキャンバス描画パフォーマンスを改善。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.2.1",
         versionCode = 28,
         titleEn = "What's New in v2.2.1",
