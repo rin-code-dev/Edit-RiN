@@ -1,0 +1,26 @@
+Third-party typefaces bundled for self-hosted web use.
+Space Grotesk and IBM Plex Mono are unmodified upstream WOFF2 files.
+Each font is covered by SIL Open Font License 1.1; see its bundled license.
+
+Space Grotesk: normal variable, weight 300-700.
+IBM Plex Mono: normal regular, weight 400.
+
+space-grotesk-variable.woff2
+Source: https://raw.githubusercontent.com/floriankarsten/space-grotesk/03507d024a01282884232081fc6011c09ff4e849/fonts/woff2/SpaceGrotesk%5Bwght%5D.woff2
+SHA-256: 8e085aa438094f11487a836652edd5c054fa6a96f63fc7c282105ee3a4b08c07
+Bytes: 49256
+
+Space-Grotesk-OFL.txt
+Source: https://raw.githubusercontent.com/floriankarsten/space-grotesk/03507d024a01282884232081fc6011c09ff4e849/OFL.txt
+SHA-256: 564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72
+Bytes: 4495
+
+ibm-plex-mono-regular.woff2
+Source: https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-mono/fonts/complete/woff2/IBMPlexMono-Regular.woff2
+SHA-256: ba204497f16b6d334cee9d1e963a831b73e3a56e1d6300a8489d18df7214b350
+Bytes: 49248
+
+IBM-Plex-Mono-OFL.txt
+Source: https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-mono/LICENSE.txt
+SHA-256: 7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da
+Bytes: 4456

@@ -67,3 +67,12 @@ third_party/resolved. They do not change the upstream terms.
 - Upstream: https://github.com/acamposuribe/p5.brush/tree/v2.2.1
 - Runtime: www/p5.brush-2.2.1.js (requires p5.js 2.3.4 and a WEBGL canvas in Edit:RiN)
 - Distribution: https://registry.npmjs.org/p5.brush/-/p5.brush-2.2.1.tgz
+
+## Website fonts
+
+The [official website](https://rin-code-dev.github.io/Edit-RiN/) uses self-hosted,
+unmodified Space Grotesk and IBM Plex Mono fonts under the SIL Open Font License 1.1.
+
+- Space Grotesk: https://github.com/floriankarsten/space-grotesk; license: website/assets/fonts/Space-Grotesk-OFL.txt
+- IBM Plex Mono: https://github.com/IBM/plex; license: website/assets/fonts/IBM-Plex-Mono-OFL.txt
+- Pinned source URLs and font checksums: website/assets/fonts/SOURCES.txt
