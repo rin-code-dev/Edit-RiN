@@ -39,7 +39,28 @@ internal data class ReleaseVersion(val numbers: List<Long>, val suffix: List<Str
     }
 }
 
-internal data class AppRelease(val tag: String, val version: ReleaseVersion)
+internal const val MAX_UPDATE_BYTES = 128L * 1024 * 1024
+internal data class ReleaseAsset(val url: String, val size: Long, val sha256: String? = null)
+internal data class AppRelease(val tag: String, val version: ReleaseVersion, val apk: ReleaseAsset? = null)
+
+internal fun releaseApk(release: org.json.JSONObject): ReleaseAsset? {
+    val assets = release.optJSONArray("assets") ?: return null
+    val tag = release.optString("tag_name")
+    val expected = "Edit-RiN-$tag.apk"
+    return (0 until assets.length()).mapNotNull { index ->
+        val asset = assets.getJSONObject(index)
+        if (asset.optString("name") != expected) return@mapNotNull null
+        val url = asset.optString("browser_download_url")
+        val parsed = runCatching { java.net.URI(url) }.getOrNull() ?: return@mapNotNull null
+        if (parsed.scheme != "https" || parsed.host != "github.com" || parsed.userInfo != null ||
+            parsed.port != -1 || parsed.path != "/rin-code-dev/Edit-RiN/releases/download/$tag/$expected" || parsed.query != null || parsed.fragment != null) return@mapNotNull null
+        val size = asset.optLong("size")
+        if (size !in 1..MAX_UPDATE_BYTES) return@mapNotNull null
+        val digest = asset.optString("digest").takeIf { it.startsWith("sha256:") }?.removePrefix("sha256:")
+        if (digest != null && !digest.matches(Regex("[0-9a-fA-F]{64}"))) return@mapNotNull null
+        ReleaseAsset(url, size, digest?.lowercase())
+    }.singleOrNull()
+}
 
 internal fun newestRelease(json: String): AppRelease? {
     val releases = JSONArray(json)
@@ -49,7 +70,7 @@ internal fun newestRelease(json: String): AppRelease? {
         val tag = release.optString("tag_name")
         val version = ReleaseVersion.parse(tag) ?: return@mapNotNull null
         if (version.suffix.isNotEmpty()) return@mapNotNull null
-        AppRelease(tag, version)
+        AppRelease(tag, version, releaseApk(release))
     }.maxByOrNull { it.version }
 }
 
@@ -97,3 +118,12 @@ internal fun evaluateUpdate(release: AppRelease?, currentName: String, silent: B
 
 internal fun updateFailureMessage(silent: Boolean): String? = if (silent) null else
     "確認できませんでした。通信環境を確認して、もう一度お試しください"
+
+internal data class UpdatePackageIdentity(val packageName: String, val versionName: String,
+                                          val versionCode: Long, val signers: Set<String>)
+
+internal fun eligibleUpdatePackage(candidate: UpdatePackageIdentity, installed: UpdatePackageIdentity,
+                                   release: ReleaseVersion): Boolean =
+    candidate.packageName == installed.packageName && candidate.versionCode > installed.versionCode &&
+        ReleaseVersion.parse(candidate.versionName) == release &&
+        candidate.signers.isNotEmpty() && candidate.signers == installed.signers

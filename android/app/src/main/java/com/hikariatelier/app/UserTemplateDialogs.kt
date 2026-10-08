@@ -115,7 +115,7 @@ internal fun UserTemplateManagerSheet(
             title = { KeepLandscapeDialogImmersive(); Text(text("テンプレートを更新")) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(template.title)
-                Text(text("現在の作品の編集内容・素材・実行設定で上書きします。作成済みの作品には影響しません。"))
+                Text(text("現在の作品の編集内容・素材・実行設定で、テンプレートを上書きします。このテンプレートから作成済みの作品は変わりません。"))
                 currentWorkTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             } },
             confirmButton = { TextButton(enabled = !busy && currentWorkTitle != null, onClick = {

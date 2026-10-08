@@ -56,11 +56,26 @@ internal class PreviewController(
     var webView: WebView? = null
         private set
     var isError by mutableStateOf(false)
-    var isPaused by mutableStateOf(false)
+    private var pausedState by mutableStateOf(false)
+    private var activityActive = true
+    var isPaused: Boolean
+        get() = pausedState
+        set(value) {
+            pausedState = value
+            updateSensorPlayback()
+        }
     @Volatile private var disposed = false
     @Volatile private var captureForShareCard = false
     var screenshotBusy by mutableStateOf(false)
         private set
+    private val sensors = PreviewSensors(activity) { alpha, beta, gamma, ax, ay, az, gx, gy, gz ->
+        if (!disposed && !isPaused && session.isCurrent(session.assets.token)) {
+            val owner = JSONObject.quote(session.assets.token)
+            val script = "if(window.__editRinRunToken === $owner) " +
+                "window.__editRinUpdateSensors?.($alpha,$beta,$gamma,$ax,$ay,$az,$gx,$gy,$gz)"
+            evaluate(script)
+        }
+    }
     private val downloads = ViewModelProvider(activity)[SketchDownloadsViewModel::class.java]
     private val browserFeatures = PreviewBrowserFeatures(activity,
         currentOwner = { session.assets.token.takeIf { !disposed && session.isCurrent(it) } },
@@ -102,6 +117,7 @@ internal class PreviewController(
             isLoading = false
             loadingThumbnail = null
             isError = true
+            sensors.stop()
             models.console.showConsole = true
         }
     }
@@ -111,7 +127,7 @@ internal class PreviewController(
     fun requestScreenshot(forShareCard: Boolean = false, scale: Int = 1) {
         if (disposed || webView == null || screenshotBusy || recording.screenshotSaving) return
         if (!session.isCurrent(session.assets.token)) {
-            Toast.makeText(activity, text("プレビューの準備ができてから再度お試しください"), Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, text("プレビューの準備ができてから、もう一度お試しください"), Toast.LENGTH_LONG).show()
             return
         }
         if (scale !in listOf(1, 2, 4)) return
@@ -146,6 +162,8 @@ internal class PreviewController(
         captureForShareCard = false
         preparationJob?.cancel()
         val work = currentWork()
+        sensors.setEnabled(false)
+        sensors.stop()
         val input = capturePreviewRun(work, source, supportingFiles, sourceAssets,
             models.session.fileDrafts.toMap(), work?.let { models.works.parameterValues(it) }.orEmpty())
         val previousId = session.workId
@@ -156,11 +174,16 @@ internal class PreviewController(
         models.console.clear()
         preparationJob = activity.lifecycleScope.launch {
             try {
-                val preparedRun = withContext(Dispatchers.Default) { preparePreviewRun(input) }
+                val (preparedRun, usesSensors) = withContext(Dispatchers.Default) {
+                    preparePreviewRun(input) to (SENSOR_KEYWORDS_REGEX.containsMatchIn(input.source) ||
+                        input.files.values.any { SENSOR_KEYWORDS_REGEX.containsMatchIn(it) })
+                }
                 ensureActive()
                 if (disposed || !session.publish(preparedRun)) return@launch
                 runInput = input
                 prepared = true
+                sensors.setEnabled(usesSensors)
+                updateSensorPlayback()
                 webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
@@ -270,12 +293,27 @@ internal class PreviewController(
         return PreviewWebViewHost(context, preview)
     }
 
-    fun pause() { webView?.onPause() }
-    fun resume() { if (!disposed) webView?.onResume() }
+    private fun updateSensorPlayback() {
+        if (!disposed && activityActive && !isPaused && !isError) sensors.start() else sensors.stop()
+    }
+
+    fun pause() {
+        activityActive = false
+        sensors.stop()
+        webView?.onPause()
+    }
+    fun resume() {
+        if (!disposed) {
+            activityActive = true
+            updateSensorPlayback()
+            webView?.onResume()
+        }
+    }
 
     fun close() {
         if (disposed) return
         disposed = true
+        sensors.destroy()
         preparationJob?.cancel()
         session.invalidate()
         captureForShareCard = false
@@ -311,6 +349,12 @@ internal class PreviewController(
                     loadingThumbnail = null
                     if (BuildConfig.DEBUG) Log.d("EditRiNPreview", "Preview ready in ${SystemClock.elapsedRealtime() - runStartedAt} ms")
                 }
+            }
+        }
+        @JavascriptInterface fun setSensorsEnabled(token: String, enabled: Boolean) {
+            onMain(token) {
+                sensors.setEnabled(enabled)
+                updateSensorPlayback()
             }
         }
         @JavascriptInterface fun getSketchCode(token: String): String = session.snapshotFor(token)?.sketchCode.orEmpty()
@@ -455,3 +499,7 @@ internal class PreviewController(
         }
     }
 }
+
+private val SENSOR_KEYWORDS_REGEX = Regex(
+    """\b(rotation[XYZ]|acceleration[XYZ]|pRotation[XYZ]|pAcceleration[XYZ]|device(?:Moved|Turned|Shaken|Orientation)|deviceorientation|devicemotion)\b"""
+)

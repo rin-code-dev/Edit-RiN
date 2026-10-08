@@ -83,14 +83,14 @@ internal fun AssetManagerDialog(
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = newName, onValueChange = { newName = it }, enabled = !busy, singleLine = true,
                     label = { Text(text("ファイル名")) }, isError = !valid)
-                Text(text("一緒に更新する参照を選択してください。未選択のコードは変更しません。"),
+                Text(text("素材名と一緒に変更する参照パスを選んでください。選ばなかった箇所のコードは変わりません。"),
                     style = MaterialTheme.typography.bodySmall)
-                Text(text("完全一致する文字列のパスだけを表示します。動的なパスやテンプレート文字列は対象外です。"),
+                Text(text("素材のパスと完全に一致する文字列だけを表示します。動的に組み立てたパスやテンプレート文字列は対象外です。"),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val candidates = renameCandidates
                 when {
                     candidates == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    candidates.isEmpty() -> Text(text("更新できる参照候補はありません"), style = MaterialTheme.typography.bodySmall)
+                    candidates.isEmpty() -> Text(text("変更できる参照パスはありません"), style = MaterialTheme.typography.bodySmall)
                     else -> {
                         Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
                         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 240.dp),
@@ -145,7 +145,7 @@ private fun AssetReferenceSummary(sources: Map<String, String>, name: String, te
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
-        Text(text("文字列が一致する箇所を表示します。動的なパスは検出できません。"),
+        Text(text("素材のパスと一致する文字列を表示します。動的に組み立てたパスは検出できません。"),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val found = result
         when {

@@ -24,6 +24,9 @@ internal enum class QrStatus {
     TOO_LARGE
 }
 
+// Keep the implementation for a future sharing workflow, without exposing UI.
+internal const val SHARE_CARDS_AVAILABLE = false
+
 internal enum class ShareCardTheme(
     val id: String,
     val bgColor: String,

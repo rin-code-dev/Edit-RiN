@@ -39,4 +39,43 @@ class EditorTransformsTest {
         val source = "draw({\r\nthing: true\r\n});\r\n"
         assertEquals("draw({\r\n    thing: true\r\n});\r\n", formatJavaScript(source))
     }
+
+    @Test
+    fun reindentsCodeWithDivisionExpressionsCorrectly() {
+        val source = "function draw() {\nif (x > width / 2) {\ncircle(width / 2, height / 2, 50);\n} else {\nrect(0, 0, width / 4, height / 4);\n}\n}"
+        val expected = "function draw() {\n  if (x > width / 2) {\n    circle(width / 2, height / 2, 50);\n  } else {\n    rect(0, 0, width / 4, height / 4);\n  }\n}"
+        assertEquals(expected, formatJavaScript(source))
+    }
+
+    @Test
+    fun protectsTemplateWhitespaceAndParsesCodeAfterMultilineComments() {
+        val template = "function setup() {\nconst text = `first   \nsecond`;\n}"
+        val comment = "function setup() {\n/* first\n*/ rect(1, 2, 3, 4); }"
+        assertEquals(FormatResult.Success(template), formatJavaScriptDetailed(template))
+        assertEquals(FormatResult.Success(comment), formatJavaScriptDetailed(comment))
+    }
+
+    @Test
+    fun acceptsContinuedStringsAndNestedTemplateInterpolation() {
+        val continued = "function setup() {\nconst text = 'first\\\nsecond';\n}"
+        val nested = "const text = `a \${`b \${({ x: 1 }).x}`} c`;"
+        assertEquals(FormatResult.Success(continued), formatJavaScriptDetailed(continued))
+        assertEquals(FormatResult.Success(nested), formatJavaScriptDetailed(nested))
+        assertEquals(FormatResult.UnfinishedString, formatJavaScriptDetailed("const text = 'first\\"))
+    }
+
+    @Test
+    fun keepsDivisionContextAcrossLinesAndPostfixOperators() {
+        val source = "function draw() {\nconst x = width\n/ 2;\nconst y = x++ / 2;\n}"
+        assertEquals("function draw() {\n  const x = width\n  / 2;\n  const y = x++ / 2;\n}", formatJavaScript(source))
+    }
+    @Test
+    fun mapsCursorWithIndentationAndRetainsBlankLinesAndCrlf() {
+        val source = "function draw() {\r\nrect(1, 2, 3, 4);\r\n\r\n\r\n}"
+        val formatted = formatJavaScript(source)
+        assertEquals(source.count { it == '\n' }, formatted.count { it == '\n' })
+        val cursor = source.indexOf("rect") + 4
+        assertEquals(formatted.indexOf("rect") + 4, formattedJavaScriptOffset(source, formatted, cursor))
+        assertEquals(0, formattedJavaScriptOffset(source, formatted, 0))
+    }
 }

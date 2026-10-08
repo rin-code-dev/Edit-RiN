@@ -1,116 +1,130 @@
-// Microphone — car audio style graphic equalizer reactive to voice
-const SIZE = 600;
-const BANDS = 24;
-const ROWS = 20;
-
-let mic;
-let fft;
-let peaks = new Array(BANDS).fill(0);
-let peakWait = new Array(BANDS).fill(0);
-let started = false;
+// Microphone — voice bloom
+// Tap to allow the microphone; tap again to stop.
+let audio, stream, source, analyser, samples;
+let started = false,
+  pending = false;
+let level = 0;
+let status = 'TAP TO START MICROPHONE';
+let request = 0;
 
 function setup() {
-  createCanvas(SIZE, SIZE);
-  mic = new p5.AudioIn();
-  fft = new p5.FFT(0.7, 64);
-  textAlign(CENTER, CENTER);
+  createCanvas(600, 600);
+  pixelDensity(1);
+}
+
+async function startMicrophone() {
+  if (pending) return;
+  if (started) {
+    stopMicrophone();
+    return;
+  }
+  const token = ++request;
+  pending = true;
+  status = 'WAITING FOR PERMISSION';
+  try {
+    audio ??= new (window.AudioContext || window.webkitAudioContext)();
+    await audio.resume();
+    if (token !== request) return;
+    const incoming = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false,
+    });
+    if (token !== request) {
+      incoming.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    stream = incoming;
+    source = audio.createMediaStreamSource(stream);
+    analyser = audio.createAnalyser();
+    analyser.fftSize = 256;
+    samples = new Uint8Array(analyser.fftSize);
+    // No speaker connection: avoids feedback.
+    source.connect(analyser);
+    started = true;
+    status = 'SPEAK · TAP TO STOP';
+  } catch (_) {
+    if (token === request) {
+      stopMicrophone();
+      status = 'MICROPHONE UNAVAILABLE · TAP TO RETRY';
+    }
+  } finally {
+    if (token === request) pending = false;
+  }
+}
+
+function stopMicrophone() {
+  request++;
+  pending = false;
+  started = false;
+  stream?.getTracks().forEach((track) => track.stop());
+  source?.disconnect();
+  analyser?.disconnect();
+  stream = source = analyser = samples = null;
+  audio?.suspend().catch(() => {});
+  status = 'TAP TO START MICROPHONE';
 }
 
 function draw() {
-  background(9, 9, 11);
-
-  // カーオーディオのフレーム/ヘッダー情報
-  stroke(168, 199, 250, 50);
-  strokeWeight(1);
-  line(40, 70, width - 40, 70);
-  line(40, height - 70, width - 40, height - 70);
-
+  let volume = 0;
+  if (started) {
+    analyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) sum += Math.pow((sample - 128) / 128, 2);
+    volume = constrain(Math.sqrt(sum / samples.length) * 5, 0, 1);
+  }
+  const seconds = constrain(
+    (typeof deltaTime === 'number' ? deltaTime : 16.67) / 1000,
+    0,
+    0.05,
+  );
+  level = lerp(level, volume, 1 - Math.exp(-seconds * 12));
+  background(242, 239, 231);
+  translate(width / 2, height / 2);
+  const unit = min(width, height),
+    time = millis() / 1000;
+  noFill();
+  stroke(43, 40, 37);
+  strokeWeight(0.8);
+  // A fine radial aperture opens with the voice.
+  for (let petal = 0; petal < 64; petal++) {
+    push();
+    rotate((petal * TWO_PI) / 64 + time * 0.025);
+    const inner = unit * (0.12 - level * 0.045);
+    const outer = unit * (0.27 + level * 0.075);
+    beginShape();
+    for (let i = 0; i <= 24; i++) {
+      const progress = i / 24;
+      vertex(
+        inner + (outer - inner) * progress,
+        sin(progress * PI) * unit * (0.075 + level * 0.06),
+      );
+    }
+    endShape();
+    pop();
+  }
   noStroke();
-  fill(168, 199, 250, 200);
-  textSize(12);
-  textAlign(LEFT, CENTER);
-  text('CAR AUDIO EQ  //  STEREO SPECTRUM', 42, 52);
-  textAlign(RIGHT, CENTER);
-  text(started ? 'MIC: ACTIVE' : 'MIC: STANDBY', width - 42, 52);
-
-  const spectrum = started ? fft.analyze() : [];
-
-  const eqLeft = 50;
-  const eqRight = width - 50;
-  const eqTop = 90;
-  const eqBottom = height - 90;
-  const eqHeight = eqBottom - eqTop;
-  const barWidth = (eqRight - eqLeft) / BANDS;
-  const blockGapY = 3;
-  const blockHeight = (eqHeight - (ROWS - 1) * blockGapY) / ROWS;
-
-  for (let i = 0; i < BANDS; i++) {
-    const val = started && spectrum[i] ? spectrum[i] / 255 : 0;
-    const activeBlocks = floor(val * ROWS);
-
-    // ピークホールド更新
-    if (activeBlocks >= peaks[i]) {
-      peaks[i] = activeBlocks;
-      peakWait[i] = 12;
-    } else {
-      if (peakWait[i] > 0) {
-        peakWait[i]--;
-      } else if (peaks[i] > 0) {
-        peaks[i] -= 0.3;
-      }
-    }
-
-    const bx = eqLeft + i * barWidth + 3;
-    const bw = barWidth - 6;
-
-    // LEDセグメント描画（下から上へ）
-    for (let r = 0; r < ROWS; r++) {
-      const by = eqBottom - (r + 1) * (blockHeight + blockGapY);
-      const isLit = r < activeBlocks;
-      const isPeak = floor(peaks[i]) === r && r > 0;
-
-      if (isPeak) {
-        fill(255, 255, 255); // ピークLEDは白発光
-      } else if (isLit) {
-        fill(168, 199, 250); // 点灯ブロック
-      } else {
-        fill(168, 199, 250, 25); // 消灯セグメント（グリッド状の陰影）
-      }
-      rect(bx, by, bw, blockHeight, 1);
-    }
-  }
-
-  // フッターの周波数ラベル
-  fill(168, 199, 250, 140);
+  fill(214, 120, 86);
+  circle(0, 0, unit * 0.095);
+  fill(97, 89, 81);
   textAlign(CENTER, CENTER);
-  textSize(10);
-  const labels = ['31', '63', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
-  for (let k = 0; k < labels.length; k++) {
-    const lx = map(k, 0, labels.length - 1, eqLeft + 15, eqRight - 15);
-    text(labels[k], lx, height - 52);
-  }
-
-  if (!started) {
-    fill(9, 9, 11, 200);
-    rect(width / 2 - 120, height / 2 - 25, 240, 50, 8);
-    stroke(168, 199, 250);
-    strokeWeight(1);
-    noFill();
-    rect(width / 2 - 120, height / 2 - 25, 240, 50, 8);
-    noStroke();
-    fill(168, 199, 250);
-    textSize(14);
-    text('Touch to start Mic', width / 2, height / 2);
-  }
+  textSize(11);
+  text(status, 0, height * 0.38);
 }
 
-function touchStarted() {
-  if (!started) {
-    userStartAudio().then(() => {
-      mic.start(() => {
-        fft.setInput(mic);
-        started = true;
-      });
-    });
-  }
+function mousePressed() {
+  startMicrophone();
+  return false;
+}
+window.addEventListener('pagehide', () => {
+  stopMicrophone();
+  audio?.close().catch(() => {});
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopMicrophone();
+});
+
+// Preview pause/resume controls this audio context.
+function getAudioContext() {
+  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  return audio;
 }

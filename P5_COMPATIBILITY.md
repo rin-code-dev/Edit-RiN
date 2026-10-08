@@ -11,6 +11,7 @@ The Android preview runs the bundled upstream p5.js **2.3.4** or **1.11.5** in W
 - Global and instance sketches, multiple canvases, HTML/CSS pages, and ES modules are supported. Pause/resume controls p5 instances, HTML animation frames, and CSS animations. Each instance's original `noLoop()` state is retained. Plain timers and unrelated asynchronous tasks continue normally.
 - PNG capture and video/GIF recording combine multiple visible canvases. Canvas export cannot include arbitrary DOM elements. HTML controls/CSS retain their authored layout.
 - The official p5.js 2.3.4 WebGPU addon is bundled. `WEBGPU` needs support from the device GPU and installed Android WebView.
+- Device orientation and motion sensors (`rotationX`/`Y`/`Z`, `accelerationX`/`Y`/`Z`, `deviceMoved()`, `deviceTurned()`, and `deviceShaken()`) are supported via high-sampling native Android bridge and standard Web APIs. Sensors activate on-demand when used by the sketch to conserve battery.
 - HTTPS links opened by a user go to the system browser; links to another HTML file in the work stay in the preview.
 
 ### Project files and loading
@@ -53,6 +54,7 @@ AndroidのWebViewで本家p5.js **2.3.4 / 1.11.5**を実行します。以前の
 - インスタンスモード・複数キャンバス：停止・再開、合成PNG撮影、動画/GIF録画に対応します。HTML内のレイアウトは作品のCSSを維持します。撮影対象はキャンバスで、任意のDOM要素は含みません。
 - HTML/CSS・ESモジュール・フォルダー付きの相対パス・任意のHTTPSライブラリに対応します。
 - 公式WebGPUアドオンを内蔵します。動作にはGPUとWebViewの対応が必要です。
+- 端末センサー（傾き・加速度）：`rotationX`/`Y`/`Z`、`accelerationX`/`Y`/`Z`、`deviceMoved()`、`deviceTurned()`、`deviceShaken()` に対応します。作品内でセンサーが使用されている場合にのみオンデマンドで高精度ネイティブ連携が作動し、バッテリーを保護します。
 
 **作品メニュー → プロジェクトファイル**で `index.html`、`style.css`、`lib/math.mjs` などを追加・編集できます。p5.js Web Editorからの取り込みでもHTML/CSSやフォルダーを保持します。
 

@@ -17,13 +17,14 @@
 - **Multiple p5.js Runtimes**: Switch between **p5.js 2.3.4** (modern, async setup) and **p5.js 1.11.5** (classic compatibility) per work.
 - **HTML & Modules**: Edit HTML/CSS and nested project files; run ES modules, instance sketches, and multiple canvases. Add HTTPS libraries in Runtime settings.
 - **Browser Features**: Camera/microphone permissions, sketch file pickers, native file downloads, and sketch fullscreen.
+- **Device Motion & Orientation**: Native tilt and motion sensors (`rotationX`/`Y`/`Z`, `accelerationX`/`Y`/`Z`, and `deviceShaken()`) for mobile-first interactive artworks.
 - **Audio & Sound**: Built-in support for `p5.sound` for audio synthesis, playback, and FFT analysis.
 - **Work & Asset Management**:
   - Store multiple works with revision history and ZIP backup/export.
   - Per-work asset support (images, audio, video, fonts, JSON/CSV) with instant loading-code insertion.
   - Single-work ZIP export and import for easy sharing.
   - Import public sketches directly from your p5.js Web Editor account.
-- **Share Cards & Web Player**: Generate beautiful social-ready share cards with sketch snapshots, optional code snippets, and QR codes that instantly run in any web browser via client-side decompression.
+- **Share Cards & Web Player**: Share cards combine artwork, optional code, and a QR code for the browser player. The share-card button is temporarily unavailable in v2.3.0; PNG export and sharing saved images or recordings remain available.
 - **Capture & Export**: Record animations (video/GIF) and capture high-resolution screenshots.
 - **Customizable Environment**: Custom editor themes, fonts (TTF/OTF/TTC), ligature support, and canvas orientation toggle.
 - **Multilingual Support**: Fully localized in English, Japanese (日本語), and Simplified Chinese (简体中文).
@@ -58,6 +59,7 @@ function draw() {
 
 - **Supported OS**: Android 6.0 (API level 23) or later.
 - **Download**: Get the latest signed APK from [GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases).
+- **Updates**: Starting with the v2.3.0 release app, download future updates within the app, then install through Android’s confirmation screen. Download progress and cancellation are available.
 
 ---
 
@@ -97,18 +99,23 @@ For source ownership, runtime flow, generated files, and focused checks, see
 
 ## 日本語
 
-**Edit:RiN** は、Android 端末で手軽に p5.js によるジェネラティブアートやクリエイティブ・コーディングを楽しめるエディタアプリです。
+Edit:RiN は、Android 端末で p5.js のコードを書き、ジェネラティブアートやクリエイティブ・コーディングを楽しめるエディタアプリです。
 
 ### 主な機能
-- **ライブプレビュー**: コードを書きながらその場で動作確認。全画面表示、録画（MP4/GIF）、高解像度スクリーンショット撮影に対応。
-- **ライブパラメータ**: コード内に `// @rin number ...` や `// @rin color ...` のように注釈を書くだけで、スライダーやカラーピッカーが自動生成され、リアルタイムに数値を調整可能。
-- **ランタイム切り替え**: 作品ごとに `p5.js 2.3.4` と `1.11.5` を選択可能。`p5.sound` によるサウンドの再生・合成・解析にも対応。
-- **素材（アセット）管理**: 画像・音声・フォント・JSON などを作品内に取り込み、ワンタップで読み込みコードを挿入。単一作品の ZIP 書き出し・取り込みによる共有も可能。
-- **シェアカード＆Web Player**: スケッチのプレビュー画像、コードスニペット、QRコードを美しくレイアウトした画像カードを生成。QRを読み取るだけでブラウザ上で即座に作品を再現・実行可能。
-- **p5.js Web Editor 連携**: ユーザー名を入力するだけで公開作品を直接インポート。
-- **プライバシー重視**: 完全オフライン動作。広告やトラッキングは一切ありません。
 
-詳しい使い方については各ドキュメント（[素材ガイド](ASSETS.md) / [実行環境とサウンド](P5_RUNTIME_AND_SOUND.md) など）をご覧ください。
+- ライブプレビュー：コードを書きながら、その場で動作を確認できます。全画面表示、MP4・GIFの録画、高解像度のスクリーンショットに対応しています。
+- ライブパラメータ：コードに `// @rin number ...` や `// @rin color ...` と注釈を書くと、スライダーやカラーピッカーが表示されます。値を調整すると、作品にその場で反映されます。
+- 端末センサー：端末の傾きや加速度を取得し、端末を動かして操作する作品を作れます。`rotationX`/`Y`/`Z`、`accelerationX`/`Y`/`Z`、`deviceShaken()` などを使えます。
+- 実行環境の切り替え：作品ごとに `p5.js 2.3.4` と `1.11.5` を選べます。`p5.sound` による音の再生・合成・解析にも対応しています。
+- 素材の管理：画像・音声・フォント・JSON などを作品に取り込み、タップして読み込みコードを挿入できます。作品ごとに ZIP を書き出したり、取り込んだりして共有できます。
+- シェアカードとWeb Player：プレビュー画像・コード・QRコードを載せたカードで、ブラウザーから作品を実行できる機能です。v2.3.0では、シェアカードのボタンを一時的に外しています。PNGの書き出しや、保存した画像・録画の共有は引き続き使えます。
+- p5.js Web Editorとの連携：ユーザー名を入力して、公開作品を直接取り込めます。
+- アプリ内更新：v2.3.0以降の正式版では、次回以降の更新用APKをアプリ内でダウンロードできます。進捗の確認や中止に対応し、Androidの確認画面からインストールします。
+- プライバシー：作品の編集・実行はオフラインでも利用できます。広告やトラッキングはありません。公開作品の取り込みや更新確認には通信が必要です。
+
+Android 6.0 以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+
+詳しい使い方は、[素材ガイド](ASSETS.md)や[実行環境とサウンド](P5_RUNTIME_AND_SOUND.md)をご覧ください。
 
 ---
 

@@ -57,6 +57,7 @@ internal fun EditorAccessoryBar(
     onSearch: () -> Unit,
     onFormat: () -> Unit,
     onSnippets: () -> Unit,
+    onReference: () -> Unit,
     onApplyEdit: (TextFieldValue) -> Unit,
     lastColorPickerColor: Color,
     onOpenColorPicker: (EditorColorTarget?, Color) -> Unit,
@@ -204,6 +205,7 @@ internal fun EditorAccessoryBar(
                 onSearch()
             }
             AccessoryKey("{…}", uiText("スニペット"), command = true) { onSnippets() }
+            AccessoryKey("?", uiText("p5.jsリファレンス"), command = true) { onReference() }
             AccessoryKey("≡", uiText("コードを整形"), command = true) {
                 onFormat()
             }

@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const kotlin = fs.readFileSync(path.join(root, 'android/app/src/main/java/com/hikariatelier/app/WorkTemplate.kt'), 'utf8');
 const templates = {};
-for (const name of ['WEBGL', 'SHADER', 'MATTER']) {
+for (const name of ['WEBGL', 'SHADER', 'MATTER', 'ANIMATION', 'INPUT', 'WAVE_PARAMETERS']) {
   templates[name] = kotlin.match(new RegExp(`internal val ${name}_TEMPLATE = """([\\s\\S]*?)"""`))[1].trim() + '\n';
 }
 templates.CIRCLE = JSON.parse(kotlin.match(/internal const val CIRCLE_TEMPLATE = (".*")/)[1]);
@@ -77,7 +77,7 @@ const server = http.createServer((req, res) => {
         getP5Version: owner => {checkOwner(owner);return ${JSON.stringify(c.version)};},
         isP5SoundEnabled: owner => {checkOwner(owner);return false;},
         getWorkLibraries: owner => {checkOwner(owner);return ${JSON.stringify(c.kind === 'MATTER' ? '{"matter-js":"0.20.0"}' : '{}')};},
-        getWorkParameters: owner => {checkOwner(owner);return '{}';}, getWorkShaders: owner => {checkOwner(owner);return '{}';},
+        getWorkParameters: owner => {checkOwner(owner);return ${JSON.stringify(c.kind === 'WAVE_PARAMETERS' ? '{"size":0.3,"ink":"#A8C7FA"}' : '{}')};}, getWorkShaders: owner => {checkOwner(owner);return '{}';},
         onStatusChanged: (owner,status) => {checkOwner(owner);if (status === '実行中') window.__test.ready = true;},
         onError: (owner,error) => {checkOwner(owner);window.__test.errors.push(error);}, onRuntimeError: (owner,error,line) => {checkOwner(owner);window.__test.errors.push(error);window.__test.runtimeErrors.push({owner,line});},
         onCaptureError: (owner,error) => {checkOwner(owner);window.__test.errors.push(error);},

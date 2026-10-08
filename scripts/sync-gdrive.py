@@ -2,17 +2,28 @@
 """
 Edit:RiN Google Drive Append-Only Sync Script
 --------------------------------------------
-- Synchronizes ~/Documents/EditRiNデータ/ to Google Drive (local-drive-account).
+- Synchronizes ~/Documents/EditRiNデータ/ to a locally configured Google Drive account.
 - Append-Only policy: UPLOADS and UPDATES only.
 - NEVER deletes any file on Google Drive even if deleted locally.
 """
 
+import json
 import os
 import sys
 import subprocess
 from pathlib import Path
 
-ACCOUNT = "local-drive-account"
+def load_account():
+    account = os.environ.get("EDIT_RIN_DRIVE_ACCOUNT")
+    if not account:
+        config = Path(__file__).with_name("sync-gdrive.local.json")
+        if config.is_file():
+            account = json.loads(config.read_text(encoding="utf-8")).get("account")
+    if not isinstance(account, str) or not account.strip():
+        raise RuntimeError("Set EDIT_RIN_DRIVE_ACCOUNT or configure scripts/sync-gdrive.local.json")
+    return account.strip()
+
+ACCOUNT = load_account()
 LOCAL_ROOT = Path.home() / "Documents" / "EditRiNデータ"
 
 def run_cmd(cmd):

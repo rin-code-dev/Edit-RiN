@@ -2,8 +2,15 @@ package com.hikariatelier.app
 
 internal enum class CanvasSizingMode { FIXED, RESPONSIVE }
 
-internal enum class WorkTemplateKind(val title: String) {
-    BASIC_2D("2D基本"), WEBGL_3D("3D WebGL"), SHADER("シェーダー"), PHYSICS_MATTER("物理演算"), PARAMETERS("パラメータ"), WEBGPU("WebGPU")
+internal enum class WorkTemplateKind(val title: String, val description: String, val advanced: Boolean) {
+    BASIC_2D("2D基本", "円を1つ描く最小構成。色や大きさを変えて始めましょう。", false),
+    ANIMATION("アニメーション", "時間に合わせて動く円。速度や動き方を変えてみましょう。", false),
+    INPUT("マウス・タッチ", "マウスやタッチの位置に円を描く最小構成。", false),
+    PARAMETERS("パラメータ", "円の大きさと色をライブパラメータで変更できます。", false),
+    WEBGL_3D("3D WebGL", "回転する立体から3D作品を作り始めます。", true),
+    SHADER("シェーダー", "頂点シェーダーとフラグメントシェーダーを使って、色を描画します。", true),
+    PHYSICS_MATTER("物理演算", "Matter.jsを使って、落下や跳ね返りを試せます。", true),
+    WEBGPU("WebGPU", "WebGPUで3Dを描画します。非対応の環境ではWebGLに切り替えます。", true)
 }
 
 internal data class WorkTemplate(val ratio: String, val width: Int, val height: Int,
@@ -14,6 +21,8 @@ internal data class WorkTemplate(val ratio: String, val width: Int, val height: 
     fun code(mode: CanvasSizingMode): String {
         val source = when (kind) {
             WorkTemplateKind.BASIC_2D -> CIRCLE_TEMPLATE
+            WorkTemplateKind.ANIMATION -> ANIMATION_TEMPLATE
+            WorkTemplateKind.INPUT -> INPUT_TEMPLATE
             WorkTemplateKind.WEBGL_3D -> WEBGL_TEMPLATE
             WorkTemplateKind.SHADER -> SHADER_TEMPLATE
             WorkTemplateKind.PHYSICS_MATTER -> MATTER_TEMPLATE
@@ -27,7 +36,7 @@ internal data class WorkTemplate(val ratio: String, val width: Int, val height: 
 }
 
 // Supplied Template.js; only canvas sizing is adapted for fixed-size new works.
-internal const val CIRCLE_TEMPLATE = "function setup() {\n  createCanvas(windowWidth, windowHeight);\n}\n\nfunction draw() {\n  background(9, 9, 11);\n  noStroke();\n  fill(168, 199, 250);\n  circle(width / 2, height / 2, min(width, height) * 0.3);\n}\n\nfunction windowResized() {\n  resizeCanvas(windowWidth, windowHeight);\n}\n"
+internal const val CIRCLE_TEMPLATE = "// 色や円の大きさを変えてみましょう。 / Try changing the color or circle size.\nfunction setup() {\n  createCanvas(windowWidth, windowHeight);\n}\n\nfunction draw() {\n  background(9, 9, 11);\n  noStroke();\n  fill(168, 199, 250);\n  circle(width / 2, height / 2, min(width, height) * 0.3);\n}\n\nfunction windowResized() {\n  resizeCanvas(windowWidth, windowHeight);\n}\n"
 
 internal val workTemplates = listOf(
     WorkTemplate("16:9", 960, 540),
@@ -131,41 +140,20 @@ function windowResized() {
 """.trimIndent() + "\n"
 
 internal val WAVE_PARAMETERS_TEMPLATE = """
-// Edit:RiN Live Parameters Test
-// Run the preview, then open Preview Actions -> Parameters.
-// @rin number speed "Speed" 0 3 1 0.1
-// @rin number lineWidth "Line Width" 1 16 4 1
-// @rin color ink "Ink Color" #BA90E2
-
-let phase = 0;
+// プレビューのパラメータボタンで円の大きさと色を変更します。
+// Open Parameters in the preview to change the circle's size and color.
+// @rin number size "Size" 0.1 0.8 0.3 0.05
+// @rin color ink "Color" #A8C7FA
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
 }
 
 function draw() {
-  background(12, 15, 24);
-  phase += 0.025 * rinParams.speed;
-
-  noFill();
-  stroke(rinParams.ink);
-  strokeWeight(rinParams.lineWidth);
-
-  for (let band = 0; band < 5; band++) {
-    beginShape();
-    for (let x = 50; x <= 750; x += 8) {
-      const wave = sin(x * 0.015 + phase + band * 0.55) * 55;
-      const ripple = sin(x * 0.036 - phase * 0.7) * 15;
-      vertex(x, 260 + band * 70 + wave + ripple);
-    }
-    endShape();
-  }
-
-  const orbitX = 400 + cos(phase) * 210;
-  const orbitY = 400 + sin(phase * 1.3) * 170;
-  fill(rinParams.ink);
+  background(9, 9, 11);
   noStroke();
-  circle(orbitX, orbitY, 20 + rinParams.lineWidth * 2);
+  fill(rinParams.ink);
+  circle(width / 2, height / 2, min(width, height) * rinParams.size);
 }
 
 function windowResized() {
@@ -195,6 +183,53 @@ function draw() {
   fill(168, 199, 250);
   torus(s, s * 0.12, 36, 24);
   box(s * 0.7);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val ANIMATION_TEMPLATE = """
+// speedを変えると動く速さが変わります。 / Change speed to adjust the motion.
+const speed = 1;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(9, 9, 11);
+  noStroke();
+  fill(168, 199, 250);
+  const x = width / 2 + sin(millis() / 1000 * speed) * width * 0.3;
+  circle(x, height / 2, min(width, height) * 0.15);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val INPUT_TEMPLATE = """
+// マウスを動かすか画面をタッチします。 / Move the mouse or touch the canvas.
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(9, 9, 11);
+  noStroke();
+  fill(168, 199, 250);
+  circle(mouseX, mouseY, min(width, height) * 0.15);
+}
+
+function touchStarted() {
+  return false;
+}
+
+function touchMoved() {
+  return false;
 }
 
 function windowResized() {

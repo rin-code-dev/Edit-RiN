@@ -137,6 +137,7 @@ internal fun EditorWorkspaceLayout(
                                 // Match the inset background in explicit dark mode.
                                 // Keep the existing light / Material You gradient.
                                 if (state.themeMode == AppThemeMode.DARK ||
+                                    state.themeMode == AppThemeMode.SUMI ||
                                     state.themeMode == AppThemeMode.CUSTOM) colors.background
                                 else colors.surface
                             )

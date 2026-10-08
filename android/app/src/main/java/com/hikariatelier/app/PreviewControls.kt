@@ -149,7 +149,6 @@ internal fun PreviewActionsTray(
     colors: ColorScheme,
     onOpenParameters: () -> Unit = {},
     onScreenshot: () -> Unit,
-    onShareCard: () -> Unit,
     onRecordToggle: () -> Unit,
     onFullscreen: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
@@ -249,11 +248,6 @@ internal fun PreviewActionsTray(
                 iconRes = R.drawable.ic_camera,
                 label = uiText("スクショ"),
                 onClick = onScreenshot
-            )
-            ActionChip(
-                iconRes = R.drawable.ic_share_card,
-                label = uiText("シェアカード"),
-                onClick = onShareCard
             )
             ActionChip(
                 iconRes = if (isRecordingOrCountingDown) R.drawable.ic_stop else R.drawable.ic_record,
@@ -536,7 +530,6 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
     onClosePreviewActions: () -> Unit,
     onRotate: () -> Unit,
     onScreenshot: () -> Unit,
-    onShareCard: () -> Unit,
     onOpenParameters: () -> Unit,
     onToggleRecording: () -> Unit,
     onCancelCountdown: () -> Unit,
@@ -563,13 +556,6 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                 description = uiText("プレビューをスクリーンショット"),
                 colors = colors,
                 onClick = onScreenshot
-            )
-
-            PreviewOverlayButton(
-                iconRes = R.drawable.ic_share_card,
-                description = uiText("シェアカードを作成"),
-                colors = colors,
-                onClick = onShareCard
             )
 
             PreviewOverlayButton(
@@ -627,9 +613,9 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
         Surface(
             modifier = Modifier.align(Alignment.Center),
             shape = RoundedCornerShape(22.dp),
-            color = Color.Black.copy(alpha = 0.82f),
-            contentColor = Color.White,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+            color = colors.surfaceContainerHigh,
+            contentColor = colors.onSurface,
+            border = BorderStroke(1.dp, colors.outlineVariant)
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 18.dp),
@@ -641,7 +627,7 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                     fontWeight = FontWeight.Bold
                 )
                 TextButton(onClick = onCancelCountdown) {
-                    Text(uiText("キャンセル"), color = Color.White)
+                    Text(uiText("キャンセル"), color = colors.primary)
                 }
             }
         }

@@ -49,4 +49,24 @@ class WorkTemplateTest {
         }
     }
 
+    @Test fun basicTemplatesStaySmallAndParameterLayoutUsesCanvasDimensions() {
+        assertEquals(4, WorkTemplateKind.entries.count { !it.advanced })
+        assertEquals(4, WorkTemplateKind.entries.count { it.advanced })
+        listOf(WorkTemplate("9:16", 540, 960), WorkTemplate("16:9", 960, 540)).forEach { size ->
+            val code = size.copy(kind = WorkTemplateKind.PARAMETERS).code(CanvasSizingMode.FIXED)
+            assertTrue(code.contains("min(width, height) * rinParams.size"))
+            assertTrue(code.contains("circle(width / 2, height / 2"))
+            assertFalse(code.contains("750"))
+            assertFalse(code.contains("400"))
+            assertTrue(code.lines().size < 30)
+        }
+    }
+
+    @Test fun sampleNotesNeverLeakIntoUserWorksWithTheSameId() {
+        val user = Work("halo", "Halo", "my own code")
+        val sample = Work("builtin-sample:halo", "Halo", "sample", isSample = true)
+        assertNull(sampleGuide(user))
+        assertNotNull(sampleGuide(sample))
+        assertNotNull(sampleGuide(Work("builtin-sample:shapes", "Shapes", "", isSample = true)))
+    }
 }

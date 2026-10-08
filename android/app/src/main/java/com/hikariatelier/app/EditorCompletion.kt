@@ -9,7 +9,10 @@ private val P5_COMPLETIONS = listOf(
     "push", "pop", "translate", "rotate", "scale", "text", "textSize", "image", "loadImage",
     "random", "noise", "map", "dist", "lerp", "constrain", "floor", "ceil", "round", "abs",
     "sin", "cos", "tan", "mouseX", "mouseY", "frameCount", "deltaTime", "millis",
-    "mousePressed", "mouseDragged", "mouseReleased", "touchStarted", "touchMoved", "touchEnded"
+    "mousePressed", "mouseDragged", "mouseReleased", "touchStarted", "touchMoved", "touchEnded",
+    "rotationX", "rotationY", "rotationZ", "pRotationX", "pRotationY", "pRotationZ",
+    "accelerationX", "accelerationY", "accelerationZ", "pAccelerationX", "pAccelerationY", "pAccelerationZ",
+    "deviceOrientation", "deviceMoved", "deviceTurned", "deviceShaken", "setMoveThreshold", "setShakeThreshold"
 )
 private val DECLARATION_WORDS = setOf("function", "class", "const", "let", "var")
 private val REGEX_PREFIXES = setOf("=", "(", "[", "{", ",", ":", ";", "return", "case", "!", "?")

@@ -40,6 +40,55 @@ class SettingsRepositoryTest {
             override fun apply() { commit() }
         }
     }
+    @Test fun freshInstallStartsLightWithoutWrappingAndRequestsPalette() {
+        val repository = SettingsRepository(Preferences())
+        assertEquals(AppThemeMode.LIGHT, repository.load().themeMode)
+        assertFalse(repository.load().editorWordWrap)
+        assertTrue(repository.paletteStartupPending)
+    }
+
+    @Test fun v230UpgradeResetsOnlyRequestedDefaultsOnce() {
+        val prefs = Preferences().apply {
+            values["theme_mode"] = AppThemeMode.DARK.name
+            values["setting_editor_word_wrap"] = true
+            values["setting_app_language"] = "zh"
+            values["setting_editor_font"] = 22f
+            values["setting_auto_run"] = false
+            values["works_folder_uri"] = "keep-folder"
+            values["custom_background"] = 123
+        }
+        val repository = SettingsRepository(prefs)
+        val migrated = repository.load()
+        assertEquals(AppThemeMode.LIGHT, migrated.themeMode)
+        assertFalse(migrated.editorWordWrap)
+        assertEquals("zh", migrated.appLanguage)
+        assertEquals(22f, migrated.editorFontSize)
+        assertFalse(migrated.autoRun)
+        assertEquals("keep-folder", prefs.values["works_folder_uri"])
+        assertEquals(123, migrated.customBackground)
+        assertTrue(repository.paletteStartupPending)
+
+        val changed = migrated.copy(themeMode = AppThemeMode.SUMI, editorWordWrap = true)
+        repository.save(changed)
+        // A restart before sample loading succeeds must retain the pending selection.
+        val retry = SettingsRepository(prefs)
+        assertEquals(changed, retry.load())
+        assertTrue(retry.paletteStartupPending)
+        retry.completePaletteStartup()
+
+        val restarted = SettingsRepository(prefs)
+        assertEquals(changed, restarted.load())
+        assertFalse(restarted.paletteStartupPending)
+    }
+
+    @Test fun sumiSelectionSurvivesPreferencesAndBackup() {
+        val repository = SettingsRepository(Preferences())
+        val state = SettingsUiState(themeMode = AppThemeMode.SUMI)
+        repository.save(state)
+        assertEquals(AppThemeMode.SUMI, repository.load().themeMode)
+        assertEquals(AppThemeMode.SUMI,
+            SettingsUiState().restoredFromBackup(JSONObject(state.toBackupJson())).themeMode)
+    }
     @Test fun authorNameIsLoadedFromTheExistingPreferenceKey() {
         val prefs = Preferences().apply { values["setting_share_card_author"] = "RiN" }
         val vm = SettingsViewModel(SettingsRepository(prefs))

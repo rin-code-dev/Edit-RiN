@@ -38,115 +38,100 @@ internal data class GuideSection(
 /** English is the source text for the in-app user guide. */
 internal val userGuideSections = listOf(
     GuideSection(
-        title = "Getting Started & Folders",
-        summary = "Edit:RiN is a p5.js creative coding environment designed for touch devices. Organize works in folders, explore read-only bundled samples, and execute sketches in real time.",
+        title = "Try a sample",
+        summary = "Start with a finished artwork and explore how it responds.",
         iconRes = R.drawable.ic_play,
-        tag = "Basics",
+        tag = "Start",
         steps = listOf(
-            "Work Picker: Tap the title bar to open the gallery, switch between sketches, create new works, or search and tag your collection.",
-            "Folder Organization: Group user works into custom one-level folders. Long-press any folder chip and drag horizontally to swap and reorder with adjacent tabs (My works is always fixed at the start). Deleting a folder keeps all contained works safely in Unfiled.",
-            "Bundled Samples Protection: Official bundled samples are read-only originals. Experiment freely with live parameters, then tap Copy to edit to duplicate into your personal works before modifying code.",
-            "Batch Operations: Select multiple works to move them into a folder, apply or remove tags, export as ZIP, or delete together.",
-            "Canvas Sizing & Menu: Customize canvas aspect ratios (Device landscape, 16:9, 4:3, 1:1, 9:16, Device portrait) and access duplicate, export, or settings from the title menu."
+            "On the first launch of v2.3.0, Palette opens with the light theme and code wrapping off. Tap its canvas to change the palette.",
+            "Tap the work title to open the work picker. The Samples tab contains finished examples; My works contains your own creations.",
+            "Sample originals are read-only. You can select and copy text, fold code blocks, and try available live parameters.",
+            "Choose Copy to edit, enter a name, and save an independent copy in My works before changing the code."
         )
     ),
     GuideSection(
-        title = "Code Editor & Smart Tools",
-        summary = "A touchscreen-optimized development environment featuring session persistence, smart inline search, and live preview state synchronization.",
+        title = "Create your work",
+        summary = "Templates provide a small starting point for your own code.",
+        iconRes = R.drawable.ic_snippet,
+        tag = "Create",
+        steps = listOf(
+            "Use the plus button in the work picker to create a work. Give it a name and choose a starting template.",
+            "Begin with 2D, Animation, Mouse / Touch, or Parameters. Templates are starting points; samples are finished artworks to explore.",
+            "Advanced templates cover WebGL, shaders, physics, and WebGPU. Their required bundled libraries are configured automatically.",
+            "Save as template in the work menu stores current code, supporting files, assets, and runtime settings. Choose My templates when creating another work."
+        )
+    ),
+    GuideSection(
+        title = "Edit and run",
+        summary = "Edit your own work, run changes, and inspect errors.",
         iconRes = R.drawable.ic_code,
         tag = "Editor",
         steps = listOf(
-            "Session State Preservation: Switching between works retains your active file, exact cursor position, scroll offset, and Undo/Redo history for smooth multitasking.",
-            "Compact Search & Replace: Use the streamlined editor bar to search and replace text with match highlighting and preserved cursor position. Whole-work search remains available.",
-            "Stale Preview Indication: An unapplied changes indicator appears when edits have not reached the running canvas. Tap Run changes to execute, with clear separation between current edits and previous errors.",
-            "Multi-File Tabs: Switch effortlessly between JavaScript modules and HTML/CSS files configured under Work settings → Project files.",
-            "Editing Utilities: Enjoy Prettier-style automatic formatting, bracket and block folding, intelligent p5.js autocompletion, and jump-to-line navigation."
+            "Tap the code to edit. Undo and Redo are available. The editing toolbar provides navigation keys, symbols, and code snippets.",
+            "Tap the triangle beside a line number to fold or expand a code block. Folding changes the display without deleting any source code.",
+            "With code wrapping off, long source lines scroll horizontally. Settings → Editor → Wrap code at screen width enables wrapping without changing source line breaks.",
+            "Use search to find text, formatting to organize supported code, and the p5.js reference to inspect APIs. Run changes when the preview is outdated; use console errors to jump to their source."
         )
     ),
     GuideSection(
-        title = "Live Parameters",
-        summary = "Generate interactive sliders, color pickers, and toggle switches directly from code comments without writing custom UI widgets.",
+        title = "Adjust live parameters",
+        summary = "Sliders and color controls can change a work while it runs.",
         iconRes = R.drawable.ic_tune,
-        tag = "Interactive",
-        codeSnippet = """// @rin number speed "Speed" 0 3 1 0.1
-// @rin color ink "Ink Color" #BA90E2
-// @rin boolean glow "Glow" true
-
-function draw() {
-  background(20);
-  fill(rinParams.ink);
-  if (rinParams.glow) drawingContext.shadowBlur = 15;
-  circle(width/2, height/2, 60 * rinParams.speed);
-}""",
+        tag = "Parameters",
+        codeSnippet = "// @rin number diameter \"Diameter\" 20 240 120 10\n// @rin color ink \"Ink\" #D67856\n\nfunction setup() {\n  createCanvas(600, 600);\n}\n\nfunction draw() {\n  background('#F2EFE7');\n  noStroke();\n  fill(rinParams.ink);\n  circle(width / 2, height / 2, rinParams.diameter);\n}",
         steps = listOf(
-            "Syntax: Declare parameters at the top of your scripts using // @rin followed by type (number, color, or boolean), name, title, and initial value.",
-            "Real-time Binding: Access values instantly in code via rinParams.<name>. Adjusting sliders dynamically alters your canvas without restarting.",
-            "Controls & Fine-Tuning: Use +/- step buttons, reset to defaults individually or all at once, or copy parameter templates from the panel."
+            "Open Parameters from the preview controls. Available controls depend on declarations in the current code.",
+            "Declare a number, color, or boolean using a // @rin comment, or use Add parameter in the panel. Read the value through rinParams.<name>.",
+            "Move sliders or choose colors to update the artwork. Number controls also have minus and plus buttons for small adjustments.",
+            "Reset individual controls or all controls to code defaults. Parameter values belong to each work and are included when copying or backing it up."
         )
     ),
     GuideSection(
-        title = "Assets & Path Sync",
-        summary = "Bundle images, audio, video, fonts, and data files, and keep code references automatically synchronized when renaming.",
+        title = "Files, assets, and libraries",
+        summary = "Add resources when your work needs more than one script.",
         iconRes = R.drawable.ic_assets,
-        tag = "Assets",
-        codeSnippet = """let img, snd;
-function preload() {
-  img = loadImage('assets/texture.png');
-  snd = loadSound('assets/beat.mp3');
-}""",
+        tag = "Project",
         steps = listOf(
-            "Import Files: Add assets via Work settings → Work assets from device storage, with instant visual and audio previews.",
-            "One-tap Code Insert: Tap 'Insert loading code' in the asset inspector to generate the exact preload loader at your cursor.",
-            "Synchronized Asset Rename: Renaming an asset scans your project files and lets you update matching literal paths together with preview verification and safe rollback.",
-            "Capacity: Supports up to 50 MB per file, and up to 100 files / 200 MB total per individual work."
+            "Work settings → Project files manages supporting JavaScript, HTML, and CSS files. Use editor tabs to switch between files.",
+            "Import images, audio, fonts, or data under Work assets. Insert loading code from the asset inspector to use the correct path.",
+            "When renaming an asset, inspect matching literal paths and choose which references to update. Asset limits are 50 MiB per file and 100 files / 200 MiB per work.",
+            "Select the p5.js version and libraries in Work settings. Camera and microphone works require permissions; sound usually starts after a canvas tap. WebGPU availability depends on the device."
         )
     ),
     GuideSection(
-        title = "Runtime, WebGPU & Hardware",
-        summary = "Choose between modern and legacy p5.js engines, next-generation WebGPU, and integrate device camera and microphone inputs.",
-        iconRes = R.drawable.ic_terminal,
-        tag = "Runtimes",
+        title = "Save and recover your work",
+        summary = "Keep working copies, snapshots, and backups for different needs.",
+        iconRes = R.drawable.ic_history,
+        tag = "Save",
         steps = listOf(
-            "p5.js Versioning: Select between p5.js 2.3.4 (modern web standards and WebGL/WebGPU) and 1.11.5 (legacy compatibility).",
-            "Next-Gen WebGPU: Leverage WebGPU hardware rendering with automatic fallback to WebGL on unsupported hardware.",
-            "Device Camera & Microphone: Capture live mobile camera video (createCapture) and live audio input (p5.AudioIn) directly in your sketches.",
-            "Sound & Shaders: Audio synthesis (including MONO SYNTH SCOPE) starts smoothly on first touch, and bundled libraries like Matter.js and p5.brush provide rich physical and expressive brush strokes."
+            "Auto-save when leaving the app is available in Settings. Check the save result before leaving a work when a storage error occurs.",
+            "Use snapshots to keep earlier versions. Add names or notes, inspect differences, and restore a chosen version when needed.",
+            "Draft recovery can restore compatible unsaved edits or offer a recovery prompt. Confirm the work and content before applying a recovered draft.",
+            "If saving fails, keep the current editor content and use the retry or recovery options shown. Avoid clearing app data while unsaved work is waiting."
         )
     ),
     GuideSection(
-        title = "Capture, Video & Recovery",
-        summary = "Export high-resolution still images or smooth animated loops, backed by crash-proof recording recovery.",
+        title = "Export images and recordings",
+        summary = "Save what you see in the canvas and share the saved media.",
         iconRes = R.drawable.ic_camera,
-        tag = "Media",
+        tag = "Output",
         steps = listOf(
-            "High-Resolution PNG: Capture crisp screenshots with 1x, 2x, or 4x offscreen rendering (up to 16 MP), with direct Open and Share buttons on save completion.",
-            "Video & GIF Recording: Record fluid MP4 video (up to 60s) or animated GIFs (up to 15s) directly from the running preview canvas.",
-            "Recording Recovery: If a recording save fails, the captured data is preserved in temporary storage so you can retry, select an alternate folder, or explicitly discard.",
-            "Quality Settings: Adjust MP4 bitrate (up to 16 Mbps) and recording countdown delays in Settings."
+            "Use the camera button to export a PNG at 1x, 2x, or 4x. Higher scales redraw the work at higher resolution, up to 16 megapixels.",
+            "Use the recording controls for MP4 or GIF. Settings provides recording countdown and MP4 bitrate options.",
+            "After saving, open the result or share it through another app. These actions use the saved image or recording.",
+            "If a recording cannot be saved, use Retry saving or Choose another destination. Discard removes the pending recording only when you choose it."
         )
     ),
     GuideSection(
-        title = "Share Card & QR Web Play",
-        summary = "Turn sketches into 1080p shareable artwork cards with scannable QR codes that run instantly in any mobile or desktop web browser.",
-        iconRes = R.drawable.ic_share_card,
-        tag = "Share",
-        steps = listOf(
-            "Generate Card: Open Share Card from the preview toolbar to produce a high-resolution card featuring your canvas artwork and a QR code.",
-            "Card Customization: Pick from four sleek themes (Dark, Midnight, Cyber, Light) and add your author name or handle (by @...).",
-            "Instant Web Play: Anyone scanning the QR code with their phone camera can play and interact with your sketch in a browser without installing the app.",
-            "Source Visibility: Choose whether viewers can inspect the sketch's JavaScript source code in the web player or keep it hidden."
-        )
-    ),
-    GuideSection(
-        title = "Backup & Cloud Sync",
-        summary = "Safeguard your creative portfolio with versatile backup tools and automated external sync support.",
+        title = "Organize and back up",
+        summary = "Keep your collection organized and make a copy before moving devices.",
         iconRes = R.drawable.ic_save,
-        tag = "Storage",
+        tag = "Manage",
         steps = listOf(
-            "Single Work ZIP: Export or import an individual sketch with all scripts, assets, and metadata bundled together.",
-            "Full Backup Archive: Package all works, custom templates, and settings into a single backup file before device migration.",
-            "External Storage Folder: Direct your work storage to an external folder or SD card. By pointing this to a folder monitored by third-party sync apps (like FolderSync or Nextcloud), projects sync continuously to cloud storage.",
-            "p5.js Web Editor Import: Import public sketches from any p5.js Web Editor username without requiring credentials."
+            "Use folders, tags, and search in the work picker. Deleting a folder moves its works to Unfiled instead of deleting the works.",
+            "Select multiple user works for move, tag, ZIP export, or deletion. Export a single work as ZIP to include its code, files, assets, and settings.",
+            "Use full backup to export your works, custom templates, and settings before changing devices or reinstalling. Check the backup file and choose it when restoring.",
+            "An external storage folder changes where works are saved. Cloud synchronization requires a separate tool that synchronizes that folder; the app does not upload works to cloud storage automatically."
         )
     )
 )
@@ -158,7 +143,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
     val sections = localizedUserGuide(language)
     val title = when (language) { "ja" -> "使い方ガイド"; "zh" -> "使用指南"; else -> "User Guide" }
     val subtitle = when (language) {
-        "ja" -> "Edit:RiN を使いこなすための機能ガイド"
+        "ja" -> "Edit:RiN の操作と機能を紹介します"
         "zh" -> "Edit:RiN 创意编程完整功能指南"
         else -> "Comprehensive guide to mastering Edit:RiN"
     }
