@@ -20,7 +20,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -42,7 +41,6 @@ import java.util.Collections
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -139,20 +137,29 @@ internal class WorkGalleryState internal constructor(
     searchingState: MutableState<Boolean>,
     queryState: MutableState<String>,
     selectedTagState: MutableState<String?>,
-    val gridState: LazyGridState,
+    gridState: MutableState<LazyGridState>,
     selectingState: MutableState<Boolean>,
     selectedIdsState: MutableState<Set<String>>,
     selectedFolderState: MutableState<String?> = mutableStateOf(null)
 ) {
+    var gridState by gridState
+        private set
     var searching by searchingState
     var query by queryState
     var selectedTag by selectedTagState
     var selecting by selectingState
     var selectedIds by selectedIdsState
     var selectedFolder by selectedFolderState
+        private set
     fun inFolder(work: Work): Boolean = if (selectedFolder == SAMPLE_FOLDER) work.isSample
         else !work.isSample && (selectedFolder == null || work.folderName == selectedFolder)
     fun changeFolder(folder: String?) {
+        if (selectedFolder != folder) {
+            // LazyGridState also owns item animation state. A different collection
+            // must not inherit disappearing cards, row heights or a pending scroll.
+            gridState = LazyGridState()
+            jumpWorkId = null
+        }
         selectedFolder = folder; selectedTag = null; cardMenuWorkId = null; finishSelection()
     }
     var jumpWorkId by mutableStateOf<String?>(null)
@@ -189,7 +196,7 @@ internal fun rememberWorkGalleryState(): WorkGalleryState {
     val searching = rememberSaveable { mutableStateOf(false) }
     val query = rememberSaveable { mutableStateOf("") }
     val selectedTag = rememberSaveable { mutableStateOf<String?>(null) }
-    val grid = rememberLazyGridState()
+    val grid = rememberSaveable(stateSaver = LazyGridState.Saver) { mutableStateOf(LazyGridState()) }
     val selecting = rememberSaveable { mutableStateOf(false) }
     val selectedIds = rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
     val selectedFolder = rememberSaveable { mutableStateOf<String?>(null) }
@@ -398,11 +405,11 @@ private fun WorkGalleryContent(
     LaunchedEffect(works) {
         state.selectedIds = state.selectedIds.intersect(works.filterNot { it.isSample }.map { it.id }.toSet())
     }
+    val gridState = state.gridState
     val currentBoundsCallback by rememberUpdatedState(onActiveThumbnailBounds)
     LaunchedEffect(state.selectedFolder, folders) {
         if (state.selectedFolder != null && state.selectedFolder != SAMPLE_FOLDER &&
             state.selectedFolder != "" && state.selectedFolder !in folders) state.changeFolder(null)
-        state.gridState.scrollToItem(0)
     }
     val allTags = remember(works, state.selectedFolder) {
         works.filter(state::inFolder).flatMap { it.tags }.distinct().sorted()
@@ -439,10 +446,10 @@ private fun WorkGalleryContent(
         })
     }
 
-    LaunchedEffect(state.jumpSequence, visibleWorks) {
+    LaunchedEffect(state.jumpSequence, visibleWorks, gridState) {
         val index = visibleWorks.indexOfFirst { it.id == state.jumpWorkId }
         if (state.jumpSequence > 0 && index >= 0) {
-            state.gridState.animateScrollToItem(index)
+            gridState.animateScrollToItem(index)
             state.jumpWorkId = null
         }
     }
@@ -451,11 +458,11 @@ private fun WorkGalleryContent(
         if (selected != null && allTags.none { it.equals(selected, ignoreCase = true) }) state.selectedTag = null
     }
     if (morphWorkId != null) {
-        DisposableEffect(morphWorkId, state) {
+        DisposableEffect(morphWorkId, gridState) {
             onDispose { currentBoundsCallback(null) }
         }
-        LaunchedEffect(morphWorkId, state.gridState) {
-            snapshotFlow { state.gridState.layoutInfo.visibleItemsInfo.any { it.key == morphWorkId } }
+        LaunchedEffect(morphWorkId, gridState) {
+            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.any { it.key == morphWorkId } }
                 .collect { visible -> if (!visible) currentBoundsCallback(null) }
         }
     }
@@ -601,14 +608,15 @@ private fun WorkGalleryContent(
                 Text(text("一致する作品がありません"), Modifier.align(Alignment.Center).padding(24.dp),
                     color = colors.onSurfaceVariant)
             }
+            key(state.selectedFolder) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columnCount),
-                state = state.gridState,
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(if (landscape) 16.dp else 20.dp)) {
-                items(visibleWorks, key = { it.id }, contentType = { "work_card" }) { work ->
+                items(visibleWorks, key = { it.id }, contentType = { if (it.isSample) "sample_card" else "work_card" }) { work ->
                     val isSelected = if (state.selecting) work.id in state.selectedIds else work.id == activeId
                     val bitmap by produceState<android.graphics.Bitmap?>(null, work.id,
                         if (work.id == updatedPreviewId) previewRevision else 0) {
@@ -625,7 +633,7 @@ private fun WorkGalleryContent(
                             }
                         }
                     }
-                    Column(Modifier.animateItem().clip(RoundedCornerShape(6.dp))
+                    Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null).clip(RoundedCornerShape(6.dp))
                         .combinedClickable(
                             onClick = { if (!busy) { if (state.selecting) state.toggleSelected(work.id) else onOpen(work, false) } },
                             onLongClickLabel = text("作品メニュー"),
@@ -640,7 +648,7 @@ private fun WorkGalleryContent(
                                 else 1f
                             }
                             .then(if (work.id == morphWorkId) Modifier.onGloballyPositioned { coordinates ->
-                                val visible = state.gridState.layoutInfo.visibleItemsInfo.any { it.key == work.id }
+                                val visible = gridState.layoutInfo.visibleItemsInfo.any { it.key == work.id }
                                 val bounds = coordinates.boundsInRoot()
                                 // A clipped card is a fade destination, not a smaller morph destination.
                                 val fullyVisible = bounds.width >= coordinates.size.width - 1f &&
@@ -649,7 +657,7 @@ private fun WorkGalleryContent(
                                     bounds.height > 0f) bounds else null)
                             } else Modifier)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (colors.surface.luminance() < 0.5f) Color(0xFF17171B) else colors.surfaceContainer)
+                            .background(colors.surfaceContainer)
                             .then(if (isSelected) Modifier.border(1.dp, colors.primary.copy(alpha = 0.65f),
                                 RoundedCornerShape(6.dp)) else Modifier), contentAlignment = Alignment.Center) {
                             bitmap?.let {
@@ -667,7 +675,7 @@ private fun WorkGalleryContent(
                             if (work.isPinned && !state.selecting) {
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
-                                    color = Color.Black.copy(alpha = 0.65f),
+                                    color = colors.surfaceContainerHigh,
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .padding(6.dp)
@@ -692,7 +700,7 @@ private fun WorkGalleryContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                work.title,
+                                if (work.isSample) text(work.title) else work.title,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 fontSize = 14.sp,
@@ -804,6 +812,11 @@ private fun WorkGalleryContent(
                                 }
                             }
                         }
+                        sampleGuide(work)?.let { guide ->
+                            Text(text(guide), color = colors.onSurfaceVariant,
+                                fontSize = 11.sp, lineHeight = 16.sp,
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
                         if (work.tags.isNotEmpty() && !(landscape && keyboardVisible)) {
                             Text(
                                 text = work.tags.joinToString(" ") { "#$it" },
@@ -822,6 +835,7 @@ private fun WorkGalleryContent(
                             color = colors.onSurfaceVariant, fontSize = 10.sp)
                     }
                 }
+            }
             }
             if (!state.selecting) Surface(onClick = onAdd, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(48.dp),
                 shape = RoundedCornerShape(14.dp), color = colors.onSurface, contentColor = background,

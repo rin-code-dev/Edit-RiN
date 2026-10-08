@@ -45,3 +45,13 @@ release-signing.properties
 *.hprof
 __pycache__/
 *.pyc
+
+# Private local workflow configuration and internal agent documents
+scripts/sync-gdrive.local.json
+AGENTS.md
+GEMINI.md
+MODIFICATIONS.md
+GITHUB_RELEASE_GUIDE.md
+EDIT_RIN_IMPLEMENTATION_SPEC.txt
+.agents/
+.codex/

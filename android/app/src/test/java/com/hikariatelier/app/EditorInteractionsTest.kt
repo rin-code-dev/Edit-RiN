@@ -7,6 +7,37 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EditorInteractionsTest {
+    @Test fun readOnlySampleCanFoldAndExpandWithoutEditingItsCode() {
+        val source = "function draw() {\n  background(0);\n  circle(10, 10, 20);\n}\n"
+        val regions = codeFolds(source)
+        val fold = regions.single()
+        val current = TextFieldValue(source, TextRange(source.indexOf("circle")))
+        var selected = current
+        val collapsed = toggleEditorFold(source, current, emptySet(), regions, fold)!!
+        dispatchEditorValueChange(current, collapsed.value, true, { selected = it },
+            { fail("Folding must not change source or history") })
+        assertEquals(source, selected.text)
+        assertEquals(TextRange(fold.open), selected.selection)
+        assertFalse(selected.selection.start > fold.open + 1 && selected.selection.start < fold.close)
+        val projection = FoldProjection(source, regions, collapsed.state.collapsed)
+        assertFalse(projection.transform(AnnotatedString(source)).text.text.contains("circle"))
+        val expanded = toggleEditorFold(source, selected, collapsed.state.collapsed, regions, fold)!!
+        assertEquals(source, FoldProjection(source, regions, expanded.state.collapsed)
+            .transform(AnnotatedString(source)).text.text)
+        assertEquals(source, expanded.value.text)
+    }
+
+    @Test fun togglingOneFoldKeepsOtherFoldsAndRejectsStaleInput() {
+        val source = "function a() {\n  x();\n}\nfunction b() {\n  y();\n}\n"
+        val regions = codeFolds(source)
+        val value = TextFieldValue(source, composition = TextRange(0, 3))
+        val toggle = toggleEditorFold(source, value, setOf(regions.last().open), regions, regions.first())!!
+        assertEquals(regions.map { it.open }.toSet(), toggle.state.collapsed)
+        assertNull(toggle.value.composition)
+        assertNull(toggleEditorFold(source, TextFieldValue("new source"), emptySet(), regions, regions.first()))
+        assertNull(toggleEditorFold(source, value, emptySet(), regions, CodeFold(0, 1)))
+    }
+
     @Test fun searchTargetsTheMatchWithinALongWrappedLine() {
         val source = "x".repeat(2000) + "needle" + "y".repeat(2000)
         val match = searchProject(mapOf("sketch.js" to source), "needle", true).matches.single()

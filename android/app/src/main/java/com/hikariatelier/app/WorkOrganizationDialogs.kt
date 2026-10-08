@@ -25,7 +25,7 @@ internal fun WorkOrganizationDialogs(model: WorkManagementViewModel, works: List
                 windowSetup()
                 Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     if (sample != null) {
-                        Text(text("サンプル原本は変更せず、自分の作品にコピーします。"))
+                        Text(text("サンプルを「自分の作品」にコピーします。元のサンプルは変わりません。"))
                         Spacer(Modifier.height(12.dp))
                         OutlinedTextField(value = title, onValueChange = { title = it.take(120) },
                             enabled = !busy, singleLine = true, label = { Text(text("作品名")) })
@@ -61,7 +61,7 @@ internal fun WorkOrganizationDialogs(model: WorkManagementViewModel, works: List
             title = { Text(text("フォルダー管理")) }, text = {
                 windowSetup()
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                    Text(text("フォルダーを削除しても作品は未分類に残ります。"))
+                    Text(text("フォルダーを削除すると、中の作品は「未分類」に移動します。作品は削除されません。"))
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = selected == null, enabled = !busy,
@@ -89,7 +89,7 @@ internal fun WorkOrganizationDialogs(model: WorkManagementViewModel, works: List
             })
         deleting?.let { target ->
             EditSettingsDialog(onDismissRequest = { if (!busy) deleting = null },
-                title = { Text(target) }, text = { Text(text("フォルダーを削除しても作品は未分類に残ります。")) },
+                title = { Text(target) }, text = { Text(text("フォルダーを削除すると、中の作品は「未分類」に移動します。作品は削除されません。")) },
                 confirmButton = { TextButton(enabled = !busy, onClick = {
                     model.deleteGalleryFolder(target); deleting = null; selected = null; name = ""
                 }) { Text(text("削除")) } },

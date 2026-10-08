@@ -3,7 +3,7 @@ package com.hikariatelier.app
 import com.hikariatelier.app.ui.theme.AppThemeMode
 
 internal data class SettingsUiState(
-    val themeMode: AppThemeMode = AppThemeMode.DARK,
+    val themeMode: AppThemeMode = AppThemeMode.LIGHT,
     val appLanguage: String = "system",
     val customBackground: Int = 0xFF101014.toInt(),
     val customAccent: Int = 0xFFA8C7FA.toInt(),
@@ -25,7 +25,7 @@ internal data class SettingsUiState(
     val showAccessoryNavigation: Boolean = true,
     val showAccessorySymbols: Boolean = true,
     val compactAccessoryKeys: Boolean = true,
-    val editorWordWrap: Boolean = true,
+    val editorWordWrap: Boolean = false,
     val landscapeEditorOnLeft: Boolean = true,
     val draftRecovery: Boolean = true,
     val autoSaveOnLeave: Boolean = true,

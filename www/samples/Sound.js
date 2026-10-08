@@ -1,221 +1,144 @@
-// p5.js 2.3.3 + p5.sound
-// MONO SYNTH SCOPE
-
-let osc;
-let filter;
-let fft;
-let env;
-
-let active = false;
-let freq = 220;
+// Sound — pocket instrument
+// Hold and slide to change pitch.
+// Short notes stop even when drawing is paused.
+let audio, voice;
+let active = false,
+  starting = false;
+let frequency = 220;
+let lastNoteAt = -Infinity;
+let status = 'TOUCH TO PLAY';
 
 function setup() {
-  createCanvas(windowWidth, windowHeight);
-
-  // Oscillator
-  osc = new p5.Oscillator(220, "sine");
-
-  // Filter
-  filter = new p5.LowPass();
-
-  osc.disconnect();
-  osc.connect(filter);
-
-  // Envelope
-  env = new p5.Envelope();
-  env.setADSR(0.03, 0.1, 0.35, 0.2);
-
-  // Envelope経由で出力
-  filter.disconnect();
-  filter.connect(env);
-
-  // FFT
-  fft = new p5.FFT(512);
-  env.connect(fft);
-
-  osc.start();
-
-  textFont("monospace");
-  strokeCap(ROUND);
+  createCanvas(600, 600);
+  pixelDensity(1);
 }
 
-function draw() {
-  background(8);
-
-  if (active) {
-    // 横方向 = 音程
-    const targetFreq = map(
-      constrain(mouseX, 0, width),
-      0,
-      width,
-      80,
-      600
-    );
-
-    freq = lerp(freq, targetFreq, 0.08);
-
-    osc.freq(freq);
-
-    // 縦方向 = フィルター
-    const cutoff = map(
-      constrain(mouseY, 0, height),
-      height,
-      0,
-      180,
-      2200
-    );
-
-    filter.freq(cutoff);
-    filter.res(1.5);
-  }
-
-  drawGrid();
-  drawWave();
-  drawCursor();
-  drawUI();
-}
-
-function drawGrid() {
-  strokeWeight(1);
-  stroke(255, 15);
-
-  const gap = 40;
-
-  for (let x = gap; x < width; x += gap) {
-    line(x, 0, x, height);
-  }
-
-  for (let y = gap; y < height; y += gap) {
-    line(0, y, width, y);
-  }
-
-  stroke(255, 40);
-  line(0, height / 2, width, height / 2);
-}
-
-function drawWave() {
-  const wave = fft.waveform();
-
-  noFill();
-
-  // glow
-  stroke(255, 30);
-  strokeWeight(5);
-
-  beginShape();
-
-  for (let i = 0; i < wave.length; i++) {
-    const x = map(i, 0, wave.length - 1, 0, width);
-    const y =
-      height / 2 +
-      wave[i] * height * 0.3;
-
-    vertex(x, y);
-  }
-
-  endShape();
-
-  // main waveform
-  stroke(255, 230);
-  strokeWeight(1.5);
-
-  beginShape();
-
-  for (let i = 0; i < wave.length; i++) {
-    const x = map(i, 0, wave.length - 1, 0, width);
-    const y =
-      height / 2 +
-      wave[i] * height * 0.3;
-
-    vertex(x, y);
-  }
-
-  endShape();
-}
-
-function drawCursor() {
-  if (!active) return;
-
-  stroke(255, 80);
-  strokeWeight(1);
-
-  line(mouseX, 0, mouseX, height);
-  line(0, mouseY, width, mouseY);
-
-  noFill();
-
-  stroke(255);
-  strokeWeight(1.5);
-
-  circle(mouseX, mouseY, 20);
-
-  fill(255);
-  noStroke();
-
-  circle(mouseX, mouseY, 3);
-}
-
-function drawUI() {
-  noStroke();
-
-  fill(255);
-  textSize(11);
-
-  text("MONO SYNTH SCOPE", 18, 25);
-
-  fill(255, 100);
-
-  if (active) {
-    text(
-      freq.toFixed(1) + " Hz",
-      18,
-      height - 22
-    );
-  } else {
-    text(
-      "TOUCH + DRAG",
-      18,
-      height - 22
-    );
+async function soundOn() {
+  if (starting || active) return;
+  starting = true;
+  active = true;
+  try {
+    audio ??= new (window.AudioContext || window.webkitAudioContext)();
+    await audio.resume();
+    if (active) {
+      status = 'SLIDE TO CHANGE PITCH';
+      playNote();
+    }
+  } catch (_) {
+    active = false;
+    status = 'AUDIO UNAVAILABLE · TAP TO RETRY';
+  } finally {
+    starting = false;
   }
 }
 
-function soundOn() {
-  userStartAudio();
-
-  if (!active) {
-    active = true;
-    env.triggerAttack(0.18);
+function playNote() {
+  if (!audio || audio.state !== 'running') return;
+  if (voice) {
+    try {
+      voice.stop();
+    } catch (_) {}
   }
+  const now = audio.currentTime;
+  const oscillator = audio.createOscillator(),
+    gain = audio.createGain();
+  frequency = 110 * Math.pow(2, constrain(mouseX / width, 0, 1) * 2);
+  oscillator.type = 'sine';
+  oscillator.frequency.value = frequency;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.08, now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+  oscillator.connect(gain);
+  gain.connect(audio.destination);
+  oscillator.onended = () => {
+    oscillator.disconnect();
+    gain.disconnect();
+    if (voice === oscillator) voice = null;
+  };
+  oscillator.start(now);
+  oscillator.stop(now + 0.24);
+  voice = oscillator;
+  lastNoteAt = millis();
 }
 
 function soundOff() {
-  if (active) {
-    active = false;
-    env.triggerRelease();
+  active = false;
+  if (voice) {
+    try {
+      voice.stop();
+    } catch (_) {}
+    voice = null;
   }
+  status = 'TOUCH TO PLAY';
+}
+
+function draw() {
+  if (active && millis() - lastNoteAt > 160) playNote();
+  background(28, 27, 26);
+  noFill();
+  const unit = min(width, height),
+    time = millis() / 1000;
+  const energy = Math.max(0, 1 - (millis() - lastNoteAt) / 240);
+  // Sound becomes a standing wave; idle motion stays subtle.
+  for (let row = 0; row < 36; row++) {
+    const rowPosition = row / 35;
+    stroke(row === 18 ? '#D67856' : '#C8C2B8');
+    strokeWeight(row === 18 ? 1.5 : 0.65);
+    beginShape();
+    for (let segment = 0; segment <= 80; segment++) {
+      const progress = segment / 80,
+        envelope = Math.pow(sin(progress * PI), 3) * sin(rowPosition * PI);
+      const wave = sin(
+        progress * TWO_PI * (2 + frequency / 160) - time * 1.2 + rowPosition * 3,
+      );
+      vertex(
+        width / 2 + (progress - 0.5) * unit * 0.76,
+        height / 2 +
+          (rowPosition - 0.5) * unit * 0.37 +
+          wave * envelope * unit * (0.018 + energy * 0.09),
+      );
+    }
+    endShape();
+  }
+  noStroke();
+  fill(200, 194, 184);
+  textAlign(CENTER, CENTER);
+  textSize(11);
+  text(status, width / 2, height * 0.88);
 }
 
 function mousePressed() {
   soundOn();
   return false;
 }
-
 function mouseReleased() {
   soundOff();
   return false;
 }
-
 function touchStarted() {
   soundOn();
   return false;
 }
-
 function touchEnded() {
   soundOff();
   return false;
 }
+function touchMoved() {
+  return false;
+}
+window.addEventListener('pagehide', () => {
+  soundOff();
+  audio?.close().catch(() => {});
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    soundOff();
+    audio?.suspend().catch(() => {});
+  }
+});
 
-function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
+// Preview pause/resume controls this audio context.
+function getAudioContext() {
+  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  return audio;
 }

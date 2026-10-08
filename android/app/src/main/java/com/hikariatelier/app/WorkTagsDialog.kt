@@ -17,8 +17,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +41,7 @@ internal fun WorkTagsDialog(
 ) {
     val colors = MaterialTheme.colorScheme
     val background = if (LocalCustomTheme.current) colors.background
-    else if (colors.surface.luminance() < 0.5f) Color(0xFF1E1E24) else colors.surfaceContainerHigh
+    else colors.surfaceContainerHigh
     var newTagInput by rememberSaveable { mutableStateOf("") }
 
     val cleanInput = newTagInput.trim().removePrefix("#").trim()
@@ -279,7 +277,7 @@ internal fun AllTagsManageDialog(
 ) {
     val colors = MaterialTheme.colorScheme
     val background = if (LocalCustomTheme.current) colors.background
-    else if (colors.surface.luminance() < 0.5f) Color(0xFF1E1E24) else colors.surfaceContainerHigh
+    else colors.surfaceContainerHigh
     var tagToDelete by remember { mutableStateOf<String?>(null) }
 
     Dialog(

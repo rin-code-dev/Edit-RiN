@@ -1,151 +1,68 @@
+// Gravity — orbital ink
+// Hold or drag to move the attractor.
+// @rin number pull "Gravity" 0.2 2 0.8 0.1
+// @rin color ink "Ink" #C8C2B8
+// Particle count
+const COUNT = 64;
+let particles = [];
 let t = 0;
 
-const W = 600;
-const N = 72;
-const RANGE = 205;
-const POINT_COUNT = N * N;
-
-const pointR = new Float32Array(POINT_COUNT);
-const pointA = new Float32Array(POINT_COUNT);
-const pointNoise = new Float32Array(POINT_COUNT);
-
 function setup() {
-  createCanvas(W, W, WEBGL);
-
+  createCanvas(600, 600);
   pixelDensity(1);
-
-  stroke(255, 180);
-  strokeWeight(1.5);
-  strokeCap(ROUND);
-
-  noFill();
-
-  let index = 0;
-
-  // Precompute static values once at startup
-  for (let j = 0; j < N; j++) {
-    for (let i = 0; i < N; i++) {
-      const x = map(i, 0, N - 1, -RANGE, RANGE);
-      const y = map(j, 0, N - 1, -RANGE, RANGE);
-      const r = sqrt(x * x + y * y);
-
-      pointR[index] = r;
-      pointA[index] = atan2(y, x);
-      pointNoise[index] = noise(x * 0.012 + 20, y * 0.012 + 20);
-      index++;
-    }
+  background(28, 27, 26);
+  for (let i = 0; i < COUNT; i++) {
+    const angle = (i * TWO_PI) / COUNT;
+    const radius = min(width, height) * (0.19 + (i % 4) * 0.048);
+    particles.push({
+      x: width / 2 + cos(angle) * radius,
+      y: height / 2 + sin(angle) * radius,
+      vx: -sin(angle) * 1.6,
+      vy: cos(angle) * 1.6,
+    });
   }
 }
 
 function draw() {
-  background(5);
-
-  rotateX(0.92);
-  rotateZ(-0.22);
-
-  translate(0, 18, 0);
-
-  stroke(255, 185);
-
-  strokeWeight(1.7);
-
-  beginShape(POINTS);
-
-  for (let i = 0; i < POINT_COUNT; i++) {
-    const r = pointR[i];
-    const a = pointA[i];
-    const n = pointNoise[i];
-    const gravity = exp(-r / 105);
-
-    // Wave motion
-    const wave =
-      sin(
-        r * 0.055 -
-        t * 4.2 +
-        n * 2
-      );
-
-    // Vortex distortion
-    const twist =
-      gravity *
-      (
-        1.15 +
-        wave * 0.18
-      );
-
-    const angle =
-      a +
-      twist;
-
-    // Radial deformation
-    let radius =
-      r +
-      wave *
-      16 *
-      gravity;
-
-    radius -=
-      gravity *
-      22 *
-      (
-        0.5 +
-        0.5 *
-        sin(t * 1.8)
-      );
-
-    const px =
-      cos(angle) *
-      radius;
-
-    const py =
-      sin(angle) *
-      radius;
-
-    // Outer ring
-    const ring =
-      exp(
-        -sq(r - 112) /
-        1600
-      );
-
-    // Central sinkhole
-    const pit =
-      exp(
-        -sq(r) /
-        2300
-      );
-
-    // Subtle surface texture
-    const texture =
-      sin(
-        n * 12 +
-        t * 2
-      ) *
-      7;
-
-    const z =
-      wave *
-      62 *
-      gravity +
-      ring *
-      (
-        27 +
-        sin(
-          t * 3 +
-          a * 6
-        ) * 9
-      ) -
-      pit * 72 +
-      texture;
-
-    vertex(
-      px,
-      py,
-      z
-    );
+  const parameters = typeof rinParams === 'undefined' ? {} : rinParams;
+  const step = constrain(
+    (typeof deltaTime === 'number' ? deltaTime : 16.67) / 16.67,
+    0,
+    2,
+  );
+  t += step / 60;
+  background(28, 27, 26, 12);
+  const centerX = mouseIsPressed ? constrain(mouseX, 0, width) : width / 2;
+  const centerY = mouseIsPressed ? constrain(mouseY, 0, height) : height / 2;
+  const pull = parameters.pull ?? 0.8;
+  stroke(parameters.ink ?? '#C8C2B8');
+  strokeWeight(1.1);
+  for (const point of particles) {
+    const deltaX = centerX - point.x,
+      deltaY = centerY - point.y;
+    // Softening prevents an infinite force at the center.
+    const distance = Math.max(30, Math.hypot(deltaX, deltaY));
+    const force = (600 * pull) / (distance * distance);
+    point.vx = constrain(point.vx + (deltaX / distance) * force * step, -6, 6);
+    point.vy = constrain(point.vy + (deltaY / distance) * force * step, -6, 6);
+    const x = point.x,
+      y = point.y;
+    point.x += point.vx * step;
+    point.y += point.vy * step;
+    line(x, y, point.x, point.y);
+    point.x = (point.x + width) % width;
+    point.y = (point.y + height) % height;
   }
+  noStroke();
+  fill(28, 27, 26);
+  circle(centerX, centerY, 36);
+  fill(214, 120, 86);
+  circle(centerX, centerY, 7);
+}
 
-  endShape();
-
-  t += 0.012;
+function touchStarted() {
+  return false;
+}
+function touchMoved() {
+  return false;
 }

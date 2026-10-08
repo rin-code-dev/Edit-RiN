@@ -50,7 +50,7 @@ internal fun AddParameterDialog(parameters: List<WorkParameter>, text: (String) 
                 ParameterKind.COLOR -> OutlinedTextField(color, { color = it }, label = { Text(text("6桁のカラーコード")) }, singleLine = true)
                 ParameterKind.BOOLEAN -> Row { Checkbox(boolean, { boolean = it }); Text(text("初期値") + ": $boolean") }
             }
-            Text(text("変数名は半角英数字と_（英字開始）、ラベルは40文字以内。作品ごとに最大16個まで追加できます。"),
+            Text(text("変数名は半角英字で始め、半角英数字と_を使ってください。ラベルは40文字以内です。作品ごとに最大16個まで追加できます。"),
                 style = MaterialTheme.typography.bodySmall)
             declaration?.let { Text(it.trimEnd(), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
             if (failed) Text(text("パラメータを追加できませんでした。入力値を確認してください"), color = MaterialTheme.colorScheme.error)
@@ -66,7 +66,7 @@ internal fun AddParameterDialog(parameters: List<WorkParameter>, text: (String) 
 internal fun SnippetDialog(text: (String) -> String, onInsert: (CodeSnippet) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(text("スニペット")) }, text = {
         Column {
-            Text(text("挿入したいスニペットを選択してください。カーソル位置（または選択範囲）に挿入されます。"), style = MaterialTheme.typography.bodySmall)
+            Text(text("スニペットを選ぶと、カーソルの位置に挿入します。コードを選択中の場合は、その部分を置き換えます。"), style = MaterialTheme.typography.bodySmall)
             LazyColumn(Modifier.heightIn(max = 440.dp)) {
                 codeSnippets.groupBy { it.category }.forEach { (category, snippets) ->
                     item { Text(text(category), modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
@@ -88,7 +88,7 @@ internal fun SnippetDialog(text: (String) -> String, onInsert: (CodeSnippet) -> 
 internal fun ScreenshotScaleDialog(text: (String) -> String, onCapture: (Int) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(text("PNG画像書き出し")) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text("オフスクリーンで高精細に再描画してPNG画像を保存します（最大1600万画素）。※アニメーションや乱数によりフレームが進む場合があります。"),
+            Text(text("画面外で高解像度に再描画し、PNG画像を保存します。上限は1600万画素です。アニメーションや乱数によって、フレームが進む場合があります。"),
                 style = MaterialTheme.typography.bodySmall)
             listOf(1 to "1x（通常）", 2 to "2x（高精細）", 4 to "4x（超高精細）").forEach { (scale, label) ->
                 OutlinedButton(onClick = { onCapture(scale) }, modifier = Modifier.fillMaxWidth()) { Text(text(label)) }

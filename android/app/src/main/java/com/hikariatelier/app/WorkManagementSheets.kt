@@ -303,6 +303,7 @@ internal fun WorkActionsMenu(
     onSearch: () -> Unit,
     onFormat: () -> Unit,
     onSnippets: () -> Unit,
+    onReference: () -> Unit,
     onSnapshot: () -> Unit,
     onHistory: () -> Unit,
     onAspectRatio: () -> Unit,
@@ -363,6 +364,13 @@ internal fun WorkActionsMenu(
             subtitle = uiText("カーソル位置に定番コードを挿入"), colors = colors,
             onClick = { viewModel.workActionsMenuExpanded = false; onSnippets() })
         ActionRow(
+            iconRes = R.drawable.ic_help,
+            title = uiText("p5.jsリファレンス"),
+            subtitle = uiText("関数の引数・使い方早見表"),
+            colors = colors,
+            onClick = { viewModel.workActionsMenuExpanded = false; onReference() }
+        )
+        ActionRow(
             iconRes = R.drawable.ic_format,
             title = uiText("コードを整形"),
             subtitle = uiText("インデントと空行を整理"),
@@ -419,7 +427,7 @@ internal fun WorkActionsMenu(
             ActionRow(
                 iconRes = R.drawable.ic_save,
                 title = uiText("テンプレートとして保存"),
-                subtitle = uiText("コード・素材・実行設定を新規作品のひな形にする"),
+                subtitle = uiText("コード・素材・実行設定を、新しい作品のひな形として保存"),
                 colors = colors,
                 enabled = activeWork != null && !assetBusy && activeWork.isSample.not(),
                 onClick = {
@@ -625,7 +633,7 @@ internal fun WorkActionsMenu(
                 ActionRow(
                     iconRes = R.drawable.ic_assets,
                     title = uiText("作品の素材"),
-                    subtitle = uiText("画像・音声・フォントなどを管理"),
+                    subtitle = uiText("画像・音声・フォントなどの素材を管理"),
                     colors = colors,
                     onClick = {
                         viewModel.workSettingsMenuExpanded = false

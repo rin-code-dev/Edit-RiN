@@ -139,15 +139,22 @@ internal fun AddWorkDialog(
                     onManage = onManageTemplates
                 )
             } else {
-            Text(uiText("テンプレート種別"), style = MaterialTheme.typography.labelLarge)
-            WorkTemplateKind.entries.chunked(2).forEach { kinds ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    kinds.forEach { option ->
-                        FilterChip(selected = kind == option, onClick = { kindName = option.name },
-                            label = { Text(uiText(option.title)) }, modifier = Modifier.weight(1f))
+            Text(uiText("自分の作品を書き始めるためのテンプレートを選びます。"),
+                style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            listOf(false, true).forEach { advanced ->
+                Text(uiText(if (advanced) "応用テンプレート" else "基本テンプレート"),
+                    style = MaterialTheme.typography.labelLarge)
+                WorkTemplateKind.entries.filter { it.advanced == advanced }.chunked(2).forEach { kinds ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        kinds.forEach { option ->
+                            FilterChip(selected = kind == option, onClick = { kindName = option.name },
+                                label = { Text(uiText(option.title)) }, modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
+            Text(uiText(kind.description), style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant)
             Text(
                 uiText("キャンバスの動作"),
                 style = MaterialTheme.typography.labelLarge,
@@ -434,13 +441,13 @@ internal fun FolderSelectionPromptDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     textTranslator(
-                        "作品コードや画像・音声アセットを安全に保存し、バックアップや外部ファイル管理アプリと連携するために、作品の保存先フォルダーを選択してください。",
+                        "作品のコードや画像・音声素材を安全に保存するため、保存先フォルダーを選んでください。バックアップや、外部のファイル管理アプリとの連携に使います。",
                         emptyArray()
                     )
                 )
                 Text(
                     textTranslator(
-                        "※「Documents」などに「Edit-RiN」フォルダーを新規作成して選択するのがおすすめです。既存の作品フォルダーがある場合はそれを選択すると復元されます。",
+                        "「Documents」などに「Edit-RiN」フォルダーを作成して選ぶのがおすすめです。以前の作品フォルダーがある場合は、そのフォルダーを選ぶと作品を復元できます。",
                         emptyArray()
                     ),
                     style = MaterialTheme.typography.bodySmall,

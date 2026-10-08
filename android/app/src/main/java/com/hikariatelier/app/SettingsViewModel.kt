@@ -18,6 +18,9 @@ import java.io.File
 internal class SettingsViewModel(private val repository: SettingsPersistence) : ViewModel() {
     var state by mutableStateOf(repository.load())
         private set
+    val paletteStartupPending get() = repository.paletteStartupPending
+    fun completePaletteStartup() = repository.completePaletteStartup()
+
     var customFontFamily by mutableStateOf<FontFamily?>(null)
         private set
     var fontImportBusy by mutableStateOf(false)

@@ -29,6 +29,34 @@ class WorkWorkflowTest {
     private fun vm(session: EditorSessionViewModel, store: Store, scope: CoroutineScope) =
         WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = scope)
 
+    @Test fun sampleLanguageChangesKeepUnsavedUserWorkAndCopiedComments() = runBlocking {
+        val code = "// Tap to change the palette.\nconst value = 1;\n"
+        val store = Store()
+        val session = EditorSessionViewModel()
+        val vm = vm(session, store, this)
+        vm.initialize { listOf(Work("shapes", "Palette", code)) }
+        session.editorValueState.value = TextFieldValue("unsaved user edit")
+        vm.updateSampleLanguage("ja")
+        assertEquals("unsaved user edit", session.editorValueState.value.text)
+        assertEquals("saved", session.worksState.value.first { it.id == "a" }.code)
+        val sample = vm.officialSamples.single()
+        assertTrue(sample.code.contains("タップで配色"))
+        session.activateWorkEditor(sample.id, sample.code, false, session.worksState.value.map { it.id }.toSet())
+        vm.requestSampleCopy()
+        vm.copySample("My palette", "")!!.join()
+        val copy = session.worksState.value.first { it.id == session.activeWorkIdState.value }
+        assertFalse(copy.isSample)
+        val copiedCode = copy.code
+        vm.updateSampleLanguage("zh")
+        assertEquals(copiedCode, copy.code)
+        assertEquals(copiedCode, session.editorValueState.value.text)
+        session.activateWorkEditor(sample.id, sample.code, false, session.worksState.value.map { it.id }.toSet())
+        vm.updateSampleLanguage("en")
+        assertEquals(code, sample.code)
+        assertEquals(code, session.editorValueState.value.text)
+        assertEquals(code, session.lastSavedTextState.value)
+    }
+
     @Test fun unchangedSavePreservesTimestampAndDeliversNavigationWithoutWriting() = runBlocking {
         val store = Store(); val session = session(store); val vm = vm(session, store, this)
         vm.saveCurrentWork(WorkEvent(openSettings = true))!!.join()

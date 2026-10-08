@@ -156,12 +156,9 @@ internal fun EditorArea(
             CodeFoldState(editingText, collapsedFolds - reveal, foldRegions)
     }
     fun toggleFold(fold: CodeFold) {
-        if (readOnly) return
-        val next = if (fold.open in collapsedFolds) collapsedFolds - fold.open else collapsedFolds + fold.open
-        if (fold.open !in collapsedFolds) {
-            onUpdateEditingValue(editingValue.copy(selection = TextRange(fold.open), composition = null))
-        }
-        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, next, foldRegions)
+        val toggle = toggleEditorFold(editingText, editingValue, collapsedFolds, foldRegions, fold) ?: return
+        if (toggle.value != editingValue) onUpdateEditingValue(toggle.value)
+        sessionViewModel.codeFoldStates[editingKey] = toggle.state
     }
     val currentToggleFold by rememberUpdatedState<(CodeFold) -> Unit>(::toggleFold)
     var gutterLayout by remember(editingKey) { mutableStateOf<TextLayoutResult?>(null) }
@@ -341,7 +338,7 @@ internal fun EditorArea(
             }
             inlineSearch()
             if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
-                Text(textTranslator("エラーは前回の実行結果です", emptyArray()),
+                Text(textTranslator("前回の実行時に発生したエラーです", emptyArray()),
                     Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall, color = colors.tertiary)
             }

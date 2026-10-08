@@ -28,3 +28,21 @@ internal fun dispatchEditorValueChange(
     if (next.text == current.text) onSelectionChange(current.copy(selection = next.selection, composition = next.composition))
     else if (!readOnly) onTextChange(next)
 }
+
+internal data class EditorFoldToggle(val state: CodeFoldState, val value: TextFieldValue)
+
+/** Folding changes only presentation and selection, including for read-only samples. */
+internal fun toggleEditorFold(
+    source: String,
+    value: TextFieldValue,
+    collapsed: Set<Int>,
+    regions: List<CodeFold>,
+    fold: CodeFold
+): EditorFoldToggle? {
+    if (value.text != source || fold !in regions) return null
+    val closing = fold.open !in collapsed
+    val next = if (closing) collapsed + fold.open else collapsed - fold.open
+    // Put the caret outside the hidden range so automatic navigation does not reopen it.
+    val selection = if (closing) value.copy(selection = TextRange(fold.open), composition = null) else value
+    return EditorFoldToggle(CodeFoldState(source, next, regions), selection)
+}

@@ -27,12 +27,13 @@ enum class AppThemeMode {
     SYSTEM,
     DARK,
     LIGHT,
+    SUMI,
     CUSTOM
 }
 
 val LocalCustomTheme = staticCompositionLocalOf { false }
 
-private val DarkColorScheme = darkColorScheme(
+internal val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFA8C7FA),
     onPrimary = Color(0xFF062E6F),
     primaryContainer = Color(0xFF183153),
@@ -51,23 +52,84 @@ private val DarkColorScheme = darkColorScheme(
     onErrorContainer = Color(0xFFFFDAD6)
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF415F91),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD6E3FF),
-    onPrimaryContainer = Color(0xFF001B3E),
-    secondary = Color(0xFF565F71),
-    background = Color.White,
-    onBackground = Color(0xFF191C20),
-    surface = Color.White,
-    onSurface = Color(0xFF191C20),
-    surfaceVariant = Color(0xFFF1F2F8),
-    onSurfaceVariant = Color(0xFF44474F),
-    outline = Color(0xFF74777F),
-    outlineVariant = Color(0xFFC4C6D0),
+// Warm paper, charcoal and terracotta, shared with the bundled artworks.
+// Light primary is deepened to keep small text readable on paper surfaces.
+internal val SumiColorScheme = darkColorScheme(
+    primary = Color(0xFFE7A083),
+    onPrimary = Color(0xFF1C1B1A),
+    primaryContainer = Color(0xFF503124),
+    onPrimaryContainer = Color(0xFFFFDBCB),
+    secondary = Color(0xFFC8C2B8),
+    onSecondary = Color(0xFF2B2825),
+    secondaryContainer = Color(0xFF3B3530),
+    onSecondaryContainer = Color(0xFFECE1D6),
+    tertiary = Color(0xFFD4BBA4),
+    onTertiary = Color(0xFF352B23),
+    tertiaryContainer = Color(0xFF4B3C30),
+    onTertiaryContainer = Color(0xFFF1DFCD),
+    background = Color(0xFF1C1B1A),
+    onBackground = Color(0xFFF2EFE7),
+    surface = Color(0xFF1C1B1A),
+    onSurface = Color(0xFFF2EFE7),
+    surfaceVariant = Color(0xFF35312D),
+    onSurfaceVariant = Color(0xFFC8C2B8),
+    surfaceTint = Color(0xFFD67856),
+    surfaceDim = Color(0xFF1C1B1A),
+    surfaceBright = Color(0xFF36332F),
+    surfaceContainerLowest = Color(0xFF161514),
+    surfaceContainerLow = Color(0xFF211F1D),
+    surfaceContainer = Color(0xFF252321),
+    surfaceContainerHigh = Color(0xFF2B2826),
+    surfaceContainerHighest = Color(0xFF302D2B),
+    inverseSurface = Color(0xFFF2EFE7),
+    inverseOnSurface = Color(0xFF2B2825),
+    inversePrimary = Color(0xFF9F4029),
+    outline = Color(0xFF9A9288),
+    outlineVariant = Color(0xFF4B4540),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    scrim = Color(0xFF000000)
+)
+
+internal val LightColorScheme = lightColorScheme(
+    primary = Color(0xFF9F4029),
+    onPrimary = Color(0xFFFFF9F1),
+    primaryContainer = Color(0xFFF5D8CA),
+    onPrimaryContainer = Color(0xFF542313),
+    secondary = Color(0xFF655C53),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFE7DED3),
+    onSecondaryContainer = Color(0xFF352B24),
+    tertiary = Color(0xFF796044),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFF1DFC6),
+    onTertiaryContainer = Color(0xFF302414),
+    background = Color(0xFFF2EFE7),
+    onBackground = Color(0xFF2B2825),
+    surface = Color(0xFFF2EFE7),
+    onSurface = Color(0xFF2B2825),
+    surfaceVariant = Color(0xFFE4DFD7),
+    onSurfaceVariant = Color(0xFF5D554D),
+    surfaceTint = Color(0xFF9F4029),
+    surfaceDim = Color(0xFFDAD8CE),
+    surfaceBright = Color(0xFFFAF8F1),
+    surfaceContainerLowest = Color(0xFFFFFDF7),
+    surfaceContainerLow = Color(0xFFEEEBE2),
+    surfaceContainer = Color(0xFFE8E5DB),
+    surfaceContainerHigh = Color(0xFFE2DFD4),
+    surfaceContainerHighest = Color(0xFFDBD8CC),
+    inverseSurface = Color(0xFF2B2825),
+    inverseOnSurface = Color(0xFFF2EFE7),
+    inversePrimary = Color(0xFFD67856),
+    outline = Color(0xFF81776D),
+    outlineVariant = Color(0xFFCEC5BA),
     error = Color(0xFFBA1A1A),
+    onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002)
+    onErrorContainer = Color(0xFF410002),
+    scrim = Color(0xFF000000)
 )
 
 private fun contrastingText(color: Color): Color =
@@ -114,7 +176,7 @@ fun AppTheme(
     val systemDark = isSystemInDarkTheme()
     val custom = themeMode == AppThemeMode.CUSTOM
     val darkTheme = when (themeMode) {
-        AppThemeMode.DARK -> true
+        AppThemeMode.DARK, AppThemeMode.SUMI -> true
         AppThemeMode.LIGHT -> false
         AppThemeMode.SYSTEM -> systemDark
         AppThemeMode.CUSTOM -> contrastingText(customBackground) == Color.White
@@ -125,6 +187,7 @@ fun AppTheme(
         themeMode == AppThemeMode.SYSTEM && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (systemDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
+        themeMode == AppThemeMode.SUMI -> SumiColorScheme
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }

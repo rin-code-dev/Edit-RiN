@@ -49,12 +49,12 @@ class AuthoringToolsTest {
         assertEquals(DiffLineKind.CONTEXT, diffLineKind(" const x = 1;"))
     }
     @Test fun authoringNamesAndGuidesAreLocalizedInAllSupportedLanguages() {
-        val keys = WorkTemplateKind.entries.map { it.title } + ParameterKind.entries.map { it.title } +
+        val keys = WorkTemplateKind.entries.flatMap { listOf(it.title, it.description) } + sampleGuides.values + ParameterKind.entries.map { it.title } +
             codeSnippets.flatMap { listOf(it.title, it.category, it.placement) } +
             listOf("自作テンプレート", "標準テンプレート", "テンプレートとして保存", "テンプレート名", "テンプレートを削除", "テンプレートを保存できませんでした", "テンプレート種別", "コードに直接挿入", "＋ パラメータ追加", "PNG画像書き出し", "1x（通常）", "2x（高精細）", "4x（超高精細）", "%s × %s のPNG画像を保存しました")
         keys.forEach { assertTrue("Missing translation: $it", uiTranslations.containsKey(it)) }
-        listOf("ja", "en", "zh").forEach {
-            assertEquals(6, localizedUserGuide(it).first().steps.size)
+        listOf("ja", "en", "zh").forEach { language ->
+            assertTrue(localizedUserGuide(language).first().steps.any { it.contains("Palette") })
         }
     }
 }

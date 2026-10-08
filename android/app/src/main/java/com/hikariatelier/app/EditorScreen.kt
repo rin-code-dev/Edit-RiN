@@ -96,6 +96,11 @@ internal fun EditorScreen(
     val importedFontName = settingsViewModel.importedFontName
     val fontImportBusy = settingsViewModel.fontImportBusy
     val appLanguage = settingsViewModel.appLanguage
+    val sampleLanguage = resolveUiLanguage(appLanguage,
+        ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en")
+    LaunchedEffect(sampleLanguage, workManagementViewModel.officialSamples) {
+        workManagementViewModel.updateSampleLanguage(sampleLanguage)
+    }
     val codeFontFamily = customFontFamily ?: FontFamily.Monospace
     val fontFeatures = if (settingsViewModel.fontLigatures)
         "'liga' 1, 'clig' 1, 'calt' 1" else "'liga' 0, 'clig' 0, 'calt' 0"
@@ -176,6 +181,8 @@ internal fun EditorScreen(
     }
 
     var showSnippets by rememberSaveable(activeWorkId) { mutableStateOf(false) }
+    var showReferenceDialog by rememberSaveable(activeWorkId) { mutableStateOf(false) }
+    var referenceSearchQuery by rememberSaveable(activeWorkId) { mutableStateOf("") }
     var showScreenshotScale by rememberSaveable { mutableStateOf(false) }
     var pendingScreenshotScale by rememberSaveable { mutableIntStateOf(1) }
     val screenshotPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -341,10 +348,7 @@ internal fun EditorScreen(
         previewActionsExpanded = false
     }
 
-    fun sharePreviewCard() {
-        preview.requestScreenshot(forShareCard = true)
-        previewActionsExpanded = false
-    }
+
 
     fun openPreviewParameters() {
         previewActionsExpanded = false
@@ -447,6 +451,21 @@ internal fun EditorScreen(
     }
 
 
+    val currentWordOrSelection = {
+        if (!editingValue.selection.collapsed) {
+            val selected = editingValue.text.substring(editingValue.selection.min, editingValue.selection.max).trim()
+            if (selected.isNotEmpty() && selected.length <= 30 && !selected.contains('\n')) selected else ""
+        } else {
+            val cursor = editingValue.selection.start.coerceIn(0, editingValue.text.length)
+            var start = cursor
+            while (start > 0 && (editingValue.text[start - 1].isLetterOrDigit() || editingValue.text[start - 1] == '_' || editingValue.text[start - 1] == '$')) start--
+            var end = cursor
+            while (end < editingValue.text.length && (editingValue.text[end].isLetterOrDigit() || editingValue.text[end] == '_' || editingValue.text[end] == '$')) end++
+            val word = editingValue.text.substring(start, end).trim()
+            if (word.length in 2..30) word else ""
+        }
+    }
+
     fun applyEditorChange(
         nextValue: TextFieldValue
     ) {
@@ -456,14 +475,52 @@ internal fun EditorScreen(
         editingValue = nextValue
     }
 
+    val formatScope = rememberCoroutineScope()
+    val currentEditingKey by rememberUpdatedState(editingKey)
+    var formatBusy by remember { mutableStateOf(false) }
+
     fun formatEditingFile() {
         if (!editingJavaScript) {
             Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             return
         }
-        val formatted = formatJavaScript(editingText)
-        if (formatted != editingText) applyEditorChange(TextFieldValue(formatted, TextRange(0)))
-        editorFocusRequester.requestFocus()
+        if (formatBusy || sessionViewModel.editorInputLocked) return
+        if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
+        val original = editingValue
+        val originalKey = editingKey
+        formatBusy = true
+        formatScope.launch {
+            try {
+                val (result, selection) = withContext(Dispatchers.Default) {
+                    val result = formatJavaScriptDetailed(original.text)
+                    val selection = if (result is FormatResult.Success) TextRange(
+                        formattedJavaScriptOffset(original.text, result.code, original.selection.start),
+                        formattedJavaScriptOffset(original.text, result.code, original.selection.end)
+                    ) else original.selection
+                    result to selection
+                }
+                // Do not apply a stale result after typing, cursor movement or work/file switching.
+                if (currentEditingKey != originalKey || editingValue != original ||
+                    sessionViewModel.editorInputLocked || sessionViewModel.sampleReadOnly) return@launch
+                when (result) {
+                    is FormatResult.Success -> {
+                        if (result.code == original.text) {
+                            Toast.makeText(context, uiText("既に整形されています"), Toast.LENGTH_SHORT).show()
+                        } else {
+                            applyEditorChange(TextFieldValue(result.code, selection))
+                            Toast.makeText(context, uiText("コードを整形しました"), Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    is FormatResult.UnbalancedBrackets ->
+                        Toast.makeText(context, uiText("括弧の対応を確認してください"), Toast.LENGTH_SHORT).show()
+                    is FormatResult.UnfinishedString ->
+                        Toast.makeText(context, uiText("文字列の閉じクォートを確認してください"), Toast.LENGTH_SHORT).show()
+                }
+                editorFocusRequester.requestFocus()
+            } finally {
+                formatBusy = false
+            }
+        }
     }
 
     fun undoEditorChange() {
@@ -727,7 +784,7 @@ internal fun EditorScreen(
             textTranslator = { s, args -> uiText(s, *args) },
             onClick = { workMenuExpanded = true },
             saveLabel = when {
-                workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存競合")
+                workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存内容の競合")
                 workManagementViewModel.operationState == WorkOperationState.FAILED -> uiText("保存失敗")
                 workSaving -> uiText("処理中")
                 hasUnsavedChanges -> uiText("未保存")
@@ -950,6 +1007,10 @@ internal fun EditorScreen(
                 if (editingJavaScript) showSnippets = true
                 else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
             },
+            onReference = {
+                referenceSearchQuery = currentWordOrSelection()
+                showReferenceDialog = true
+            },
             onSnapshot = { editUserWork { showSnapshotSheet = true } },
             onHistory = { editUserWork { showHistoryDialog = true } },
             onAspectRatio = { editUserWork { showAspectRatioDialog = true } },
@@ -1067,7 +1128,6 @@ internal fun EditorScreen(
             colors = colors,
             onOpenParameters = ::openPreviewParameters,
             onScreenshot = ::showScreenshotOptions,
-            onShareCard = ::sharePreviewCard,
             onRecordToggle = ::togglePreviewRecording,
             onFullscreen = {
                 previewActionsExpanded = false
@@ -1210,7 +1270,6 @@ internal fun EditorScreen(
                         previewActionsExpanded = false
                     },
                     onScreenshot = ::showScreenshotOptions,
-                    onShareCard = ::sharePreviewCard,
                     onOpenParameters = ::openPreviewParameters,
                     onToggleRecording = ::togglePreviewRecording,
                     onCancelCountdown = { cancelRecordingCountdown() },
@@ -1355,6 +1414,10 @@ internal fun EditorScreen(
             onSnippets = {
                 if (editingJavaScript) showSnippets = true
                 else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
+            },
+            onReference = {
+                referenceSearchQuery = currentWordOrSelection()
+                showReferenceDialog = true
             },
             onApplyEdit = { value ->
                 applyEditorChange(value)
@@ -1505,7 +1568,7 @@ internal fun EditorScreen(
                     onChooseFolder = { workManagementViewModel.saveCurrentWork(WorkEvent(openFolder = true)) },
                     onImportOfficialSamples = {
                         showSettings = false
-                        workGalleryState.selectedFolder = SAMPLE_FOLDER
+                        workGalleryState.changeFolder(SAMPLE_FOLDER)
                         workGalleryState.closeSearch(); workGalleryState.finishSelection()
                         workMenuExpanded = true
                     },
@@ -1631,6 +1694,32 @@ internal fun EditorScreen(
                 editorFocusRequester.requestFocus()
             }
         }, onDismiss = { showSnippets = false })
+    }
+    if (showReferenceDialog) {
+        val effectiveLang = resolveUiLanguage(appLanguage, ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en")
+        P5ReferenceDialog(
+            initialQuery = referenceSearchQuery,
+            codeFontFamily = codeFontFamily,
+            language = effectiveLang,
+            textTranslator = { uiText(it) },
+            onInsert = { snippetCode ->
+                if (!workSaving && !sessionViewModel.editorInputLocked) {
+                    if (sessionViewModel.sampleReadOnly) {
+                        workManagementViewModel.requestSampleCopy()
+                        showReferenceDialog = false
+                        return@P5ReferenceDialog
+                    }
+                    val indent = editingValue.text.substring(0, editingValue.selection.min)
+                        .substringAfterLast('\n').takeWhile { it == ' ' || it == '\t' }
+                    val insertion = snippetCode.replace("\n", "\n$indent")
+                    applyEditorChange(insertAtSelection(editingValue, insertion))
+                    workManagementViewModel.saveCurrentWork()
+                    showReferenceDialog = false
+                    editorFocusRequester.requestFocus()
+                }
+            },
+            onDismiss = { showReferenceDialog = false }
+        )
     }
     if (preview.screenshotBusy || recordingViewModel.screenshotSaving) {
         Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {

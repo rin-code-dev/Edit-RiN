@@ -386,6 +386,8 @@ internal fun SettingsScreen(
                                 AppThemeMode.DARK ->
                                     uiText("黒を基調とした表示")
 
+                                AppThemeMode.SUMI -> uiText("墨色と生成り、朱色のアクセント")
+
                                 AppThemeMode.LIGHT ->
                                     uiText("白を基調とした表示")
 
@@ -463,6 +465,13 @@ internal fun SettingsScreen(
                         )
 
                         ThemeChip(
+                            modifier = Modifier.weight(1f),
+                            label = "Sumi",
+                            selected = state.themeMode == AppThemeMode.SUMI,
+                            onClick = { onThemeModeChange(AppThemeMode.SUMI) }
+                        )
+
+                        ThemeChip(
                             modifier =
                                 Modifier.weight(1f),
                             label = uiText("カスタム"),
@@ -493,7 +502,7 @@ internal fun SettingsScreen(
                     Text(uiText("アプリのフォント"), fontWeight = FontWeight.SemiBold)
                     Text(if (font.family == null) uiText("標準フォント") else font.name,
                         style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                    Text(uiText("TTF・OTF・TTCをインポート。設定画面とエディターに反映します"),
+                    Text(uiText("TTF・OTF・TTC形式のフォントを取り込めます。設定画面とエディターに反映します"),
                         style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = actions.onImportFont, enabled = !font.busy,
@@ -514,7 +523,7 @@ internal fun SettingsScreen(
                 }
                 SettingSwitchRow(
                     title = uiText("フォントの連字"),
-                    description = uiText("対応フォントの連字を有効にします。コードの文字列は変わりません"),
+                    description = uiText("対応フォントでは、複数の文字をつなげて表示する連字を使います。コードの文字列は変わりません"),
                     checked = state.fontLigatures,
                     onCheckedChange = {
                         onSettingsChange { copy(fontLigatures = it) }
@@ -587,7 +596,7 @@ internal fun SettingsScreen(
 
                 SettingSwitchRow(
                     title = uiText("編集時にプレビューを隠す"),
-                    description = uiText("縦画面でコード欄を選ぶと非表示になり、編集を終えると戻ります"),
+                    description = uiText("縦画面でコード欄を選ぶと、プレビューを隠します。編集を終えると再び表示します"),
                     checked = state.hideEditingPreview,
                     onCheckedChange = { value -> onSettingsChange { copy(hideEditingPreview = value) } }
                 )
@@ -612,9 +621,9 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("サイズ調整バー"),
                     description = if (state.showResizeHandles) {
-                        uiText("プレビューとエディターの間にドラッグ操作を表示します")
+                        uiText("プレビューとエディターの間に、ドラッグで動かせる仕切りを表示します")
                     } else {
-                        uiText("境界線とドラッグ操作を非表示にします")
+                        uiText("仕切りを隠し、ドラッグ操作を無効にします")
                     },
                     checked = state.showResizeHandles,
                     onCheckedChange = { value -> onSettingsChange { copy(showResizeHandles = value) } }
@@ -703,8 +712,8 @@ internal fun SettingsScreen(
                 SettingSwitchRow(
                     title = uiText("コードを画面幅で折り返す"),
                     description = if (state.editorWordWrap)
-                        uiText("長い行を画面幅に合わせて下段に折り返します")
-                    else uiText("折り返さずに1行で表示し、横スクロールできるようにします"),
+                        uiText("長い行を画面幅に合わせて折り返します")
+                    else uiText("長い行は折り返さず、横スクロールで表示します"),
                     checked = state.editorWordWrap,
                     onCheckedChange = { value -> onSettingsChange { copy(editorWordWrap = value) } }
                 )
@@ -878,7 +887,7 @@ internal fun SettingsScreen(
             if (settingsTab == 2) {
             SettingsSection(
                 title = uiText("保存とバックアップ"),
-                description = uiText("保存先とファイル入出力")
+                description = uiText("保存先とファイルの読み込み・書き出し")
             ) {
 
                 Column(
@@ -1023,7 +1032,7 @@ internal fun SettingsScreen(
 
                     Text(
                         text =
-                            uiText(".js を作品として読み込む、または現在のコードを書き出します"),
+                            uiText(".js ファイルを作品として読み込んだり、現在のコードを書き出したりできます"),
                         style =
                             MaterialTheme
                                 .typography
@@ -1169,7 +1178,7 @@ internal fun SettingsScreen(
                         style = MaterialTheme.typography.labelLarge
                     )
                     Text(
-                        text = uiText("高い値ほど画質とファイルサイズが大きくなります"),
+                        text = uiText("値を高くすると画質が上がり、ファイルサイズも大きくなります"),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant
                     )
@@ -1211,7 +1220,7 @@ internal fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(uiText("X共有の定型文")) },
                         supportingText = {
-                            Text(uiText("Xで共有するときに録画と一緒に入力します"))
+                            Text(uiText("Xで共有するとき、録画と一緒に定型文を入力します"))
                         },
                         minLines = 3,
                         maxLines = 6

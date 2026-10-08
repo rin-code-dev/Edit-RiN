@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.3.0 — 2026-10-08
+
+### English
+
+- Added in-app updates for the release app: download the latest GitHub APK with progress and cancellation, then open Android’s installation confirmation. Package, version, and signing checks run before installation; save pending edits first. The debug app continues to use the release page.
+- Added Palette, Ripples, and Sensor samples, and redesigned the existing samples. Explore touch, live parameters, sound, camera input, and device motion; copy a read-only sample to edit it.
+- Added native device orientation and motion support for tilt and acceleration values and `deviceShaken()` on compatible devices.
+- Added a searchable p5.js reference with function signatures, explanations, examples, and code insertion from the work menu or editing toolbar.
+- Improved JavaScript formatting with selection preservation and checks for unmatched brackets or unfinished strings. Restored code folding in read-only samples.
+- Simplified starter templates and revised the in-app guide in English, Japanese, and Simplified Chinese. Bundled sample comments follow the app language; Japanese interface text is easier to read.
+- Added the Sumi theme with charcoal, warm paper colors, and terracotta accents. Update popups, reference examples, tag dialogs, and recording countdowns now follow the selected theme.
+- Fixed gallery display and scrolling issues when switching between sample and user-work folders.
+- On the first launch after this update or a new installation, Palette opens and the app switches to the light theme with code wrapping off. Existing user works are kept. These options can be changed in Settings, and later launches keep your choices.
+- Temporarily removed the share-card button. PNG export, MP4/GIF recording, and sharing saved images and recordings remain available.
+
+### 日本語
+
+- 正式版でアプリ内更新に対応しました。GitHubの最新版APKをアプリ内でダウンロードし、Androidの確認画面からインストールできます。進捗表示と中止に対応し、インストール前にアプリID・バージョン・署名情報を確認します。未保存の編集がある場合は、先に保存してください。デバッグ版では配布ページを開きます。
+- Palette・Ripples・Sensorを追加し、既存のサンプルも作り直しました。タッチ・ライブパラメータ・音・カメラ・端末の動きを試せます。閲覧専用のサンプルは、コピーして編集できます。
+- 対応端末の傾きや加速度を取得し、`deviceShaken()`で端末を振る操作を使えるようにしました。
+- p5.jsリファレンスを追加しました。作品メニューや編集キーから開き、関数の引数・説明・使用例を確認して、コードを挿入できます。
+- JavaScriptの整形後も選択範囲を引き継ぐようにしました。閉じていない括弧や文字列も確認できます。閲覧専用サンプルでコードを折りたためない問題を修正しました。
+- 書き始めやすいテンプレートに整理し、使い方ガイドを英語・日本語・簡体字中国語で更新しました。サンプルのコメントはアプリの表示言語に合わせ、日本語の説明文も読みやすくしました。
+- 墨色と生成りに朱色を合わせたSumiテーマを追加しました。更新ポップアップ、リファレンスのコード例、タグ管理画面、録画カウントダウンにも、選んだテーマの色が反映されます。
+- サンプルと自分の作品のフォルダーを切り替えるときの、一覧表示やスクロールの不具合を修正しました。
+- 今回の更新後や新規インストール後の初回は、Paletteを開き、ライトテーマ・コードの折り返しオフに切り替えます。自分の作品は残ります。設定から変更でき、その後の起動では選んだ設定を引き継ぎます。
+- シェアカードのボタンを一時的に外しました。PNGの書き出し、MP4・GIFの録画、保存した画像や録画の共有は引き続き使えます。
+
+
 ## 2.2.2 — 2026-10-06
 
 ### English

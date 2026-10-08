@@ -6,7 +6,7 @@
 # します。成功時は成果物パスとサイズのみを出力し、失敗時はエラー要約のみを表示します。
 #
 # 使用法:
-#   ./scripts/build-apk.sh [debug|release] [--clean] [--test]
+#   ./scripts/build-apk.sh [debug|release] [--clean] [--test] [--lint]
 # ==============================================================================
 
 set -eo pipefail
@@ -19,6 +19,7 @@ LOG_FILE="/tmp/edit-rin-build.log"
 BUILD_TYPE="debug"
 DO_CLEAN=false
 DO_TEST=false
+DO_LINT=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -26,6 +27,7 @@ for arg in "$@"; do
     debug)   BUILD_TYPE="debug" ;;
     --clean) DO_CLEAN=true ;;
     --test) DO_TEST=true ;;
+    --lint) DO_LINT=true ;;
   esac
 done
 
@@ -48,12 +50,17 @@ if [ "${DO_TEST}" = true ]; then
   if [ "${BUILD_TYPE}" = "release" ]; then TEST_TASK="testReleaseUnitTest"; else TEST_TASK="testDebugUnitTest"; fi
 fi
 
+LINT_TASK=""
+if [ "${DO_LINT}" = true ]; then
+  if [ "${BUILD_TYPE}" = "release" ]; then LINT_TASK="lintRelease"; else LINT_TASK="lintDebug"; fi
+fi
+
 START_TIME=$(date +%s)
 
 echo "==> Edit:RiN ${BUILD_TYPE} build started (logging to ${LOG_FILE})..."
 
 set +e
-./gradlew ${CLEAN_CMD} ${TEST_TASK} ${GRADLE_TASK} --max-workers=2 > "${LOG_FILE}" 2>&1
+./gradlew ${CLEAN_CMD} ${TEST_TASK} ${GRADLE_TASK} ${LINT_TASK} --max-workers=2 > "${LOG_FILE}" 2>&1
 EXIT_CODE=$?
 set -e
 

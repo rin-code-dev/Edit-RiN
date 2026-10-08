@@ -74,7 +74,7 @@ internal class WorkSnapshotViewModel(
         }
     }
 
-    fun create(title: String? = null, note: String? = null) = operate("スナップショットを保存できませんでした。編集内容は保持されています。") { work ->
+    fun create(title: String? = null, note: String? = null) = operate("スナップショットを保存できませんでした。編集内容は残っています。") { work ->
         val revisions = work.revisions.toList()
         val content = currentSnapshotContent(workOperations.workForSnapshot(work), session.editorValueState.value.text, session.fileDrafts)
         val saved = withContext(Dispatchers.IO) { WorkSnapshotStore.addSnapshot(filesDir, work.id, content, revisions, title, note) }
@@ -89,7 +89,7 @@ internal class WorkSnapshotViewModel(
         if (session.activeWorkIdState.value == work.id) { loadedWorkId = work.id; snapshots = saved }
         notices.send("スナップショットの名前・メモを保存しました")
     }
-    fun restore(snapshot: WorkSnapshot) = operate("復元を保存できませんでした。元の編集内容は保持されています。", restoring = true) {
+    fun restore(snapshot: WorkSnapshot) = operate("復元した内容を保存できませんでした。元の編集内容は残っています。", restoring = true) {
         workOperations.commitSnapshotRestore(snapshot)
     }
     fun delete(snapshot: WorkSnapshot) = operate("スナップショットを削除できませんでした。") { work ->

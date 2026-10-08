@@ -83,7 +83,7 @@ internal fun SnapshotSheet(
                 modifier = Modifier.size(18.dp)
             )
             Spacer(Modifier.width(8.dp))
-            Text(text("現在の状態をスナップショット（保存）"), fontWeight = FontWeight.SemiBold)
+            Text(text("現在の状態をスナップショットに保存"), fontWeight = FontWeight.SemiBold)
         }
 
         if (loading || busy) {

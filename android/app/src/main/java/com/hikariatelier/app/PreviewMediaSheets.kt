@@ -67,7 +67,7 @@ internal fun PreviewMediaSheets(
             onDiscard = { models.recording.discardPendingRecording() }
         )
     }
-    shareCardArtwork?.let { artwork ->
+    if (SHARE_CARDS_AVAILABLE) shareCardArtwork?.let { artwork ->
         val fullCode = if (preview.session.sketchCode.isNotBlank()) {
             preview.session.sketchCode
         } else {

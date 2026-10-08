@@ -174,7 +174,7 @@ internal fun AuxiliaryFileEditorDialog(
                     visualTransformation = highlighter
                 )
                 Text(
-                    textTranslator("index.html、style.css、.mjs、.json などのテキストと、scripts/main.js のような相対パスを使用できます。読み込み方法は実行環境で設定します。", emptyArray()),
+                    textTranslator("index.html、style.css、.mjs、.json などのテキストファイルを追加できます。scripts/main.js のような相対パスも使えます。読み込み方法は「実行環境」で設定します。", emptyArray()),
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant
                 )

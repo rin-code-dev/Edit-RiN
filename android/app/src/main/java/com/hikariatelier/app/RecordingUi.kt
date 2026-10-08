@@ -87,10 +87,10 @@ internal fun RecordingOptionsSheet(
                 }
                 Text(text("最大60秒の推定容量") + ": " + recordingSize(bitrate * 1_000_000L * 60 / 8),
                     style = MaterialTheme.typography.bodyMedium)
-                Text(text("容量は映像の内容や端末により変わります"),
+                Text(text("ファイルサイズは、映像の内容や端末によって変わります"),
                     style = MaterialTheme.typography.bodySmall)
             } else {
-                Text(text("GIFは30fps・最大15秒。容量は映像によって変わります"))
+                Text(text("GIFは30fpsで、最大15秒まで保存できます。ファイルサイズは映像の内容によって変わります"))
             }
             Text(text("録画開始カウントダウン"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -135,14 +135,14 @@ internal fun RecordingRecoverySheet(
             .padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(text("録画を保存できませんでした"), style = MaterialTheme.typography.titleLarge)
-            Text(text("録画は保持されています。再保存するか、別の保存先を選んでください。"),
+            Text(text("録画は残っています。もう一度保存するか、別の保存先を選んでください。"),
                 style = MaterialTheme.typography.bodyMedium)
             Text(pending.displayName, style = MaterialTheme.typography.bodySmall)
             Text("${pending.mimeType.substringAfter('/').uppercase()} · ${formatRecordingDuration(pending.durationMillis)} · ${recordingSize(pending.sizeBytes)}",
                 style = MaterialTheme.typography.bodySmall)
             if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
             Button(onClick = onRetry, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
-                Text(text("再保存"))
+                Text(text("もう一度保存"))
             }
             OutlinedButton(onClick = onChooseDestination, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
                 Text(text("別の保存先を選ぶ"))
@@ -170,7 +170,7 @@ internal fun SavedRecordingSheet(
             .padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val isImage = mimeType.startsWith("image/") && mimeType != "image/gif"
-            val titleText = if (name.contains("Card")) text("シェアカード") else if (isImage) text("スクリーンショット") else text("保存した録画")
+            val titleText = if (isImage) text("スクリーンショット") else text("保存した録画")
             Text(titleText, style = MaterialTheme.typography.titleLarge)
             thumbnail?.let {
                 Image(it.asImageBitmap(), text("プレビュー"), Modifier.fillMaxWidth().height(160.dp),

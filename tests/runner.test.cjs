@@ -106,6 +106,10 @@ function runner(code = 'function setup() {}', config = {}, extras = {}) {
       const previous = events[name];
       events[name] = previous ? (...args) => { previous(...args); callback(...args); } : callback;
     },
+    dispatchEvent(event) {
+      events[event.type]?.(event);
+      return true;
+    },
     isLooping: () => true,
     resizeCanvas(w, h) { resizes++; context.width = w; context.height = h; canvas.width = w; canvas.height = h; },
     p5: function P5() {},
@@ -349,11 +353,37 @@ const noop = () => {};
 function sampleContext(extra = {}) {
   const context = {
     TWO_PI: Math.PI * 2, POINTS: 0, CENTER: 3, LEFT: 0, RIGHT: 2, VIDEO: 'video', WEBGL: 'webgl', WEBGPU: 'webgpu', width: 600, height: 600, frameCount: 1,
-    mouseIsPressed: false, mouseX: 300, mouseY: 300,
+    mouseIsPressed: false, mouseX: 300, mouseY: 300, deltaTime: 16.67,
+    millis: () => 1000, addEventListener: noop, document: { addEventListener: noop },
+    redraw: noop,
+    min: Math.min, lerp: (a, b, t) => a + (b - a) * t,
     sin: Math.sin, cos: Math.cos, sqrt: Math.sqrt, exp: Math.exp, atan2: Math.atan2, pow: Math.pow,
     round: Math.round, floor: Math.floor, sq: value => value * value,
     HSB: 'hsb', ROUND: 'round', noise: () => 0.5,
+    BOLD: 'bold', NORMAL: 'normal',
+    constrain: (v, low, high) => Math.min(high, Math.max(low, v)),
+    random: (a, b) => (b === undefined ? Math.random() * (a || 1) : a + Math.random() * (b - a)),
+    hex: (val, digits = 2) => Math.floor(val).toString(16).padStart(digits, '0'),
+    nf: (num, left, right) => Number(num).toFixed(right),
     map: (v, a, b, c, d) => c + ((v - a) / (b - a)) * (d - c),
+    createVector: (x = 0, y = 0, z = 0) => ({
+      x, y, z,
+      set(nx, ny) { this.x = nx; this.y = ny; },
+      add(v) { this.x += v.x; this.y += v.y; },
+      mult(n) { this.x *= n; this.y *= n; }
+    }),
+    p5: {
+      Vector: {
+        sub: (v1, v2) => {
+          let x = v1.x - v2.x, y = v1.y - v2.y;
+          return {
+            x, y,
+            normalize() { const m = Math.hypot(x, y) || 1; x /= m; y /= m; return this; },
+            mult(n) { x *= n; y *= n; return this; }
+          };
+        }
+      }
+    },
     createCapture: (type, cb) => {
       if (cb) cb();
       return { size: noop, hide: noop, loadPixels: noop, width: 50, height: 50, pixels: new Uint8Array(50 * 50 * 4), loadedmetadata: true };
@@ -361,17 +391,45 @@ function sampleContext(extra = {}) {
   };
   for (const name of ['createCanvas', 'background', 'translate', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'push', 'pop',
     'fill', 'noFill', 'stroke', 'noStroke', 'strokeWeight', 'ellipse', 'circle', 'rect', 'line', 'beginShape', 'endShape', 'vertex',
-    'textAlign', 'text', 'textSize', 'ambientLight', 'directionalLight', 'torus', 'box', 'userStartAudio',
-    'pixelDensity', 'colorMode', 'strokeCap']) context[name] = noop;
+    'textAlign', 'text', 'textSize', 'textStyle', 'setShakeThreshold', 'ambientLight', 'directionalLight', 'torus', 'box', 'userStartAudio',
+    'pixelDensity', 'colorMode', 'angleMode', 'strokeCap', 'noLoop']) context[name] = noop;
+  context.PI = Math.PI;
+  context.DEGREES = 'degrees';
+  context.RADIANS = 'radians';
   return Object.assign(context, extra);
 }
 async function runSample(name, extra = {}) {
   const source = readFileSync(`${__dirname}/../www/samples/${name}.js`, 'utf8');
   const context = vm.createContext(sampleContext(extra));
+  context.window = context;
   vm.runInContext(source, context);
   await vm.runInContext('(async () => { await setup(); draw(); draw(); })()', context);
   return { context, source };
 }
+
+test('palette changes once and ripple collections remain bounded and expire', async () => {
+  const shapes = await runSample('Shapes');
+  vm.runInContext('mousePressed()', shapes.context);
+  assert.equal(vm.runInContext('paletteIndex', shapes.context), 1);
+  let time = 1000;
+  const { context } = await runSample('Touch', { millis: () => time });
+  vm.runInContext('for(let i=0;i<100;i++) addRipple(-100,700)', context);
+  assert.equal(vm.runInContext('ripples.length', context), 40);
+  assert.equal(vm.runInContext('ripples[0].x', context), 0);
+  assert.equal(vm.runInContext('ripples[0].y', context), 600);
+  context.deltaTime = 50;
+  vm.runInContext('for(let i=0;i<45;i++) draw()', context);
+  assert.equal(vm.runInContext('ripples.length', context), 0);
+});
+
+test('Halo keeps its orbital identity and supports pausing its time parameter', async () => {
+  const { context } = await runSample('Halo', { rinParams: { speed: 0 } });
+  assert.equal(vm.runInContext('time', context), 0);
+  context.rinParams.speed = 0.6;
+  vm.runInContext('draw()', context);
+  assert.ok(vm.runInContext('time', context) > 0);
+  assert.equal(vm.runInContext('RING_COUNT', context), 36);
+});
 
 test('bundled Halo.js and Gravity.js draw frames', async () => {
   for (const name of ['Halo', 'Gravity']) {
@@ -387,7 +445,7 @@ test('bundled wave Parameter.js draws with rinParams', async () => {
 });
 
 test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async () => {
-  for (const [gpu, expected] of [[{}, 'webgpu'], [undefined, 'webgl']]) {
+  for (const [gpu, expected] of [[{requestAdapter: async () => ({})}, 'webgpu'], [{requestAdapter: async () => null}, 'webgl'], [undefined, 'webgl']]) {
     let renderer = null;
     const { context, source } = await runSample('WebGPU', {
       navigator: { gpu }, createCanvas(w, h, kind) { renderer = kind; },
@@ -399,57 +457,155 @@ test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async (
   }
 });
 
-test('bundled Sound.js initializes the synth and handles press, drag, release and resize', async () => {
-  let attacks = 0;
-  let releases = 0;
-  let oscillatorFrequency = null;
-  let cutoff = null;
-  let resized = null;
-  const { context, source } = await runSample('Sound', {
-    windowWidth: 600, windowHeight: 600, textFont: noop,
-    constrain: (v, low, high) => Math.min(high, Math.max(low, v)),
-    lerp: (a, b, amount) => a + (b - a) * amount,
-    resizeCanvas: (w, h) => { resized = [w, h]; },
-    p5: {
-      Oscillator: function (frequency, type) {
-        assert.equal(frequency, 220);
-        assert.equal(type, 'sine');
-        return { start: noop, disconnect: noop, connect: noop, freq: v => { oscillatorFrequency = v; } };
-      },
-      LowPass: function () { return { disconnect: noop, connect: noop, freq: v => { cutoff = v; }, res: noop }; },
-      Envelope: function () { return { setADSR: noop, connect: noop,
-        triggerAttack: () => attacks++, triggerRelease: () => releases++ }; },
-      FFT: function () { return { analyze: () => new Uint8Array(64), waveform: () => new Float32Array(1024) }; }
+function audioFixture() {
+  const voices = [], tracks = [];
+  class AudioContext {
+    constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; }
+    async resume() { this.state = 'running'; }
+    async suspend() { this.state = 'suspended'; }
+    async close() { this.state = 'closed'; }
+    createOscillator() {
+      const voice = { frequency: {}, connect: noop, disconnect: noop, start: noop, stops: [],
+        stop(time) { this.stops.push(time); } }; voices.push(voice); return voice;
     }
-  });
-  assert.ok(source.includes('p5.Oscillator') && source.includes('p5.FFT'));
-  assert.ok(vm.runInContext('osc', context));
-  assert.ok(vm.runInContext('fft', context));
-  vm.runInContext('touchStarted(); mousePressed(); draw();', context);
-  assert.equal(attacks, 1);
+    createGain() { return { gain: { setValueAtTime: noop, linearRampToValueAtTime: noop, exponentialRampToValueAtTime: noop }, connect: noop, disconnect: noop }; }
+    createAnalyser() { return { fftSize: 256, disconnect: noop, getByteTimeDomainData(data) { data.fill(152); } }; }
+    createMediaStreamSource() { return { connect: noop, disconnect: noop }; }
+  }
+  const stream = { getTracks: () => tracks };
+  tracks.push({ stops: 0, stop() { this.stops++; } });
+  return { AudioContext, stream, voices, tracks };
+}
+
+test('sound starts only after input and short notes stop after release', async () => {
+  const f = audioFixture();
+  const { context } = await runSample('Sound', { AudioContext: f.AudioContext });
+  assert.equal(f.voices.length, 0);
+  await vm.runInContext('soundOn()', context);
+  assert.equal(f.voices.length, 1);
+  assert.ok(f.voices[0].stops[0] <= 0.25);
   assert.equal(vm.runInContext('active', context), true);
-  assert.ok(oscillatorFrequency > 220 && oscillatorFrequency < 340);
-  assert.equal(cutoff, 1190);
-  vm.runInContext('touchEnded(); mouseReleased(); windowResized();', context);
-  assert.equal(releases, 1);
+  vm.runInContext('soundOff()', context);
   assert.equal(vm.runInContext('active', context), false);
-  assert.deepEqual(resized, [600, 600]);
+  assert.equal(f.voices[0].stops.length, 2);
 });
 
-test('bundled Camera.js and Microphone.js initialize media features', async () => {
-  const { context: camContext, source: camSource } = await runSample('Camera');
-  assert.ok(camSource.includes('createCapture'));
-  assert.ok(vm.runInContext('capture', camContext));
+test('microphone reads volume without speaker output and releases input', async () => {
+  const f = audioFixture();
+  const { context } = await runSample('Microphone', { AudioContext: f.AudioContext,
+    navigator: { mediaDevices: { getUserMedia: async () => f.stream } } });
+  await vm.runInContext('startMicrophone()', context);
+  vm.runInContext('draw()', context);
+  assert.ok(vm.runInContext('level', context) > 0);
+  assert.equal(vm.runInContext('started', context), true);
+  vm.runInContext('stopMicrophone()', context);
+  assert.equal(f.tracks[0].stops, 1);
+  assert.equal(vm.runInContext('started', context), false);
+});
 
-  const { context: micContext, source: micSource } = await runSample('Microphone', {
-    p5: {
-      AudioIn: function () { return { start: noop }; },
-      FFT: function () { return { setInput: noop, analyze: () => new Uint8Array(64) }; }
-    }
-  });
-  assert.ok(micSource.includes('p5.AudioIn') && micSource.includes('p5.FFT'));
-  assert.ok(vm.runInContext('mic', micContext));
-  assert.ok(vm.runInContext('fft', micContext));
+test('microphone rejects late permission results and permits retry after denial', async () => {
+  const f = audioFixture(); let resolve;
+  const { context } = await runSample('Microphone', { AudioContext: f.AudioContext,
+    navigator: { mediaDevices: { getUserMedia: () => new Promise(r => { resolve = r; }) } } });
+  const pending = vm.runInContext('startMicrophone()', context);
+  for (let i = 0; i < 10 && !resolve; i++) await new Promise(r => setImmediate(r));
+  assert.equal(typeof resolve, 'function');
+  vm.runInContext('stopMicrophone()', context); resolve(f.stream); await pending;
+  assert.equal(f.tracks[0].stops, 1);
+  assert.equal(vm.runInContext('started', context), false);
+  context.navigator.mediaDevices.getUserMedia = async () => { throw new Error('denied'); };
+  await vm.runInContext('startMicrophone()', context);
+  assert.equal(vm.runInContext('pending', context), false);
+  assert.match(vm.runInContext('status', context), /RETRY/);
+});
+
+test('camera preserves crop aspect ratio and stops its tracks', async () => {
+  const f = audioFixture(); let crop;
+  const video = { play: async () => {}, pause: noop, readyState: 4, videoWidth: 720, videoHeight: 1280 };
+  const buffer = { getContext: () => ({ drawImage(...args) { crop = args; }, getImageData: () => ({ data: new Uint8Array(32 * 24 * 4) }) }) };
+  const { context } = await runSample('Camera', { navigator: { mediaDevices: { getUserMedia: async () => f.stream } },
+    document: { addEventListener: noop, createElement: tag => tag === 'video' ? video : buffer } });
+  await vm.runInContext('startCamera()', context); vm.runInContext('draw()', context);
+  assert.equal(crop[3] / crop[4], 32 / 24);
+  assert.equal(crop[2], 370);
+  vm.runInContext('stopCamera()', context);
+  assert.equal(f.tracks[0].stops, 1); assert.equal(video.srcObject, null);
+});
+
+test('sensor calibrates initial tilt, reacts to changes and resets after shaking', async () => {
+  const { context, source } = await runSample('Sensor', { rotationX: 35, rotationY: 0,
+    rinParams: { sensitivity: 1, bounce: 0.8, ballColor: '#64B5F6' } });
+  for (const type of ['number sensitivity', 'number bounce', 'color ballColor']) assert.ok(source.includes('// @rin ' + type));
+  assert.equal(vm.runInContext('vel.y', context), 0);
+  context.rotationX = 55; context.rotationY = 15;
+  vm.runInContext('draw()', context);
+  assert.ok(vm.runInContext('vel.x', context) > 0);
+  assert.ok(vm.runInContext('vel.y', context) > 0);
+  vm.runInContext('deviceShaken()', context);
+  assert.equal(vm.runInContext('pos.x', context), 300);
+  assert.equal(vm.runInContext('pos.y', context), 300);
+  context.rotationX = NaN; context.rotationY = Infinity;
+  vm.runInContext('calibrate(); draw()', context);
+  assert.ok(vm.runInContext('Number.isFinite(pos.x) && Number.isFinite(pos.y)', context));
+});
+
+test('sensor update bridge dispatches orientation and motion events', () => {
+  const r = runner();
+  let receivedOrientation = null;
+  let receivedMotion = null;
+  r.context.addEventListener('deviceorientation', e => { receivedOrientation = e; });
+  r.context.addEventListener('devicemotion', e => { receivedMotion = e; });
+  r.context.__editRinUpdateSensors(120.5, 25.3, -15.2, 0.5, -0.2, 9.8, 0.4, -0.1, 9.9);
+  assert.ok(receivedOrientation != null, 'deviceorientation event should be dispatched');
+  assert.equal(receivedOrientation.alpha, 120.5);
+  assert.equal(receivedOrientation.beta, 25.3);
+  assert.equal(receivedOrientation.gamma, -15.2);
+  assert.ok(receivedMotion != null, 'devicemotion event should be dispatched');
+  assert.equal(receivedMotion.acceleration.x, 0.5);
+  assert.equal(receivedMotion.acceleration.y, -0.2);
+  assert.equal(receivedMotion.acceleration.z, 9.8);
+  assert.equal(receivedMotion.accelerationIncludingGravity.x, 0.4);
+});
+
+test('p5 sensor listener registration does not enable the native bridge', () => {
+  const r = runner();
+  const calls = [];
+  r.context.Android.setSensorsEnabled = (...args) => calls.push(args);
+  r.context.addEventListener('deviceorientation', () => {});
+  r.context.addEventListener('devicemotion', () => {});
+  assert.deepEqual(calls, []);
+});
+
+test('empty and synthetic browser events do not suppress native sensor fallback', () => {
+  const r = runner();
+  let received;
+  r.context.addEventListener('deviceorientation', event => { received = event; });
+  for (const event of [
+    { type: 'deviceorientation', isTrusted: true, alpha: null, beta: null, gamma: null },
+    { type: 'deviceorientation', alpha: 1, beta: 2, gamma: 3 }
+  ]) {
+    r.context.dispatchEvent(event);
+    r.context.__editRinUpdateSensors(120, 25, -15, 0, 0, 0, 0, 0, 0);
+    assert.equal(received.alpha, 120);
+  }
+});
+
+test('fresh valid browser sensor streams suppress duplicates and expire independently', () => {
+  let time = 1000;
+  const r = runner('', {}, { performance: { now: () => time } });
+  const orientations = [], motions = [];
+  r.context.addEventListener('deviceorientation', e => orientations.push(e));
+  r.context.addEventListener('devicemotion', e => motions.push(e));
+  r.context.dispatchEvent({ type: 'deviceorientation', isTrusted: true, alpha: 1, beta: 2, gamma: 3 });
+  r.context.dispatchEvent({ type: 'devicemotion', isTrusted: true, acceleration: { x: null, y: null, z: null } });
+  orientations.length = motions.length = 0;
+  r.context.__editRinUpdateSensors(120, 25, -15, 0.5, -0.2, 9.8, 0, 0, 9.8);
+  assert.equal(orientations.length, 0);
+  assert.equal(motions.length, 1);
+  time += 501;
+  r.context.__editRinUpdateSensors(120, 25, -15, 0.5, -0.2, 9.8, 0, 0, 9.8);
+  assert.equal(orientations.length, 1);
+  assert.equal(motions.length, 2);
 });
 
 test('hiding and restoring portrait preview preserves artwork and paused pixels', () => {
@@ -991,4 +1147,3 @@ test('video elements receive transparent poster and offscreen canvas sets willRe
   main.getContext('2d');
   assert.equal(recorded[1].attrs, undefined);
 });
-

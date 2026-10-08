@@ -144,6 +144,65 @@
 })();
 
 (() => {
+  // p5 registers its own listeners for every sketch. Do not treat registration
+  // as evidence that a sketch uses sensors; native admission uses the run source.
+  let browserOrientationAt = -Infinity;
+  let browserMotionAt = -Infinity;
+  const freshnessMs = 500;
+  const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const finite = value => typeof value === 'number' && Number.isFinite(value);
+
+  window.addEventListener('deviceorientation', e => {
+    if (e?.isTrusted && finite(e.alpha) && finite(e.beta) && finite(e.gamma)) {
+      browserOrientationAt = now();
+    }
+  }, { passive: true, capture: true });
+  window.addEventListener('devicemotion', e => {
+    const a = e?.acceleration;
+    if (e?.isTrusted && a && finite(a.x) && finite(a.y) && finite(a.z)) {
+      browserMotionAt = now();
+    }
+  }, { passive: true, capture: true });
+
+  window.__editRinUpdateSensors = (alpha, beta, gamma, ax, ay, az, gx, gy, gz) => {
+    const time = now();
+    if (time - browserOrientationAt > freshnessMs) {
+      let event;
+      try {
+        if (typeof DeviceOrientationEvent === 'function') {
+          event = new DeviceOrientationEvent('deviceorientation', {
+            alpha, beta, gamma, absolute: true, bubbles: false, cancelable: false
+          });
+        }
+      } catch (_) {}
+      if (!event) {
+        event = typeof Event === 'function' ? new Event('deviceorientation') : { type: 'deviceorientation' };
+        Object.assign(event, { alpha, beta, gamma, absolute: true });
+      }
+      try { window.dispatchEvent(event); } catch (_) {}
+    }
+    if (time - browserMotionAt > freshnessMs) {
+      let event;
+      const acceleration = { x: ax, y: ay, z: az };
+      const accelerationIncludingGravity = { x: gx, y: gy, z: gz };
+      try {
+        if (typeof DeviceMotionEvent === 'function') {
+          event = new DeviceMotionEvent('devicemotion', {
+            acceleration, accelerationIncludingGravity, interval: 16.6,
+            bubbles: false, cancelable: false
+          });
+        }
+      } catch (_) {}
+      if (!event) {
+        event = typeof Event === 'function' ? new Event('devicemotion') : { type: 'devicemotion' };
+        Object.assign(event, { acceleration, accelerationIncludingGravity, interval: 16.6 });
+      }
+      try { window.dispatchEvent(event); } catch (_) {}
+    }
+  };
+})();
+
+(() => {
   const owner = window.__editRinRunToken;
   const blobs = new Map();
   let pending = Promise.resolve(), count = 0, unloaded = false, activeId = null;

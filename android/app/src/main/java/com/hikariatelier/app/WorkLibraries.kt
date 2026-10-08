@@ -107,7 +107,7 @@ internal fun ProjectDocumentControls(
                 htmlFiles, enabled, text) { onChange(config.copy(entryDocument = it)) }
             "module" -> ProjectEntrySelector(text("開始するモジュール"), config.moduleEntry ?: "sketch.js",
                 moduleFiles, enabled, text) { onChange(config.copy(moduleEntry = it)) }
-            "auto" -> Text(text("index.html を優先します。メインの import/export、またはメインと通常JSが空で .mjs が1つの場合はモジュールを実行します。"),
+            "auto" -> Text(text("index.html があれば優先します。メインコードに import/export がある場合、またはメインコードと通常JSが空で .mjs ファイルが1つだけある場合は、モジュールとして実行します。"),
                 style = MaterialTheme.typography.bodySmall)
         }
         if (htmlMode) {
@@ -133,7 +133,7 @@ internal fun ProjectDocumentControls(
             }
             HorizontalDivider()
             Text(text("外部ライブラリ（HTTPS）"), style = MaterialTheme.typography.titleSmall)
-            Text(text("通常JSは登録順に作品コードより先に実行します。モジュールはブラウザーのモジュール読み込みに従います。"),
+            Text(text("通常JSは、登録した順に作品コードより先に実行します。モジュールはブラウザーの仕組みで読み込みます。"),
                 style = MaterialTheme.typography.bodySmall)
             config.libraries.forEachIndexed { index, library ->
                 Column {
@@ -180,10 +180,10 @@ internal fun ProjectDocumentControls(
                 enabled = enabled, label = { Text(text("p5.jsのHTTPS URL（任意）")) }, singleLine = true,
                 isError = config.p5Url != null && normalizedExternalScriptUrl(config.p5Url) == null,
                 modifier = Modifier.fillMaxWidth())
-            Text(text("空欄の場合は内蔵p5.jsを使用します。外部URLはインターネット接続が必要です。"),
+            Text(text("空欄の場合は内蔵のp5.jsを使います。外部URLから読み込むには、インターネット接続が必要です。"),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(text("設定は edit-rin.json に保存され、作品と一緒に持ち運べます。"),
+        Text(text("設定は edit-rin.json に保存されます。作品と一緒に別の環境へ移せます。"),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

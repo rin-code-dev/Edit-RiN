@@ -7,6 +7,8 @@ import org.json.JSONObject
 
 /** Owns preference keys and the existing backup settings format. */
 internal interface SettingsPersistence {
+    val paletteStartupPending: Boolean get() = false
+    fun completePaletteStartup() {}
     val samplePromptVersion: Int get() = 0
     fun dismissSamplePrompt(version: Int) {}
     val releaseNotesPromptVersion: Int get() = 0
@@ -17,6 +19,23 @@ internal interface SettingsPersistence {
 
 internal class SettingsRepository(val preferences: SharedPreferences) : SettingsPersistence {
     constructor(context: Context) : this(context.applicationContext.getSharedPreferences("ugoku_atelier_prefs", Context.MODE_PRIVATE))
+
+    init {
+        // One migration for v2.3.0; later launches keep the user's choices.
+        if (!preferences.getBoolean("v230_defaults_applied", false)) {
+            preferences.edit()
+                .putString("theme_mode", AppThemeMode.LIGHT.name)
+                .putBoolean("setting_editor_word_wrap", false)
+                .putBoolean("v230_palette_pending", true)
+                .putBoolean("v230_defaults_applied", true)
+                .apply()
+        }
+    }
+
+    override val paletteStartupPending get() = preferences.getBoolean("v230_palette_pending", false)
+    override fun completePaletteStartup() {
+        preferences.edit().putBoolean("v230_palette_pending", false).apply()
+    }
 
     override val samplePromptVersion get() = preferences.getInt("dismissed_sample_prompt_version", 0)
     override fun dismissSamplePrompt(version: Int) {
@@ -29,7 +48,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
     }
 
     override fun load(): SettingsUiState = SettingsUiState(
-        themeMode = runCatching { AppThemeMode.valueOf(preferences.getString("theme_mode", AppThemeMode.DARK.name).orEmpty()) }.getOrDefault(AppThemeMode.DARK),
+        themeMode = runCatching { AppThemeMode.valueOf(preferences.getString("theme_mode", AppThemeMode.LIGHT.name).orEmpty()) }.getOrDefault(AppThemeMode.LIGHT),
         appLanguage = preferences.getString("setting_app_language", "system").orEmpty().takeIf { it in listOf("system", "ja", "en", "zh") } ?: "system",
         customBackground = preferences.getInt("custom_background", 0xFF101014.toInt()),
         customAccent = preferences.getInt("custom_accent", 0xFFA8C7FA.toInt()),
@@ -51,7 +70,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
         showAccessoryNavigation = preferences.getBoolean("setting_accessory_navigation", true),
         showAccessorySymbols = preferences.getBoolean("setting_accessory_symbols", true),
         compactAccessoryKeys = preferences.getBoolean("setting_compact_accessory_keys", true),
-        editorWordWrap = preferences.getBoolean("setting_editor_word_wrap", true),
+        editorWordWrap = preferences.getBoolean("setting_editor_word_wrap", false),
         landscapeEditorOnLeft = preferences.getBoolean("setting_landscape_editor_on_left", true),
         draftRecovery = preferences.getBoolean("setting_draft_recovery", true),
         autoSaveOnLeave = preferences.getBoolean("setting_auto_save_on_leave", true),
@@ -147,7 +166,7 @@ internal fun SettingsUiState.toBackupJson(): String = JSONObject()
     .toString(2)
 
 internal fun SettingsUiState.restoredFromBackup(json: JSONObject): SettingsUiState = copy(
-    themeMode = runCatching { AppThemeMode.valueOf(json.optString("themeMode", themeMode.name)) }.getOrDefault(AppThemeMode.DARK),
+    themeMode = runCatching { AppThemeMode.valueOf(json.optString("themeMode", themeMode.name)) }.getOrDefault(AppThemeMode.LIGHT),
     appLanguage = json.optString("appLanguage", appLanguage).takeIf { it in listOf("system", "ja", "en", "zh") } ?: "system",
     customBackground = json.optInt("customBackground", customBackground) or 0xFF000000.toInt(),
     customAccent = json.optInt("customAccent", customAccent) or 0xFF000000.toInt(),
