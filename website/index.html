@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F2EFE7">
+  <meta name="description" content="Edit:RiN. A free creative coding studio for Android. Write p5.js, shape it with live controls, and keep what you make.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Edit:RiN — Write. Tune. Keep.">
+  <meta property="og:description" content="A creative coding studio, in your hands.">
+  <meta property="og:url" content="https://rin-code-dev.github.io/Edit-RiN/">
+  <link rel="canonical" href="https://rin-code-dev.github.io/Edit-RiN/">
+  <title>Edit:RiN — Write. Tune. Keep.</title>
+  <link rel="icon" href="assets/icon.png">
+  <link rel="preload" href="assets/fonts/space-grotesk-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <div class="experience" id="experience" data-scene="home">
+    <header class="masthead">
+      <button class="wordmark" type="button" id="home-button" aria-label="Edit:RiN — return to the artwork">Edit<span>:</span>RiN</button>
+      <nav aria-label="App information"><button class="plain-link" type="button" data-dialog="about-dialog">About</button><button class="plain-link app-link" type="button" data-dialog="download-dialog"><span>Get the app</span> <span aria-hidden="true">↗</span></button></nav>
+    </header>
+
+    <main class="stage" id="stage" aria-label="An interactive typographic artwork">
+      <div class="home-caption" id="home-caption"><span class="eyebrow">CREATIVE CODING / ANDROID</span><p>A studio.<br>In your hands.</p></div>
+      <h1 class="sr-only">Edit:RiN. Write, tune, and keep.</h1>
+
+      <div class="sculpture" id="sculpture" aria-label="Explore Edit:RiN through its letters">
+        <button class="glyph glyph-r" type="button" data-scene="write" aria-label="Write — explore code and preview" aria-controls="chapter-write" aria-expanded="false">
+          <svg viewBox="0 0 260 320" aria-hidden="true"><g class="r-stem"><path d="M0 0H59V320H0Z"/></g><g class="r-bowl"><path fill-rule="evenodd" d="M59 0H230V176H59ZM59 52V124H171V52Z"/></g><g class="r-leg"><path d="M108 155H183L260 320H182Z"/></g></svg>
+          <span class="glyph-label"><span class="index">01</span> <span>Write</span> <span class="glyph-arrow" aria-hidden="true">↗</span></span>
+        </button>
+        <button class="glyph glyph-i" type="button" data-scene="tune" id="tune-glyph" aria-label="Tune — explore live parameters; drag to change the artwork" aria-controls="chapter-tune" aria-expanded="false">
+          <svg viewBox="0 0 72 320" aria-hidden="true"><g class="i-dot"><path d="M4 0H68V64H4Z"/></g><g class="i-stem"><path d="M4 108H68V320H4Z"/></g></svg>
+          <span class="glyph-label"><span class="index">02</span> <span>Tune</span> <span class="glyph-arrow" aria-hidden="true">↕</span></span>
+        </button>
+        <button class="glyph glyph-n" type="button" data-scene="keep" aria-label="Keep — explore capture and export" aria-controls="chapter-keep" aria-expanded="false">
+          <svg viewBox="0 0 260 320" aria-hidden="true"><g class="n-stems"><path d="M0 0H58V320H0ZM202 0H260V320H202Z"/></g><g class="n-diagonal"><path d="M33 0H83L228 248V320H178L33 72Z"/></g></svg>
+          <span class="glyph-label"><span class="index">03</span> <span>Keep</span> <span class="glyph-arrow" aria-hidden="true">↗</span></span>
+        </button>
+      </div>
+
+      <section class="chapter" id="chapter-write" aria-labelledby="write-title" hidden>
+        <div class="chapter-copy"><p class="eyebrow">01 / THE EDITOR</p><h2 id="write-title" tabindex="-1">Write it.<br>Run it.</h2><p class="description">Write p5.js on Android.<br>Run a change. Watch it take form.</p><p class="code-note">rect(x, y, w, h);</p><p class="detail">Start with a template.<br>Make a sample your own.</p></div>
+        <figure class="demo"><div class="video-surface"><video muted loop playsinline preload="none" poster="assets/demos/code-preview.jpg" data-src="assets/demos/code-preview.mp4" aria-label="Edit:RiN code and live preview recording"></video><button class="video-toggle" type="button" aria-label="Play code and preview recording"><span aria-hidden="true">▶</span></button></div><figcaption><span>CODE + PREVIEW</span><span>RECORDED IN EDIT:RiN</span></figcaption></figure>
+      </section>
+
+      <section class="chapter" id="chapter-tune" aria-labelledby="tune-title" hidden>
+        <div class="chapter-copy"><p class="eyebrow">02 / LIVE PARAMETERS</p><h2 id="tune-title" tabindex="-1">Change<br>the rhythm.</h2><p class="description">Sliders and color controls.<br>A sketch that changes in your hands.</p><div class="tune-control"><label for="rhythm"><span>TRY IT HERE</span> <output id="rhythm-value" for="rhythm">0.50</output></label><input id="rhythm" type="range" min="0" max="100" step="1" value="50" aria-label="Artwork rhythm"><p>Drag the <span class="accent">i</span>, or move this slider.</p></div><p class="code-note">@rin / live controls from code</p></div>
+        <figure class="demo"><div class="video-surface"><video muted loop playsinline preload="none" poster="assets/demos/live-parameters.jpg" data-src="assets/demos/live-parameters.mp4" aria-label="Recording of live parameter adjustments in Edit:RiN"></video><button class="video-toggle" type="button" aria-label="Play live parameter recording"><span aria-hidden="true">▶</span></button></div><figcaption><span>LIVE PARAMETERS</span><span>RECORDED IN EDIT:RiN</span></figcaption></figure>
+      </section>
+
+      <section class="chapter" id="chapter-keep" aria-labelledby="keep-title" hidden>
+        <div class="chapter-copy"><p class="eyebrow">03 / CAPTURE + EXPORT</p><h2 id="keep-title" tabindex="-1">A frame.<br>Or the motion.</h2><p class="description">Keep a PNG. Record MP4 or GIF.<br>Take the whole project with you as ZIP.</p><button class="save-link" id="save-artwork" type="button"><span id="save-label">Save this artwork</span> <span aria-hidden="true">↓</span></button><p class="detail">A PNG of this site's letters.<br>Your app projects stay on your device.</p></div>
+        <figure class="demo"><div class="video-surface"><video muted loop playsinline preload="none" poster="assets/demos/touch-sound.jpg" data-src="assets/demos/touch-sound.mp4" aria-label="Silent recording of a touch-responsive sound sketch in Edit:RiN"></video><button class="video-toggle" type="button" aria-label="Play touch sketch recording"><span aria-hidden="true">▶</span></button></div><figcaption><span>TOUCH + SOUND / MUTED</span><span>MADE IN EDIT:RiN</span></figcaption></figure>
+      </section>
+      <p class="sr-only" id="scene-status" aria-live="polite"></p>
+    </main>
+
+    <footer class="edge">
+      <button class="edge-meta plain-link" type="button" data-dialog="about-dialog">FREE + OPEN SOURCE</button>
+      <div class="edge-center"><p id="interaction-hint">Touch a letter. Find your way in.</p><button id="back-button" class="back-link" type="button" hidden><span aria-hidden="true">←</span> <span>Back to the artwork</span></button></div>
+      <button class="motion-toggle" type="button" id="motion-toggle" aria-label="Pause the artwork and recordings" aria-pressed="false"><span id="motion-symbol" aria-hidden="true">Ⅱ</span><span id="motion-label">Motion on</span></button>
+    </footer>
+  </div>
+
+  <dialog class="info-dialog" id="about-dialog" aria-labelledby="about-title"><button class="dialog-close" type="button" aria-label="Close app information">×</button><p class="eyebrow">ABOUT EDIT:RiN</p><h2 id="about-title">Small studio.<br>Open possibilities.</h2><p>A free, open-source creative coding app for Android. Write p5.js, adjust live parameters, and capture what you make.</p><p class="dialog-note">No ads. No analytics. Editing and execution work offline. Updates, public-sketch imports and external resources use the network.</p><div class="dialog-links"><a href="https://github.com/rin-code-dev/Edit-RiN" target="_blank" rel="noopener noreferrer">Source ↗</a><a href="https://github.com/rin-code-dev/Edit-RiN/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer">Privacy ↗</a><a href="https://ofuse.me/rincode" target="_blank" rel="noopener noreferrer">Support ↗</a></div></dialog>
+  <dialog class="info-dialog" id="download-dialog" aria-labelledby="download-title"><button class="dialog-close" type="button" aria-label="Close download information">×</button><p class="eyebrow">YOUR NEXT SKETCH</p><h2 id="download-title">On Android.<br>In your hands.</h2><p>Android 6.0 or later.<br>Free APK. No account needed.</p><a class="download-link" href="https://github.com/rin-code-dev/Edit-RiN/releases/latest" target="_blank" rel="noopener noreferrer"><span>Download Edit:RiN</span> <span aria-hidden="true">↗</span></a><p class="dialog-note">Opens GitHub Releases. Download the APK and follow Android's installation instructions.</p></dialog>
+  <noscript><div class="no-script">This interactive site needs JavaScript. <a href="https://github.com/rin-code-dev/Edit-RiN/releases/latest">Download Edit:RiN on GitHub Releases ↗</a></div></noscript>
+</body>
+</html>

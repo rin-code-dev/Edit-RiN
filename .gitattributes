@@ -1,0 +1,2 @@
+# Preserve the upstream formatting and checksums of bundled font licenses.
+website/assets/fonts/*-OFL.txt whitespace=-blank-at-eol
