@@ -155,12 +155,16 @@ internal fun EditorArea(
         if (reveal.isNotEmpty()) sessionViewModel.codeFoldStates[editingKey] =
             CodeFoldState(editingText, collapsedFolds - reveal, foldRegions)
     }
-    fun toggleFold(fold: CodeFold) {
-        val toggle = toggleEditorFold(editingText, editingValue, collapsedFolds, foldRegions, fold) ?: return
-        if (toggle.value != editingValue) onUpdateEditingValue(toggle.value)
-        sessionViewModel.codeFoldStates[editingKey] = toggle.state
+    // A local function reference (::toggleFold) compares equal across recompositions,
+    // so rememberUpdatedState can retain the initial source/regions/collapsed set.
+    // Use a capturing lambda whose identity follows those changing values instead.
+    val toggleFold: (CodeFold) -> Unit = { fold ->
+        toggleEditorFold(editingText, editingValue, collapsedFolds, foldRegions, fold)?.let { toggle ->
+            if (toggle.value != editingValue) onUpdateEditingValue(toggle.value)
+            sessionViewModel.codeFoldStates[editingKey] = toggle.state
+        }
     }
-    val currentToggleFold by rememberUpdatedState<(CodeFold) -> Unit>(::toggleFold)
+    val currentToggleFold by rememberUpdatedState(toggleFold)
     var gutterLayout by remember(editingKey) { mutableStateOf<TextLayoutResult?>(null) }
     var editorTextLayout by remember(editingKey) {
         mutableStateOf<TextLayoutResult?>(null)
@@ -174,6 +178,32 @@ internal fun EditorArea(
             logicalLineStarts.binarySearch(fold.open).let { if (it >= 0) it else -it - 2 }
         }.mapValues { (_, regions) -> regions.first() }
     }
+    // Keep the gesture detector alive while text/layout/highlighting updates arrive.
+    // Restarting pointerInput between down/up silently cancels the user's tap.
+    val currentGutterTap by rememberUpdatedState<(androidx.compose.ui.geometry.Offset) -> Unit>({ position ->
+        val gutter = gutterLayout
+        val layout = editorTextLayout
+        if (gutter != null && layout != null && layout.layoutInput.text.text == displayText &&
+            position.y >= 0 && position.y < gutter.getLineBottom(gutter.lineCount - 1)) {
+            val visualLine = gutter.getLineForVerticalPosition(position.y)
+            if (visualLine < layout.lineCount) {
+                val original = projection.transformedToOriginal(layout.getLineStart(visualLine))
+                val line = logicalLineStarts.binarySearch(original)
+                if (line >= 0) {
+                    val fold = foldsByLine[line]
+                    val start = gutter.getLineStart(visualLine)
+                    val marker = gutter.layoutInput.text.text.getOrNull(start)
+                    val onArrow = fold != null && (marker == '▸' || marker == '▾') &&
+                        position.x <= gutter.getBoundingBox(start).right
+                    when (editorGutterAction(fold != null, (line + 1) in currentEditorErrorLines, onArrow)) {
+                        EditorGutterAction.FOLD -> fold?.let(currentToggleFold)
+                        EditorGutterAction.ERROR -> errorTooltipLine = line + 1
+                        null -> Unit
+                    }
+                }
+            }
+        }
+    })
     val lineNumberDigits = maxOf(1, logicalLineStarts.size.toString().length)
     val hasFolds = foldRegions.isNotEmpty()
 
@@ -382,10 +412,19 @@ internal fun EditorArea(
                 val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
                 val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
                 val localDensity = LocalDensity.current
-                val gutterChars = (if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)
-                val gutterWidth = (
-                    gutterChars * editorFontSize * localDensity.fontScale * 0.60f + 10f
-                ).dp
+                val gutterMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+                val gutterPixels = remember(gutterMeasurer, hasFolds, showLineNumbers, lineNumberDigits,
+                    codeFontFamily, editorFontSize, localDensity) {
+                    ('0'..'9').maxOf { digit ->
+                        gutterMeasurer.measure(
+                            AnnotatedString((if (hasFolds) "▾" else "") +
+                                (if (showLineNumbers) digit.toString().repeat(lineNumberDigits) else "")),
+                            style = TextStyle(fontFamily = codeFontFamily, fontSize = editorFontSize.sp,
+                                fontWeight = FontWeight.Bold), softWrap = false
+                        ).size.width
+                    }
+                }
+                val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
                 val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
                 LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                     val target = navigationTarget ?: return@LaunchedEffect
@@ -427,32 +466,12 @@ internal fun EditorArea(
                     if (showLineNumbers || foldRegions.isNotEmpty()) {
                         Text(
                             text = gutterTextState.value,
+                            softWrap = false,
                             onTextLayout = { if (!it.hasSameEditorLines(gutterLayout)) gutterLayout = it },
                             modifier = Modifier
                                 .width(gutterWidth)
-                                .pointerInput(projection, gutterLayout, editorTextLayout, foldsByLine, readOnly, errorsCurrent) {
-                                    detectTapGestures { position ->
-                                        val gutter = gutterLayout ?: return@detectTapGestures
-                                        val layout = editorTextLayout ?: return@detectTapGestures
-                                        if (layout.layoutInput.text.text != displayText ||
-                                            position.y > gutter.getLineBottom(gutter.lineCount - 1)) return@detectTapGestures
-                                        val visualLine = gutter.getLineForVerticalPosition(position.y)
-                                        if (visualLine >= layout.lineCount) return@detectTapGestures
-                                        val original = projection.transformedToOriginal(layout.getLineStart(visualLine))
-                                        val line = logicalLineStarts.binarySearch(original)
-                                        if (line >= 0) {
-                                            val fold = foldsByLine[line]
-                                            val gutterStart = gutter.getLineStart(visualLine)
-                                            val marker = gutter.layoutInput.text.text.getOrNull(gutterStart)
-                                            val onFoldControl = fold != null && (marker == '▸' || marker == '▾') &&
-                                                position.x <= gutter.getBoundingBox(gutterStart).right
-                                            when (editorGutterAction(fold != null, (line + 1) in currentEditorErrorLines, onFoldControl)) {
-                                                EditorGutterAction.FOLD -> fold?.let(currentToggleFold)
-                                                EditorGutterAction.ERROR -> errorTooltipLine = line + 1
-                                                null -> Unit
-                                            }
-                                        }
-                                    }
+                                .pointerInput(editingKey) {
+                                    detectTapGestures { position -> currentGutterTap(position) }
                                 }
                                 .semantics {
                                     customActions = foldsByLine.asSequence().mapNotNull { (line, fold) ->

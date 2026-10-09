@@ -103,32 +103,35 @@ private val previewBitmaps = object : android.util.LruCache<String, android.grap
     override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.allocationByteCount
 }
 
-internal suspend fun storeWorkPreview(file: File, encoded: String): Boolean = withContext(Dispatchers.IO) {
-    previewWriteMutex.withLock { runCatching {
-        val bytes = Base64.decode(encoded, Base64.DEFAULT)
-        file.parentFile?.mkdirs()
-        val atomic = android.util.AtomicFile(file)
-        val stream = atomic.startWrite()
-        try {
-            stream.write(bytes)
-            atomic.finishWrite(stream)
-            previewBitmaps.remove(file.path)
-        } catch (error: Exception) {
-            atomic.failWrite(stream)
-            throw error
-        }
-        // Only disposable thumbnails in this dedicated directory are eligible.
-        val files = file.parentFile?.listFiles { candidate -> candidate.name.matches(Regex("[a-f0-9]{64}\\.png")) }
-            .orEmpty().sortedByDescending { it.lastModified() }
-        var total = 0L
-        files.forEachIndexed { index, candidate ->
-            total += candidate.length()
-            if (index >= 120 || total > 32L * 1024 * 1024) {
-                candidate.delete()
-                previewBitmaps.remove(candidate.path)
+internal suspend fun storeWorkPreview(file: File, encoded: String, expectedModified: Long? = null): Boolean = withContext(Dispatchers.IO) {
+    previewWriteMutex.withLock {
+        if (expectedModified != null && file.lastModified() != expectedModified) return@withLock false
+        runCatching {
+            val bytes = Base64.decode(encoded, Base64.DEFAULT)
+            file.parentFile?.mkdirs()
+            val atomic = android.util.AtomicFile(file)
+            val stream = atomic.startWrite()
+            try {
+                stream.write(bytes)
+                atomic.finishWrite(stream)
+                previewBitmaps.remove(file.path)
+            } catch (error: Exception) {
+                atomic.failWrite(stream)
+                throw error
             }
-        }
-    }.isSuccess }
+            // Only disposable thumbnails in this dedicated directory are eligible.
+            val files = file.parentFile?.listFiles { candidate -> candidate.name.matches(Regex("[a-f0-9]{64}\\.png")) }
+                .orEmpty().sortedByDescending { it.lastModified() }
+            var total = 0L
+            files.forEachIndexed { index, candidate ->
+                total += candidate.length()
+                if (index >= 120 || total > 32L * 1024 * 1024) {
+                    candidate.delete()
+                    previewBitmaps.remove(candidate.path)
+                }
+            }
+        }.isSuccess
+    }
 }
 
 /** Interaction state stays with the workspace while either orientation changes surfaces. */

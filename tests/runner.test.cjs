@@ -1147,3 +1147,17 @@ test('video elements receive transparent poster and offscreen canvas sets willRe
   main.getContext('2d');
   assert.equal(recorded[1].attrs, undefined);
 });
+
+
+test('thumbnail renderer suppresses audio but leaves the interactive renderer unchanged', async () => {
+  for (const thumbnailOnly of [true, false]) {
+    let resumes = 0, plays = 0;
+    class AudioContext { resume() { resumes++; return Promise.resolve(); } }
+    class HTMLMediaElement { play() { plays++; return Promise.resolve(); } }
+    runner('function setup() {}', { thumbnailOnly }, { AudioContext, HTMLMediaElement });
+    await new AudioContext().resume();
+    await new HTMLMediaElement().play();
+    assert.equal(resumes, thumbnailOnly ? 0 : 1);
+    assert.equal(plays, thumbnailOnly ? 0 : 1);
+  }
+});

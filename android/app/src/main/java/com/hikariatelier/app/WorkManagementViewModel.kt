@@ -170,6 +170,15 @@ internal class WorkManagementViewModel(
 
     fun notifyPreviewUpdated(workId: String) { updatedPreviewId = workId; previewRevision++ }
 
+    /** Read a saved body without selecting it or publishing it into the editor. */
+    suspend fun thumbnailInput(workId: String, folder: Uri?): PreviewRunInput? {
+        if (loadFailure != null || folder != selectedFolderUri) return null
+        val work = session.worksState.value.firstOrNull { it.id == workId } ?: return null
+        val saved = if (work.bodyLoaded) work else withContext(io) { persistence.loadWork(folder, workId) }
+        if (saved == null || folder != selectedFolderUri) return null
+        return capturePreviewRun(saved, saved.code, saved.files, saved.assets)
+    }
+
     suspend fun initialize(defaultWorks: () -> List<Work>) {
         if (session.initialized) return
         loadUserTemplates()
