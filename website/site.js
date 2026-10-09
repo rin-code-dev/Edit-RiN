@@ -83,6 +83,7 @@
     demo.pending = false;
     demo.video.pause();
     if (release && demo.video.hasAttribute('src')) {
+      demo.video.classList.remove('media-ready');
       demo.video.removeAttribute('src');
       demo.video.load();
     }
@@ -92,7 +93,7 @@
     if (!shouldPlay(demo) || demo.pending) return;
     const video = demo.video;
     if (!video.hasAttribute('src') || video.error) {
-      video.classList.remove('media-error');
+      video.classList.remove('media-error', 'media-ready');
       video.src = video.dataset.src;
       video.load();
     }
@@ -224,6 +225,13 @@
   reduceMotion.addEventListener('change', event => { paused = event.matches; updatePause(); });
   document.addEventListener('visibilitychange', () => { syncLoop(); syncVideos(); });
   demos.forEach(demo => {
+    // Keep the first-frame poster visible until the new source has decoded a frame.
+    demo.video.addEventListener('loadeddata', () => {
+      if (demo.video.hasAttribute('src') && demo.scene === current) {
+        demo.video.classList.add('media-ready');
+      }
+    });
+    demo.video.addEventListener('emptied', () => demo.video.classList.remove('media-ready'));
     for (const event of ['play', 'pause', 'error', 'emptied']) {
       demo.video.addEventListener(event, () => renderVideoButton(demo));
     }
