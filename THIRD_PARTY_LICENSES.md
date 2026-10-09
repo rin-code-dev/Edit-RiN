@@ -71,8 +71,9 @@ third_party/resolved. They do not change the upstream terms.
 ## Website fonts
 
 The [official website](https://rin-code-dev.github.io/Edit-RiN/) uses self-hosted,
-unmodified Space Grotesk and IBM Plex Mono fonts under the SIL Open Font License 1.1.
+unmodified Archivo Black, Space Grotesk and IBM Plex Mono fonts under the SIL Open Font License 1.1.
 
+- Archivo Black: https://github.com/Omnibus-Type/ArchivoBlack; license: website/assets/fonts/Archivo-Black-OFL.txt
 - Space Grotesk: https://github.com/floriankarsten/space-grotesk; license: website/assets/fonts/Space-Grotesk-OFL.txt
 - IBM Plex Mono: https://github.com/IBM/plex; license: website/assets/fonts/IBM-Plex-Mono-OFL.txt
 - Pinned source URLs and font checksums: website/assets/fonts/SOURCES.txt
