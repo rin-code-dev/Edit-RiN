@@ -5,7 +5,9 @@
 [Official website](https://rin-code-dev.github.io/Edit-RiN/) · [日本語の案内はこちら](#日本語) · [Download](https://github.com/rin-code-dev/Edit-RiN/releases) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/rin-code-dev/Edit-RiN/issues)
 
 <p align="center">
-  <img src="docs/screenshots/editor_gravity.jpg" width="320" alt="Edit:RiN Editor & Live Preview" />
+  <a href="https://rin-code-dev.github.io/Edit-RiN/">
+    <img src="docs/demos/write-preview.gif" width="320" alt="Edit:RiN code editor and live preview in action" />
+  </a>
 </p>
 
 ---
