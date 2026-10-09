@@ -350,7 +350,11 @@ button:focus-visible,a:focus-visible,input:focus-visible {
   height:100%;
   display:block;
   object-fit:cover;
-  transform:translateZ(0)
+  transform:translateZ(0);
+  opacity:0
+}
+.video-surface video.media-ready {
+  opacity:1
 }
 .video-poster {
   position:absolute;
