@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.3.1 — 2026-10-09
+
+### English
+
+- Fixed code-folding arrows that could stop responding after loading or editing code, including in read-only samples.
+- Fixed line numbers and folding arrows wrapping or becoming misaligned with some fonts and font sizes.
+- Added automatic gallery thumbnail generation after installation or an update. Saved works and samples are rendered in the background without switching the current work. Thumbnail generation does not play sound or request camera or microphone access; sketches that require network access or permissions may not produce a thumbnail.
+- Kept newer thumbnails captured from the visible preview when background generation overlaps with editing or running a work.
+
+### 日本語
+
+- コードの読み込み後や編集中に、折りたたみの矢印をタップしても反応しないことがある問題を修正しました。閲覧専用のサンプルも対象です。
+- フォントや文字サイズによって、行番号や折りたたみの矢印が折り返され、コードの行とずれる問題を修正しました。
+- インストール後や更新後に、保存済みの作品とサンプルのサムネイルをバックグラウンドで生成するようにしました。開いている作品は切り替わりません。生成中は音を再生せず、カメラやマイクの許可も求めません。通信や権限が必要な作品では、サムネイルを生成できない場合があります。
+- サムネイルの生成中に、表示中のプレビューから新しい画像が保存された場合は、その画像を優先するようにしました。
+
+
 ## 2.3.0 — 2026-10-08
 
 ### English

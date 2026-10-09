@@ -6,6 +6,16 @@
   let projectConfig = {};
   try { projectConfig = JSON.parse(window.Android?.getProjectConfig?.(runToken) || '{}'); } catch (_) {}
   window.__editRinProjectConfig = projectConfig;
+  if (projectConfig.thumbnailOnly) {
+    // Thumbnail rendering must never start sound, including sketches that resume audio in setup.
+    for (const AudioContextType of new Set([window.AudioContext, window.webkitAudioContext])) {
+      if (AudioContextType?.prototype) AudioContextType.prototype.resume = function () { return Promise.resolve(); };
+    }
+    if (window.HTMLMediaElement?.prototype) {
+      window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
+    }
+  }
+
   window.__editKiroRuntimeHasError = false;
   const reportError = (message, line = 0, file = '') => {
     window.__editKiroRuntimeHasError = true;

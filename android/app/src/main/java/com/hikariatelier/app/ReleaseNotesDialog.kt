@@ -39,6 +39,35 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "2.3.1",
+        versionCode = 31,
+        titleEn = "What's New in v2.3.1",
+        titleJa = "v2.3.1 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Code Folding Fix",
+                titleJa = "コードの折りたたみを修正",
+                descEn = "Fixed folding arrows that could stop responding after loading or editing code. This also applies to read-only samples.",
+                descJa = "コードの読み込み後や編集中に、矢印をタップしても折りたためないことがある問題を修正しました。閲覧専用のサンプルも対象です。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Aligned Line Numbers",
+                titleJa = "行番号の表示ずれを修正",
+                descEn = "Fixed line numbers and folding arrows wrapping or becoming misaligned with some fonts and font sizes.",
+                descJa = "フォントや文字サイズによって、行番号や折りたたみの矢印が折り返され、コードの行とずれる問題を修正しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_camera,
+                titleEn = "Automatic Gallery Thumbnails",
+                titleJa = "作品のサムネイルを自動生成",
+                descEn = "After installation or an update, saved works and samples get gallery thumbnails in the background without switching your current work. No sound plays and no camera or microphone permission is requested. Some sketches may not produce a thumbnail.",
+                descJa = "インストール後や更新後に、保存済みの作品とサンプルのサムネイルを生成します。開いている作品は切り替わらず、音の再生やカメラ・マイクの許可要求もありません。作品によっては生成できない場合があります。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.3.0",
         versionCode = 30,
         titleEn = "What's New in v2.3.0",

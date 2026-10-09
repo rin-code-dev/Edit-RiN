@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.os.ConfigurationCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -103,6 +105,11 @@ class MainActivity : ComponentActivity() {
             settingsViewModel.loadFont(applicationContext)
             workManagementViewModel.initialize { defaultWorks(assets) }
             sessionReady = true
+            val warmup = WorkPreviewWarmup(this@MainActivity, assetStorage, workManagementViewModel, sessionViewModel) {
+                recordingViewModel.isPreviewRecording || recordingViewModel.isRecordingSaving ||
+                    recordingViewModel.pendingRecordingFormat != null || controller.screenshotBusy
+            }
+            repeatOnLifecycle(Lifecycle.State.RESUMED) { warmup.run() }
         }
     }
 

@@ -36,6 +36,23 @@ class WorkManagementViewModelTest {
     private fun vm(session: EditorSessionViewModel, store: Store, scope: CoroutineScope) =
         WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = scope)
 
+    @Test fun thumbnailReadDoesNotSelectSaveOrReplaceUnsavedEditorContent() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        val before = session.editorValueState.value
+        val input = vm.thumbnailInput("two", null)!!
+        assertEquals("second saved", input.source)
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals(before, session.editorValueState.value)
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        assertEquals(1, session.undoStack.size)
+        assertEquals(0, store.calls)
+        assertNull(store.selectedId)
+        val active = vm.thumbnailInput("one", null)!!
+        assertEquals("saved", active.source)
+        assertEquals("old helper", active.files["helper.js"])
+        assertNull(vm.thumbnailInput("deleted", null))
+    }
+
     @Test fun saveFailurePreservesTextSelectionHistoryAndAuxiliaryDrafts() = runBlocking {
         val session = session(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
         vm.saveCurrentWork()!!.join()
@@ -786,6 +803,22 @@ class WorkManagementViewModelTest {
         override fun loadWork(folderUri: Uri?, workId: String): Work? =
             if (missing) null else originals.find { it.id == workId }?.let(::snapshotWork)
         override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean { calls++; return true }
+    }
+
+    @Test fun thumbnailReadsDeferredBodyWithoutPublishingOrSavingIt() = runBlocking {
+        val session = EditorSessionViewModel(); val store = LazyGalleryStore()
+        val model = WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = this)
+        model.initialize { emptyList() }
+        val placeholder = session.worksState.value.last()
+        val input = model.thumbnailInput("two", null)!!
+        assertEquals("deferred code", input.source)
+        assertEquals("deferred helper", input.files["helper.js"])
+        assertSame(placeholder, session.worksState.value.last())
+        assertFalse(placeholder.bodyLoaded)
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals(0, store.calls)
+        store.missing = true
+        assertNull(model.thumbnailInput("two", null))
     }
 
     @Test fun galleryOperationsLoadDeferredBodiesBeforeCopyingOrDeleting() = runBlocking {
