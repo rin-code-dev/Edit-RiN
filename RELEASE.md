@@ -1,24 +1,25 @@
 # Release & Build Guide / リリース・ビルド手順
 
 - **Application ID**: `com.hikariatelier.app`
-- **Current Version**: `2.3.1` (Version Code: `31`)
-- **Git Tag**: `v2.3.1`
+- **Current Version**: `2.3.2` (Version Code: `32`)
+- **Release Git Tag**: `v2.3.2`
 
 ---
 
 ## English
 
 ### Build Requirements
-- **JDK**: JDK 25 (set as `JAVA_HOME`). Gradle daemon and compilation target Java 25, while maintaining Android bytecode compatibility at Java 17.
-- **Android SDK**: Platform 37, Build Tools 36.0.0.
-- **Build Tools**: Gradle 9.8.0 wrapper, AGP 9.3.2, built-in Kotlin / Compose compiler 2.2.10.
+- **Supported OS**: Android 11 (API 30) or later for the current checkout. The published v2.3.1 release supports Android 6.0 or later.
+- **JDK**: JDK 25 (set as `JAVA_HOME`) for the Gradle daemon and compiler; Android bytecode targets Java 17.
+- **Android SDK**: Platform 37, Build Tools 37.0.0.
+- **Build Tools**: Gradle 9.8.1 wrapper, AGP 9.4.1, Kotlin / Compose compiler 2.4.21.
 
 ### Release Steps
 1. **Configure Signing**:
    Copy `android/release-signing.properties.example` to `android/release-signing.properties` and fill in your keystore credentials.
 2. **Run Verification & Build**:
    ```sh
-   node tests/runner.test.cjs
+   npm test
    ./scripts/build-apk.sh release --test --lint
    ```
 3. **Artifacts**:
@@ -35,17 +36,18 @@
 ## 日本語
 
 ### ビルド環境要件
+- **対応OS**: 現在のソースはAndroid 11（API 30）以降に対応しています。公開済みのv2.3.1はAndroid 6.0以降に対応しています。
 - **JDK**: JDK 25 (`JAVA_HOME` に設定)
   - Gradle デーモンおよび Java コンパイルに JDK 25 を使用し、Android バイトコード互換性は Java 17 を維持します。
-- **Android SDK**: Platform 37, Build Tools 36.0.0
-- **ビルドツール**: Gradle Wrapper 9.8.0, Android Gradle Plugin (AGP) 9.3.2, Kotlin / Compose Compiler 2.2.10
+- **Android SDK**: Platform 37, Build Tools 37.0.0
+- **ビルドツール**: Gradle Wrapper 9.8.1, Android Gradle Plugin (AGP) 9.4.1, Kotlin / Compose Compiler 2.4.21
 
 ### リリースビルド手順
 1. **署名設定の作成**:
    `android/release-signing.properties.example` を `android/release-signing.properties` にコピーし、リリース用キーストアの情報を設定します。
 2. **テストとビルド実行**:
    ```sh
-   node tests/runner.test.cjs
+   npm test
    ./scripts/build-apk.sh release --test --lint
    ```
 3. **成果物の確認**:

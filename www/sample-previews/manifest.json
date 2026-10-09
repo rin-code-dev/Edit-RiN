@@ -1,0 +1,52 @@
+{
+  "halo": {
+    "source": "Halo.js",
+    "sha256": "322a836b7487f4b38757ec85e12bdfebfb7982bc4a0871435494782af477e6f5",
+    "p5Version": "2.3.4"
+  },
+  "shapes": {
+    "source": "Shapes.js",
+    "sha256": "8bc16874435c9c686168383e3bbad2ac7f9a55cd13e5ea57d564c12a13a07ffa",
+    "p5Version": "2.3.4"
+  },
+  "touch": {
+    "source": "Touch.js",
+    "sha256": "6fd1ffe4bc962a05224ea41392a18ebe933e8ad44fdcad21b24827d4ca61e837",
+    "p5Version": "2.3.4"
+  },
+  "gravity": {
+    "source": "Gravity.js",
+    "sha256": "9b1b92e61c0bd5ce181c60b158b23d74187fb6d6063491506fec27ffc3171765",
+    "p5Version": "2.3.4"
+  },
+  "wave-parameter": {
+    "source": "wave Parameter.js",
+    "sha256": "a9e4179b587fc678da77436b19ab9f8739cfcaecc1829bec76a8cf0bd8114e17",
+    "p5Version": "2.3.4"
+  },
+  "webgpu": {
+    "source": "WebGPU.js",
+    "sha256": "e9c71e1618a6dfc52e8bc45a70d6167605a3639171f4ad877a7c6a4b220e8284",
+    "p5Version": "2.3.4"
+  },
+  "sound": {
+    "source": "Sound.js",
+    "sha256": "5e5fe00bbb23dbbb7f5569e98ef8cf510eae5395b7854603fe03e3481571548b",
+    "p5Version": "2.3.4"
+  },
+  "camera": {
+    "source": "Camera.js",
+    "sha256": "1433d21fd4b8cb74a7cf3f6ff75ebbb2daddda9d76bd5ba5a1e25f773198ceeb",
+    "p5Version": "2.3.4"
+  },
+  "microphone": {
+    "source": "Microphone.js",
+    "sha256": "0243616679faac9eb85b26a4834d25c1d2a20d826f4c1fbdcec876f19b7d10fa",
+    "p5Version": "2.3.4"
+  },
+  "sensor": {
+    "source": "Sensor.js",
+    "sha256": "de3e6ca791d6358b58c74d7bb0fb23074fbc6ca5eb75a41729193b7b270b3dd1",
+    "p5Version": "2.3.4"
+  }
+}

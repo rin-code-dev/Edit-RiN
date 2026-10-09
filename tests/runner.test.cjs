@@ -833,6 +833,33 @@ test('preview readiness is reported after setup and a presentation frame', () =>
   assert.equal(ready, 1);
 });
 
+test('thumbnail capture waits for the first completed draw and keeps its run identity', async () => {
+  const r = runner('function setup() {} function draw() {}', {thumbnailOnly:true});
+  let stopped = 0, redrawn = 0;
+  const result = [];
+  const instance = {_isGlobal:true,canvas:r.canvas,noLoop(){stopped++;},redraw(){redrawn++;}};
+  r.context.p5.instance = instance;
+  r.context.document.createElement = () => ({width:0,height:0,
+    getContext:()=>({drawImage(){},getImageData:()=>({data:new Uint8Array([200,30,40,255])})}),
+    toDataURL:()=> 'data:image/png;base64,cG5n'});
+  r.context.Android.onThumbnailReady = (token,data) => result.push([token,data]);
+  r.setup(instance);r.flush();
+  const capture = r.context.__editRinCaptureThumbnail();
+  assert.equal(stopped,0);assert.deepEqual(result,[]);
+  r.context.location.pathname = '/project/newer-run/p5_runner.html';
+  r.hooks.post.call(instance);r.flush();await capture;
+  assert.equal(stopped,1);assert.equal(redrawn,1);
+  assert.deepEqual(result,[['run-one','cG5n']]);
+});
+
+test('thumbnail capture cannot pause a foreground preview', async () => {
+  const r = runner();let captured = false,stopped = false;
+  r.context.noLoop = () => {stopped=true;};
+  r.context.Android.onThumbnailReady = () => {captured=true;};
+  await r.context.__editRinCaptureThumbnail();
+  assert.equal(stopped,false);assert.equal(captured,false);
+});
+
 test('PNG completion and errors carry the originating run identity', async () => {
   const r = chunkedScreenshotRunner();
   let token;
@@ -1160,4 +1187,28 @@ test('thumbnail renderer suppresses audio but leaves the interactive renderer un
     assert.equal(resumes, thumbnailOnly ? 0 : 1);
     assert.equal(plays, thumbnailOnly ? 0 : 1);
   }
+});
+
+
+test('visual readiness waits for every first draw and reports its owner once', () => {
+  const r = instanceRunner();
+  const visual = [];
+  r.context.Android.onPreviewVisualReady = owner => visual.push(owner);
+  r.instances.forEach(instance => r.setup(instance)); r.flush();
+  assert.deepEqual(visual, []);
+  r.hooks.post.call(r.instances[0]); r.flush();
+  assert.deepEqual(visual, []);
+  r.hooks.post.call(r.instances[1]); r.flush();
+  assert.deepEqual(visual, ['run-one']);
+  r.instances.forEach(instance => r.hooks.post.call(instance)); r.flush();
+  assert.deepEqual(visual, ['run-one']);
+});
+
+test('an error before visual handoff never uncovers an unfinished preview', () => {
+  const r = instanceRunner();
+  const visual = [];
+  r.context.Android.onPreviewVisualReady = owner => visual.push(owner);
+  r.instances.forEach(instance => { r.setup(instance); r.hooks.post.call(instance); });
+  r.context.__editKiroRuntimeHasError = true; r.flush(); r.flush();
+  assert.deepEqual(visual, []);
 });

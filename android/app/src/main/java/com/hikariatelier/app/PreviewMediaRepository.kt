@@ -45,58 +45,33 @@ internal class PreviewMediaRepository(context: Context) {
             else output.write(Base64.decode(dataUrl.substringAfter(',', dataUrl), Base64.DEFAULT))
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val collection = if (video) {
-                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            }
-            val values = android.content.ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                put(
-                    MediaStore.MediaColumns.RELATIVE_PATH,
-                    if (video) "Movies/$directoryName" else "Pictures/$directoryName"
-                )
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-            val uri = context.contentResolver.insert(collection, values)
-                ?: error("保存先を作成できませんでした")
-            try {
-                context.contentResolver.openOutputStream(uri, "w")?.use { copyTo(it) }
-                    ?: error("保存先を開けませんでした")
-                values.clear()
-                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                check(context.contentResolver.update(uri, values, null, null) > 0)
-            } catch (error: Exception) {
-                // Only clean up the pending item created by this capture attempt.
-                runCatching { context.contentResolver.delete(uri, null, null) }
-                throw error
-            }
-            uri
+        val collection = if (video) {
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
-            @Suppress("DEPRECATION")
-            val parent = if (!video && directoryName == "Edit-RiN") {
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            } else context.getExternalFilesDir(
-                if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
-            ) ?: error("保存先を利用できません")
-            val directory = File(parent, directoryName).apply { mkdirs() }
-            val file = File(directory, displayName)
-            try { file.outputStream().use { copyTo(it) } }
-            catch (error: Exception) { file.delete(); throw error }
-            MediaScannerConnection.scanFile(
-                context,
-                arrayOf(file.absolutePath),
-                arrayOf(mimeType),
-                null
-            )
-            FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
+        val values = android.content.ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                if (video) "Movies/$directoryName" else "Pictures/$directoryName"
+            )
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = context.contentResolver.insert(collection, values)
+            ?: error("保存先を作成できませんでした")
+        try {
+            context.contentResolver.openOutputStream(uri, "w")?.use { copyTo(it) }
+                ?: error("保存先を開けませんでした")
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            check(context.contentResolver.update(uri, values, null, null) > 0)
+        } catch (error: Exception) {
+            // Only clean up the pending item created by this capture attempt.
+            runCatching { context.contentResolver.delete(uri, null, null) }
+            throw error
+        }
+        uri
     }.getOrNull()
-
 }

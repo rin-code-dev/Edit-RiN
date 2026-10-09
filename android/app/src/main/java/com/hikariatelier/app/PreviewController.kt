@@ -36,6 +36,8 @@ internal class PreviewController(
     val assetStorage: AssetStorage,
     private val models: EditorModels
 ) {
+    val performance = PerformanceMonitor(activity.window)
+    val images = PreviewImageRepository(activity.cacheDir, activity.assets, activity.lifecycleScope, performance.measurements)
     val session = PreviewSession()
     var runInput by mutableStateOf<PreviewRunInput?>(null)
         private set
@@ -166,17 +168,18 @@ internal class PreviewController(
         sensors.stop()
         val input = capturePreviewRun(work, source, supportingFiles, sourceAssets,
             models.session.fileDrafts.toMap(), work?.let { models.works.parameterValues(it) }.orEmpty())
-        val previousId = session.workId
         session.request(input.token)
-        beginLoading(previousId, input.token)
+        beginLoading(input.workId, input.token)
         isPaused = false
         isError = false
         models.console.clear()
         preparationJob = activity.lifecycleScope.launch {
             try {
-                val (preparedRun, usesSensors) = withContext(Dispatchers.Default) {
-                    preparePreviewRun(input) to (SENSOR_KEYWORDS_REGEX.containsMatchIn(input.source) ||
-                        input.files.values.any { SENSOR_KEYWORDS_REGEX.containsMatchIn(it) })
+                val (preparedRun, usesSensors) = performance.measurements.measure(PerformanceOperation.PREVIEW_PREPARE) {
+                    withContext(Dispatchers.Default) {
+                        preparePreviewRun(input) to (SENSOR_KEYWORDS_REGEX.containsMatchIn(input.source) ||
+                            input.files.values.any { SENSOR_KEYWORDS_REGEX.containsMatchIn(it) })
+                    }
                 }
                 ensureActive()
                 if (disposed || !session.publish(preparedRun)) return@launch
@@ -193,14 +196,12 @@ internal class PreviewController(
         }
     }
 
-    private fun beginLoading(previousId: String?, token: String) {
+    private fun beginLoading(workId: String?, token: String) {
         isLoading = true
-        loadingThumbnail = null
+        loadingThumbnail = workId?.let(images::peek)
         runStartedAt = SystemClock.elapsedRealtime()
-        if (previousId != null) activity.lifecycleScope.launch {
-            val thumbnail = withContext(Dispatchers.IO) {
-                runCatching { android.graphics.BitmapFactory.decodeFile(workPreviewFile(activity.cacheDir, previousId).path) }.getOrNull()
-            }
+        if (workId != null) activity.lifecycleScope.launch {
+            val thumbnail = images.load(workId)
             if (!disposed && isLoading && session.isRequested(token)) loadingThumbnail = thumbnail
         }
     }
@@ -299,12 +300,14 @@ internal class PreviewController(
 
     fun pause() {
         activityActive = false
+        performance.pause()
         sensors.stop()
         webView?.onPause()
     }
     fun resume() {
         if (!disposed) {
             activityActive = true
+            performance.resume()
             updateSensorPlayback()
             webView?.onResume()
         }
@@ -313,6 +316,7 @@ internal class PreviewController(
     fun close() {
         if (disposed) return
         disposed = true
+        performance.close(); images.close()
         sensors.destroy()
         preparationJob?.cancel()
         session.invalidate()
@@ -344,11 +348,24 @@ internal class PreviewController(
     private inner class Bridge {
         @JavascriptInterface fun onPreviewReady(token: String) {
             onMain(token) {
-                if (!isError) {
-                    isLoading = false
-                    loadingThumbnail = null
+                if (!isError && isLoading) {
+                    performance.measurements.record(PerformanceOperation.PREVIEW_READY,
+                        (SystemClock.elapsedRealtime() - runStartedAt) * 1_000_000)
+                    // Keep the placeholder until WebView has committed the first drawn frame.
                     if (BuildConfig.DEBUG) Log.d("EditRiNPreview", "Preview ready in ${SystemClock.elapsedRealtime() - runStartedAt} ms")
                 }
+            }
+        }
+        @JavascriptInterface fun onPreviewVisualReady(token: String) {
+            onMain(token) {
+                val host = webView ?: return@onMain
+                host.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) {
+                        if (!disposed && webView === host && session.isCurrent(token) && !isError) {
+                            isLoading = false
+                        }
+                    }
+                })
             }
         }
         @JavascriptInterface fun setSensorsEnabled(token: String, enabled: Boolean) {

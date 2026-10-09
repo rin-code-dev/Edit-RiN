@@ -24,13 +24,9 @@ private fun Window.applySystemBarVisibility(visibility: SystemBarVisibility) {
     WindowCompat.setDecorFitsSystemWindows(this, false)
     statusBarColor = android.graphics.Color.TRANSPARENT
     navigationBarColor = android.graphics.Color.TRANSPARENT
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isNavigationBarContrastEnforced = false
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        attributes = attributes.apply {
-            layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }
+    isNavigationBarContrastEnforced = false
+    attributes = attributes.apply {
+        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
     }
     val controller = WindowCompat.getInsetsController(this, decorView)
     controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

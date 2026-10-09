@@ -60,7 +60,7 @@ START_TIME=$(date +%s)
 echo "==> Edit:RiN ${BUILD_TYPE} build started (logging to ${LOG_FILE})..."
 
 set +e
-./gradlew ${CLEAN_CMD} ${TEST_TASK} ${GRADLE_TASK} ${LINT_TASK} --max-workers=2 > "${LOG_FILE}" 2>&1
+./gradlew ${CLEAN_CMD} ${TEST_TASK} ${GRADLE_TASK} ${LINT_TASK} --max-workers="${EDIT_RIN_BUILD_MAX_WORKERS:-2}" > "${LOG_FILE}" 2>&1
 EXIT_CODE=$?
 set -e
 

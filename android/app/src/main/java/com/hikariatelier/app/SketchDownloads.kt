@@ -117,14 +117,6 @@ internal class SketchDownloadsViewModel(application: Application) : AndroidViewM
                         resolver.openOutputStream(destination, "wt")?.use { output ->
                             download.file.inputStream().use { it.copyTo(output, 64 * 1024) }
                         } ?: error("Cannot open download destination")
-                    } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                        @Suppress("DEPRECATION")
-                        val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Edit-RiN")
-                        val target = copyToUniqueSketchDownload(download.file, directory, download.metadata.name)
-                        runCatching {
-                            MediaScannerConnection.scanFile(getApplication<Application>(), arrayOf(target.absolutePath),
-                                arrayOf(download.metadata.mime), null)
-                        }
                     } else {
                         val values = ContentValues().apply {
                             put(MediaStore.MediaColumns.DISPLAY_NAME, download.metadata.name)

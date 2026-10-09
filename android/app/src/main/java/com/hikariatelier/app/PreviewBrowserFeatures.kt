@@ -205,8 +205,7 @@ internal class PreviewBrowserFeatures(
     fun saveFile(download: PendingSketchDownload) {
         if (closed || currentOwner() != download.metadata.owner) { downloads.discard(download); return }
         if (!downloads.reserve(download)) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) downloads.save(download)
-        else { pendingDownloads.addLast(download); drainLegacyDownloads() }
+        downloads.save(download)
     }
 
     private fun legacyStorageGranted(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||

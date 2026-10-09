@@ -45,7 +45,7 @@ const server = http.createServer((request,response) => {
 async function pageWithBridge(browser, { version='2.3.4', code='', config={} }={}) {
   const page = await browser.newPage({ viewport:{width:360,height:240}, deviceScaleFactor:1 });
   await page.addInitScript(({version,code,config}) => {
-    window.testState={errors:[],statuses:[],ready:0,files:[],recordings:[],recordingStatuses:[],chunks:[],owners:[]};
+    window.testState={errors:[],statuses:[],ready:0,visualReady:0,files:[],recordings:[],recordingStatuses:[],chunks:[],owners:[],thumbnails:[]};
     const state=window.testState;
     let fileTransfer=null, recording=null;
     const owner=token=>{state.owners.push(token);if(token!=='browser-test')throw new Error('wrong owner '+token)};
@@ -54,7 +54,9 @@ async function pageWithBridge(browser, { version='2.3.4', code='', config={} }={
       getProjectConfig:()=>JSON.stringify(config), isP5SoundEnabled:()=>false,
       getWorkParameters:()=> '{}',getWorkShaders:()=> '{}',getWorkLibraries:()=> '{}',
       onStatusChanged:(token,status)=>{owner(token);state.statuses.push(status)},
-      onPreviewReady:token=>{owner(token);state.ready++},
+      onPreviewReady:token=>{owner(token);state.ready++;if(config.thumbnailOnly){state.readyFrame=window.frameCount;window.__editRinCaptureThumbnail();}},
+      onPreviewVisualReady:token=>{owner(token);state.visualReady++;state.visualFrame=window.frameCount;},
+      onThumbnailReady:(token,data)=>{owner(token);state.thumbnails.push({data,frame:window.frameCount})},
       onError:(token,message)=>{owner(token);state.errors.push(message)},
       onRuntimeError:(token,message,line)=>{owner(token);state.errors.push(message)},
       onRuntimeErrorFile:(token,message,file,line)=>{owner(token);state.errors.push({message,file,line})},
@@ -77,6 +79,7 @@ async function ready(page) {
   await page.waitForFunction(()=>testState.ready>0||testState.errors.length>0,{}, {timeout:10000});
   assert.deepEqual(await page.evaluate(()=>testState.errors),[]);
   assert.equal(await page.evaluate(()=>testState.ready),1);
+  await page.waitForFunction(()=>testState.visualReady===1,{}, {timeout:10000});
 }
 async function screenshot(page, scale) {
   await page.evaluate(async scale => { testState.exported=null;await __editKiroCaptureScreenshot(scale); }, scale);
@@ -96,6 +99,49 @@ async function screenshot(page, scale) {
   const origin='http://127.0.0.1:'+server.address().port;
   const browser=await chromium.launch({executablePath:process.env.BROWSER_PATH,headless:true});
   try {
+    for (const version of ['1.11.5','2.3.4']) {
+      for (const scenario of ['slow-first-draw','no-loop-webgl','setup-only','transparent']) {
+        const code = {
+          'slow-first-draw': 'function setup(){createCanvas(96,80);frameRate(2);}function draw(){background(200,30,40);}',
+          'no-loop-webgl': 'function setup(){createCanvas(96,80,WEBGL);setAttributes({preserveDrawingBuffer:false});noLoop();}function draw(){background(200,30,40);}',
+          'setup-only': 'function setup(){createCanvas(96,80);background(200,30,40);noLoop();}',
+          'transparent': 'function setup(){createCanvas(96,80);noLoop();}function draw(){clear();}'
+        }[scenario];
+        const page = await pageWithBridge(browser,{version,code,config:{thumbnailOnly:true}});
+        await page.goto(origin+prefix+'p5_runner.html');
+        await page.waitForFunction(()=>testState.thumbnails.length||testState.errors.length,{}, {timeout:10000});
+        assert.deepEqual(await page.evaluate(()=>testState.errors),[],`${version} ${scenario}`);
+        const result = await page.evaluate(async()=>{
+          const {data,frame}=testState.thumbnails[0];
+          if (!data) return {empty:true,frame};
+          const image=new Image();image.src='data:image/png;base64,'+data;await image.decode();
+          const copy=document.createElement('canvas');copy.width=image.width;copy.height=image.height;
+          const context=copy.getContext('2d');context.drawImage(image,0,0);
+          return {empty:false,frame,width:image.width,height:image.height,pixel:Array.from(context.getImageData(10,10,1,1).data)};
+        });
+        if (scenario==='transparent') assert.equal(result.empty,true);
+        else {
+          assert.equal(result.empty,false,`${version} ${scenario}`);
+          assert.equal(result.pixel[3],255);
+          [200,30,40].forEach((value,index)=>assert.ok(Math.abs(result.pixel[index]-value)<=2,`${version} ${scenario}: color ${result.pixel}`));
+          assert.equal(result.width,96);assert.equal(result.height,80);
+          if(scenario!=='setup-only') assert.ok(result.frame>=1);
+        }
+        await page.waitForFunction(()=>testState.visualReady===1);
+        if(scenario!=='setup-only') assert.ok(await page.evaluate(()=>testState.visualFrame>=1));
+        if(scenario==='slow-first-draw') assert.equal(await page.evaluate(()=>testState.readyFrame),0);
+        await page.close();
+      }
+    }
+    {
+      const page = await pageWithBridge(browser,{code:'async function setup(){createCanvas(96,80);noLoop();}async function draw(){await new Promise(resolve=>setTimeout(resolve,80));background(200,30,40);}',config:{thumbnailOnly:true}});
+      await page.goto(origin+prefix+'p5_runner.html');
+      await page.waitForFunction(()=>testState.thumbnails.length||testState.errors.length,{}, {timeout:10000});
+      assert.deepEqual(await page.evaluate(()=>testState.errors),[]);
+      assert.ok(await page.evaluate(()=>testState.thumbnails[0].data));
+      assert.equal(await page.evaluate(()=>testState.thumbnails.length),1);
+      await page.close();
+    }
     for(const version of ['1.11.5','2.3.4']) {
       const page=await pageWithBridge(browser,{version,code:instancesCode});
       await page.goto(origin+prefix+'p5_runner.html');await ready(page);

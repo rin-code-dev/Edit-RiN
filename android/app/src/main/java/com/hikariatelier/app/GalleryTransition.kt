@@ -1,9 +1,13 @@
 package com.hikariatelier.app
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
@@ -23,7 +27,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -34,7 +37,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-internal const val GALLERY_EDGE_FADE = 0.08f
 
 /** Both rectangles use boundsInRoot; easing and animation ownership stay with the caller. */
 internal fun interpolateGalleryBounds(start: Rect, end: Rect, progress: Float): Rect {
@@ -59,7 +61,9 @@ internal fun WorkGalleryPreview(
     start: Rect?,
     end: Rect?,
     progress: Float,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    visible: Boolean = progress > 0f && progress < 1f,
+    opacity: Float = 1f
 ) {
     var localOrigin by remember { mutableStateOf<Offset?>(null) }
     val density = LocalDensity.current
@@ -72,12 +76,11 @@ internal fun WorkGalleryPreview(
         val origin = localOrigin ?: return@Box
         if (bitmap == null || bitmap.isRecycled || start == null || end == null ||
             !start.usableGalleryBounds() || !end.usableGalleryBounds() ||
-            !progress.isFinite() || progress <= 0f || progress >= 1f) return@Box
+            !progress.isFinite() || !visible) return@Box
 
-        val bounds = interpolateGalleryBounds(start, end, progress)
-        val shape = RoundedCornerShape((18f + (6f - 18f) * progress).dp)
-        val edgeAlpha = minOf(progress / GALLERY_EDGE_FADE,
-            (1f - progress) / GALLERY_EDGE_FADE, 1f)
+        val fraction = FastOutSlowInEasing.transform(progress.coerceIn(0f, 1f))
+        val bounds = interpolateGalleryBounds(start, end, fraction)
+        val shape = RoundedCornerShape((18f + (6f - 18f) * fraction).dp)
         Image(
             bitmap = remember(bitmap) { bitmap.asImageBitmap() },
             contentDescription = null,
@@ -88,10 +91,31 @@ internal fun WorkGalleryPreview(
                 // Measure the image at its interpolated size and keep overflow at its top-left.
                 .wrapContentSize(Alignment.TopStart, unbounded = true)
                 .requiredSize(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
-                .graphicsLayer { alpha = edgeAlpha }
+                .graphicsLayer { alpha = opacity.coerceIn(0f, 1f) }
                 .clip(shape)
                 .background(Color.Black)
                 .border(1.dp, outline, shape)
         )
+    }
+}
+
+
+/** Keep foreground controls above the pinned image during its final handoff. */
+@Composable
+internal fun WorkGalleryPreviewChrome(
+    bounds: Rect?, modifier: Modifier = Modifier, visible: Boolean,
+    content: @Composable BoxWithConstraintsScope.() -> Unit
+) {
+    var localOrigin by remember { mutableStateOf<Offset?>(null) }
+    val density = LocalDensity.current
+    Box(modifier.onGloballyPositioned { localOrigin = it.boundsInRoot().topLeft }
+        .clearAndSetSemantics { hideFromAccessibility() }) {
+        val origin = localOrigin ?: return@Box
+        if (!visible || bounds?.usableGalleryBounds() != true) return@Box
+        BoxWithConstraints(Modifier
+            .offset { IntOffset((bounds.left - origin.x).roundToInt(), (bounds.top - origin.y).roundToInt()) }
+            .wrapContentSize(Alignment.TopStart, unbounded = true)
+            .requiredSize(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
+            .clip(RoundedCornerShape(18.dp)), content = content)
     }
 }

@@ -3,6 +3,7 @@ package com.hikariatelier.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.view.doOnPreDraw
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -34,7 +35,7 @@ class MainActivity : ComponentActivity() {
     private var sessionReady by mutableStateOf(false)
     private var openingInstaller = false
     private val installPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        updateViewModel.report(if (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls())
+        updateViewModel.report(if (packageManager.canRequestPackageInstalls())
             "インストールを許可しました。インストールボタンで更新を続けてください"
             else "インストールが許可されていません。許可してからもう一度お試しください")
     }
@@ -73,12 +74,14 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val startupStart = System.nanoTime()
         super.onCreate(savedInstanceState)
         // ViewModels are resolved only after super.onCreate attaches the Activity.
         val models = EditorModels(sessionViewModel, updateViewModel, searchReplaceViewModel,
             consoleViewModel, settingsViewModel, recordingViewModel, workManagementViewModel, snapshotViewModel)
         val controller = PreviewController(this, assetStorage, models)
         preview = controller
+        workManagementViewModel.measurements = controller.performance.measurements
         val media = PreviewMediaActions(this) { source, arguments -> uiText(source, *arguments) }
         updateViewModel.checkAtStartup()
         enableEdgeToEdge()
@@ -102,12 +105,18 @@ class MainActivity : ComponentActivity() {
             }
         }
         lifecycleScope.launch {
-            settingsViewModel.loadFont(applicationContext)
-            workManagementViewModel.initialize { defaultWorks(assets) }
+            launch { settingsViewModel.loadFont(applicationContext) }
+            controller.performance.measurements.measure(PerformanceOperation.INITIAL_LOAD) {
+                workManagementViewModel.initialize { defaultWorks(assets) }
+            }
             sessionReady = true
-            val warmup = WorkPreviewWarmup(this@MainActivity, assetStorage, workManagementViewModel, sessionViewModel) {
+            window.decorView.doOnPreDraw {
+                controller.performance.measurements.record(
+                    PerformanceOperation.INTERACTIVE_STARTUP, System.nanoTime() - startupStart)
+            }
+            val warmup = WorkPreviewWarmup(this@MainActivity, assetStorage, workManagementViewModel, sessionViewModel, controller.images, controller.performance.measurements) {
                 recordingViewModel.isPreviewRecording || recordingViewModel.isRecordingSaving ||
-                    recordingViewModel.pendingRecordingFormat != null || controller.screenshotBusy
+                    recordingViewModel.pendingRecordingFormat != null || controller.screenshotBusy || controller.isLoading
             }
             repeatOnLifecycle(Lifecycle.State.RESUMED) { warmup.run() }
         }
@@ -136,7 +145,7 @@ class MainActivity : ComponentActivity() {
                     reportPendingEdits()
                     return@launch
                 }
-                if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                if (!packageManager.canRequestPackageInstalls()) {
                     updateViewModel.report("このアプリからのインストールを許可してください")
                     installPermission.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:$packageName")))

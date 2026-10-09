@@ -11,15 +11,17 @@ import java.util.concurrent.TimeUnit
 internal fun draftStoreKey(folderUri: Uri?): String = folderUri?.toString() ?: "local"
 
 /** Length-prefixed, deterministic authored content; metadata-only updates do not invalidate edits. */
-internal fun draftBaseHash(work: Work): String {
+internal fun draftBaseHash(work: Work): String = draftBaseHash(work.code, work.files.toMap())
+
+internal fun draftBaseHash(code: String, files: Map<String, String>): String {
     val digest = MessageDigest.getInstance("SHA-256")
     fun add(value: String) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
         digest.update(bytes)
     }
-    add(work.code)
-    work.files.toSortedMap().forEach { (name, code) -> add(name); add(code) }
+    add(code)
+    files.toSortedMap().forEach { (name, code) -> add(name); add(code) }
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
@@ -29,6 +31,11 @@ internal class DraftSnapshotRepository(private val file: File) {
     private val queueLock = Any()
     private var pending: (() -> Unit)? = null
     private var draining = false
+    private var generation = 0L
+
+    /** Reserve before hashing; validation and enqueue share the same lock as clear. */
+    fun beginGeneration(): Long = synchronized(queueLock) { ++generation }
+    fun compute(generationToken: Long, action: () -> Unit) { enqueue(generationToken, action) }
 
     @Synchronized
     fun load(): Pair<DraftSnapshot, Map<String, String>>? = runCatching {
@@ -61,12 +68,13 @@ internal class DraftSnapshotRepository(private val file: File) {
     }
 
     fun save(workId: String, code: String, files: Map<String, String>, storeKey: String? = null,
-             baseHash: String? = null, bases: Map<String, String> = emptyMap()) {
+             baseHash: String? = null, bases: Map<String, String> = emptyMap(),
+             generationToken: Long = beginGeneration()) {
         if (workId.isBlank()) return
         val capturedFiles = files.toMap()
         val capturedBases = bases.toMap()
         val updatedAt = System.currentTimeMillis()
-        enqueue {
+        enqueue(generationToken) {
             runCatching {
                 val json = JSONObject().put("version", 2).put("workId", workId).put("code", code)
                     .put("fileDrafts", JSONObject(capturedFiles)).put("updatedAt", updatedAt)
@@ -76,7 +84,8 @@ internal class DraftSnapshotRepository(private val file: File) {
         }
     }
 
-    private fun enqueue(command: () -> Unit) = synchronized(queueLock) {
+    private fun enqueue(token: Long, command: () -> Unit) = synchronized(queueLock) {
+        if (token != generation) return@synchronized
         pending = command
         if (!draining) {
             draining = true
@@ -94,7 +103,7 @@ internal class DraftSnapshotRepository(private val file: File) {
         }
     }
 
-    fun clear() { enqueue {
+    fun clear() = synchronized(queueLock) { enqueue(++generation) {
         synchronized(this) {
             listOf(file, File(file.path + ".bak"), File(file.path + ".new")).forEach {
                 check(!it.exists() || it.delete()) { "Cannot remove draft" }

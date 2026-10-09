@@ -60,10 +60,9 @@ internal class UpdateApkRepository(private val context: Context) {
         }
     }
 
-    @Suppress("DEPRECATION")
     fun validate(file: File, release: AppRelease) {
         val manager = context.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val flags = PackageManager.GET_SIGNING_CERTIFICATES
         val candidate = requireNotNull(manager.getPackageArchiveInfo(file.absolutePath, flags))
         val current = manager.getPackageInfo(context.packageName, flags)
         check(eligibleUpdatePackage(
@@ -72,15 +71,12 @@ internal class UpdateApkRepository(private val context: Context) {
             release.version))
     }
 
-    @Suppress("DEPRECATION")
     private fun signers(info: PackageInfo): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
+        val signatures = info.signingInfo?.apkContentsSigners
         return signatures.orEmpty().map { signature ->
             MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).joinToString("") { "%02x".format(it) }
         }.toSet()
     }
 
-    @Suppress("DEPRECATION")
-    private fun versionCode(info: PackageInfo): Long =
-        if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    private fun versionCode(info: PackageInfo): Long = info.longVersionCode
 }

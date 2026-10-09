@@ -1,6 +1,7 @@
 package com.hikariatelier.app
 
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.webkit.WebView
@@ -62,7 +63,9 @@ import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONTokener
@@ -99,35 +102,57 @@ internal fun captureWorkPreview(view: WebView, onResult: (String) -> Unit) {
 
 private val previewCaptures = java.util.WeakHashMap<WebView, Boolean>()
 private val previewWriteMutex = Mutex()
-private val previewBitmaps = object : android.util.LruCache<String, android.graphics.Bitmap>(12 * 1024 * 1024) {
-    override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.allocationByteCount
+internal suspend fun storeWorkPreview(
+    file: File, encoded: String, expectedModified: Long? = null, fingerprint: String? = null
+): Boolean {
+    val bytes = withContext(Dispatchers.Default) { runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() }
+        ?: return false
+    return storeWorkPreviewBytes(file, bytes, expectedModified, fingerprint)
 }
 
-internal suspend fun storeWorkPreview(file: File, encoded: String, expectedModified: Long? = null): Boolean = withContext(Dispatchers.IO) {
+internal suspend fun storeWorkPreviewBytes(
+    file: File, bytes: ByteArray, expectedModified: Long? = null, fingerprint: String? = null
+): Boolean = withContext(Dispatchers.IO) {
+    // Reject broken or unexpectedly large renderer output before publishing disposable data.
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth !in 1..480 || bounds.outHeight !in 1..480) return@withContext false
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext false
+    val visible = try {
+        if (!bitmap.hasAlpha()) true else {
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            pixels.any { it ushr 24 != 0 }
+        }
+    } finally { bitmap.recycle() }
+    if (!visible) return@withContext false
     previewWriteMutex.withLock {
-        if (expectedModified != null && file.lastModified() != expectedModified) return@withLock false
+        val previousModified = file.lastModified()
+        if (expectedModified != null && previousModified != expectedModified) return@withLock false
         runCatching {
-            val bytes = Base64.decode(encoded, Base64.DEFAULT)
             file.parentFile?.mkdirs()
             val atomic = android.util.AtomicFile(file)
             val stream = atomic.startWrite()
-            try {
-                stream.write(bytes)
-                atomic.finishWrite(stream)
-                previewBitmaps.remove(file.path)
-            } catch (error: Exception) {
-                atomic.failWrite(stream)
-                throw error
+            try { stream.write(bytes); atomic.finishWrite(stream) }
+            catch (error: Exception) { atomic.failWrite(stream); throw error }
+            // A timestamp also protects against two captures finishing in the same millisecond.
+            file.setLastModified(maxOf(System.currentTimeMillis(), previousModified + 1))
+            val stamp = thumbnailStampFile(file)
+            if (fingerprint == null) stamp.delete() else {
+                val stampAtomic = android.util.AtomicFile(stamp)
+                val stampStream = stampAtomic.startWrite()
+                try {
+                    stampStream.write("$fingerprint\n${file.length()}\n${file.lastModified()}\n".toByteArray())
+                    stampAtomic.finishWrite(stampStream)
+                } catch (error: Exception) { stampAtomic.failWrite(stampStream); throw error }
             }
-            // Only disposable thumbnails in this dedicated directory are eligible.
             val files = file.parentFile?.listFiles { candidate -> candidate.name.matches(Regex("[a-f0-9]{64}\\.png")) }
                 .orEmpty().sortedByDescending { it.lastModified() }
             var total = 0L
             files.forEachIndexed { index, candidate ->
                 total += candidate.length()
                 if (index >= 120 || total > 32L * 1024 * 1024) {
-                    candidate.delete()
-                    previewBitmaps.remove(candidate.path)
+                    candidate.delete(); thumbnailStampFile(candidate).delete()
                 }
             }
         }.isSuccess
@@ -332,6 +357,7 @@ internal fun InlineWorkGallery(
     text: (String) -> String,
     onOpen: (Work, Boolean) -> Unit, onAdd: () -> Unit,
     state: WorkGalleryState,
+    images: PreviewImageRepository,
     modifier: Modifier = Modifier,
     onTogglePin: ((Work) -> Unit)? = null,
     onEditTags: ((Work) -> Unit)? = null,
@@ -341,6 +367,7 @@ internal fun InlineWorkGallery(
     onDuplicate: (Work) -> Unit = {},
     onDelete: (Work) -> Unit = {},
     onActiveThumbnailBounds: (Rect?) -> Unit = {},
+    onPrepareOpen: (Work, Bitmap?, Rect?) -> Unit = { _, _, _ -> },
     morphWorkId: String? = activeId,
     suppressMorphThumbnail: Boolean = false,
     morphProgress: Float = 0f,
@@ -348,12 +375,16 @@ internal fun InlineWorkGallery(
     tabs: List<String> = emptyList(),
     onManageFolders: () -> Unit = {},
     onMove: (Work) -> Unit = {},
-    onReorderTabs: (List<String>) -> Unit = {}
+    onReorderTabs: (List<String>) -> Unit = {},
+    previewRevisions: Map<String, Int> = emptyMap(),
+    onThumbnailPriority: (List<String>) -> Unit = {},
+    onThumbnailScrolling: (Boolean) -> Unit = {},
+    navigationWhileBusy: Boolean = false
 ) {
     WorkGalleryContent(works, activeId, unsaved, sort, cacheDir, previewRevision, updatedPreviewId,
         text, onOpen, onAdd, state, modifier, MaterialTheme.colorScheme.background, onTogglePin,
         onEditTags, onDeleteGlobalTag, busy, onRename, onDuplicate, onDelete,
-        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs)
+        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs, previewRevisions, onThumbnailPriority, images, onThumbnailScrolling, navigationWhileBusy, onPrepareOpen)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -382,7 +413,13 @@ private fun WorkGalleryContent(
     tabs: List<String> = emptyList(),
     onManageFolders: () -> Unit = {},
     onMove: (Work) -> Unit = {},
-    onReorderTabs: (List<String>) -> Unit = {}
+    onReorderTabs: (List<String>) -> Unit = {},
+    previewRevisions: Map<String, Int> = emptyMap(),
+    onThumbnailPriority: (List<String>) -> Unit = {},
+    images: PreviewImageRepository,
+    onThumbnailScrolling: (Boolean) -> Unit,
+    navigationWhileBusy: Boolean,
+    onPrepareOpen: (Work, Bitmap?, Rect?) -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val configuration = LocalConfiguration.current
@@ -447,6 +484,34 @@ private fun WorkGalleryContent(
                 baseComparator.compare(a, b)
             }
         })
+    }
+
+    val currentPriorityCallback by rememberUpdatedState(onThumbnailPriority)
+    LaunchedEffect(gridState, visibleWorks) {
+        snapshotFlow {
+            val visible = gridState.layoutInfo.visibleItemsInfo.map { it.index }.filter { it in visibleWorks.indices }
+            val nearby = if (visible.isEmpty()) visibleWorks.indices.take(6) else
+                (visible.min()..(visible.max() + 4).coerceAtMost(visibleWorks.lastIndex)).toList()
+            (visible + nearby).distinct().map { visibleWorks[it].id }
+        }.collect { currentPriorityCallback(it) }
+    }
+    val currentScrollingCallback by rememberUpdatedState(onThumbnailScrolling)
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.isScrollInProgress }.collect { currentScrollingCallback(it) }
+    }
+    DisposableEffect(Unit) { onDispose { currentPriorityCallback(emptyList()); currentScrollingCallback(false) } }
+    // Decode only nearby images; the repository joins duplicate requests from other consumers.
+    LaunchedEffect(gridState, visibleWorks, images) {
+        snapshotFlow {
+            val visible = gridState.layoutInfo.visibleItemsInfo.map { it.index }.filter { it in visibleWorks.indices }
+            if (visible.isEmpty()) visibleWorks.indices.take(6) else
+                (visible.min()..(visible.max() + 4).coerceAtMost(visibleWorks.lastIndex)).toList()
+        }.collectLatest { indices ->
+            indices.map { visibleWorks[it] }.forEach { work ->
+                val input = if (work.isSample) capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
+                images.load(work.id, work, input)
+            }
+        }
     }
 
     LaunchedEffect(state.jumpSequence, visibleWorks, gridState) {
@@ -621,24 +686,27 @@ private fun WorkGalleryContent(
                 verticalArrangement = Arrangement.spacedBy(if (landscape) 16.dp else 20.dp)) {
                 items(visibleWorks, key = { it.id }, contentType = { if (it.isSample) "sample_card" else "work_card" }) { work ->
                     val isSelected = if (state.selecting) work.id in state.selectedIds else work.id == activeId
-                    val bitmap by produceState<android.graphics.Bitmap?>(null, work.id,
-                        if (work.id == updatedPreviewId) previewRevision else 0) {
-                        value = withContext(Dispatchers.IO) {
-                            ensureActive()
-                            val file = workPreviewFile(cacheDir, work.id)
-                            previewBitmaps.get(file.path) ?: runCatching {
-                                val decoded = BitmapFactory.decodeFile(file.path)
-                                ensureActive()
-                                decoded?.also { previewBitmaps.put(file.path, it) }
-                            }.getOrElse {
-                                if (it is kotlinx.coroutines.CancellationException) throw it
-                                null
-                            }
+                    val bitmap by produceState(images.peek(work.id), work.id, work, images,
+                        previewRevisions[work.id] ?: if (work.id == updatedPreviewId) previewRevision else 0) {
+                        val sampleInput = if (work.isSample) capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
+                        val filename = images.file(work.id).name
+                        images.changes.filter { it == null || it == filename }.onStart { emit(null) }.collectLatest {
+                            val loaded = images.load(work.id, work, sampleInput)
+                            // Keep the current image while a replacement is being generated.
+                            if (loaded != null || value == null) value = loaded
                         }
+                    }
+                    var thumbnailBounds by remember(work.id) { mutableStateOf<Rect?>(null) }
+                    fun openWork(openMenu: Boolean) {
+                        onPrepareOpen(work, bitmap, thumbnailBounds)
+                        onOpen(work, openMenu)
                     }
                     Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null).clip(RoundedCornerShape(6.dp))
                         .combinedClickable(
-                            onClick = { if (!busy) { if (state.selecting) state.toggleSelected(work.id) else onOpen(work, false) } },
+                            onClick = {
+                                if (state.selecting) { if (!busy) state.toggleSelected(work.id) }
+                                else if (!busy || navigationWhileBusy) openWork(false)
+                            },
                             onLongClickLabel = text("作品メニュー"),
                             onLongClick = { if (!busy) { if (state.selecting) state.toggleSelected(work.id) else state.cardMenuWorkId = work.id } }
                         )
@@ -646,19 +714,17 @@ private fun WorkGalleryContent(
                         Box(Modifier.fillMaxWidth()
                             .then(if (landscape) Modifier.height(landscapeThumbnailHeight) else Modifier.aspectRatio(1f))
                             .graphicsLayer {
-                                alpha = if (suppressMorphThumbnail && work.id == morphWorkId)
-                                    (1f - (1f - morphProgress) / GALLERY_EDGE_FADE).coerceIn(0f, 1f)
-                                else 1f
+                                alpha = if (suppressMorphThumbnail && work.id == morphWorkId) 0f else 1f
                             }
-                            .then(if (work.id == morphWorkId) Modifier.onGloballyPositioned { coordinates ->
+                            .onGloballyPositioned { coordinates ->
                                 val visible = gridState.layoutInfo.visibleItemsInfo.any { it.key == work.id }
                                 val bounds = coordinates.boundsInRoot()
                                 // A clipped card is a fade destination, not a smaller morph destination.
                                 val fullyVisible = bounds.width >= coordinates.size.width - 1f &&
                                     bounds.height >= coordinates.size.height - 1f
-                                currentBoundsCallback(if (visible && fullyVisible && bounds.width > 0f &&
-                                    bounds.height > 0f) bounds else null)
-                            } else Modifier)
+                                thumbnailBounds = bounds.takeIf { visible && fullyVisible && it.usableGalleryBounds() }
+                                if (work.id == morphWorkId) currentBoundsCallback(thumbnailBounds)
+                            }
                             .clip(RoundedCornerShape(6.dp))
                             .background(colors.surfaceContainer)
                             .then(if (isSelected) Modifier.border(1.dp, colors.primary.copy(alpha = 0.65f),
@@ -795,7 +861,7 @@ private fun WorkGalleryContent(
                                         },
                                         onClick = {
                                             state.cardMenuWorkId = null
-                                            onOpen(work, false)
+                                            openWork(false)
                                         }
                                     )
                                     DropdownMenuItem(
@@ -809,7 +875,7 @@ private fun WorkGalleryContent(
                                         },
                                         onClick = {
                                             state.cardMenuWorkId = null
-                                            onOpen(work, true)
+                                            openWork(true)
                                         }
                                     )
                                 }

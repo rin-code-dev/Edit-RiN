@@ -75,4 +75,40 @@ class DraftSnapshotRepositoryTest {
             assertEquals("latest", repo.loadCompatible("local", listOf(work))!!.first.code)
         } finally { repo.close() }
     }
+    @Test fun delayedHashResultCannotReplaceNewerSaveOrResurrectClearedDraft() {
+        val repo = DraftSnapshotRepository(File(temporary.newFolder(), "draft.json"))
+        try {
+            val old = repo.beginGeneration()
+            val newer = repo.beginGeneration()
+            repo.save("a", "latest", emptyMap(), generationToken = newer)
+            repo.save("a", "obsolete", emptyMap(), generationToken = old)
+            repo.awaitPendingWrites()
+            assertEquals("latest", repo.load()!!.first.code)
+            val computing = repo.beginGeneration()
+            repo.clear()
+            repo.save("a", "late hash", emptyMap(), generationToken = computing)
+            repo.awaitPendingWrites()
+            assertNull(repo.load())
+        } finally { repo.close() }
+    }
+
+    @Test fun clearingWhileHashCalculationRunsRejectsItsResult() {
+        val repo = DraftSnapshotRepository(File(temporary.newFolder(), "draft.json"))
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        try {
+            val token = repo.beginGeneration()
+            repo.compute(token) {
+                entered.countDown()
+                check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                repo.save("a", "obsolete result", emptyMap(), generationToken = token)
+            }
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            repo.clear()
+            release.countDown()
+            repo.awaitPendingWrites()
+            assertNull(repo.load())
+        } finally { release.countDown(); repo.close() }
+    }
+
 }

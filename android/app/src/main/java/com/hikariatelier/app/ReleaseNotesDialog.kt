@@ -39,6 +39,49 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "2.3.2",
+        versionCode = 32,
+        titleEn = "What's New in v2.3.2",
+        titleJa = "v2.3.2 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_history,
+                titleEn = "Android 11 or Later",
+                titleJa = "対応OSをAndroid 11以降に変更",
+                descEn = "v2.3.2 requires Android 11 or later. Android 6–10 devices cannot install this version; the previously published v2.3.1 supports Android 6.0 or later.",
+                descJa = "v2.3.2はAndroid 11以降に対応しています。Android 6〜10の端末にはインストールできません。公開済みのv2.3.1はAndroid 6.0以降に対応しています。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_camera,
+                titleEn = "Thumbnail Generation Improvements",
+                titleJa = "サムネイルの生成を改善",
+                descEn = "Added bundled thumbnails for supported samples. Generation prioritizes visible works, pauses during scrolling, saving, and recording, and adjusts to device load and memory.",
+                descJa = "一部のサンプルにサムネイル画像を同梱しました。一覧で見えている作品から優先して生成し、スクロール・保存・録画中は一時停止します。端末の負荷や空きメモリに応じて処理を調整します。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Thumbnail Cache Improvements",
+                titleJa = "サムネイルの再生成を見直し",
+                descEn = "Unchanged thumbnails are reused. Changes to code, assets, or parameters trigger an update, while newer images from the visible preview take priority.",
+                descJa = "コード・素材・パラメータの変更を確認し、変わっていないサムネイルを再利用します。表示中のプレビューから保存した新しい画像を優先します。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_play,
+                titleEn = "Gallery and Preview Transitions",
+                titleJa = "作品一覧からプレビューへの切り替えを改善",
+                descEn = "Revised gallery and editor animations. The selected thumbnail stays visible until the preview’s first frame is drawn.",
+                descJa = "作品一覧とエディタの切り替えアニメーションを見直しました。プレビューの最初の描画が完了するまでは、選んだ作品のサムネイルを表示します。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Work Switching During Saves",
+                titleJa = "保存中の作品切り替えを改善",
+                descEn = "Selecting another work during a save now waits for completion and opens your latest selection. If saving fails, the switch is canceled and your current edits are kept.",
+                descJa = "保存中に別の作品を選ぶと、保存完了後に最後に選んだ作品へ切り替わります。保存に失敗した場合は切り替えを中止し、現在の編集内容を残します。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.3.1",
         versionCode = 31,
         titleEn = "What's New in v2.3.1",
