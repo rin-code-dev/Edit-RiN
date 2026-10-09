@@ -331,6 +331,7 @@ const hostFrame = window.requestAnimationFrame.bind(window);
 const cancelHostFrame = window.cancelAnimationFrame.bind(window);
 const instances = new Map();
 let sketchReady = false, readyReported = false, hostPaused = false;
+let visualReadyReported = false, visualReadyPending = false;
 let recordingSession = null;
 const canvasSizeObservers = new Map();
 let orientationBase = null, compositeCanvas = null, compositeFrame = 0;
@@ -348,7 +349,7 @@ function drawCallback(instance, api = scope(instance) || window) {
   return instance?._isGlobal ? window.draw : api.draw;
 }
 function track(instance) {
-  if (!instances.has(instance)) instances.set(instance, { ready: false, pausedLoop: null });
+  if (!instances.has(instance)) instances.set(instance, { ready: false, drawn: false, pausedLoop: null });
   return instances.get(instance);
 }
 function instanceCanvas(instance) {
@@ -576,6 +577,54 @@ async function publishPng(payload, width, height) {
 }
 
 let captureBusy = false;
+// Only the disposable thumbnail page may stop/redraw a sketch. A setup-ready
+// notification can arrive before p5's first draw (including async p5 2 draws).
+window.__editRinCaptureThumbnail = async () => {
+  if (!config.thumbnailOnly || captureBusy) return;
+  captureBusy = true;
+  let encoded = '';
+  try {
+    let entries;
+    do {
+      if (window.__editKiroRuntimeHasError) return;
+      entries = canvasEntries();
+      if (entries.length && entries.every(({ instance }) => {
+        const api = scope(instance) || window;
+        return !instance || (typeof drawCallback(instance, api) !== 'function' || track(instance).drawn) && !instance._inUserDraw;
+      })) break;
+      await new Promise(resolve => hostFrame(resolve));
+    } while (true);
+    for (const { instance } of entries) (scope(instance) || window).noLoop?.();
+    // redraw resolves after p5 2 renderer submission and refreshes WebGL
+    // canvases whose drawing buffer is discarded after presentation.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      for (const { instance } of entries) {
+        const api = scope(instance) || window;
+        if (typeof drawCallback(instance, api) === 'function') await api.redraw?.();
+      }
+      if (window.__editKiroRuntimeHasError) return;
+      const source = sketchCanvas();
+      if (!source?.width || !source.height) return;
+      const copy = document.createElement('canvas');
+      const scale = Math.min(1, 480 / Math.max(source.width, source.height));
+      copy.width = Math.max(1, Math.round(source.width * scale));
+      copy.height = Math.max(1, Math.round(source.height * scale));
+      const context = copy.getContext('2d', { willReadFrequently: true });
+      context.drawImage(source, 0, 0, copy.width, copy.height);
+      const pixels = context.getImageData(0, 0, copy.width, copy.height).data;
+      if (pixels.some((value, index) => index % 4 === 3 && value > 0)) {
+        encoded = copy.toDataURL('image/png').split(',')[1];
+        break;
+      }
+      await new Promise(resolve => hostFrame(resolve));
+    }
+  } catch (_) {
+    // Missing/tainted canvases are failed captures, never cached blank images.
+  } finally {
+    captureBusy = false;
+    notifyAndroid('onThumbnailReady', encoded);
+  }
+};
 window.__editKiroCaptureScreenshot = async (scale = 1) => {
   if (captureBusy) return;
   captureBusy = true;
@@ -1178,6 +1227,21 @@ const resizeObserver =
     : null;
 resizeObserver?.observe(document.documentElement);
 
+// Setup completion can precede the first canvas draw. Signal the visual handoff separately.
+function maybeVisualReady() {
+  if (!readyReported || visualReadyReported || visualReadyPending || window.__editKiroRuntimeHasError) return;
+  if ([...instances].some(([instance, state]) => !state.ready ||
+      (!state.drawn && typeof drawCallback(instance) === 'function'))) return;
+  visualReadyPending = true;
+  hostFrame(() => {
+    visualReadyPending = false;
+    if (visualReadyReported || window.__editKiroRuntimeHasError ||
+        [...instances].some(([instance, state]) => !state.ready ||
+      (!state.drawn && typeof drawCallback(instance) === 'function'))) return;
+    visualReadyReported = true;
+    notifyAndroid('onPreviewVisualReady');
+  });
+}
 function maybeReady() {
   if (window.__editKiroRuntimeHasError || readyReported) return;
   if ([...instances.values()].some(state => !state.ready)) return;
@@ -1188,7 +1252,7 @@ function maybeReady() {
   notifyAndroid('onStatusChanged', hostPaused ? '一時停止中' : '実行中');
   hostFrame(() => {
     if (readyReported || window.__editKiroRuntimeHasError || [...instances.values()].some(state => !state.ready)) return;
-    readyReported = true; notifyAndroid('onPreviewReady');
+    readyReported = true; notifyAndroid('onPreviewReady'); maybeVisualReady();
   });
 }
 async function afterSetup() {
@@ -1209,10 +1273,15 @@ async function afterSetup() {
   }
   scheduleFit(true); maybeReady();
 }
+function afterDraw() {
+  const instance = this === window ? window.p5?.instance || [...instances.keys()].find(value => value._isGlobal) || this : this;
+  track(instance).drawn = true;
+  maybeVisualReady();
+}
 function removeInstance() {
   const canvas = instanceCanvas(this);
   canvasSizeObservers.get(canvas)?.disconnect(); canvasSizeObservers.delete(canvas);
-  instances.delete(this); scheduleFit(true); maybeReady();
+  instances.delete(this); scheduleFit(true); maybeReady(); maybeVisualReady();
 }
 const hookedConstructors = new WeakSet();
 function attachP5(constructor) {
@@ -1222,10 +1291,12 @@ function attachP5(constructor) {
     constructor.registerAddon((p5, prototype, hooks) => {
       hooks.presetup = function () { track(this); };
       hooks.postsetup = afterSetup; hooks.remove = removeInstance;
+      hooks.postdraw = afterDraw;
     });
   } else if (typeof constructor.prototype.registerMethod === 'function') {
     constructor.prototype.registerMethod('init', function () { track(this); });
     constructor.prototype.registerMethod('afterSetup', afterSetup);
+    constructor.prototype.registerMethod('post', afterDraw);
     constructor.prototype.registerMethod('remove', removeInstance);
   }
   const origDraw = constructor.prototype._draw;

@@ -75,6 +75,7 @@ internal data class EditorWorkspaceSlots(
     val preview: @Composable (Modifier) -> Unit,
     val gallery: @Composable (Modifier) -> Unit = {},
     val galleryPreview: @Composable (Modifier) -> Unit = {},
+    val previewChrome: @Composable (Modifier) -> Unit = {},
     val landscapeGalleryBar: @Composable () -> Unit = {},
 )
 
@@ -203,7 +204,6 @@ internal fun EditorWorkspaceLayout(
                     Row(
                         modifier =
                             workspaceSize
-                                .graphicsLayer { alpha = 1f - galleryProgress }
                                 .then(if (galleryPresent) Modifier.clearAndSetSemantics {} else Modifier)
                                 .focusProperties { if (galleryPresent) canFocus = false }
                                 .onPreviewKeyEvent { galleryPresent }
@@ -228,6 +228,7 @@ internal fun EditorWorkspaceLayout(
                                 modifier = Modifier
                                     .weight(1f - state.animatedLandscapePreviewFraction)
                                     .fillMaxHeight()
+                                    .clipToBounds()
                             ) {
                                 AnimatedVisibility(
                                     visible = !state.editorFocused,
@@ -248,7 +249,7 @@ internal fun EditorWorkspaceLayout(
                                                 shrinkTowards = Alignment.Top
                                             )
                                 ) {
-                                    slots.landscapeBar()
+                                    Box(Modifier.galleryChrome(galleryProgress, GalleryPart.TITLE)) { slots.landscapeBar() }
                                 }
 
                                 AnimatedVisibility(
@@ -257,7 +258,7 @@ internal fun EditorWorkspaceLayout(
                                     exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                 ) {
                                     slots.console(
-                                        Modifier.padding(bottom = 6.dp)
+                                        Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 6.dp)
                                     )
                                 }
 
@@ -267,7 +268,7 @@ internal fun EditorWorkspaceLayout(
                                     exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                 ) {
                                     slots.previewActions(
-                                        Modifier.padding(bottom = 6.dp)
+                                        Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 6.dp)
                                     )
                                 }
 
@@ -275,10 +276,11 @@ internal fun EditorWorkspaceLayout(
                                     Modifier
                                         .weight(1f)
                                         .fillMaxWidth()
+                                        .galleryEditorReveal(galleryProgress, true, state.landscapeEditorOnLeft)
                                 )
 
                                 slots.completions(
-                                    Modifier.padding(top = 6.dp)
+                                    Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 6.dp)
                                 )
 
                                 AnimatedVisibility(
@@ -287,7 +289,7 @@ internal fun EditorWorkspaceLayout(
                                     exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                 ) {
                                     slots.accessory(
-                                        Modifier.padding(top = 6.dp)
+                                        Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 6.dp)
                                     )
                                 }
                             }
@@ -307,7 +309,8 @@ internal fun EditorWorkspaceLayout(
 
                                 },
                                 onLabelVisibilityChanged = { actions.onSplitLabelChanged(it) },
-                                textTranslator = textTranslator
+                                textTranslator = textTranslator,
+                                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.SECONDARY)
                             )
                         }
 
@@ -339,17 +342,17 @@ internal fun EditorWorkspaceLayout(
                     }
                     if (galleryPresent) {
                         Box(Modifier.matchParentSize().blockGalleryInput())
-                        Column(Modifier.matchParentSize().background(colors.background)
-                            .graphicsLayer { alpha = galleryProgress }
+                        Column(Modifier.matchParentSize()
+                            .graphicsLayer { alpha = galleryLayerAlpha(galleryProgress) }
+                            .background(colors.background)
                             .then(if (galleryProgress < 1f) Modifier.clearAndSetSemantics {} else Modifier)) {
                             slots.landscapeGalleryBar()
                             slots.gallery(Modifier.fillMaxWidth().weight(1f))
                         }
-                        slots.galleryPreview(Modifier.matchParentSize())
-                        if (galleryProgress < 1f) {
-                            Box(Modifier.matchParentSize().blockGalleryInput())
-                        }
                     }
+                    slots.galleryPreview(Modifier.matchParentSize())
+                    slots.previewChrome(Modifier.matchParentSize())
+                    if (galleryPresent && galleryProgress < 1f) Box(Modifier.matchParentSize().blockGalleryInput())
                 }
 
             } else {
@@ -381,7 +384,6 @@ internal fun EditorWorkspaceLayout(
                     }
                     Column(
                         editorSize
-                            .graphicsLayer { alpha = 1f - galleryProgress }
                             .then(if (galleryPresent) Modifier.clearAndSetSemantics {} else Modifier)
                             .focusProperties { if (galleryPresent) canFocus = false }
                             .onPreviewKeyEvent { galleryPresent }
@@ -394,11 +396,14 @@ internal fun EditorWorkspaceLayout(
                             compact = useWideEditingPreview
                         ) { previewModifier -> slots.preview(previewModifier) }
 
+                        // Retain the editing panel's measurement; reveal each part on the shared timeline.
+                        Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         if (state.showResizeHandles && !state.editorFocused) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(28.dp)
+                                .galleryChrome(galleryProgress, GalleryPart.SECONDARY)
                                 .pointerInput(state.activeWorkId) {
                                     var accumulated = 0f
                                     var ratioIndex = PREVIEW_ASPECT_RATIOS
@@ -562,7 +567,7 @@ internal fun EditorWorkspaceLayout(
                                     )
                             ) {
 
-                                slots.controlBar()
+                                Box(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS)) { slots.controlBar() }
                             }
                         }
 
@@ -586,7 +591,7 @@ internal fun EditorWorkspaceLayout(
                         ) {
 
                             slots.console(
-                                Modifier
+                                Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS)
                                         .padding(
                                             horizontal =
                                                 12.dp
@@ -618,7 +623,7 @@ internal fun EditorWorkspaceLayout(
                         ) {
 
                             slots.previewActions(
-                                Modifier
+                                Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS)
                                         .padding(
                                             horizontal =
                                                 12.dp
@@ -636,6 +641,7 @@ internal fun EditorWorkspaceLayout(
                                         1f
                                     )
                                     .fillMaxWidth()
+                                    .galleryEditorReveal(galleryProgress, false, state.landscapeEditorOnLeft)
                                     .padding(
                                         horizontal =
                                             12.dp
@@ -647,7 +653,7 @@ internal fun EditorWorkspaceLayout(
                         )
 
                         slots.completions(
-                            Modifier.padding(
+                            Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(
                                 start = 12.dp,
                                 end = 12.dp,
                                 top = 6.dp
@@ -660,13 +666,14 @@ internal fun EditorWorkspaceLayout(
                             exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                         ) {
                             slots.accessory(
-                                Modifier.padding(
+                                Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(
                                     start = 12.dp,
                                     end = 12.dp,
                                     top = 6.dp,
                                     bottom = 2.dp
                                 )
                             )
+                        }
                         }
                     }
                     if (galleryPresent) {
@@ -676,18 +683,17 @@ internal fun EditorWorkspaceLayout(
                         slots.gallery(
                             Modifier
                                 .matchParentSize()
+                                .graphicsLayer { alpha = galleryLayerAlpha(galleryProgress) }
                                 .background(colors.background)
-                                .graphicsLayer { alpha = galleryProgress }
                                 .then(
                                     if (galleryProgress < 1f) Modifier.clearAndSetSemantics {}
                                     else Modifier
                                 )
                         )
-                        slots.galleryPreview(Modifier.matchParentSize())
-                        if (galleryProgress < 1f) {
-                            Box(Modifier.matchParentSize().blockGalleryInput())
-                        }
                     }
+                    slots.galleryPreview(Modifier.matchParentSize())
+                    slots.previewChrome(Modifier.matchParentSize())
+                    if (galleryPresent && galleryProgress < 1f) Box(Modifier.matchParentSize().blockGalleryInput())
                 }
             }
         }

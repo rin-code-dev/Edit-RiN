@@ -59,7 +59,7 @@ function draw() {
 
 ## Installation & Requirements
 
-- **Supported OS**: Android 6.0 (API level 23) or later.
+- **Supported OS**: Android 11 (API level 30) or later for v2.3.2. The published v2.3.1 release supports Android 6.0 or later.
 - **Download**: Get the latest signed APK from [GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases).
 - **Updates**: Starting with the v2.3.0 release app, download future updates within the app, then install through Android’s confirmation screen. Download progress and cancellation are available.
 
@@ -70,7 +70,8 @@ function draw() {
 ### Prerequisites
 - JDK 25 (Java toolchain)
 - Android SDK matching `compileSdkVersion` in [android/variables.gradle](android/variables.gradle) (currently API 37)
-- Gradle via the included wrapper (currently 9.8.0); no separate Gradle installation is needed
+- Gradle via the included wrapper (currently 9.8.1); no separate Gradle installation is needed
+- Android Gradle Plugin 9.4.1, Kotlin / Compose compiler 2.4.21, and SDK Build Tools 37.0.0 (configured by the project)
 
 ### Build Commands
 ```sh
@@ -117,7 +118,7 @@ Edit:RiN は、Android 端末で p5.js のコードを書き、ジェネラテ�
 - アプリ内更新：v2.3.0以降の正式版では、次回以降の更新用APKをアプリ内でダウンロードできます。進捗の確認や中止に対応し、Androidの確認画面からインストールします。
 - プライバシー：作品の編集・実行はオフラインでも利用できます。広告やトラッキングはありません。公開作品の取り込みや更新確認には通信が必要です。
 
-Android 6.0 以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+v2.3.2はAndroid 11以降に対応しています。公開済みのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
 
 詳しい使い方は、[素材ガイド](ASSETS.md)や[実行環境とサウンド](P5_RUNTIME_AND_SOUND.md)をご覧ください。
 

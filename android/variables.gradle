@@ -1,6 +1,7 @@
 ext {
-    minSdkVersion = 23
+    minSdkVersion = 30
     compileSdkVersion = 37
+    buildToolsVersion = '37.0.0'
     targetSdkVersion = 35
     androidxActivityVersion = '1.9.2'
     androidxCoreVersion = '1.15.0'

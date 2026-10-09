@@ -25,6 +25,7 @@ internal interface WorkPersistence {
         if (save(folderUri, works, activeId)) WorkSaveResult.Saved else WorkSaveResult.Failed
     fun loadWork(folderUri: Uri?, workId: String): Work? =
         (if (folderUri == null) loadLocal() else loadFolder(folderUri))?.works?.find { it.id == workId }
+    fun loadWorkLowPriority(folderUri: Uri?, workId: String): Work? = loadWork(folderUri, workId)
     fun materializeWorks(folderUri: Uri?, works: List<Work>): List<Work> = works
 }
 
@@ -54,15 +55,15 @@ internal class WorkStoreRepository(
         return if (id == null) store else store.copy(activeWorkId = id)
     }
 
-    fun pruneUnusedAssets(works: List<Work>, previewAssets: PreviewAssets) {
+    fun pruneUnusedAssets(works: List<Work>, previewAssets: PreviewAssets) = runHighPriority {
         val local = AtomicFile(File(context.filesDir, "local-works.json"))
         val localWorks = if (local.baseFile.exists() || File(local.baseFile.path + ".bak").exists()) {
             runCatching { local.openRead().bufferedReader().use { parseWorkStoreJson(it.readText()) } }
-                .getOrNull()?.works ?: return
+                .getOrNull()?.works ?: return@runHighPriority
         } else emptyList()
         val recoveryHashes = runCatching {
             localSplit.retainedAssetHashes() + folderSplits.values.flatMap { it.retainedAssetHashes() }
-        }.getOrNull() ?: return // Unreadable recovery data must never cause asset deletion.
+        }.getOrNull() ?: return@runHighPriority // Unreadable recovery data must never cause asset deletion.
         val keep = (works + localWorks).flatMap { it.assets.values }.map { it.hash }.toSet() +
             previewAssets.assets.values.map { it.hash } + recoveryHashes
         assetStorage.prune(keep)
@@ -75,17 +76,15 @@ internal class WorkStoreRepository(
             ?: error("Invalid local works")
     }
 
-    @Synchronized
-    override fun loadLocal(): WorkStore? = (loadResult(null, eager = true) as? WorkLoadResult.Loaded)?.store
+    override fun loadLocal(): WorkStore? = runHighPriority { (loadResult(null, eager = true) as? WorkLoadResult.Loaded)?.store }
 
-    @Synchronized
-    override fun loadResult(folderUri: Uri?, eager: Boolean): WorkLoadResult {
+    override fun loadResult(folderUri: Uri?, eager: Boolean): WorkLoadResult = runHighPriority {
         val key = folderUri?.toString() ?: "local"
-        return try {
+        try {
             val directory = folderUri?.let { DocumentFile.fromTreeUri(context, it) }
             if (folderUri != null && (directory == null || !directory.exists() || !directory.canRead())) {
                 unreadableFolders.add(key)
-                return WorkLoadResult.Failed(WorkLoadFailure.UNAVAILABLE, "Cannot access work folder")
+                return@runHighPriority WorkLoadResult.Failed(WorkLoadFailure.UNAVAILABLE, "Cannot access work folder")
             }
             val split = if (directory == null) localSplit else splitFolder(directory)
             val preferredId = selectedWorkId(folderUri)
@@ -119,7 +118,6 @@ internal class WorkStoreRepository(
         // Every loaded work is user-authored; never migrate by a former sample ID.
     }
 
-    @Synchronized
     private fun saveLocalResult(works: List<Work>, activeId: String): WorkSaveResult {
         if ("local" in unreadableFolders) return WorkSaveResult.Failed
         return runCatching {
@@ -236,45 +234,63 @@ internal class WorkStoreRepository(
         }
     }
 
-    @Synchronized
-    override fun loadFolder(folderUri: Uri): WorkStore? =
+    private val priority = WorkStoragePriority()
+    private fun <T> runHighPriority(block: () -> T): T = priority.high(block)
+    private fun <T> runLowPriority(block: () -> T): T = priority.low(block)
+
+    override fun loadFolder(folderUri: Uri): WorkStore? = runHighPriority {
         (loadResult(folderUri, eager = true) as? WorkLoadResult.Loaded)?.store
-
-    @Synchronized
-    override fun loadWork(folderUri: Uri?, workId: String): Work? {
-        if (folderUri == null) return localSplit.loadWork(workId)?.also { work ->
-            check(work.assets.values.all(assetStorage::contains))
-        }
-        val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
-        return splitFolder(directory).loadWork(workId)?.also { restoreFolderAssets(directory, listOf(it)) }
     }
 
-    @Synchronized
-    override fun materializeWorks(folderUri: Uri?, works: List<Work>): List<Work> {
-        if (folderUri == null) return localSplit.materializeWorks(works).also { full ->
-            check(full.flatMap { it.assets.values }.all(assetStorage::contains))
+    override fun loadWork(folderUri: Uri?, workId: String): Work? = runHighPriority {
+        if (folderUri == null) {
+            localSplit.loadWork(workId)?.also { work ->
+                check(work.assets.values.all(assetStorage::contains))
+            }
+        } else {
+            val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
+            splitFolder(directory).loadWork(workId)?.also { restoreFolderAssets(directory, listOf(it)) }
         }
-        val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
-        return splitFolder(directory).materializeWorks(works).also { restoreFolderAssets(directory, it) }
     }
 
-    @Synchronized
-    override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean =
+    override fun loadWorkLowPriority(folderUri: Uri?, workId: String): Work? = runLowPriority {
+        if (folderUri == null) {
+            localSplit.loadWork(workId)?.also { work ->
+                check(work.assets.values.all(assetStorage::contains))
+            }
+        } else {
+            val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
+            splitFolder(directory).loadWork(workId)?.also { restoreFolderAssets(directory, listOf(it)) }
+        }
+    }
+
+    override fun materializeWorks(folderUri: Uri?, works: List<Work>): List<Work> = runHighPriority {
+        if (folderUri == null) {
+            localSplit.materializeWorks(works).also { full ->
+                check(full.flatMap { it.assets.values }.all(assetStorage::contains))
+            }
+        } else {
+            val directory = checkNotNull(DocumentFile.fromTreeUri(context, folderUri))
+            splitFolder(directory).materializeWorks(works).also { restoreFolderAssets(directory, it) }
+        }
+    }
+
+    override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean = runHighPriority {
         saveResult(folderUri, works, activeId) == WorkSaveResult.Saved
+    }
 
-    @Synchronized
-    override fun saveResult(folderUri: Uri?, works: List<Work>, activeId: String): WorkSaveResult {
+    override fun saveResult(folderUri: Uri?, works: List<Work>, activeId: String): WorkSaveResult = runHighPriority {
         val result = if (folderUri == null) saveLocalResult(works, activeId) else {
-            if (folderUri.toString() in unreadableFolders) return WorkSaveResult.Failed
+            if (folderUri.toString() in unreadableFolders) return@runHighPriority WorkSaveResult.Failed
             try {
-                val directory = DocumentFile.fromTreeUri(context, folderUri) ?: return WorkSaveResult.Failed
+                val directory = DocumentFile.fromTreeUri(context, folderUri) ?: return@runHighPriority WorkSaveResult.Failed
                 val split = splitFolder(directory)
                 if (split.loadIfNeeded() == null) {
                     loadWorkDocument(documents(directory), worksFileName)?.let { legacy ->
                         restoreFolderAssets(directory, legacy.works)
                         normalizeLegacyRuntime(legacy)
                         val migrated = split.saveResult(legacy.works, legacy.activeWorkId)
-                        if (migrated != WorkSaveResult.Saved) return migrated
+                        if (migrated != WorkSaveResult.Saved) return@runHighPriority migrated
                     }
                 }
                 saveFolderAssets(directory, split.worksWithChangedAssets(works))
@@ -285,6 +301,6 @@ internal class WorkStoreRepository(
             }
         }
         if (result == WorkSaveResult.Saved) rememberSelectedWork(folderUri, activeId)
-        return result
+        result
     }
 }

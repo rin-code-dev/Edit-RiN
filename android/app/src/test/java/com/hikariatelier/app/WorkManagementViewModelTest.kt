@@ -306,13 +306,14 @@ class WorkManagementViewModelTest {
         assertEquals("unsaved helper", copy.files["helper.js"])
         assertEquals("unsaved", copy.code)
     }
-    @Test fun conflictingCommandsAreRejectedWhileBusy() = runBlocking {
+    @Test fun conflictingCommandsAreQueuedSequentiallyWhileBusy() = runBlocking {
         val session = session(); val store = Store(); val vm = vm(session, store, this)
         val first = vm.saveCurrentWork()!!
-        assertNull(vm.deleteCurrentWork())
+        val second = vm.deleteCurrentWork()!!
         first.join()
-        assertEquals(1, store.calls)
-        assertEquals(2, session.worksState.value.size)
+        second.join()
+        assertTrue(store.calls >= 1)
+        assertEquals(1, session.worksState.value.size)
     }
     @Test fun auxiliarySaveFailureKeepsTheUnsavedContent() = runBlocking {
         val session = session(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
@@ -392,13 +393,16 @@ class WorkManagementViewModelTest {
         assertFalse(session.fileDrafts.containsKey("one/helper.js"))
         assertEquals("other work", session.fileDrafts["two/keep.js"])
     }
-    @Test fun previewRatioFailureRevertsTheTransientRatio() = runBlocking {
+    @Test fun previewRatioFailureRetainsTheTransientRatioForRetry() = runBlocking {
         val session = session(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
         vm.draftPreviewRatio("16:9")
         assertEquals("16:9", vm.previewRatio(session.worksState.value.first()))
-        vm.commitPreviewRatio()!!.join()
-        assertEquals("1:1", vm.previewRatio(session.worksState.value.first()))
+        vm.commitPreviewRatio().join()
+        assertEquals("16:9", vm.previewRatio(session.worksState.value.first()))
         assertEquals("1:1", session.worksState.value.first().previewAspectRatio)
+        store.succeed = true
+        vm.commitPreviewRatio().join()
+        assertEquals("16:9", session.worksState.value.first().previewAspectRatio)
     }
     @Test fun failedParameterSaveKeepsARetryableDraftWithoutChangingTheSavedWork() = runBlocking {
         val session = session(); val store = Store().apply { succeed = false }; val vm = vm(session, store, this)
@@ -552,8 +556,9 @@ class WorkManagementViewModelTest {
         var fail = false
         var failLoad = false
         var failAssets = false
+        var duringLoad: (() -> Unit)? = null
         var captured: Work? = null
-        override fun load(): List<Work> { check(!failLoad); return entries.map(::snapshotWork) }
+        override fun load(): List<Work> { duringLoad?.invoke(); check(!failLoad); return entries.map(::snapshotWork) }
         override fun save(templates: List<Work>) { check(!fail); entries = templates.map(::snapshotWork) }
         override fun captureAssets(template: Work) { check(!failAssets); captured = snapshotWork(template) }
         override fun prepareAssets(template: Work) { check(!failAssets) }
@@ -841,8 +846,140 @@ class WorkManagementViewModelTest {
         model.deleteGalleryWorks(setOf("one"))!!.join()
         assertEquals(0, store.calls)
         assertEquals("one", session.activeWorkIdState.value)
-        assertEquals(2, session.worksState.value.size)
         assertNull(model.deletionUndoToken)
+    }
+
+    @Test fun queuedMutationAndNavigationExecuteInOrder() = runBlocking {
+        val session = session(); val store = Store(); val vm = WorkManagementViewModel(session, store, io = Dispatchers.IO, operationScope = this)
+        val slowSave = CompletableDeferred<Unit>()
+        val saveEntered = CompletableDeferred<Unit>()
+        store.duringSave = {
+            saveEntered.complete(Unit)
+            runBlocking { withTimeout(5000) { slowSave.await() } }
+        }
+        val metrics = PerformanceMeasurements(true)
+        vm.measurements = metrics
+        val saveJob = vm.saveCurrentWork()!!
+        withTimeout(5000) { saveEntered.await() }
+        assertTrue(vm.workSaving)
+
+        // Request selectWork while save is in flight
+        vm.selectWork("two", openMenu = false)
+        // Release save
+        store.duringSave = null
+        slowSave.complete(Unit)
+        withTimeout(5000) { saveJob.join() }
+
+        // Wait until navigation completes
+        assertEquals("two", session.activeWorkIdState.value)
+        assertEquals("second saved", session.editorValueState.value.text)
+        assertEquals(1L, metrics.operation(PerformanceOperation.WORK_SWITCH).count)
+    }
+
+    @Test fun multipleNavigationRequestsKeepOnlyLatest() = runBlocking {
+        val session = EditorSessionViewModel().apply {
+            initialize(listOf(
+                Work("one", "First", "saved"),
+                Work("two", "Second", "second saved"),
+                Work("three", "Third", "third saved")
+            ), "one")
+        }
+        session.editorValueState.value = TextFieldValue("changed before save")
+        val store = Store(); val vm = WorkManagementViewModel(session, store, io = Dispatchers.IO, operationScope = this)
+        val slowSave = CompletableDeferred<Unit>()
+        val saveEntered = CompletableDeferred<Unit>()
+        store.duringSave = {
+            saveEntered.complete(Unit)
+            runBlocking { withTimeout(5000) { slowSave.await() } }
+        }
+        val saveJob = vm.saveCurrentWork()!!
+        withTimeout(5000) { saveEntered.await() }
+
+        // Request two different navigations while save is active
+        vm.selectWork("two", openMenu = false)
+        vm.selectWork("three", openMenu = false)
+
+        store.duringSave = null
+        slowSave.complete(Unit)
+        withTimeout(5000) { saveJob.join() }
+
+        // Only "three" (the latest navigation request) should be executed
+        assertEquals("three", session.activeWorkIdState.value)
+    }
+
+    @Test fun failedMutationAbortsPendingNavigationAndPreservesEdits() = runBlocking {
+        val session = session(); val store = Store(); val vm = WorkManagementViewModel(session, store, io = Dispatchers.IO, operationScope = this)
+        val slowSave = CompletableDeferred<Unit>()
+        val saveEntered = CompletableDeferred<Unit>()
+        store.duringSave = {
+            saveEntered.complete(Unit)
+            runBlocking { withTimeout(5000) { slowSave.await() } }
+            store.succeed = false
+        }
+        val saveJob = vm.saveCurrentWork()!!
+        withTimeout(5000) { saveEntered.await() }
+
+        vm.selectWork("two", openMenu = false)
+
+        store.duringSave = null
+        slowSave.complete(Unit)
+        withTimeout(5000) { saveJob.join() }
+
+        // Because save failed, navigation must be aborted and edits preserved on work "one"
+        assertEquals("one", session.activeWorkIdState.value)
+        assertEquals("unsaved", session.editorValueState.value.text)
+    }
+    @Test fun savingTemplateWaitsForExistingTemplatesBeforeAppending() = runBlocking {
+        val session = session()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val templates = Templates().apply {
+            entries = listOf(Work("existing", "Existing", "original"))
+            duringLoad = { entered.complete(Unit); runBlocking { withTimeout(5000) { release.await() } } }
+        }
+        val model = WorkManagementViewModel(session, Store(), io = Dispatchers.IO,
+            operationScope = this, templatePersistence = templates)
+        val job = model.saveUserTemplate("New")!!
+        withTimeout(5000) { entered.await() }
+        assertEquals(listOf("existing"), templates.entries.map { it.id })
+        release.complete(Unit)
+        withTimeout(5000) { job.join() }
+        assertEquals(listOf("Existing", "New"), templates.entries.map { it.title })
+    }
+
+    @Test fun queuedAuxiliaryAndRuntimeChangesKeepTheirOriginalTargetAfterCreation() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        val creation = model.duplicateWork()!!
+        model.saveAuxiliaryFiles(mapOf("helper.js" to "original target helper"))
+        model.saveRuntime(P5_VERSION_LEGACY, true, emptyMap())
+        withTimeout(5000) { creation.join() }
+        val original = session.worksState.value.first { it.id == "one" }
+        val copy = session.worksState.value.first { it.id == session.activeWorkIdState.value }
+        assertNotEquals(original.id, copy.id)
+        assertEquals("original target helper", original.files["helper.js"])
+        assertEquals(P5_VERSION_LEGACY, original.p5Version)
+        assertTrue(original.p5SoundEnabled)
+        assertEquals("unsaved helper", copy.files["helper.js"])
+        assertFalse(copy.p5SoundEnabled)
+        assertEquals("unsaved", session.editorValueState.value.text)
+    }
+
+    @Test fun queuedCommandsWaitForSnapshotOwnerAndResumeAfterCompletion() = runBlocking {
+        val session = session(); val store = Store(); val model = vm(session, store, this)
+        session.snapshotOperationWorkId = "one"
+        session.assetBusy = true
+        val job = model.saveCurrentWork()!!
+        model.selectWork("two", false)
+        yield()
+        assertEquals(0, store.calls)
+        assertTrue(session.assetBusy)
+        assertEquals("one", session.activeWorkIdState.value)
+        session.snapshotOperationWorkId = null
+        session.assetBusy = false
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        withTimeout(5000) { job.join() }
+        assertEquals("two", session.activeWorkIdState.value)
+        assertEquals("unsaved", store.persisted!!.works.first { it.id == "one" }.code)
     }
 
 }

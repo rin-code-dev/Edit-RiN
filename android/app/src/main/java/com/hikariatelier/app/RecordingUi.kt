@@ -35,9 +35,7 @@ internal fun recordingThumbnail(file: File, mime: String): Bitmap? = runCatching
         val reader = MediaMetadataRetriever()
         try {
             reader.setDataSource(file.path)
-            if (android.os.Build.VERSION.SDK_INT >= 27) {
-                reader.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 480, 480)
-            } else null
+            reader.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 480, 480)
         } finally { reader.release() }
     }
 }.getOrNull()

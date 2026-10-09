@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.3.2 — 2026-10-09
+
+### English
+
+- Changed the minimum supported OS to Android 11 (API 30). Android 6–10 devices cannot install v2.3.2; the previously published v2.3.1 supports Android 6.0 or later.
+- Added bundled thumbnails for supported samples. Gallery thumbnail generation now prioritizes visible works and pauses during scrolling, saving, and recording. Background work also adjusts to device load, available memory, power saving, and temperature.
+- Updated thumbnail caching to detect changes to code, assets, and parameters and avoid regenerating unchanged images. Newer images captured from the visible preview take priority over background captures.
+- Revised transitions between the gallery and editor, including the animation from a selected thumbnail to the preview. The selected work’s thumbnail stays visible while its first preview frame loads.
+- Improved work switching during saves. Switching waits for pending saves and uses the most recently selected destination; a failed save cancels the switch and keeps the current edits.
+- Moved draft checks and image processing off the main UI thread and prioritized opening and saving works over background thumbnail reads.
+
+### 日本語
+
+- 対応OSをAndroid 11（API 30）以降に変更しました。Android 6〜10の端末にはv2.3.2をインストールできません。公開済みのv2.3.1はAndroid 6.0以降に対応しています。
+- 一部のサンプルにサムネイル画像を同梱しました。作品のサムネイルは、一覧で見えている作品から優先して生成し、スクロール・保存・録画中は生成を一時停止します。端末の負荷、空きメモリ、省電力設定、温度に応じて生成処理も調整するようにしました。
+- コード・素材・パラメータの変更を確認し、変わっていないサムネイルを再生成しないようにしました。表示中のプレビューから保存した新しい画像は、バックグラウンドで生成した画像より優先されます。
+- 作品一覧とエディタの切り替えを見直し、選んだサムネイルからプレビューへつながるアニメーションに変更しました。プレビューの最初の描画が完了するまでは、選んだ作品のサムネイルを表示します。
+- 保存中に別の作品を選ぶと、保存完了後に切り替わるようにしました。続けて複数の作品を選んだ場合は、最後に選んだ作品へ移ります。保存に失敗した場合は切り替えを中止し、現在の編集内容を残します。
+- 下書きの確認や画像処理を画面操作とは別の処理に移しました。バックグラウンドのサムネイル用読み込みより、作品を開く操作や保存を優先するようにしました。
+
+
 ## 2.3.1 — 2026-10-09
 
 ### English

@@ -231,11 +231,11 @@ fun EditorColorPickerDialog(
     text: (String) -> String
 ) {
     val initialHsv = remember(initialColor) { colorToHsv(initialColor) }
-    var hue by remember { mutableStateOf(initialHsv[0]) }
-    var saturation by remember { mutableStateOf(initialHsv[1]) }
-    var value by remember { mutableStateOf(initialHsv[2]) }
-    var alpha by remember { mutableStateOf(initialColor.alpha) }
-    var selectedTab by remember { mutableStateOf(0) } // 0 = HSV, 1 = RGB
+    var hue by remember { mutableFloatStateOf(initialHsv[0]) }
+    var saturation by remember { mutableFloatStateOf(initialHsv[1]) }
+    var value by remember { mutableFloatStateOf(initialHsv[2]) }
+    var alpha by remember { mutableFloatStateOf(initialColor.alpha) }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = HSV, 1 = RGB
 
     val currentColor = remember(hue, saturation, value, alpha) {
         hsvToColor(hue, saturation, value, alpha)

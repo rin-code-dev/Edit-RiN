@@ -2,11 +2,9 @@ package com.hikariatelier.app
 
 import android.app.Activity
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock
-import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -203,12 +201,13 @@ internal fun EditorScreen(
     val galleryTarget = workMenuExpanded
     val galleryProgress by animateFloatAsState(
         targetValue = if (galleryTarget) 1f else 0f,
-        animationSpec = androidx.compose.animation.core.spring(
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-        ),
+        animationSpec = tween(GALLERY_MOTION_DURATION_MS, easing = androidx.compose.animation.core.LinearEasing),
         label = "inlineWorkGallery"
     )
     val galleryPresent = galleryTarget || galleryProgress > 0f
+    val galleryHandoffAlpha by animateFloatAsState(
+        if (galleryPresent) 1f else 0f,
+        animationSpec = tween(if (galleryPresent) 0 else 120), label = "galleryPreviewHandoff")
     val keyboardController = LocalSoftwareKeyboardController.current
     val galleryDensity = LocalDensity.current
     var galleryPreviewBitmap by remember(isLandscape, galleryDensity) { mutableStateOf<Bitmap?>(null) }
@@ -216,6 +215,7 @@ internal fun EditorScreen(
     var galleryThumbnailBounds by remember(isLandscape, galleryDensity) { mutableStateOf<Rect?>(null) }
     var galleryPreviewOwner by remember(isLandscape) { mutableStateOf<String?>(null) }
     var galleryPreviewToken by remember(isLandscape) { mutableStateOf<String?>(null) }
+    var gallerySelectionPrepared by remember(isLandscape) { mutableStateOf(false) }
 
     var showConsole by consoleViewModel::showConsole
     var showSearchDialog by searchReplaceViewModel::showSearchDialog
@@ -767,9 +767,7 @@ internal fun EditorScreen(
 
     val animatedLandscapePreviewFraction by animateFloatAsState(
         targetValue = landscapePreviewFraction,
-        animationSpec = androidx.compose.animation.core.spring(
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-        ),
+        animationSpec = tween(GALLERY_MOTION_DURATION_MS, easing = androidx.compose.animation.core.LinearEasing),
         label = "landscapePreviewSplit"
     )
 
@@ -812,6 +810,12 @@ internal fun EditorScreen(
     fun closeWorkGallery() {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+        if (gallerySelectionPrepared && galleryPreviewOwner != activeWorkId) {
+            // A failed save leaves the gallery open; backing out must show the retained work.
+            galleryPreviewBitmap = null
+            galleryThumbnailBounds = null
+            gallerySelectionPrepared = false
+        }
         workMenuExpanded = false
     }
 
@@ -822,6 +826,7 @@ internal fun EditorScreen(
         keyboardController?.hide()
         navigationTarget = null
         navigationSequence++
+        gallerySelectionPrepared = false
         galleryPreviewBitmap = null
         galleryThumbnailBounds = null
         galleryPreviewOwner = null
@@ -833,21 +838,21 @@ internal fun EditorScreen(
         galleryPreviewOwner = owner
         galleryPreviewToken = token
         webView.clearFocus()
-        galleryPreviewBitmap = withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(workPreviewFile(cacheDir, owner).path) }.getOrNull()
+        galleryPreviewBitmap = preview.images.peek(owner)
+        preview.images.load(owner)?.let {
+            if (!gallerySelectionPrepared && galleryPreviewOwner == owner && galleryPreviewToken == token) {
+                galleryPreviewBitmap = it
+            }
         }
+        val capturedInput = preview.runInput?.takeIf { it.token == token }
         captureWorkPreview(webView) { encoded ->
             lifecycleScope.launch {
                 if (preview.session.workId != owner || preview.session.assets.token != token) return@launch
-                val bitmap = withContext(Dispatchers.Default) {
-                    runCatching {
-                        val bytes = Base64.decode(encoded, Base64.DEFAULT)
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }.getOrNull()
-                }
+                val fingerprint = withContext(Dispatchers.Default) { capturedInput?.let(::thumbnailFingerprint) }
                 if (preview.session.workId != owner || preview.session.assets.token != token) return@launch
-                if (galleryPreviewToken == token && workMenuExpanded) galleryPreviewBitmap = bitmap
-                if (storeWorkPreview(workPreviewFile(cacheDir, owner), encoded)) {
+                val bitmap = preview.images.storeEncoded(owner, encoded, fingerprint)
+                if (bitmap != null) {
+                    if (galleryPreviewToken == token && workMenuExpanded) galleryPreviewBitmap = bitmap
                     workManagementViewModel.notifyPreviewUpdated(owner)
                 }
             }
@@ -872,9 +877,11 @@ internal fun EditorScreen(
             }
         }
     }
+    LaunchedEffect(galleryPresent, galleryHandoffAlpha) {
+        if (!galleryPresent && galleryHandoffAlpha == 0f) galleryPreviewBitmap = null
+    }
     LaunchedEffect(galleryPresent) {
         if (!galleryPresent) {
-            galleryPreviewBitmap = null
             // Preserve the filtered thumbnail's position until the closing motion finishes.
             workGalleryState.closeSearch()
             workGalleryState.finishSelection()
@@ -884,12 +891,12 @@ internal fun EditorScreen(
         closeWorkGallery()
     }
 
+    val liftPreviewChrome = !showExpandedPreview && galleryPreviewBounds?.usableGalleryBounds() == true &&
+        (galleryPresent || galleryHandoffAlpha > 0f)
     val galleryMorphActive = galleryPresent && galleryProgress > 0f &&
         galleryProgress < 1f && galleryPreviewBitmap?.isRecycled == false &&
         galleryPreviewBounds?.usableGalleryBounds() == true &&
-        galleryThumbnailBounds?.usableGalleryBounds() == true &&
-        preview.session.workId == galleryPreviewOwner &&
-        preview.session.assets.token == galleryPreviewToken
+        galleryThumbnailBounds?.usableGalleryBounds() == true
 
     fun jumpToEditingWork() {
         if (assetBusy) return
@@ -937,9 +944,16 @@ internal fun EditorScreen(
             sort = settingsViewModel.workSort, cacheDir = cacheDir,
             previewRevision = workManagementViewModel.previewRevision,
             updatedPreviewId = workManagementViewModel.updatedPreviewId,
+            previewRevisions = workManagementViewModel.previewRevisions,
+            images = preview.images,
+            onThumbnailScrolling = {
+                workManagementViewModel.thumbnailScrolling = it
+                preview.performance.galleryScrolling(it)
+            },
+            onThumbnailPriority = workManagementViewModel::prioritizeThumbnails,
             text = { uiText(it) },
             onOpen = { work, openMenu ->
-                if (!assetBusy) {
+                if (workSaving || (!assetBusy && sessionViewModel.snapshotOperationWorkId == null)) {
                     focusManager.clearFocus(force = true)
                     keyboardController?.hide()
                     workManagementViewModel.selectWork(work.id, openMenu)
@@ -952,10 +966,21 @@ internal fun EditorScreen(
             onEditTags = { workManagementViewModel.editingTagsWorkId = it.id },
             onDeleteGlobalTag = { workManagementViewModel.deleteGlobalTag(it) },
             busy = assetBusy,
+            navigationWhileBusy = workSaving,
             onRename = { workManagementViewModel.galleryRenameWorkId = it.id },
             onDuplicate = { if (it.isSample) workManagementViewModel.requestSampleCopy(it.id) else workManagementViewModel.duplicateGalleryWork(it.id) },
             onDelete = { workManagementViewModel.galleryDeleteIds = setOf(it.id) },
-            onActiveThumbnailBounds = { if (galleryTarget) galleryThumbnailBounds = it },
+            onPrepareOpen = { work, bitmap, bounds ->
+                if (workSaving || (!assetBusy && sessionViewModel.snapshotOperationWorkId == null)) {
+                    // Pin the tapped card before selection replaces the live renderer.
+                    gallerySelectionPrepared = true
+                    galleryPreviewOwner = work.id
+                    galleryPreviewToken = null
+                    galleryPreviewBitmap = bitmap
+                    galleryThumbnailBounds = bounds
+                }
+            },
+            onActiveThumbnailBounds = { if (galleryTarget && !gallerySelectionPrepared) galleryThumbnailBounds = it },
             morphWorkId = galleryPreviewOwner,
             suppressMorphThumbnail = galleryMorphActive,
             morphProgress = galleryProgress,
@@ -982,6 +1007,7 @@ internal fun EditorScreen(
             isLandscape = isLandscape,
             manualRotation = manualRotation,
             wideWorkPanels = wideWorkPanels,
+            galleryProgress = galleryProgress,
             colors = colors,
             viewModel = workManagementViewModel,
             onRotate = {
@@ -1052,7 +1078,7 @@ internal fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.weight(1f).padding(end = 8.dp)) {
-                Box(Modifier.graphicsLayer { alpha = 1f - galleryProgress }
+                Box(Modifier.galleryChrome(galleryProgress, GalleryPart.TITLE)
                     .blockGalleryInput(galleryPresent)) {
                     WorkSelector()
                 }
@@ -1066,19 +1092,18 @@ internal fun EditorScreen(
                         labelText = if (workGalleryState.selecting)
                             "${workGalleryState.selectedIds.size} · ${uiText("選択中")}"
                             else uiText("作品") + " · " + works.size,
-                        modifier = Modifier.graphicsLayer { alpha = galleryProgress }
+                        modifier = Modifier.graphicsLayer { alpha = 1f - galleryExposure(galleryProgress, GalleryPart.TITLE) }
                             .blockGalleryInput(galleryProgress < 1f)
                     )
                 }
             }
             // Four fixed slots let the glyphs change without moving the toolbar.
             Box(Modifier.width(164.dp), contentAlignment = Alignment.CenterEnd) {
-                Box(Modifier.graphicsLayer { alpha = 1f - galleryProgress }
-                    .blockGalleryInput(galleryPresent)) {
+                Box(Modifier.blockGalleryInput(galleryPresent)) {
                     WorkActions()
                 }
                 if (galleryPresent) {
-                    GalleryActions(Modifier.graphicsLayer { alpha = galleryProgress }
+                    GalleryActions(Modifier.graphicsLayer { alpha = galleryLayerAlpha(galleryProgress) }
                         .blockGalleryInput(galleryProgress < 1f))
                 }
             }
@@ -1227,18 +1252,7 @@ internal fun EditorScreen(
     }
 
     @Composable
-    fun PreviewArea(
-        modifier: Modifier,
-        showExpandControl: Boolean = true,
-        logicalSize: IntSize? = null,
-        fullscreen: Boolean = false
-    ) {
-
-        PreviewSurface(
-            preview = preview, isError = isError, fullscreen = fullscreen,
-            logicalSize = logicalSize, modifier = modifier,
-            onClearEditorFocus = { focusManager.clearFocus(force = true) }
-        ) {
+    fun BoxWithConstraintsScope.PreviewChrome(fullscreen: Boolean = false, showExpandControl: Boolean = true) {
                 PreviewOverlayControls(
                     fullscreen = fullscreen,
                     showExpandControl = showExpandControl,
@@ -1294,7 +1308,23 @@ internal fun EditorScreen(
                     colors = colors,
                     textTranslator = { s, args -> uiText(s, *args) }
                 )
-        }
+    }
+
+    @Composable
+    fun PreviewArea(
+        modifier: Modifier,
+        showExpandControl: Boolean = true,
+        logicalSize: IntSize? = null,
+        fullscreen: Boolean = false
+    ) {
+        PreviewSurface(
+            preview = preview, isError = isError, fullscreen = fullscreen,
+            logicalSize = logicalSize, modifier = modifier,
+            galleryProgress = if (fullscreen) 0f else galleryProgress,
+            galleryMorphActive = !fullscreen && galleryMorphActive,
+            chromeLifted = !fullscreen && liftPreviewChrome,
+            onClearEditorFocus = { focusManager.clearFocus(force = true) }
+        ) { PreviewChrome(fullscreen, showExpandControl) }
     }
 
     @Composable
@@ -1305,13 +1335,8 @@ internal fun EditorScreen(
             Box(modifier = modifier)
         } else {
             PreviewArea(
-                modifier = modifier.graphicsLayer {
-                    alpha = if (galleryMorphActive)
-                        (1f - galleryProgress / GALLERY_EDGE_FADE).coerceIn(0f, 1f)
-                    else 1f
-                }
-                    .onGloballyPositioned { coordinates ->
-                    if (!galleryPresent) galleryPreviewBounds = coordinates.boundsInRoot()
+                modifier = modifier.onGloballyPositioned { coordinates ->
+                    if (!galleryPresent || gallerySelectionPrepared || !galleryTarget) galleryPreviewBounds = coordinates.boundsInRoot()
                 }.onSizeChanged { size ->
                     if (size.width > 0 && size.height > 0) {
                         normalPreviewSize = size
@@ -1631,13 +1656,20 @@ internal fun EditorScreen(
                     preview = { MainPreviewArea(it) },
                     gallery = { InlineGallery(it) },
                     landscapeGalleryBar = { LandscapeGalleryBar() },
+                    previewChrome = { modifier ->
+                        WorkGalleryPreviewChrome(galleryPreviewBounds, modifier, visible = liftPreviewChrome) {
+                            BoxWithConstraints(Modifier.fillMaxSize().galleryChrome(galleryProgress, GalleryPart.SECONDARY)) {
+                                PreviewChrome()
+                            }
+                        }
+                    },
                     galleryPreview = { modifier ->
-                        val sameRenderer = preview.session.workId == galleryPreviewOwner &&
-                            preview.session.assets.token == galleryPreviewToken
                         WorkGalleryPreview(
-                            bitmap = galleryPreviewBitmap.takeIf { sameRenderer },
+                            bitmap = galleryPreviewBitmap,
                             start = galleryPreviewBounds, end = galleryThumbnailBounds,
-                            progress = galleryProgress, modifier = modifier
+                            progress = galleryProgress, modifier = modifier,
+                            visible = (galleryPresent && galleryProgress < 1f) || (!galleryPresent && galleryHandoffAlpha > 0f),
+                            opacity = if (galleryPresent) 1f else galleryHandoffAlpha
                         )
                     }
                 ),
@@ -1736,10 +1768,7 @@ internal fun EditorScreen(
         ScreenshotScaleDialog(text = { uiText(it) }, onCapture = { scale ->
             showScreenshotScale = false
             pendingScreenshotScale = scale
-            if (android.os.Build.VERSION.SDK_INT <= 28 && androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                screenshotPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            } else preview.requestScreenshot(scale = scale)
+            preview.requestScreenshot(scale = scale)
         }, onDismiss = { showScreenshotScale = false })
     }
 
