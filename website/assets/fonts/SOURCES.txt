@@ -24,3 +24,15 @@ IBM-Plex-Mono-OFL.txt
 Source: https://raw.githubusercontent.com/IBM/plex/763c36ef9117782905ae010056dfbe8fd2653a25/packages/plex-mono/LICENSE.txt
 SHA-256: 7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da
 Bytes: 4456
+
+Archivo Black: normal regular, weight 400 (black display design).
+
+archivo-black-regular.ttf
+Source: https://raw.githubusercontent.com/google/fonts/94a7d81318e438525a5285e07ab72c050fdfeb44/ofl/archivoblack/ArchivoBlack-Regular.ttf
+SHA-256: dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180
+Bytes: 90988
+
+Archivo-Black-OFL.txt
+Source: https://raw.githubusercontent.com/google/fonts/94a7d81318e438525a5285e07ab72c050fdfeb44/ofl/archivoblack/OFL.txt
+SHA-256: 3173acd82f8c6159b5b1037b539fcbd4edff68e65c2ea8b9412b5a5ca97b08ff
+Bytes: 4492

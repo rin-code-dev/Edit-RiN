@@ -28,21 +28,34 @@ from the deployed site.
 
 - Choose **Write**, **Tune**, or **Keep** by touching a letter.
 - Drag **i** vertically, or use the labelled slider in **Tune**.
+- Scroll vertically with a mouse or trackpad to move **i** and change the rhythm.
+  On touchscreens, swipe the background vertically. Dialogs, native controls,
+  horizontal gestures, and pinch-to-zoom keep their usual behavior.
 - Use **Back**, the Edit:RiN wordmark, or **Escape** to return.
 - Pause the artwork and recordings with **Motion on/off**.
 - **Save this artwork** creates a PNG of the site's letter composition.
 - All navigation uses native buttons. The slider supports keyboard input.
   Reduced-motion preferences pause ambient animation and automatic video playback.
+  Explicitly playing a video resumes Motion. Individual pauses remain in effect
+  until that video is explicitly played again. Failed videos retain a still image
+  and offer a retry through their playback button.
 
 ## Media and type
 
 The short, silent MP4 excerpts show code with preview, live parameter changes,
-and a touch-responsive sound sketch. Device status/navigation bars and audio
-are excluded. Recordings load only when their chapter is opened.
+and MP4 recording, saving, and playback. Device status/navigation bars and audio
+are excluded. In the final Keep scene, only the saved artwork is retained; the
+player controls and black margins are replaced with the site's paper background.
+Recordings load only when their chapter is opened. Leaving a chapter releases
+its video decoder; returning loads it again from the start. Entry animations
+apply to the text, keeping video surfaces outside animated transforms.
 
 The RiN lettering is drawn as original SVG geometry. Interface and display
-text use [Space Grotesk](https://github.com/floriankarsten/space-grotesk);
+text use [Archivo Black](https://github.com/Omnibus-Type/ArchivoBlack) for
+bold display lettering and [Space Grotesk](https://github.com/floriankarsten/space-grotesk);
 code and small technical labels use [IBM Plex Mono](https://github.com/IBM/plex).
+Headings use the black display design of Archivo Black; body text uses weight 500. Both X accounts are linked
+from About, with English and Japanese labels.
 Font files and their SIL Open Font License texts are included in
 `assets/fonts/`.
 

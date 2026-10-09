@@ -1,7 +1,6 @@
 (() => {
   'use strict';
   const experience = document.querySelector('#experience');
-  const stage = document.querySelector('#stage');
   const glyphs = [...document.querySelectorAll('.glyph')];
   const chapters = [...document.querySelectorAll('.chapter')];
   const videos = [...document.querySelectorAll('video')];
@@ -22,6 +21,18 @@
   let last = 0;
   let phase = 0;
   const manualPause = new WeakSet();
+  const videoDescriptions = {
+    write: 'code and preview recording',
+    tune: 'live parameter recording',
+    keep: 'recording and export demo'
+  };
+  const demos = videos.map(video => ({
+    video,
+    scene: video.closest('.chapter').id.replace('chapter-', ''),
+    button: video.parentElement.querySelector('.video-toggle'),
+    request: 0,
+    pending: false
+  }));
 
   function setSaveLabel(text) {
     document.querySelector('#save-label').textContent = text;
@@ -55,24 +66,57 @@
     updateGeometry();
     if (!paused && !document.hidden) frame = requestAnimationFrame(animate);
   }
-  function videoButton(video) {
-    const btn = video.parentElement.querySelector('.video-toggle');
-    const scene = video.closest('.chapter').id.replace('chapter-', '');
-    const description = {write: 'code and preview recording', tune: 'live parameter recording', keep: 'touch sketch recording'}[scene];
-    btn.setAttribute('aria-label', `${video.paused ? 'Play' : 'Pause'} ${description}`);
-    btn.querySelector('span').textContent = video.paused ? '▶' : 'Ⅱ';
+  function renderVideoButton(demo) {
+    const failed = Boolean(demo.video.error);
+    demo.video.classList.toggle('media-error', failed);
+    const action = failed ? 'Retry' : demo.video.paused ? 'Play' : 'Pause';
+    demo.button.setAttribute('aria-label', `${action} ${videoDescriptions[demo.scene]}`);
+    demo.button.querySelector('span').textContent = action === 'Pause' ? 'Ⅱ' : '▶';
   }
-  async function playVideo(video) {
-    if (!video.hasAttribute('src')) { video.src = video.dataset.src; video.load(); }
-    try { await video.play(); } catch { /* The explicit play button remains available. */ }
-    videoButton(video);
+  function shouldPlay(demo) {
+    return demo.scene === current && !paused && !document.hidden &&
+      !document.querySelector('dialog[open]') && !manualPause.has(demo.video);
+  }
+  function stopVideo(demo, release = false) {
+    // Invalidate an outstanding play promise before pausing or releasing its source.
+    demo.request++;
+    demo.pending = false;
+    demo.video.pause();
+    if (release && demo.video.hasAttribute('src')) {
+      demo.video.removeAttribute('src');
+      demo.video.load();
+    }
+    renderVideoButton(demo);
+  }
+  async function playVideo(demo) {
+    if (!shouldPlay(demo) || demo.pending) return;
+    const video = demo.video;
+    if (!video.hasAttribute('src') || video.error) {
+      video.classList.remove('media-error');
+      video.src = video.dataset.src;
+      video.load();
+    }
+    const request = ++demo.request;
+    demo.pending = true;
+    try {
+      await video.play();
+    } catch {
+      // Autoplay rejection leaves the poster and explicit play/retry control available.
+    } finally {
+      if (request === demo.request) {
+        demo.pending = false;
+        if (!shouldPlay(demo)) video.pause();
+        renderVideoButton(demo);
+      }
+    }
   }
   function syncVideos() {
-    const dialogOpen = document.querySelector('dialog[open]');
-    for (const video of videos) {
-      const active = video.closest('.chapter').id === `chapter-${current}`;
-      if (active && !paused && !document.hidden && !dialogOpen && !manualPause.has(video)) playVideo(video);
-      else { video.pause(); videoButton(video); }
+    // Release all inactive decoders before starting the selected chapter.
+    for (const demo of demos) {
+      if (!shouldPlay(demo)) stopVideo(demo, demo.scene !== current);
+    }
+    for (const demo of demos) {
+      if (shouldPlay(demo)) playVideo(demo);
     }
   }
   function showScene(scene, focusHeading = true) {
@@ -89,14 +133,56 @@
     if (scene !== 'home' && focusHeading) document.querySelector(`#${scene}-title`).focus({preventScroll:true});
     if (scene === 'home' && focusHeading) (returnFocus || glyphs[0]).focus({preventScroll:true});
   }
-  glyphs.forEach(glyph => glyph.addEventListener('click', () => {
-    if (glyph.id === 'tune-glyph' && suppressClick) { suppressClick = false; return; }
+  glyphs.forEach(glyph => glyph.addEventListener('click', event => {
+    if (glyph.id === 'tune-glyph' && suppressClick && event.detail !== 0) { suppressClick = false; return; }
     returnFocus = glyph;
     showScene(glyph.dataset.scene);
   }));
   back.addEventListener('click', () => showScene('home'));
   document.querySelector('#home-button').addEventListener('click', () => { showScene('home', false); });
   slider.addEventListener('input', () => setRhythm(slider.value / 100));
+
+  // Keep browser zoom, horizontal gestures, and native controls available.
+  experience.addEventListener('wheel', event => {
+    if (event.ctrlKey || event.metaKey || drag || document.querySelector('dialog[open]')) return;
+    if (event.target.closest('input, textarea, select, video, .video-toggle')) return;
+    if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+    const delta = Math.max(-120, Math.min(120, event.deltaY * unit));
+    event.preventDefault();
+    setRhythm(rhythm - delta / 600);
+  }, {passive:false});
+
+  let scrollTouch = null;
+  experience.addEventListener('touchstart', event => {
+    scrollTouch = null;
+    if (event.touches.length !== 1 || document.querySelector('dialog[open]')) return;
+    if (event.target.closest('button, a, input, textarea, select, video')) return;
+    const touch = event.touches[0];
+    scrollTouch = {id:touch.identifier, x:touch.clientX, y:touch.clientY, lastY:touch.clientY, vertical:false};
+  }, {passive:true});
+  experience.addEventListener('touchmove', event => {
+    if (!scrollTouch) return;
+    if (event.touches.length !== 1) { scrollTouch = null; return; }
+    const touch = [...event.touches].find(touch => touch.identifier === scrollTouch.id);
+    if (!touch) return;
+    if (!scrollTouch.vertical) {
+      const dx = touch.clientX - scrollTouch.x;
+      const dy = touch.clientY - scrollTouch.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 6) return;
+      if (Math.abs(dx) > Math.abs(dy)) { scrollTouch = null; return; }
+      scrollTouch.vertical = true;
+    }
+    event.preventDefault();
+    setRhythm(rhythm - (touch.clientY - scrollTouch.lastY) / 600);
+    scrollTouch.lastY = touch.clientY;
+  }, {passive:false});
+  function endScrollTouch() {
+    if (scrollTouch) status.textContent = `Artwork rhythm ${Math.round(rhythm * 100)} percent.`;
+    scrollTouch = null;
+  }
+  experience.addEventListener('touchend', endScrollTouch);
+  experience.addEventListener('touchcancel', endScrollTouch);
 
   const tuneGlyph = document.querySelector('#tune-glyph');
   tuneGlyph.addEventListener('pointerdown', event => {
@@ -137,12 +223,20 @@
   motion.addEventListener('click', () => { paused = !paused; updatePause(); });
   reduceMotion.addEventListener('change', event => { paused = event.matches; updatePause(); });
   document.addEventListener('visibilitychange', () => { syncLoop(); syncVideos(); });
-  videos.forEach(video => {
-    video.addEventListener('play', () => videoButton(video));
-    video.addEventListener('pause', () => videoButton(video));
-    video.parentElement.querySelector('.video-toggle').addEventListener('click', () => {
-      if (video.paused) { manualPause.delete(video); playVideo(video); }
-      else { manualPause.add(video); video.pause(); }
+  demos.forEach(demo => {
+    for (const event of ['play', 'pause', 'error', 'emptied']) {
+      demo.video.addEventListener(event, () => renderVideoButton(demo));
+    }
+    demo.button.addEventListener('click', () => {
+      if (demo.video.paused || demo.video.error) {
+        manualPause.delete(demo.video);
+        // An explicit play request also resumes Motion, so its label stays truthful.
+        paused = false;
+        updatePause();
+      } else {
+        manualPause.add(demo.video);
+        stopVideo(demo);
+      }
     });
   });
 
@@ -191,7 +285,7 @@
           ctx.drawImage(img,offsets[i],326,widths[i],320);
         } finally { URL.revokeObjectURL(url); }
       }
-      ctx.fillStyle='#2B2825';ctx.font='500 28px "Space Grotesk", sans-serif';ctx.fillText('Edit:RiN',56,67);
+      ctx.fillStyle='#2B2825';ctx.font='400 28px "Archivo Black", sans-serif';ctx.fillText('Edit:RiN',56,67);
       ctx.font='400 14px "IBM Plex Mono", monospace';ctx.fillText('WRITE. TUNE. KEEP.',56,950);
       const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
       if (!blob) throw new Error('PNG creation failed');
