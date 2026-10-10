@@ -7,6 +7,23 @@ import org.junit.Test
 import kotlin.random.Random
 
 class EditorHighlightCacheTest {
+    @Test fun displayTransformationReusesLayoutRequestsAndInvalidatesTextAndConfiguration() {
+        var calls = 0
+        fun transformation() = CachedEditorTransformation { text ->
+            calls++
+            androidx.compose.ui.text.input.TransformedText(text, androidx.compose.ui.text.input.OffsetMapping.Identity)
+        }
+        val cached = transformation()
+        val source = "const value = 42;\n".repeat(10_000)
+        val first = cached.filter(AnnotatedString(source))
+        repeat(60) { assertSame(first, cached.filter(AnnotatedString(source))) }
+        assertEquals(1, calls)
+        assertEquals(source + "x", cached.filter(AnnotatedString(source + "x")).text.text)
+        assertEquals(2, calls)
+        transformation().filter(AnnotatedString(source))
+        assertEquals(3, calls)
+    }
+
     private fun parsed(source: String) = JavaScriptHighlighter(false).filter(AnnotatedString(source)).text
     private fun tokens(text: AnnotatedString) = text.spanStyles.map { text.text.substring(it.start, it.end) }
 

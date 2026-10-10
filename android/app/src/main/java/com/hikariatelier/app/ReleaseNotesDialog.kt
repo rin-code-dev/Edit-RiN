@@ -39,6 +39,35 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "2.4.0",
+        versionCode = 33,
+        titleEn = "What's New in v2.4.0",
+        titleJa = "v2.4.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_play,
+                titleEn = "Interactive User Guide",
+                titleJa = "対話型ユーザーガイドと練習画面",
+                descEn = "The user guide now features hands-on practice directly inside the app. Try out sliders, parameters, pause/resume, and snapshots in an isolated canvas without affecting your works.",
+                descJa = "ユーザーガイドに操作を試せる練習画面を追加しました。実際の作品に影響を与えることなく、スライダーやパラメータ調整、一時停止・再開、スナップショットなどの基本操作を体験できます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Refined Studio Sliders",
+                titleJa = "スライダーと操作パネルの刷新",
+                descEn = "Adopted slim-rail studio sliders for parameter adjustments, font size settings, and color controls, matching the aesthetic of the official website.",
+                descJa = "パラメータ調整やフォントサイズ設定、カスタムカラー設定のスライダーを、公式Webサイトのデザインに合わせた薄型レールとフェーダーに刷新しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_history,
+                titleEn = "Streamlined History & Settings",
+                titleJa = "履歴メニューと設定画面の整理",
+                descEn = "Consolidated snapshots and restore actions into a single History dropdown menu, and updated theme selection in Settings to a smooth scrollable chip row.",
+                descJa = "プレビュー操作のスナップショットと保存済み復元を1つの「履歴」ドロップダウンに統合してツールバーをすっきりさせ、設定画面のテーマ選択を横スクロールチップに変更しました。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.3.2",
         versionCode = 32,
         titleEn = "What's New in v2.3.2",

@@ -13,12 +13,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +45,7 @@ internal val userGuideSections = listOf(
         iconRes = R.drawable.ic_play,
         tag = "Start",
         steps = listOf(
-            "On the first launch of v2.3.0, Palette opens with the light theme and code wrapping off. Tap its canvas to change the palette.",
+            "Open Palette from Samples and tap its canvas to change the palette. Try the practice controls on the first page of this guide before editing your own work.",
             "Tap the work title to open the work picker. The Samples tab contains finished examples; My works contains your own creations.",
             "Sample originals are read-only. You can select and copy text, fold code blocks, and try available live parameters.",
             "Choose Copy to edit, enter a name, and save an independent copy in My works before changing the code."
@@ -104,8 +106,8 @@ internal val userGuideSections = listOf(
         iconRes = R.drawable.ic_history,
         tag = "Save",
         steps = listOf(
-            "Auto-save when leaving the app is available in Settings. Check the save result before leaving a work when a storage error occurs.",
-            "Use snapshots to keep earlier versions. Add names or notes, inspect differences, and restore a chosen version when needed.",
+            "Save and History share one control. Save stores all work files; History opens Snapshots and Revert to saved. Auto-save when leaving the app is available in Settings.",
+            "In History, choose Snapshots to keep earlier versions, add names or notes, inspect differences, or restore a version. Revert to saved returns to your last save; check the confirmation before discarding unsaved edits.",
             "Draft recovery can restore compatible unsaved edits or offer a recovery prompt. Confirm the work and content before applying a recovered draft.",
             "If saving fails, keep the current editor content and use the retry or recovery options shown. Avoid clearing app data while unsaved work is waiting."
         )
@@ -138,248 +140,73 @@ internal val userGuideSections = listOf(
 
 @Composable
 internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
+    fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     val context = LocalContext.current
-    val colors = MaterialTheme.colorScheme
     val sections = localizedUserGuide(language)
-    val title = when (language) { "ja" -> "使い方ガイド"; "zh" -> "使用指南"; else -> "User Guide" }
-    val subtitle = when (language) {
-        "ja" -> "Edit:RiN の操作と機能を紹介します"
-        "zh" -> "Edit:RiN 创意编程完整功能指南"
-        else -> "Comprehensive guide to mastering Edit:RiN"
-    }
-    val copyText = when (language) { "ja" -> "コードをコピー"; "zh" -> "复制代码"; else -> "Copy Code" }
-    val copiedText = when (language) { "ja" -> "クリップボードにコピーしました"; "zh" -> "已复制到剪贴板"; else -> "Copied to clipboard" }
-    val closeText = when (language) { "ja" -> "閉じる"; "zh" -> "关闭"; else -> "Close" }
+    var chapter by rememberSaveable { mutableIntStateOf(-1) }
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = colors.background,
-        contentColor = colors.onBackground
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(WindowInsets.safeDrawing.asPaddingValues())
-        ) {
-            // Header Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize().padding(WindowInsets.safeDrawing.asPaddingValues())) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(t("使い方ガイド", "User Guide", "使用指南"), style = MaterialTheme.typography.headlineSmall)
+                    Text(t("操作を試して、使い方を確かめる", "Practice controls and explore each feature", "试用操作，了解各项功能"), style = MaterialTheme.typography.bodySmall)
                 }
-
-                IconButton(onClick = onClose) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_close),
-                        contentDescription = closeText,
-                        tint = colors.onSurface
-                    )
+                IconButton(onClose) { Icon(painterResource(R.drawable.ic_close), t("閉じる", "Close", "关闭")) }
+            }
+            LazyRow(modifier = Modifier.testTag("guide-chapters"), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    FilterChip(chapter == -1, { chapter = -1; scope.launch { state.scrollToItem(0) } },
+                        label = { Text(t("操作を試す", "Practice", "练习")) })
+                }
+                itemsIndexed(sections) { index, section ->
+                    FilterChip(chapter == index, { chapter = index; scope.launch { state.scrollToItem(0) } },
+                        label = { Text("${index + 1}. ${section.title}") })
                 }
             }
-
-            // Category Jump Chips
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                itemsIndexed(sections, key = { _, s -> s.title }, contentType = { _, _ -> "guide_chip" }) { index, section ->
-                    SuggestionChip(
-                        onClick = {
-                            scope.launch { state.animateScrollToItem(index) }
-                        },
-                        label = {
-                            Text(
-                                text = section.title,
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        },
-                        icon = if (section.iconRes != 0) {
-                            {
-                                Icon(
-                                    painter = painterResource(section.iconRes),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = colors.primary
-                                )
+            HorizontalDivider()
+            LazyColumn(state = state, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (chapter == -1) {
+                    item { GuideQuickStart(language) }
+                    item { Text(t("機能別の使い方", "Explore by task", "按功能查看"), style = MaterialTheme.typography.titleMedium) }
+                    itemsIndexed(sections) { index, section ->
+                        OutlinedCard(onClick = { chapter = index; scope.launch { state.scrollToItem(0) } }) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("${index + 1}. ${section.title}", style = MaterialTheme.typography.titleMedium)
+                                Text(section.summary, style = MaterialTheme.typography.bodyMedium)
                             }
-                        } else null,
-                        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f)),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
-            }
-
-            HorizontalDivider(
-                color = colors.outlineVariant.copy(alpha = 0.35f),
-                modifier = Modifier.padding(top = 4.dp)
-            )
-
-            // Section Cards List
-            LazyColumn(
-                state = state,
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                itemsIndexed(sections, key = { _, s -> s.title }, contentType = { _, _ -> "guide_section" }) { index, section ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = colors.surfaceContainerLow
-                        ),
-                        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.4f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            // Card Header
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    if (section.iconRes != 0) {
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = colors.primaryContainer,
-                                            modifier = Modifier.size(36.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    painter = painterResource(section.iconRes),
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(20.dp),
-                                                    tint = colors.onPrimaryContainer
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Column {
-                                        Text(
-                                            text = section.title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.onSurface
-                                        )
-                                    }
-                                }
-
-                                if (section.tag.isNotEmpty()) {
-                                    val isNewTag = section.tag == "New" || section.tag == "新機能" || section.tag == "新特性"
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isNewTag) colors.tertiaryContainer else colors.secondaryContainer
-                                    ) {
-                                        Text(
-                                            text = section.tag,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (isNewTag) colors.onTertiaryContainer else colors.onSecondaryContainer,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                        )
-                                    }
+                        }
+                    }
+                } else {
+                    val section = sections[chapter]
+                    item(key = "chapter-$chapter") {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(section.title, style = MaterialTheme.typography.headlineSmall)
+                            Text(section.summary, style = MaterialTheme.typography.bodyLarge)
+                            if (guideHighlightedControls(section.iconRes).isNotEmpty()) {
+                                Text(t("ここで操作を試せます。変更は練習用の画面だけに反映されます。", "Try the controls here. Changes only affect this practice screen.", "在这里试用操作，修改仅影响练习画面。"), style = MaterialTheme.typography.bodySmall)
+                                GuideControlIllustration(section.iconRes, language)
+                            }
+                            section.steps.forEachIndexed { index, step ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("${index + 1}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                                    Text(step, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 }
                             }
-
-                            // Summary Text
-                            Text(
-                                text = section.summary,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.onSurfaceVariant,
-                                lineHeight = 20.sp
-                            )
-
-                            // Code Snippet Box (if provided)
                             section.codeSnippet?.let { snippet ->
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = colors.surfaceContainerLowest,
-                                    border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.3f))
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            text = snippet,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 12.sp,
-                                            lineHeight = 18.sp,
-                                            color = colors.onSurface
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                        OutlinedButton(
-                                            onClick = {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                clipboard.setPrimaryClip(ClipData.newPlainText("code", snippet))
-                                                Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
-                                            },
-                                            modifier = Modifier.align(Alignment.End),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            shape = RoundedCornerShape(8.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_snippet),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(Modifier.width(6.dp))
-                                            Text(copyText, fontSize = 12.sp)
-                                        }
-                                    }
+                                Text(t("試せるコード", "Code to try", "示例代码"), style = MaterialTheme.typography.titleMedium)
+                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                                    Text(snippet, Modifier.padding(12.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                                 }
+                                OutlinedButton(onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("code", snippet))
+                                    Toast.makeText(context, t("コードをコピーしました", "Code copied", "已复制代码"), Toast.LENGTH_SHORT).show()
+                                }) { Text(t("コードをコピー", "Copy code", "复制代码")) }
                             }
-
-                            // Steps Checklist
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                section.steps.forEachIndexed { stepIndex, step ->
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = colors.primary.copy(alpha = 0.12f),
-                                            modifier = Modifier.size(20.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    text = "${stepIndex + 1}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = colors.primary
-                                                )
-                                            }
-                                        }
-                                        Text(
-                                            text = step,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = colors.onSurface,
-                                            lineHeight = 18.sp,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
+                            FilledTonalButton(onClick = { chapter = if (chapter < sections.lastIndex) chapter + 1 else -1; scope.launch { state.scrollToItem(0) } }) {
+                                Text(if (chapter < sections.lastIndex) t("次の項目へ", "Next topic", "下一项") else t("操作の練習に戻る", "Back to practice", "返回练习"))
                             }
                         }
                     }

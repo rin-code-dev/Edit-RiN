@@ -20,6 +20,8 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +30,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -307,7 +313,7 @@ internal fun RunStatusControls(
         Spacer(Modifier.width(5.dp))
         Text(
             text = when {
-                hasPendingChanges -> uiText("変更未反映")
+                hasPendingChanges -> uiText("未反映")
                 isError -> "ERR"
                 isPaused -> "PAUSE"
                 else -> "RUN"
@@ -315,7 +321,11 @@ internal fun RunStatusControls(
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             color = if (hasPendingChanges) colors.tertiary else if (isError) colors.error else colors.onSurfaceVariant,
-            modifier = if (hasPendingChanges) Modifier.clickable(onClick = onReload) else Modifier,
+            modifier = if (hasPendingChanges) Modifier
+                .clickable(onClickLabel = uiText("変更を実行"), onClick = onReload)
+                .semantics { contentDescription = uiText("変更未反映") }
+                else Modifier,
+            maxLines = 1,
             letterSpacing = 0.6.sp
         )
         IconButton(
@@ -464,50 +474,59 @@ internal fun SaveRestoreControls(
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
+    var historyExpanded by remember { mutableStateOf(false) }
+    val controlShape = RoundedCornerShape(12.dp)
+
     Row(
-        modifier = modifier
-            .height(height)
-            .border(1.dp, colors.outlineVariant, RoundedCornerShape(12.dp))
+        modifier = modifier.height(height)
+            .border(1.dp, colors.outlineVariant, controlShape)
             .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (onSnapshot != null) {
+        Box {
             TooltipIconButton(
-                label = uiText("スナップショット"),
-                onClick = onSnapshot,
+                label = uiText("履歴"),
+                onClick = { historyExpanded = true },
                 modifier = Modifier.size(buttonSize)
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_snapshot),
-                    contentDescription = uiText("スナップショット"),
+                    painter = painterResource(R.drawable.ic_history),
+                    contentDescription = uiText("履歴"),
                     tint = colors.onSurface,
                     modifier = Modifier.size(iconSize)
                 )
             }
+            DropdownMenu(
+                expanded = historyExpanded,
+                onDismissRequest = { historyExpanded = false }
+            ) {
+                if (onSnapshot != null) {
+                    DropdownMenuItem(
+                        text = { Text(uiText("スナップショット")) },
+                        leadingIcon = { Icon(painterResource(R.drawable.ic_snapshot), contentDescription = null) },
+                        onClick = { historyExpanded = false; onSnapshot() }
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(uiText("保存済み状態に戻す")) },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_restore), contentDescription = null) },
+                    onClick = { historyExpanded = false; onRestore() }
+                )
+            }
         }
-        TooltipIconButton(
-            label = uiText("保存済み状態に戻す"),
-            onClick = onRestore,
-            modifier = Modifier.size(buttonSize)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_restore),
-                contentDescription = uiText("保存済み状態に戻す"),
-                tint = colors.onSurface,
-                modifier = Modifier.size(iconSize)
-            )
-        }
-        TooltipIconButton(
-            label = uiText("作品の全ファイルを保存"),
-            onClick = onSave,
-            modifier = Modifier.size(buttonSize)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_save),
-                contentDescription = uiText("作品の全ファイルを保存"),
-                tint = if (hasUnsavedChanges) colors.primary else colors.onSurface,
-                modifier = Modifier.size(iconSize)
-            )
+        Box {
+            TooltipIconButton(
+                label = uiText("作品の全ファイルを保存"),
+                onClick = onSave,
+                modifier = Modifier.size(buttonSize)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_save),
+                    contentDescription = uiText("作品の全ファイルを保存"),
+                    tint = if (hasUnsavedChanges) colors.primary else colors.onSurface,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
         }
     }
 }

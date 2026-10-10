@@ -378,7 +378,7 @@ fun EditorColorPickerDialog(
                             Text(text("色相"), style = MaterialTheme.typography.labelMedium)
                             Text("${hue.roundToInt()}°", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = hue,
                             onValueChange = {
                                 hue = it
@@ -398,7 +398,7 @@ fun EditorColorPickerDialog(
                             Text(text("彩度"), style = MaterialTheme.typography.labelMedium)
                             Text("${(saturation * 100).roundToInt()}%", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = saturation,
                             onValueChange = {
                                 saturation = it
@@ -418,7 +418,7 @@ fun EditorColorPickerDialog(
                             Text(text("明度"), style = MaterialTheme.typography.labelMedium)
                             Text("${(value * 100).roundToInt()}%", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = value,
                             onValueChange = {
                                 value = it
@@ -442,7 +442,7 @@ fun EditorColorPickerDialog(
                             Text("R (赤)", style = MaterialTheme.typography.labelMedium)
                             Text("$currentR", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = currentR.toFloat(),
                             onValueChange = {
                                 updateFromColor(Color(it.roundToInt(), currentG, currentB, (alpha * 255).roundToInt()))
@@ -460,7 +460,7 @@ fun EditorColorPickerDialog(
                             Text("G (緑)", style = MaterialTheme.typography.labelMedium)
                             Text("$currentG", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = currentG.toFloat(),
                             onValueChange = {
                                 updateFromColor(Color(currentR, it.roundToInt(), currentB, (alpha * 255).roundToInt()))
@@ -478,7 +478,7 @@ fun EditorColorPickerDialog(
                             Text("B (青)", style = MaterialTheme.typography.labelMedium)
                             Text("$currentB", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = currentB.toFloat(),
                             onValueChange = {
                                 updateFromColor(Color(currentR, currentG, it.roundToInt(), (alpha * 255).roundToInt()))
@@ -499,7 +499,7 @@ fun EditorColorPickerDialog(
                             Text(text("不透明度"), style = MaterialTheme.typography.labelMedium)
                             Text("${(alpha * 100).roundToInt()}%", style = MaterialTheme.typography.labelSmall)
                         }
-                        Slider(
+                        StudioSlider(
                             value = alpha,
                             onValueChange = {
                                 alpha = it

@@ -52,7 +52,7 @@ internal fun CustomColorSetting(
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("$channel $component", modifier = Modifier.width(52.dp))
-                Slider(value = component.toFloat(), valueRange = 0f..255f,
+                StudioSlider(value = component.toFloat(), valueRange = 0f..255f,
                     onValueChange = {
                         val updated = (value and (255 shl shift).inv()) or (it.roundToInt() shl shift)
                         input = hex(updated)
