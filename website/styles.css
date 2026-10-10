@@ -33,6 +33,8 @@
   --r-shift:0px;
   --n-shift:0px;
   --i-shift:0px;
+  --r-rotation:0deg;
+  --n-rotation:0deg;
   --tilt:0deg
 }
 * {
@@ -170,10 +172,10 @@ button:focus-visible,a:focus-visible,input:focus-visible {
   left:50%;
   top:51%;
   transform:translate(-50%,-50%);
-  width:min(68vw,840px);
+  width:min(60vw,740px);
   display:flex;
   align-items:flex-start;
-  gap:5.4%;
+  gap:6%;
   transition:width .65s cubic-bezier(.2,.8,.2,1),left .65s cubic-bezier(.2,.8,.2,1),top .65s cubic-bezier(.2,.8,.2,1);
   z-index:2
 }
@@ -199,6 +201,16 @@ button:focus-visible,a:focus-visible,input:focus-visible {
 }
 .glyph-i svg {
   fill:var(--accent)
+}
+.glyph-r svg,.glyph-n svg {
+  transform-origin:50% 50%;
+  transform-box:view-box
+}
+.glyph-r svg {
+  transform:rotate(var(--r-rotation))
+}
+.glyph-n svg {
+  transform:rotate(var(--n-rotation))
 }
 .glyph-label {
   min-height:48px;
@@ -235,21 +247,17 @@ button:focus-visible,a:focus-visible,input:focus-visible {
   display:none
 }
 .r-bowl {
-  transform:translateY(var(--r-shift));
-  transition:transform .14s
+  transform:translateY(var(--r-shift))
 }
 .r-leg {
   transform-origin:110px 155px;
-  transform:rotate(var(--tilt));
-  transition:transform .14s
+  transform:rotate(var(--tilt))
 }
 .n-diagonal {
-  transform:translateY(var(--n-shift));
-  transition:transform .14s
+  transform:translateY(var(--n-shift))
 }
 .i-stem {
-  transform:translateY(var(--i-shift));
-  transition:transform .1s
+  transform:translateY(var(--i-shift))
 }
 .i-dot {
   animation:breathe 4s ease-in-out infinite;
@@ -639,7 +647,7 @@ input[type="range"]::-moz-range-thumb {
 }
 @media(min-width:1600px) {
   .sculpture {
-    width:min(61vw,1040px)
+    width:min(54vw,900px)
   }
   .chapter {
     right:5%;
@@ -714,9 +722,9 @@ input[type="range"]::-moz-range-thumb {
     font-size:21px
   }
   .sculpture {
-    width:100%;
+    width:88%;
     top:52%;
-    gap:7%
+    gap:8%
   }
   .glyph-label {
     margin-top:17px;
@@ -866,7 +874,7 @@ input[type="range"]::-moz-range-thumb {
     font-size:7px
   }
   .sculpture {
-    width:min(57vw,600px);
+    width:min(50vw,530px);
     top:49%
   }
   .glyph-label {
@@ -910,8 +918,8 @@ input[type="range"]::-moz-range-thumb {
     font-size:17px
   }
   .sculpture {
-    width:88%;
-    top:57%
+    width:78%;
+    top:55%
   }
   .experience:not([data-scene="home"]) .sculpture {
     top:34px;
@@ -1001,7 +1009,7 @@ input[type="range"]::-moz-range-thumb {
     font-size:6px
   }
   .sculpture {
-    width:min(45vw,390px);
+    width:min(40vw,345px);
     top:49%
   }
   .glyph-label {

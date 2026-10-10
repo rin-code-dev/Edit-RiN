@@ -14,6 +14,16 @@
   let current = 'home';
   let paused = reduceMotion.matches;
   let rhythm = 0.5;
+  let displayedRhythm = rhythm;
+  let hintDismissed = false;
+  try { hintDismissed = localStorage.getItem('editrin-drag-hint-seen') === '1'; } catch {}
+  function dismissHint() {
+    if (hintDismissed) return;
+    hintDismissed = true;
+    hint.hidden = true;
+    try { localStorage.setItem('editrin-drag-hint-seen', '1'); } catch {}
+  }
+  hint.hidden = hintDismissed;
   let returnFocus = null;
   let drag = null;
   let suppressClick = false;
@@ -39,23 +49,33 @@
   }
 
   function updateGeometry(time = phase) {
-    const strength = (rhythm - 0.5) * 2;
-    const wave = paused ? 0 : Math.sin(time) * rhythm;
+    const strength = (displayedRhythm - 0.5) * 2;
+    const wave = paused ? 0 : Math.sin(time) * displayedRhythm;
     experience.style.setProperty('--r-shift', `${(strength * 9 + wave * 2).toFixed(2)}px`);
     experience.style.setProperty('--n-shift', `${(-strength * 8 - wave * 2).toFixed(2)}px`);
     experience.style.setProperty('--i-shift', `${(strength * -24).toFixed(2)}px`);
     experience.style.setProperty('--tilt', `${(strength * 5 + wave).toFixed(2)}deg`);
+    experience.style.setProperty('--r-rotation', `${(strength * 6 + wave * 0.6).toFixed(2)}deg`);
+    experience.style.setProperty('--n-rotation', `${(-strength * 5 - wave * 0.5).toFixed(2)}deg`);
   }
-  function setRhythm(value) {
+  function setRhythm(value, fromInteraction = true) {
     rhythm = Math.max(0, Math.min(1, Number(value)));
     slider.value = Math.round(rhythm * 100);
     output.value = rhythm.toFixed(2);
-    updateGeometry();
+    if (fromInteraction) dismissHint();
+    if (paused || reduceMotion.matches) {
+      displayedRhythm = rhythm;
+      updateGeometry();
+    }
   }
   function animate(timestamp) {
     frame = 0;
     if (paused || document.hidden) { last = 0; return; }
-    if (last) phase += Math.min(timestamp - last, 50) * (0.0004 + rhythm * 0.0013);
+    const dt = last ? Math.min(timestamp - last, 50) : 16;
+    // Frame-rate-independent easing: a short, soft settle without overshoot.
+    displayedRhythm += (rhythm - displayedRhythm) * (1 - Math.exp(-dt / 105));
+    if (Math.abs(rhythm - displayedRhythm) < 0.0001) displayedRhythm = rhythm;
+    phase += dt * (0.0004 + displayedRhythm * 0.0013);
     last = timestamp;
     updateGeometry();
     frame = requestAnimationFrame(animate);
@@ -63,6 +83,7 @@
   function syncLoop() {
     if (frame) cancelAnimationFrame(frame);
     frame = 0; last = 0;
+    if (paused || reduceMotion.matches) displayedRhythm = rhythm;
     updateGeometry();
     if (!paused && !document.hidden) frame = requestAnimationFrame(animate);
   }
@@ -127,7 +148,7 @@
     document.querySelector('#home-caption').setAttribute('aria-hidden', String(scene !== 'home'));
     for (const chapter of chapters) chapter.hidden = chapter.id !== `chapter-${scene}`;
     for (const glyph of glyphs) glyph.setAttribute('aria-expanded', String(glyph.dataset.scene === scene));
-    hint.hidden = scene !== 'home';
+    hint.hidden = scene !== 'home' || hintDismissed;
     back.hidden = scene === 'home';
     status.textContent = scene === 'home' ? 'Interactive artwork. Choose Write, Tune, or Keep.' : `${scene[0].toUpperCase() + scene.slice(1)}. App information and recording are open.`;
     syncVideos();
@@ -278,6 +299,7 @@
       const widths = [260,72,260];
       const vars = getComputedStyle(experience);
       const geometry = [parseFloat(vars.getPropertyValue('--r-shift')), parseFloat(vars.getPropertyValue('--n-shift')), parseFloat(vars.getPropertyValue('--i-shift')), parseFloat(vars.getPropertyValue('--tilt'))];
+      const rotations = [parseFloat(vars.getPropertyValue('--r-rotation')), 0, parseFloat(vars.getPropertyValue('--n-rotation'))];
       for (let i=0; i<glyphs.length; i++) {
         const svg = glyphs[i].querySelector('svg').cloneNode(true);
         svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
@@ -290,7 +312,11 @@
         const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));
         try {
           const img = new Image(); img.src = url; await img.decode();
-          ctx.drawImage(img,offsets[i],326,widths[i],320);
+          ctx.save();
+          ctx.translate(offsets[i] + widths[i] / 2, 486);
+          ctx.rotate(rotations[i] * Math.PI / 180);
+          ctx.drawImage(img,-widths[i] / 2,-160,widths[i],320);
+          ctx.restore();
         } finally { URL.revokeObjectURL(url); }
       }
       ctx.fillStyle='#2B2825';ctx.font='400 28px "Archivo Black", sans-serif';ctx.fillText('Edit:RiN',56,67);
@@ -307,6 +333,6 @@
       status.textContent = 'The artwork could not be saved. Please try again.';
     } finally { button.disabled=false; }
   });
-  setRhythm(0.5);
+  setRhythm(0.5, false);
   updatePause();
 })();

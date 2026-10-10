@@ -5,6 +5,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CodeFoldingTest {
+    @Test fun indexedOffsetsMatchLinearMappingAcrossManyCollapsedAndNestedBlocks() {
+        val source = "function f() {\n if (true) {\n run();\n }\n}\n".repeat(200)
+        val folds = codeFolds(source)
+        for (collapsed in listOf(folds.map { it.open }.toSet(),
+            folds.filterIndexed { i, _ -> i % 3 == 0 }.map { it.open }.toSet(), emptySet())) {
+            val projection = FoldProjection(source, folds, collapsed)
+            for (offset in 0..source.length) {
+                var removed = 0
+                var expected: Int? = null
+                for (fold in projection.hidden) {
+                    val start = fold.open + 1
+                    if (offset <= start) break
+                    if (offset < fold.close) { expected = start - removed; break }
+                    removed += fold.close - start - 3
+                }
+                assertEquals(expected ?: (offset - removed), projection.originalToTransformed(offset))
+                assertEquals(projection.hidden.any { offset > it.open && offset < it.close }, projection.isHidden(offset))
+            }
+            val displayed = projection.transform(AnnotatedString(source)).text
+            for (offset in 0..displayed.length) {
+                var removed = 0
+                var expected: Int? = null
+                for (fold in projection.hidden) {
+                    val start = fold.open + 1 - removed
+                    if (offset <= start) break
+                    if (offset < start + 3) { expected = fold.open + 1; break }
+                    removed += fold.close - fold.open - 1 - 3
+                }
+                assertEquals(expected ?: (offset + removed), projection.transformedToOriginal(offset))
+            }
+        }
+    }
+
     @Test fun findsNestedMultilineBlocksButNotSingleLineOrUnclosedBlocks() {
         val source = "function draw() {\n if (true) {\n circle(1,2,3);\n }\n}\nconst a = {};\nfunction unfinished() {"
         val folds = codeFolds(source)

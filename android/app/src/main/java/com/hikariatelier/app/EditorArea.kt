@@ -42,7 +42,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -92,8 +91,12 @@ internal fun EditorArea(
     val currentFontSize = rememberUpdatedState(editorFontSize)
     val currentFontSizeChange = rememberUpdatedState(onEditorFontSizeChange)
     val darkEditorTheme = colors.surface.luminance() < 0.5f
-    val dirtyFiles = dirtyProjectFiles(activeWorkId, activeWork?.code.orEmpty(),
-        sessionViewModel.editorValueState.value.text, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
+    val dirtyFiles by remember(activeWorkId, activeWork?.code, activeWork?.files, sessionViewModel) {
+        derivedStateOf {
+            dirtyProjectFiles(activeWorkId, activeWork?.code.orEmpty(),
+                sessionViewModel.editorValueState.value.text, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
+        }
+    }
     LaunchedEffect(readOnly) { if (readOnly) focusManager.clearFocus(force = true) }
 
     var errorTooltipLine by remember(editingKey, errorsCurrent) { mutableStateOf<Int?>(null) }
@@ -109,13 +112,22 @@ internal fun EditorArea(
     val currentEditorErrorLines by rememberUpdatedState(editorErrorLines)
     val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile, editingKey)
 
-    val parsedFoldRegions = if (isJavaScriptProjectFile(editingFile) ||
-        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingText, editingKey) else emptyList()
+    val foldSnapshot = if (isJavaScriptProjectFile(editingFile) ||
+        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingValue, editingKey)
+        else EditorFoldSnapshot(emptyList(), null, null)
+    val parsedFoldRegions = foldSnapshot.regions
     val foldRegions = parsedFoldRegions.orEmpty()
     val storedFolds = sessionViewModel.codeFoldStates[editingKey]
     val collapsedFolds = remember(storedFolds, editingText, parsedFoldRegions) {
         if (parsedFoldRegions == null) emptySet()
-        else rebasedFolds(storedFolds, editingText).intersect(foldRegions.map { it.open }.toSet())
+        else {
+            val retained = if (storedFolds != null && storedFolds.source == foldSnapshot.previousSource &&
+                foldSnapshot.change != null && storedFolds.collapsed.isNotEmpty()) {
+                shiftedFoldRegions(storedFolds.regions.orEmpty().filter { it.open in storedFolds.collapsed },
+                    foldSnapshot.change).map { it.open }.toSet()
+            } else rebasedFolds(storedFolds, editingText)
+            if (retained.isEmpty()) emptySet() else retained.intersect(foldRegions.map { it.open }.toSet())
+        }
     }
     SideEffect {
         if (parsedFoldRegions != null && storedFolds != null &&
@@ -137,8 +149,9 @@ internal fun EditorArea(
         }
     }
     val foldedHighlighter = remember(javascriptHighlighter, projection, visibleSearchMatches, searchColor) {
-        VisualTransformation { text ->
-            val highlighted = AnnotatedString.Builder(javascriptHighlighter.filter(text).text).apply {
+        CachedEditorTransformation { text ->
+            val syntax = javascriptHighlighter.filter(text).text
+            val highlighted = if (visibleSearchMatches.isEmpty()) syntax else AnnotatedString.Builder(syntax).apply {
                 visibleSearchMatches.forEach { range ->
                     if (range.first >= 0 && range.last < text.length && !range.isEmpty())
                         addStyle(SpanStyle(background = searchColor), range.first, range.last + 1)
@@ -232,7 +245,7 @@ internal fun EditorArea(
                     List(layout.lineCount) { visualLine ->
                         projection.transformedToOriginal(layout.getLineStart(visualLine))
                     }
-                } ?: logicalLineStarts.filter { offset -> projection.hidden.none { offset > it.open && offset < it.close } }
+                } ?: logicalLineStarts.filterNot(projection::isHidden)
 
                 AnnotatedString.Builder().apply {
                     visualStarts.forEachIndexed { visualIndex, offset ->

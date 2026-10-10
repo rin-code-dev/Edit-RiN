@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.4.0 — 2026-10-10
+
+### English
+
+- Added an interactive practice sandbox and redesigned chapters to the User Guide. Try controls, sliders, parameter changes, pause/resume, and snapshot restoration directly within the guide without affecting user works.
+- Introduced StudioSlider with a slim rail and rectangular fader inspired by the official website, unified across parameters, font size settings, and custom color controls.
+- Streamlined preview controls by consolidating snapshot and revert actions into a single History dropdown menu.
+- Updated theme selection in Settings to a smooth horizontal scrolling chip group.
+- Refined typography animation and easing on the official website, with rotation transformations and persistent hint dismissal.
+
+### 日本語
+
+- ユーザーガイドを再構成し、アプリ内で操作を体験できる練習用サンドボックスを追加しました。実際の作品に影響を与えることなく、スライダーやパラメータ変更、一時停止・再開、スナップショットと復元などの操作をその場で試せます。
+- 公式Webサイトのデザインに合わせた薄型レールと長方形フェーダーのStudioSliderコンポーネントを導入し、パラメータ調整、フォントサイズ設定、カスタムカラー設定のスライダーを統一しました。
+- プレビュー操作ツールの「スナップショット」と「保存済み状態に戻す」を「履歴」ドロップダウンメニューに統合し、ツールバーの配置を整理しました。
+- 設定画面のテーマ選択を、横スクロール可能なチップグループに変更しました。
+- 公式WebサイトのRiNタイポグラフィアニメーションのイージングと回転表現を向上させ、操作ヒントの非表示記憶などに対応しました。
+
+
 ## 2.3.2 — 2026-10-09
 
 ### English

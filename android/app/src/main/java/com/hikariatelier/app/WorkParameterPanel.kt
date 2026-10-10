@@ -331,7 +331,7 @@ internal fun WorkParameterPanel(
                                     Text("−", fontWeight = FontWeight.Bold)
                                 }
 
-                                Slider(
+                                StudioSlider(
                                     value = numeric,
                                     onValueChange = { raw ->
                                         val steps = ((raw - parameter.min) / parameter.step).roundToInt()

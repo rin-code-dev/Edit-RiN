@@ -1,8 +1,8 @@
 # Release & Build Guide / リリース・ビルド手順
 
 - **Application ID**: `com.hikariatelier.app`
-- **Current Version**: `2.3.2` (Version Code: `32`)
-- **Release Git Tag**: `v2.3.2`
+- **Current Version**: `2.4.0` (Version Code: `33`)
+- **Release Git Tag**: `v2.4.0`
 
 ---
 
@@ -20,7 +20,7 @@
 2. **Run Verification & Build**:
    ```sh
    npm test
-   ./scripts/build-apk.sh release --test --lint
+   cd android && ./gradlew assembleRelease
    ```
 3. **Artifacts**:
    - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
@@ -48,7 +48,7 @@
 2. **テストとビルド実行**:
    ```sh
    npm test
-   ./scripts/build-apk.sh release --test --lint
+   cd android && ./gradlew assembleRelease
    ```
 3. **成果物の確認**:
    - 署名済みAPK: `android/app/build/outputs/apk/release/app-release.apk`

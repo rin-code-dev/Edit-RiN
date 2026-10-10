@@ -163,6 +163,22 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         }
     }
     private val marker = " … "
+    // Prefix sums keep cursor and gutter mapping logarithmic in the number of folds.
+    private val removedThrough = IntArray(hidden.size)
+    private val displayStarts = IntArray(hidden.size)
+    init {
+        var removed = 0
+        hidden.forEachIndexed { index, fold ->
+            displayStarts[index] = fold.open + 1 - removed
+            removed += fold.close - fold.open - 1 - marker.length
+            removedThrough[index] = removed
+        }
+    }
+    fun isHidden(offset: Int): Boolean {
+        val index = hidden.binarySearch { it.open.compareTo(offset) }
+        val preceding = if (index >= 0) index - 1 else -index - 2
+        return preceding >= 0 && offset < hidden[preceding].close
+    }
     private var cachedInput: AnnotatedString? = null
     private var cachedResult: TransformedText? = null
     fun transform(text: AnnotatedString): TransformedText {
@@ -182,24 +198,18 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         }
     }
     override fun originalToTransformed(offset: Int): Int {
-        var removed = 0
-        for (fold in hidden) {
-            val start = fold.open + 1
-            if (offset <= start) break
-            if (offset < fold.close) return start - removed
-            removed += fold.close - start - marker.length
-        }
-        return offset - removed
+        val found = hidden.binarySearch { (it.open + 1).compareTo(offset) }
+        val index = if (found >= 0) found else -found - 2
+        if (index < 0) return offset
+        if (offset == hidden[index].open + 1 || offset < hidden[index].close) return displayStarts[index]
+        return offset - removedThrough[index]
     }
     override fun transformedToOriginal(offset: Int): Int {
-        var removed = 0
-        for (fold in hidden) {
-            val start = fold.open + 1 - removed
-            if (offset <= start) break
-            if (offset < start + marker.length) return fold.open + 1
-            removed += fold.close - fold.open - 1 - marker.length
-        }
-        return offset + removed
+        val found = displayStarts.binarySearch(offset)
+        val index = if (found >= 0) found else -found - 2
+        if (index < 0) return offset
+        if (offset < displayStarts[index] + marker.length) return hidden[index].open + 1
+        return offset + removedThrough[index]
     }
 }
 

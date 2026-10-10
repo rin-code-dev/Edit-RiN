@@ -38,4 +38,17 @@ class UserGuideTest {
             }
         }
     }
+
+    @Test fun visualControlLabelsCoverAllLanguagesAndUseTheSameAssets() {
+        val source = guideControlActions("en")
+        for (language in listOf("ja", "en", "zh")) {
+            val actions = guideControlActions(language)
+            assertEquals(source.map { it.icon }, actions.map { it.icon })
+            assertTrue(actions.all { it.label.isNotBlank() && it.result.isNotBlank() })
+            for (section in localizedUserGuide(language)) {
+                assertTrue(actions.map { it.icon }.containsAll(guideHighlightedControls(section.iconRes)))
+            }
+        }
+    }
+
 }

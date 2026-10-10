@@ -408,83 +408,14 @@ internal fun SettingsScreen(
                         )
                     )
 
-                    FlowRow(
-                        modifier =
-                            Modifier.fillMaxWidth(),
-                        horizontalArrangement =
-                            Arrangement.spacedBy(
-                                8.dp
-                            ),
-                        verticalArrangement =
-                            Arrangement.spacedBy(
-                                8.dp
-                            ),
-                        maxItemsInEachRow = 2
-                    ) {
-
-                        ThemeChip(
-                            modifier =
-                                Modifier.weight(1f),
-                            label = uiText("自動"),
-                            selected =
-                                state.themeMode ==
-                                    AppThemeMode.SYSTEM,
-                            onClick = {
-                                onThemeModeChange(
-                                    AppThemeMode.SYSTEM
-                                )
-                            }
-                        )
-
-                        ThemeChip(
-                            modifier =
-                                Modifier.weight(1f),
-                            label = uiText("ダーク"),
-                            selected =
-                                state.themeMode ==
-                                    AppThemeMode.DARK,
-                            onClick = {
-                                onThemeModeChange(
-                                    AppThemeMode.DARK
-                                )
-                            }
-                        )
-
-                        ThemeChip(
-                            modifier =
-                                Modifier.weight(1f),
-                            label = uiText("ライト"),
-                            selected =
-                                state.themeMode ==
-                                    AppThemeMode.LIGHT,
-                            onClick = {
-                                onThemeModeChange(
-                                    AppThemeMode.LIGHT
-                                )
-                            }
-                        )
-
-                        ThemeChip(
-                            modifier = Modifier.weight(1f),
-                            label = "Sumi",
-                            selected = state.themeMode == AppThemeMode.SUMI,
-                            onClick = { onThemeModeChange(AppThemeMode.SUMI) }
-                        )
-
-                        ThemeChip(
-                            modifier =
-                                Modifier.weight(1f),
-                            label = uiText("カスタム"),
-                            selected =
-                                state.themeMode ==
-                                    AppThemeMode.CUSTOM,
-                            onClick = {
-                                onThemeModeChange(
-                                    AppThemeMode.CUSTOM
-                                )
-                            }
-                        )
-                    }
+                    val themeChoices = listOf(AppThemeMode.SYSTEM, AppThemeMode.DARK,
+                        AppThemeMode.LIGHT, AppThemeMode.SUMI, AppThemeMode.CUSTOM)
+                    ScrollableChoiceGroup(
+                        labels = listOf(uiText("自動"), uiText("ダーク"), uiText("ライト"), "Sumi", uiText("カスタム")),
+                        selectedIndex = themeChoices.indexOf(state.themeMode),
+                        onSelect = { onThemeModeChange(themeChoices[it]) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
 
                 SettingsDivider()
@@ -869,7 +800,7 @@ internal fun SettingsScreen(
                         )
                     )
 
-                    Slider(
+                    StudioSlider(
                         value =
                             state.editorFontSize,
                         onValueChange =

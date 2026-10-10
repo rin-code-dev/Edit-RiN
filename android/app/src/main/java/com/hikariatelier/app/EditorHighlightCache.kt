@@ -51,3 +51,19 @@ internal fun withEditorErrorLines(text: AnnotatedString, dark: Boolean, errors: 
         }
     }.toAnnotatedString()
 }
+
+/** One entry per transformation configuration; focus/layout changes reuse the displayed text. */
+internal class CachedEditorTransformation(
+    private val transform: (AnnotatedString) -> androidx.compose.ui.text.input.TransformedText
+) : androidx.compose.ui.text.input.VisualTransformation {
+    private var input: AnnotatedString? = null
+    private var output: androidx.compose.ui.text.input.TransformedText? = null
+
+    override fun filter(text: AnnotatedString): androidx.compose.ui.text.input.TransformedText {
+        if (text == input) return output!!
+        return transform(text).also {
+            input = text
+            output = it
+        }
+    }
+}

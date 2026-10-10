@@ -44,20 +44,22 @@ internal fun editorHighlight(
     }
 }
 
-/** Keep first-open parsing of a large sketch away from keyboard and sheet animations. */
+internal const val EDITOR_FOLD_IDLE_MS = 350L
+
+/** All full scans wait for idle input and run off the UI thread, including small files. */
 @Composable
-internal fun editorFoldRegions(source: String, documentKey: String): List<CodeFold>? {
-    if (source.length < 8_000) return remember(source) { codeFolds(source) }
-    var lastComplete by remember(documentKey) { mutableStateOf<Pair<String, List<CodeFold>>?>(null) }
+internal fun editorFoldRegions(
+    editingValue: androidx.compose.ui.text.input.TextFieldValue,
+    documentKey: String,
+    parse: (String) -> List<CodeFold> = ::codeFolds
+): EditorFoldSnapshot = key(documentKey) {
+    val analysis = remember { EditorFoldAnalysis() }
+    val source = editingValue.text
     val result by produceState<Pair<String, List<CodeFold>>?>(null, source) {
-        delay(120)
-        value = withContext(Dispatchers.Default) { source to codeFolds(source) }
+        delay(EDITOR_FOLD_IDLE_MS)
+        value = withContext(Dispatchers.Default) { source to parse(source) }
     }
-    if (result?.first == source) {
-        SideEffect { lastComplete = result }
-        return result?.second
-    }
-    return lastComplete?.let { (oldSource, folds) -> rebaseCodeFoldRegions(oldSource, folds, source) }
+    analysis.update(editingValue, result)
 }
 
 internal fun revisionDifference(current: String, revision: String): String {
