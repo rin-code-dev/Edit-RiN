@@ -153,15 +153,23 @@ def main():
         git(snapshot, 'config', 'user.name', user['login'])
         git(snapshot, 'config', 'user.email', f"{user['id']}+{user['login']}@users.noreply.github.com")
         git(snapshot, 'remote', 'add', 'origin', url)
+        # Compare formatting against local HEAD, not an empty first-build tree.
+        git(snapshot, 'fetch', '-q', '--depth=1', str(root), 'HEAD')
+        baseline = git(snapshot, 'rev-parse', 'FETCH_HEAD').decode().strip()
+        git(snapshot, 'update-ref', 'refs/heads/source-base', baseline)
         # Explicit ref only. A competing push is rejected; never force or retry blindly.
         remote = git(snapshot, 'ls-remote', 'origin', f'refs/heads/{BRANCH}').decode().strip()
-        parent = []
+        # Start from the current public history so Git transfers only new blobs.
+        git(snapshot, 'fetch', '-q', '--depth=1', 'origin', 'refs/heads/main')
+        public_main = git(snapshot, 'rev-parse', 'FETCH_HEAD').decode().strip()
+        git(snapshot, 'update-ref', 'refs/remotes/origin/main', public_main)
+        parent = ['-p', public_main]
         if remote:
             git(snapshot, 'fetch', '-q', '--depth=1', 'origin', f'refs/heads/{BRANCH}')
             parent = ['-p', git(snapshot, 'rev-parse', 'FETCH_HEAD').decode().strip()]
         git(snapshot, 'add', '--all')
         git(snapshot, 'update-index', '--chmod=+x', 'android/gradlew', 'scripts/cloud-build.sh')
-        git(snapshot, 'diff', '--cached', '--check')
+        git(snapshot, 'diff', '--cached', '--check', baseline)
         tree = git(snapshot, 'write-tree').decode().strip()
         request_id = uuid.uuid4().hex
         sha = git(snapshot, 'commit-tree', tree, *parent, '-m', f'Cloud debug snapshot {request_id}').decode().strip()
