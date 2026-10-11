@@ -106,7 +106,8 @@ def receive(repo, run_id, source_sha, output):
         metadata = json.loads((directory / 'build.json').read_text())
         apk = directory / 'app-debug.apk'
         if (metadata['source_sha'] != source_sha or str(metadata['run_id']) != str(run_id)
-                or hashlib.sha256(apk.read_bytes()).hexdigest() != metadata['sha256']):
+                or hashlib.sha256(apk.read_bytes()).hexdigest() != metadata['sha256']
+                or not re.fullmatch(r'[a-f0-9]{64}', metadata.get('signer_sha256', ''))):
             raise RuntimeError('Artifact source/run/checksum mismatch')
         output.mkdir(parents=True, exist_ok=True)
         stamp = dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).strftime('%Y%m%d-%H%M')
