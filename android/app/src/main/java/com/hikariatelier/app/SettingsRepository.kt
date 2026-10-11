@@ -78,6 +78,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
         xShareText = preferences.getString("setting_x_share_text", DEFAULT_X_SHARE_TEXT).orEmpty(),
         recordingCountdownSeconds = preferences.getInt("setting_recording_countdown_seconds", 3).takeIf(RECORDING_COUNTDOWN_OPTIONS::contains) ?: 3,
         shareCardAuthor = preferences.getString("setting_share_card_author", "").orEmpty(),
+        shareCardQrUrl = preferences.getString("setting_share_card_qr_url", DEFAULT_SHARE_URL).orEmpty(),
         p5Username = preferences.getString("p5_web_editor_username", "").orEmpty(),
         fontLigatures = preferences.getBoolean("font_ligatures", false),
         customFontFile = preferences.getString("custom_font_file", "").orEmpty(),
@@ -117,6 +118,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
             .putString("setting_x_share_text", state.xShareText)
             .putInt("setting_recording_countdown_seconds", state.recordingCountdownSeconds)
             .putString("setting_share_card_author", state.shareCardAuthor)
+            .putString("setting_share_card_qr_url", state.shareCardQrUrl)
             .putString("p5_web_editor_username", state.p5Username)
             .putBoolean("font_ligatures", state.fontLigatures)
             .putString("custom_font_file", state.customFontFile)
@@ -160,6 +162,7 @@ internal fun SettingsUiState.toBackupJson(): String = JSONObject()
     .put("xShareText", xShareText)
     .put("recordingCountdownSeconds", recordingCountdownSeconds)
     .put("shareCardAuthor", shareCardAuthor)
+    .put("shareCardQrUrl", shareCardQrUrl)
     .put("p5Username", p5Username)
     .put("fontLigatures", fontLigatures)
     .put("workSort", workSort)
@@ -196,6 +199,7 @@ internal fun SettingsUiState.restoredFromBackup(json: JSONObject): SettingsUiSta
     xShareText = json.optString("xShareText", xShareText).take(1000),
     recordingCountdownSeconds = json.optInt("recordingCountdownSeconds", recordingCountdownSeconds).takeIf(RECORDING_COUNTDOWN_OPTIONS::contains) ?: 3,
     shareCardAuthor = json.optString("shareCardAuthor", shareCardAuthor),
+    shareCardQrUrl = json.optString("shareCardQrUrl", shareCardQrUrl),
     p5Username = json.optString("p5Username", p5Username).takeIf(::validP5Username).orEmpty(),
     fontLigatures = json.optBoolean("fontLigatures", fontLigatures),
     workSort = json.optString("workSort", workSort),

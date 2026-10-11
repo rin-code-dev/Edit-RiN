@@ -24,8 +24,9 @@ internal enum class QrStatus {
     TOO_LARGE
 }
 
-// Keep the implementation for a future sharing workflow, without exposing UI.
-internal const val SHARE_CARDS_AVAILABLE = false
+// Share cards revival
+internal const val SHARE_CARDS_AVAILABLE = true
+internal const val DEFAULT_SHARE_URL = "https://rin-code-dev.github.io/Edit-RiN"
 
 internal enum class ShareCardTheme(
     val id: String,
@@ -104,18 +105,47 @@ internal data class ShareCardConfig(
     val snippetStartLine: Int = 1,
     val includeQr: Boolean = true,
     val qrStatus: QrStatus = QrStatus.AVAILABLE,
-    val allowWebCodeView: Boolean = true
+    val allowWebCodeView: Boolean = true,
+    val qrUrl: String = DEFAULT_SHARE_URL
 )
 
 internal object ShareCardGenerator {
 
-    private const val WEB_VIEWER_BASE_URL = "https://rin-code-dev.github.io/Edit-RiN/share/#c="
+    const val WEB_VIEWER_BASE_URL = "https://rin-code-dev.github.io/Edit-RiN/share/#c="
+
+    /**
+     * Validates if a QR code can be generated for an arbitrary URL.
+     */
+    fun checkQrUrlStatus(url: String): QrStatus {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return QrStatus.TOO_LARGE
+        return try {
+            val hints = mapOf(
+                EncodeHintType.MARGIN to 1,
+                EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.L
+            )
+            QRCodeWriter().encode(trimmed, BarcodeFormat.QR_CODE, 200, 200, hints)
+            QrStatus.AVAILABLE
+        } catch (_: Exception) {
+            QrStatus.TOO_LARGE
+        }
+    }
+
+    /**
+     * Builds the web player URL from sketch code.
+     */
+    fun buildWebPlayerUrl(code: String, allowWebCodeView: Boolean = true): String {
+        val cleaned = cleanCodeForQr(code)
+        val compressed = compressCodeForUrl(cleaned)
+        val suffix = if (!allowWebCodeView) "&src=0" else ""
+        return WEB_VIEWER_BASE_URL + compressed + suffix
+    }
 
     /**
      * Cleans code of non-functional overhead (comments, extra empty lines, sourceURL)
      * to minimize data payload and maximize QR module size, preserving // @rin declarations.
      */
-    private fun cleanCodeForQr(code: String): String {
+    fun cleanCodeForQr(code: String): String {
         return code
             .replace(Regex("""//#\s*sourceURL=[^\r\n]*"""), "")
             .lines()
@@ -290,9 +320,8 @@ internal object ShareCardGenerator {
         }
         canvas.drawLine(rightX, 236f, rightX + contentWidth, 236f, dividerPaint)
 
-        val hasQr = config.includeQr && config.qrStatus == QrStatus.AVAILABLE
+        val hasQr = config.includeQr && config.qrStatus == QrStatus.AVAILABLE && config.qrUrl.isNotBlank()
         val hasCode = config.includeCode && config.snippetCode.isNotBlank()
-        val cleanedQrCode = cleanCodeForQr(config.fullCode)
 
         if (hasCode && hasQr) {
             // Layout A: Both Code and QR (Expanded 390x390 QR)
@@ -306,29 +335,33 @@ internal object ShareCardGenerator {
             drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine, theme)
 
             // QR Card at Bottom Right
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = qrPadding, allowWebCodeView = config.allowWebCodeView)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, config.qrUrl, padding = qrPadding)
 
-            // Scan Info to the left of the QR
+            val isSketchViewer = config.qrUrl.startsWith(WEB_VIEWER_BASE_URL)
+            val hintTitle = if (isSketchViewer) "Scan to run sketch" else "Scan QR code"
+            val hintSub = if (isSketchViewer) "Runs in browser with p5.js" else "Open in browser"
+
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.titleColor)
                 textSize = 30f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", rightX, qrY + 120f, hintTitlePaint)
+            canvas.drawText(hintTitle, rightX, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.subtitleColor)
                 textSize = 22f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs in browser with p5.js", rightX, qrY + 165f, hintSubPaint)
+            canvas.drawText(hintSub, rightX, qrY + 165f, hintSubPaint)
 
             val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.urlColor)
                 textSize = 19f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
-            canvas.drawText("rin-code-dev.github.io/Edit-RiN", rightX, qrY + 205f, urlPaint)
+            val displayHost = formatDisplayUrl(config.qrUrl)
+            canvas.drawText(displayHost, rightX, qrY + 205f, urlPaint)
 
         } else if (hasCode) {
             // Layout B: Code only (Full height)
@@ -342,21 +375,33 @@ internal object ShareCardGenerator {
             val qrX = rightX
             val qrY = 320f
 
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, qrPadding, allowWebCodeView = config.allowWebCodeView)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, config.qrUrl, qrPadding)
+
+            val isSketchViewer = config.qrUrl.startsWith(WEB_VIEWER_BASE_URL)
+            val hintTitle = if (isSketchViewer) "Scan to run sketch" else "Scan QR code"
+            val hintSub = if (isSketchViewer) "Runs live in browser with p5.js" else "Open in browser"
 
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.titleColor)
                 textSize = 36f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", qrX + qrCardSize + 40f, qrY + 120f, hintTitlePaint)
+            canvas.drawText(hintTitle, qrX + qrCardSize + 40f, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.subtitleColor)
                 textSize = 26f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs live in browser with p5.js", qrX + qrCardSize + 40f, qrY + 175f, hintSubPaint)
+            canvas.drawText(hintSub, qrX + qrCardSize + 40f, qrY + 175f, hintSubPaint)
+
+            val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor(theme.urlColor)
+                textSize = 20f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            }
+            val displayHost = formatDisplayUrl(config.qrUrl)
+            canvas.drawText(displayHost, qrX + qrCardSize + 40f, qrY + 220f, urlPaint)
 
         } else {
             // Layout D: Minimal
@@ -371,14 +416,26 @@ internal object ShareCardGenerator {
         return card
     }
 
+    private fun formatDisplayUrl(url: String): String {
+        return try {
+            val uri = android.net.Uri.parse(url)
+            val host = uri.host
+            if (!host.isNullOrBlank()) {
+                val path = uri.path.orEmpty().trimEnd('/')
+                if (path.isNotEmpty() && path != "/") "$host$path" else host
+            } else url.trim()
+        } catch (_: Exception) {
+            url.trim()
+        }.take(45)
+    }
+
     private fun drawQrCard(
         canvas: Canvas,
         x: Float,
         y: Float,
         size: Float,
-        code: String,
-        padding: Float = 22f,
-        allowWebCodeView: Boolean = true
+        qrUrl: String,
+        padding: Float = 22f
     ) {
         val qrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -386,8 +443,6 @@ internal object ShareCardGenerator {
         }
         canvas.drawRoundRect(x, y, x + size, y + size, 28f, 28f, qrBgPaint)
 
-        val suffix = if (!allowWebCodeView) "&src=0" else ""
-        val qrUrl = WEB_VIEWER_BASE_URL + compressCodeForUrl(code) + suffix
         val rawQrSize = (size - padding * 2).toInt()
         val qrBitmap = generateQrBitmap(qrUrl, rawQrSize)
         canvas.drawBitmap(qrBitmap, x + padding, y + padding, null)

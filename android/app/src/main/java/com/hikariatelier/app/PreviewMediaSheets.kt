@@ -36,6 +36,7 @@ internal fun PreviewMediaSheets(
     var shareCardArtwork by models.recording::shareCardArtwork
     var savedPreviewMedia by models.recording::savedPreviewMedia
     var shareCardAuthor by models.settings::shareCardAuthor
+    var shareCardQrUrl by models.settings::shareCardQrUrl
     val xShareText = models.settings.xShareText
     val pendingRecording = models.recording.pendingRecording
     var destinationRecordingName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -90,7 +91,10 @@ internal fun PreviewMediaSheets(
             initialAuthor = shareCardAuthor,
             onAuthorChange = { newAuthor ->
                 shareCardAuthor = newAuthor
-
+            },
+            initialQrUrl = shareCardQrUrl,
+            onQrUrlChange = { newQrUrl ->
+                shareCardQrUrl = newQrUrl
             },
             initialSelectedRange = initialRange,
             text = ::uiText,

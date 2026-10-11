@@ -51,6 +51,11 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
             ?: error("Cannot write JS file")
     }
 
+    suspend fun writeHtml(uri: Uri, html: String) = withContext(Dispatchers.IO) {
+        resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(html) }
+            ?: error("Cannot write HTML file")
+    }
+
     suspend fun writeBackup(uri: Uri, works: List<Work>, activeId: String, settings: String,
                             includeTemplates: Boolean = true) =
         withContext(Dispatchers.IO) {
@@ -113,4 +118,9 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
 internal fun safeJsFileName(title: String): String {
     val base = title.trim().ifBlank { "sketch" }.replace(Regex("""[\\/:*?"<>|]+"""), "_")
     return if (base.endsWith(".js", ignoreCase = true)) base else "$base.js"
+}
+
+internal fun safeHtmlFileName(title: String): String {
+    val base = title.trim().ifBlank { "sketch" }.replace(Regex("""[\\/:*?"<>|]+"""), "_")
+    return if (base.endsWith(".html", ignoreCase = true) || base.endsWith(".htm", ignoreCase = true)) base else "$base.html"
 }

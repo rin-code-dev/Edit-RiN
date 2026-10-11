@@ -1285,6 +1285,12 @@ internal class WorkManagementViewModel(
     fun exportJs(uri: Uri) = execute("JSファイルを書き出せませんでした") {
         requireNotNull(transfer).writeJs(uri, editorText)
     }
+    fun exportHtml(uri: Uri) = execute("HTMLファイルを書き出せませんでした") {
+        val work = checkNotNull(workContent)
+        val html = StandaloneHtmlGenerator.generate(work, editorText)
+        requireNotNull(transfer).writeHtml(uri, html)
+        emit(WorkEvent(message = "HTMLファイルを保存しました"))
+    }
     fun exportBackup(uri: Uri) = execute("バックアップを書き出せませんでした") {
         materialize()
         val users = userWorkStore(snapshots(includeEdits = true, request = this), session.activeWorkIdState.value)

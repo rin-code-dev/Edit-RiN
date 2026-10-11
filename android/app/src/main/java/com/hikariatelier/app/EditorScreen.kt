@@ -348,6 +348,11 @@ internal fun EditorScreen(
         previewActionsExpanded = false
     }
 
+    fun sharePreviewCard() {
+        preview.requestScreenshot(forShareCard = true)
+        previewActionsExpanded = false
+    }
+
 
 
     fun openPreviewParameters() {
@@ -672,6 +677,9 @@ internal fun EditorScreen(
 
     val exportJsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/javascript")) { uri ->
         if (uri != null) workManagementViewModel.exportJs(uri)
+    }
+    val exportHtmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+        if (uri != null) workManagementViewModel.exportHtml(uri)
     }
     val exportBackupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) workManagementViewModel.exportBackup(uri)
@@ -1062,6 +1070,11 @@ internal fun EditorScreen(
                     safeJsFileName(activeWork?.title ?: "sketch")
                 )
             },
+            onExportHtml = {
+                exportHtmlLauncher.launch(
+                    safeHtmlFileName(activeWork?.title ?: "sketch")
+                )
+            },
             onDelete = { editUserWork { showDeleteDialog = true } },
             onOpenProjectFiles = { editUserWork { showProjectFilesDialog = true } },
             onOpenAssets = { editUserWork { focusManager.clearFocus(force = true); showAssets = true } },
@@ -1153,6 +1166,7 @@ internal fun EditorScreen(
             colors = colors,
             onOpenParameters = ::openPreviewParameters,
             onScreenshot = ::showScreenshotOptions,
+            onShareCard = ::sharePreviewCard,
             onRecordToggle = ::togglePreviewRecording,
             onFullscreen = {
                 previewActionsExpanded = false
@@ -1284,6 +1298,7 @@ internal fun EditorScreen(
                         previewActionsExpanded = false
                     },
                     onScreenshot = ::showScreenshotOptions,
+                    onShareCard = ::sharePreviewCard,
                     onOpenParameters = ::openPreviewParameters,
                     onToggleRecording = ::togglePreviewRecording,
                     onCancelCountdown = { cancelRecordingCountdown() },
@@ -1602,6 +1617,7 @@ internal fun EditorScreen(
                     onImportP5 = { workManagementViewModel.resetP5Results(); showP5Import = true },
                     onImportJs = { importJsLauncher.launch(arrayOf("application/javascript", "text/javascript", "text/plain", "application/octet-stream")) },
                     onExportJs = { exportJsLauncher.launch(safeJsFileName(activeWork?.title ?: "sketch")) },
+                    onExportHtml = { exportHtmlLauncher.launch(safeHtmlFileName(activeWork?.title ?: "sketch")) },
                     onExportBackup = { exportBackupLauncher.launch("Edit-RiN-backup.zip") },
                     onImportBackup = { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
                     openExternalUrl = { onOpenExternalUrl(it) }
@@ -1714,63 +1730,41 @@ internal fun EditorScreen(
         }
     }
 
-    if (showSnippets) {
-        SnippetDialog(text = { uiText(it) }, onInsert = { snippet ->
-            if (!workSaving) {
-                val indent = editingValue.text.substring(0, editingValue.selection.min)
-                    .substringAfterLast('\n').takeWhile { it == ' ' || it == '\t' }
-                val insertion = snippet.code.replace("\n", "\n$indent") + "\n$indent"
-                applyEditorChange(insertAtSelection(editingValue, insertion))
-                workManagementViewModel.saveCurrentWork()
-                showSnippets = false
-                editorFocusRequester.requestFocus()
-            }
-        }, onDismiss = { showSnippets = false })
-    }
-    if (showReferenceDialog) {
-        val effectiveLang = resolveUiLanguage(appLanguage, ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en")
-        P5ReferenceDialog(
-            initialQuery = referenceSearchQuery,
-            codeFontFamily = codeFontFamily,
-            language = effectiveLang,
-            textTranslator = { uiText(it) },
-            onInsert = { snippetCode ->
-                if (!workSaving && !sessionViewModel.editorInputLocked) {
-                    if (sessionViewModel.sampleReadOnly) {
-                        workManagementViewModel.requestSampleCopy()
-                        showReferenceDialog = false
-                        return@P5ReferenceDialog
-                    }
-                    val indent = editingValue.text.substring(0, editingValue.selection.min)
-                        .substringAfterLast('\n').takeWhile { it == ' ' || it == '\t' }
-                    val insertion = snippetCode.replace("\n", "\n$indent")
-                    applyEditorChange(insertAtSelection(editingValue, insertion))
-                    workManagementViewModel.saveCurrentWork()
-                    showReferenceDialog = false
-                    editorFocusRequester.requestFocus()
-                }
-            },
-            onDismiss = { showReferenceDialog = false }
-        )
-    }
-    if (preview.screenshotBusy || recordingViewModel.screenshotSaving) {
-        Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
-            Surface(shape = RoundedCornerShape(16.dp)) {
-                Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(24.dp))
-                    Spacer(Modifier.width(16.dp))
-                    Text(uiText("画像を書き出し中…"))
-                }
-            }
-        }
-    }
-    if (showScreenshotScale) {
-        ScreenshotScaleDialog(text = { uiText(it) }, onCapture = { scale ->
-            showScreenshotScale = false
-            pendingScreenshotScale = scale
-            preview.requestScreenshot(scale = scale)
-        }, onDismiss = { showScreenshotScale = false })
-    }
+    EditorAuthoringDialogs(
+        models = models,
+        preview = preview,
+        activeWork = activeWork,
+        editorText = editorText,
+        editingValue = editingValue,
+        editorFocusRequester = editorFocusRequester,
+        codeFontFamily = codeFontFamily,
+        workSaving = workSaving,
+        showSnippets = showSnippets,
+        onSnippetsChange = { showSnippets = it },
+        showReferenceDialog = showReferenceDialog,
+        onReferenceDialogChange = { showReferenceDialog = it },
+        referenceSearchQuery = referenceSearchQuery,
+        showScreenshotScale = showScreenshotScale,
+        onScreenshotScaleChange = { showScreenshotScale = it },
+        onPendingScreenshotScale = { pendingScreenshotScale = it },
+        showRecordingFormatDialog = showRecordingFormatDialog,
+        onRecordingFormatDialogChange = { showRecordingFormatDialog = it },
+        isRecordingOrCountingDown = isRecordingOrCountingDown,
+        mp4BitrateMbps = mp4BitrateMbps,
+        onMp4BitrateChange = { mp4BitrateMbps = it },
+        recordingCountdownSeconds = recordingCountdownSeconds,
+        onRecordingCountdownChange = { recordingCountdownSeconds = it },
+        onRequestPreviewRecording = ::requestPreviewRecording,
+        showColorPickerDialog = showColorPickerDialog,
+        onColorPickerDialogChange = { showColorPickerDialog = it },
+        colorPickerInitial = colorPickerInitial,
+        activeColorTarget = activeColorTarget,
+        onLastColorPickerColor = { lastColorPickerColor = it },
+        showUserGuide = showUserGuide,
+        onUserGuideChange = { showUserGuide = it },
+        applyEditorChange = ::applyEditorChange,
+        textTranslator = { s, args -> uiText(s, *args) }
+    )
 
     if (showParameterSheet) {
         LiveParameterSheet(activeWork, editorText, sessionViewModel, workManagementViewModel, preview,
@@ -1779,135 +1773,43 @@ internal fun EditorScreen(
             onDismiss = { showParameterSheet = false })
     }
 
-    if (showRecordingFormatDialog && !isRecordingOrCountingDown) {
-        RecordingOptionsSheet(
-            bitrate = mp4BitrateMbps, countdown = recordingCountdownSeconds,
-            text = ::uiText,
-            onBitrate = {
-                mp4BitrateMbps = it
-
-            },
-            onCountdown = {
-                recordingCountdownSeconds = it
-
-            },
-            onDismiss = { showRecordingFormatDialog = false },
-            onStart = { format ->
-                showRecordingFormatDialog = false
-                requestPreviewRecording(format)
-            }
-        )
-    }
-
     PreviewMediaSheets(models, preview, mediaActions, editorValue)
 
     EditorWorkDialogs(models, pendingRevision) { pendingRevision = it }
 
-    if (assetBusy && !showAssets && !workSaving && !sessionViewModel.snapshotRestoring) {
-        AlertDialog(onDismissRequest = {}, title = { Text(uiText("ファイルを処理中…")) },
-            text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
-    }
-
-    if (showP5Import) {
-        P5AccountImportDialog(
-            username = p5Username,
-            sketches = p5Sketches,
-            busy = p5Busy,
-            error = p5Error?.let { uiText(it) },
-            text = { uiText(it) },
-            onUsernameChange = { value ->
-                p5Username = value.take(64)
-                workManagementViewModel.resetP5Results()
-            },
-            onLoad = { workManagementViewModel.loadP5Account() },
-            onImport = { workManagementViewModel.importFromP5(it, preview.session.assets) },
-            onDismiss = { showP5Import = false }
-        )
-    }
-
-    if (showAssets) {
-        AssetManagerDialog(
-            assets = activeWork?.assets.orEmpty(), busy = assetBusy, text = ::uiText,
-            onAdd = {
-                assetTargetId = activeWorkId
-                assetPicker.launch(arrayOf("*/*"))
-            },
-            onRename = { request -> workManagementViewModel.renameAsset(request) },
-            onDelete = { name -> activeWork?.let { changeAssets(it.id, it.assets.toMap() - name) } },
-            onClose = { showAssets = false },
-            onPreview = { name, asset -> previewAsset = name to asset },
-            onInsert = { name, asset ->
-                if (editingJavaScript) {
-                    applyEditorChange(insertAtSelection(editingValue, assetLoaderCode(name, asset)))
-                    showAssets = false
-                } else {
-                    Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
-                }
-            },
-            referenceSources = projectSearchSources(activeWorkId, editorText, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
-        )
-    }
-    previewAsset?.let { (name, asset) ->
-        AssetPreviewDialog(name, asset, assetStorage.file(asset), ::uiText) { previewAsset = null }
-    }
-
-    if (showProjectFilesDialog) {
-        ProjectFilesDialog(
-            activeWorkFiles = activeWork?.files.orEmpty(),
-            colors = colors,
-            codeFontFamily = codeFontFamily,
-            onSelectFile = { name, content ->
-                originalAuxiliaryFileName = name
-                auxiliaryFileName = name
-                auxiliaryFileContent = content
-                showProjectFilesDialog = false
-                selectedEditorFile = name
-            },
-            onAddNewFile = {
-                originalAuxiliaryFileName = null
-                auxiliaryFileName = "library.js"
-                auxiliaryFileContent = ""
-                showProjectFilesDialog = false
-                showAuxiliaryFileEditor = true
-            },
-            onEditFile = { name, content ->
-                originalAuxiliaryFileName = name
-                auxiliaryFileName = name
-                auxiliaryFileContent = sessionViewModel.fileDrafts["$activeWorkId/$name"] ?: content
-                showProjectFilesDialog = false
-                showAuxiliaryFileEditor = true
-            },
-            onDismiss = { showProjectFilesDialog = false },
-            textTranslator = { s, args -> uiText(s, *args) }
-        )
-    }
-
-    if (showAuxiliaryFileEditor) {
-        AuxiliaryFileEditorDialog(
-            originalFileName = originalAuxiliaryFileName,
-            initialFileName = auxiliaryFileName,
-            initialContent = auxiliaryFileContent,
-            onContentChange = { auxiliaryFileContent = it },
-            fontFeatures = fontFeatures,
-            codeFontFamily = codeFontFamily,
-            colors = colors,
-            busy = workSaving || assetBusy,
-            existingFileNames = activeWork?.files.orEmpty().keys,
-            onSave = { normalizedName, content ->
-                val updated = activeWork?.files?.toMutableMap() ?: return@AuxiliaryFileEditorDialog
-                originalAuxiliaryFileName?.takeIf { it != normalizedName }?.let(updated::remove)
-                updated[normalizedName] = content
-                workManagementViewModel.saveAuxiliaryFiles(updated)
-            },
-            onDelete = { existingName ->
-                val updated = activeWork?.files?.toMutableMap() ?: return@AuxiliaryFileEditorDialog
-                updated.remove(existingName)
-                workManagementViewModel.saveAuxiliaryFiles(updated)
-            },
-            onDismiss = { showAuxiliaryFileEditor = false },
-            textTranslator = { s, args -> uiText(s, *args) }
-        )
-    }
+    EditorProjectDialogs(
+        models = models,
+        preview = preview,
+        activeWork = activeWork,
+        activeWorkId = activeWorkId,
+        editorText = editorText,
+        editingValue = editingValue,
+        editingJavaScript = editingJavaScript,
+        codeFontFamily = codeFontFamily,
+        fontFeatures = fontFeatures,
+        colors = colors,
+        workSaving = workSaving,
+        assetPicker = assetPicker,
+        showP5Import = showP5Import,
+        onP5ImportChange = { showP5Import = it },
+        showAssets = showAssets,
+        onAssetsChange = { showAssets = it },
+        onSetAssetTargetId = { assetTargetId = it },
+        showProjectFilesDialog = showProjectFilesDialog,
+        onProjectFilesDialogChange = { showProjectFilesDialog = it },
+        showAuxiliaryFileEditor = showAuxiliaryFileEditor,
+        onAuxiliaryFileEditorChange = { showAuxiliaryFileEditor = it },
+        auxiliaryFileName = auxiliaryFileName,
+        onAuxiliaryFileNameChange = { auxiliaryFileName = it },
+        originalAuxiliaryFileName = originalAuxiliaryFileName,
+        onOriginalAuxiliaryFileNameChange = { originalAuxiliaryFileName = it },
+        auxiliaryFileContent = auxiliaryFileContent,
+        onAuxiliaryFileContentChange = { auxiliaryFileContent = it },
+        onSelectEditorFile = { selectedEditorFile = it },
+        applyEditorChange = ::applyEditorChange,
+        changeAssets = ::changeAssets,
+        textTranslator = { s, args -> uiText(s, *args) }
+    )
 
     SearchReplaceDialog(
         viewModel = searchReplaceViewModel,
@@ -1923,40 +1825,6 @@ internal fun EditorScreen(
         codeFontFamily = codeFontFamily,
         textTranslator = { s, args -> uiText(s, *args) }
     )
-
-    if (showColorPickerDialog) {
-        EditorColorPickerDialog(
-            initialColor = colorPickerInitial,
-            target = activeColorTarget,
-            onDismiss = {
-                showColorPickerDialog = false
-            },
-            onApply = { newColor ->
-                lastColorPickerColor = newColor
-                val target = activeColorTarget
-                if (target != null) {
-                    applyEditorChange(replaceColorTarget(editingValue, target, newColor))
-                } else {
-                    applyEditorChange(insertColorAtCursor(editingValue, newColor))
-                }
-                editorFocusRequester.requestFocus()
-            },
-            text = ::uiText
-        )
-    }
-
-    if (showUserGuide) {
-        Dialog(
-            onDismissRequest = { showUserGuide = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-        ) {
-            val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
-            UserGuideScreen(
-                language = resolveUiLanguage(appLanguage, deviceLanguage),
-                onClose = { showUserGuide = false }
-            )
-        }
-    }
 }
 
 /** Alpha leaves controls interactive; disable their input and accessibility while covered. */

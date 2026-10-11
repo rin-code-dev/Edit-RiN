@@ -317,6 +317,7 @@ internal fun WorkActionsMenu(
     onImportZip: () -> Unit,
     onImportJs: () -> Unit,
     onExportJs: () -> Unit,
+    onExportHtml: () -> Unit = {},
     onDelete: () -> Unit,
     onOpenProjectFiles: () -> Unit,
     onOpenAssets: () -> Unit,
@@ -515,6 +516,16 @@ internal fun WorkActionsMenu(
             onClick = {
                 viewModel.workActionsMenuExpanded = false
                 onExportJs()
+            }
+        )
+        ActionRow(
+            iconRes = R.drawable.ic_code,
+            title = uiText("HTMLを書き出す"),
+            subtitle = uiText("ブラウザで実行できる単一HTMLファイルとして保存"),
+            colors = colors,
+            onClick = {
+                viewModel.workActionsMenuExpanded = false
+                onExportHtml()
             }
         )
     }

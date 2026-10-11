@@ -77,6 +77,7 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     var xShareText by setting({ it.xShareText }, { old, value -> old.copy(xShareText = value) })
     var recordingCountdownSeconds by setting({ it.recordingCountdownSeconds }, { old, value -> old.copy(recordingCountdownSeconds = value) })
     var shareCardAuthor by setting({ it.shareCardAuthor }, { old, value -> old.copy(shareCardAuthor = value) })
+    var shareCardQrUrl by setting({ it.shareCardQrUrl }, { old, value -> old.copy(shareCardQrUrl = value) })
     var p5Username by setting({ it.p5Username }, { old, value -> old.copy(p5Username = value) })
     var fontLigatures by setting({ it.fontLigatures }, { old, value -> old.copy(fontLigatures = value) })
     var customFontFile by setting({ it.customFontFile }, { old, value -> old.copy(customFontFile = value) })
