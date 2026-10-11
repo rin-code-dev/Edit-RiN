@@ -55,6 +55,21 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(staged, cloud.git(self.root, 'diff', '--cached'))
         self.assertEqual(head, cloud.git(self.root, 'rev-parse', 'HEAD'))
 
+    def test_initial_format_check_ignores_existing_whitespace_but_rejects_new_whitespace(self):
+        self.write('android/existing.kt', 'old whitespace   \n')
+        cloud.git(self.root, 'add', '.')
+        cloud.git(self.root, 'commit', '-qm', 'existing formatting')
+        cloud.prepare_snapshot(self.root, self.output)
+        cloud.git(self.output, 'init', '-q')
+        cloud.git(self.output, 'fetch', '-q', '--depth=1', str(self.root), 'HEAD')
+        baseline = cloud.git(self.output, 'rev-parse', 'FETCH_HEAD').decode().strip()
+        cloud.git(self.output, 'add', '.')
+        cloud.git(self.output, 'diff', '--cached', '--check', baseline)
+        (self.output / 'www/new.js').write_text('new whitespace   \n')
+        cloud.git(self.output, 'add', '.')
+        with self.assertRaises(subprocess.CalledProcessError):
+            cloud.git(self.output, 'diff', '--cached', '--check', baseline)
+
     def test_tracked_private_file_is_rejected(self):
         self.write('android/local.properties', 'private')
         cloud.git(self.root, 'add', 'android/local.properties')
