@@ -1,0 +1,87 @@
+name: Build Release APK
+run-name: Cloud release ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Request identifier
+        required: true
+      source_sha:
+        description: Immutable source commit
+        required: true
+      run_tests:
+        description: Run unit tests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/codex/cloud-build'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+          cache-read-only: false
+      - name: Prepare SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;37.0.0'
+          chmod +x android/gradlew
+      - name: Configure official release signing
+        env:
+          CLOUD_RELEASE_KEYSTORE_BASE64: ${{ secrets.CLOUD_RELEASE_KEYSTORE_BASE64 }}
+          CLOUD_RELEASE_STORE_PASSWORD: ${{ secrets.CLOUD_RELEASE_STORE_PASSWORD }}
+          CLOUD_RELEASE_KEY_ALIAS: ${{ secrets.CLOUD_RELEASE_KEY_ALIAS }}
+          CLOUD_RELEASE_KEY_PASSWORD: ${{ secrets.CLOUD_RELEASE_KEY_PASSWORD }}
+          CLOUD_RELEASE_CERT_SHA256: ${{ secrets.CLOUD_RELEASE_CERT_SHA256 }}
+        run: python3 scripts/cloud-release-runner.py prepare
+      - name: Build release in the cloud
+        working-directory: android
+        env:
+          RUN_TESTS: ${{ inputs.run_tests }}
+        run: |
+          tasks=(assembleRelease)
+          if [ "$RUN_TESTS" = true ]; then tasks+=(testReleaseUnitTest); fi
+          ./gradlew "${tasks[@]}" --no-daemon --stacktrace --max-workers=4
+      - name: Verify official release APK
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CLOUD_RELEASE_CERT_SHA256: ${{ secrets.CLOUD_RELEASE_CERT_SHA256 }}
+        run: python3 scripts/cloud-release-runner.py verify
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Edit-RiN-Release-${{ github.run_id }}
+          path: cloud-output/
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+      - name: Upload test reports
+        if: always() && inputs.run_tests
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-test-reports-${{ github.run_id }}
+          path: android/app/build/reports/tests/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Remove private release signing files
+        if: always()
+        run: |
+          rm -f android/release-signing.properties
+          rm -rf "$RUNNER_TEMP/cloud-release-signing"

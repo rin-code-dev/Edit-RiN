@@ -1,5 +1,8 @@
 """Exercise source selection and protection of the user's local Git state."""
 import importlib.util
+import hashlib
+import json
+from unittest.mock import patch
 from pathlib import Path
 import subprocess
 import tempfile
@@ -87,6 +90,91 @@ class SnapshotTest(unittest.TestCase):
         with self.assertRaises(RuntimeError) as result:
             cloud.prepare_snapshot(self.root, self.output)
         self.assertNotIn(secret, str(result.exception))
+
+
+class ArtifactTest(unittest.TestCase):
+    def test_wrong_run_source_checksum_or_missing_signature_check_never_saves_apk(self):
+        payload = b'APK test payload'
+        good = dict(source_sha='a' * 40, run_id='42',
+                    sha256=hashlib.sha256(payload).hexdigest(), signer_sha256='b' * 64)
+        for changed in [dict(run_id='43'), dict(source_sha='c' * 40),
+                        dict(sha256='0' * 64), dict(signer_sha256='')]:
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as t:
+                output = Path(t) / 'output'
+                def fake_run(args, **kwargs):
+                    if 'view' in args:
+                        return json.dumps(dict(conclusion='success', url='https://example.invalid/run/42')).encode()
+                    directory = Path(args[args.index('-D') + 1])
+                    (directory / 'app-debug.apk').write_bytes(payload)
+                    (directory / 'build.json').write_text(json.dumps(good | changed))
+                with patch.object(cloud, 'run', side_effect=fake_run):
+                    with self.assertRaises(RuntimeError):
+                        cloud.receive('example/repo', 42, 'a' * 40, output)
+                self.assertFalse(output.exists())
+
+
+runner_spec = importlib.util.spec_from_file_location('release_runner', Path(__file__).resolve().parents[1] / 'scripts/cloud-release-runner.py')
+runner = importlib.util.module_from_spec(runner_spec)
+runner_spec.loader.exec_module(runner)
+setup_spec = importlib.util.spec_from_file_location('release_setup', Path(__file__).resolve().parents[1] / 'scripts/setup-cloud-release-signing.py')
+setup = importlib.util.module_from_spec(setup_spec)
+setup_spec.loader.exec_module(setup)
+
+
+class ReleaseTest(unittest.TestCase):
+    def test_properties_roundtrip_preserves_password_characters(self):
+        with tempfile.TemporaryDirectory() as t:
+            config = Path(t) / 'properties'
+            value = ' leading =:#!\\\t\n日本語😀'
+            config.write_text('password=' + runner.properties_escape(value), encoding='ascii')
+            self.assertEqual(setup.read_properties(config)['password'], value)
+
+    def test_release_validation_rejects_wrong_signer_debug_package_and_version(self):
+        with tempfile.TemporaryDirectory() as t:
+            apk = Path(t) / 'apk'; apk.write_bytes(b'apk')
+            cert = 'certificate SHA-256 digest: ' + 'b' * 64
+            badging = "package: name='com.hikariatelier.app' versionCode='33' versionName='2.4.0'"
+            source = 'versionCode 33\nversionName "2.4.0"'
+            for c, b in [(cert.replace('b', 'c'), badging), (cert, badging + '\napplication-debuggable'),
+                         (cert, badging.replace('com.hikariatelier.app', 'com.hikariatelier.app.debug')),
+                         (cert, badging.replace("'33'", "'34'")), (cert, badging.replace('2.4.0', '2.5.0'))]:
+                with self.subTest(badging=b), self.assertRaises(RuntimeError):
+                    runner.validate_release(apk, c, b, source, 'b' * 64)
+            with patch.dict('os.environ', SOURCE_SHA='a' * 40, GITHUB_RUN_ID='42'):
+                self.assertFalse(runner.validate_release(apk, cert, badging, source, 'b' * 64)['debuggable'])
+
+    def test_release_download_checks_variant_and_preserves_existing_apk(self):
+        payload = b'apk'
+        good = dict(source_sha='a'*40, run_id='42', sha256=hashlib.sha256(payload).hexdigest(),
+                    signer_sha256='b'*64, build_type='release', package_id='com.hikariatelier.app',
+                    version_name='2.4.0', version_code=33, debuggable=False)
+        for change in [dict(build_type='debug'), dict(package_id='com.hikariatelier.app.debug'),
+                       dict(debuggable=True), dict(version_name='../escape'), dict(version_code='33'), {}]:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as t:
+                downloaded=Path(t)/'download'; downloaded.mkdir()
+                output=Path(t)/'output'
+                (downloaded/'app-release.apk').write_bytes(payload)
+                (downloaded/'build.json').write_text(json.dumps(good | change))
+                with patch.object(cloud, 'run', return_value=b'{"conclusion":"success","url":"https://example.invalid"}'):
+                    if change:
+                        with self.assertRaises(RuntimeError):
+                            cloud.receive('repo', 42, 'a'*40, output, 'release', downloaded)
+                        self.assertFalse(output.exists())
+                    else:
+                        cloud.receive('repo', 42, 'a'*40, output, 'release', downloaded)
+                        target=output/'Edit-RiN-v2.4.0-release-42.apk'
+                        self.assertEqual(target.read_bytes(), payload)
+                        self.assertIn(target.name, target.with_suffix('.sha256').read_text())
+                        with self.assertRaises(FileExistsError):
+                            cloud.receive('repo', 42, 'a'*40, output, 'release', downloaded)
+                        self.assertEqual(target.read_bytes(), payload)
+
+    def test_missing_secrets_fail_read_only_preflight(self):
+        with patch.object(cloud, 'run', side_effect=[b'{}', b'[]']) as run:
+            with self.assertRaises(RuntimeError):
+                cloud.preflight_release('repo')
+            self.assertEqual(len(run.call_args_list), 2)
+            self.assertTrue(all('push' not in c.args[0] for c in run.call_args_list))
 
 
 if __name__ == '__main__':
