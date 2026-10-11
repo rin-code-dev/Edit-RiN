@@ -57,7 +57,11 @@ jobs:
         run: |
           tasks=(assembleDebug)
           if [ "$RUN_TESTS" = true ]; then tasks+=(testDebugUnitTest); fi
-          ./gradlew "${tasks[@]}" --no-daemon --stacktrace --max-workers=4
+          ./gradlew "${tasks[@]}" --no-daemon --stacktrace --max-workers=4 \
+            -Pandroid.injected.signing.store.file="$HOME/.android/debug.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
       - name: Prepare verified artifact
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
@@ -65,12 +69,20 @@ jobs:
           mkdir cloud-output
           cp android/app/build/outputs/apk/debug/app-debug.apk cloud-output/
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs cloud-output/app-debug.apk
+          keytool -exportcert -keystore "$HOME/.android/debug.keystore" -storepass android \
+            -alias androiddebugkey -file "$RUNNER_TEMP/cloud-debug-cert.der"
           python3 - <<'PYTHON'
-          import hashlib, json, os
+          import hashlib, json, os, re, subprocess
           from pathlib import Path
           apk = Path('cloud-output/app-debug.apk')
+          expected = hashlib.sha256(Path(os.environ['RUNNER_TEMP'], 'cloud-debug-cert.der').read_bytes()).hexdigest()
+          tool = Path(os.environ['ANDROID_HOME'], 'build-tools/37.0.0/apksigner')
+          certificates = subprocess.check_output([str(tool), 'verify', '--print-certs', str(apk)], text=True)
+          actual = re.search(r'certificate SHA-256 digest: ([a-f0-9]+)', certificates).group(1)
+          if actual != expected:
+              raise RuntimeError('APK signing certificate differs from the configured debug key')
           info = dict(source_sha=os.environ['SOURCE_SHA'], run_id=os.environ['GITHUB_RUN_ID'],
-                      sha256=hashlib.sha256(apk.read_bytes()).hexdigest())
+                      sha256=hashlib.sha256(apk.read_bytes()).hexdigest(), signer_sha256=actual)
           Path('cloud-output/build.json').write_text(json.dumps(info, indent=2) + '\n')
           PYTHON
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -7,7 +7,7 @@ GitHub管理のランナーでビルドし、完成したAPKをこのPCにダウ
 ./scripts/cloud-build.sh debug --test
 ```
 
-APKは `~/Documents/EditRiNデータ/デバッグ/` に実行番号付きで保存します。`--output DIR` で変更できます。実行番号、ソースコミット、SHA-256を記録したJSONも保存します。端末へのインストールやGoogle Drive同期は行いません。
+APKは `~/Documents/EditRiNデータ/デバッグ/` に実行番号付きで保存します。`--output DIR` で変更できます。実行番号、ソースコミット、APKと署名証明書のSHA-256を記録したJSONも保存します。端末へのインストールやGoogle Drive同期は行いません。
 
 ## 送信するソース
 
@@ -25,7 +25,7 @@ APKは `~/Documents/EditRiNデータ/デバッグ/` に実行番号付きで保�
 
 `build-debug.yml` をデフォルトブランチに登録します。既存Dev版と同じデバッグ署名鍵をBase64化し、リポジトリのActions Secret `CLOUD_DEBUG_KEYSTORE_BASE64` に登録します。鍵の内容をログやソースへ載せないでください。通常のAndroidデバッグ鍵（alias/passwordがAndroid標準）を使用します。
 
-実行時にJDK 25、Android SDK 37、Build Tools 37.0.0を用意します。デバッグ鍵はSecretsから復元します。通常はAPK作成のみ、`--test` を付けた場合は単体テストも実行します。テスト失敗時はAPKを配布せず、Actionsにテストレポートを保存します。APKとレポートの保存期間は7日です。
+実行時にJDK 25、Android SDK 37、Build Tools 37.0.0を用意します。デバッグ鍵はSecretsから復元し、Gradleへ署名設定を明示します。完成APKの署名がその鍵と一致しなければ成果物を保存しません。通常はAPK作成のみ、`--test` を付けた場合は単体テストも実行します。テスト失敗時はAPKを配布せず、Actionsにテストレポートを保存します。APKとレポートの保存期間は7日です。
 
 ## 中断・失敗した場合
 

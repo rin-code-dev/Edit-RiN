@@ -1,5 +1,8 @@
 """Exercise source selection and protection of the user's local Git state."""
 import importlib.util
+import hashlib
+import json
+from unittest.mock import patch
 from pathlib import Path
 import subprocess
 import tempfile
@@ -87,6 +90,27 @@ class SnapshotTest(unittest.TestCase):
         with self.assertRaises(RuntimeError) as result:
             cloud.prepare_snapshot(self.root, self.output)
         self.assertNotIn(secret, str(result.exception))
+
+
+class ArtifactTest(unittest.TestCase):
+    def test_wrong_run_source_checksum_or_missing_signature_check_never_saves_apk(self):
+        payload = b'APK test payload'
+        good = dict(source_sha='a' * 40, run_id='42',
+                    sha256=hashlib.sha256(payload).hexdigest(), signer_sha256='b' * 64)
+        for changed in [dict(run_id='43'), dict(source_sha='c' * 40),
+                        dict(sha256='0' * 64), dict(signer_sha256='')]:
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as t:
+                output = Path(t) / 'output'
+                def fake_run(args, **kwargs):
+                    if 'view' in args:
+                        return json.dumps(dict(conclusion='success', url='https://example.invalid/run/42')).encode()
+                    directory = Path(args[args.index('-D') + 1])
+                    (directory / 'app-debug.apk').write_bytes(payload)
+                    (directory / 'build.json').write_text(json.dumps(good | changed))
+                with patch.object(cloud, 'run', side_effect=fake_run):
+                    with self.assertRaises(RuntimeError):
+                        cloud.receive('example/repo', 42, 'a' * 40, output)
+                self.assertFalse(output.exists())
 
 
 if __name__ == '__main__':
