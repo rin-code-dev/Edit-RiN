@@ -41,7 +41,7 @@ internal fun EditorProjectDialogs(
     onAuxiliaryFileContentChange: (String) -> Unit,
     onSelectEditorFile: (String) -> Unit,
     applyEditorChange: (TextFieldValue) -> Unit,
-    changeAssets: (String, Map<String, WorkAsset>) -> Unit,
+    changeAssets: (String, Map<String, ProjectAsset>) -> Unit,
     textTranslator: (String, Array<out Any?>) -> String
 ) {
     val context = LocalContext.current
@@ -54,7 +54,7 @@ internal fun EditorProjectDialogs(
     val p5Sketches = workManagementViewModel.p5Sketches
     val p5Busy = workManagementViewModel.p5Busy
     val p5Error = workManagementViewModel.p5Error
-    var previewAsset by remember { mutableStateOf<Pair<String, WorkAsset>?>(null) }
+    var previewAsset by remember { mutableStateOf<Pair<String, ProjectAsset>?>(null) }
 
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 

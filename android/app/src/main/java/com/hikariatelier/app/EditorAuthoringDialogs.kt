@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
@@ -43,9 +44,9 @@ internal fun EditorAuthoringDialogs(
     onRequestPreviewRecording: (String) -> Unit,
     showColorPickerDialog: Boolean,
     onColorPickerDialogChange: (Boolean) -> Unit,
-    colorPickerInitial: Int,
-    activeColorTarget: ColorEditTarget?,
-    onLastColorPickerColor: (Int) -> Unit,
+    colorPickerInitial: Color,
+    activeColorTarget: EditorColorTarget?,
+    onLastColorPickerColor: (Color) -> Unit,
     showUserGuide: Boolean,
     onUserGuideChange: (Boolean) -> Unit,
     applyEditorChange: (TextFieldValue) -> Unit,
