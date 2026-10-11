@@ -65,7 +65,7 @@ class ShareCardGeneratorTest {
         assertEquals(QrStatus.CONTAINS_ASSETS, ShareCardGenerator.checkQrStatus(smallCode, hasAssets = true))
         assertEquals(QrStatus.AVAILABLE, ShareCardGenerator.checkQrStatus(smallCode, hasAssets = false))
 
-        val hugeCode = "function setup() {\n" + "let x = 1;\n".repeat(2000) + "}"
+        val hugeCode = (0..2500).joinToString("\n") { "v$it = Math.sin($it * 31.4159);" }
         assertEquals(QrStatus.TOO_LARGE, ShareCardGenerator.checkQrStatus(hugeCode, hasAssets = false))
     }
 }
