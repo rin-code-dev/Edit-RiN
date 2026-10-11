@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-BRANCH = 'codex/cloud-build'
+BRANCH = 'build/cloud'
 WORKFLOW = 'build-debug.yml'
 WORKFLOWS = {'debug': WORKFLOW, 'release': 'build-release.yml'}
 RELEASE_SECRETS = {'CLOUD_RELEASE_KEYSTORE_BASE64', 'CLOUD_RELEASE_STORE_PASSWORD',
