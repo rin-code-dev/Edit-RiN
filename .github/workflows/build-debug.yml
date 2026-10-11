@@ -1,0 +1,92 @@
+name: Build Debug APK
+run-name: Cloud debug ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Request identifier
+        required: true
+      source_sha:
+        description: Immutable source commit
+        required: true
+      run_tests:
+        description: Run unit tests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-debug-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/codex/cloud-build'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-read-only: false
+      - name: Prepare SDK and persistent debug key
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.CLOUD_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$DEBUG_KEYSTORE_BASE64" || { echo 'Debug signing secret is missing'; exit 1; }
+          mkdir -p "$HOME/.android"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37' 'build-tools;37.0.0'
+          chmod +x android/gradlew
+      - name: Build in the cloud
+        working-directory: android
+        env:
+          RUN_TESTS: ${{ inputs.run_tests }}
+        run: |
+          tasks=(assembleDebug)
+          if [ "$RUN_TESTS" = true ]; then tasks+=(testDebugUnitTest); fi
+          ./gradlew "${tasks[@]}" --no-daemon --stacktrace --max-workers=4
+      - name: Prepare verified artifact
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          mkdir cloud-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk cloud-output/
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs cloud-output/app-debug.apk
+          python3 - <<'PYTHON'
+          import hashlib, json, os
+          from pathlib import Path
+          apk = Path('cloud-output/app-debug.apk')
+          info = dict(source_sha=os.environ['SOURCE_SHA'], run_id=os.environ['GITHUB_RUN_ID'],
+                      sha256=hashlib.sha256(apk.read_bytes()).hexdigest())
+          Path('cloud-output/build.json').write_text(json.dumps(info, indent=2) + '\n')
+          PYTHON
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Edit-RiN-Dev-${{ github.run_id }}
+          path: cloud-output/
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+      - name: Upload test reports
+        if: always() && inputs.run_tests
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-reports-${{ github.run_id }}
+          path: android/app/build/reports/tests/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Remove debug key
+        if: always()
+        run: rm -f "$HOME/.android/debug.keystore"
