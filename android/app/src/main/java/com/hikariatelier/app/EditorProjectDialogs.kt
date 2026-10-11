@@ -48,7 +48,7 @@ internal fun EditorProjectDialogs(
     val sessionViewModel = models.session
     val workManagementViewModel = models.works
     val settingsViewModel = models.settings
-    val assetStorage = workManagementViewModel.assetStorage
+    val assetStorage = preview.assetStorage
     val assetBusy = sessionViewModel.assetBusy
     var p5Username by settingsViewModel::p5Username
     val p5Sketches = workManagementViewModel.p5Sketches
