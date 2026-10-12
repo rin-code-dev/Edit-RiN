@@ -57,4 +57,71 @@ class WorkParametersTest {
         val older = parseWorkStoreJson(serializeWorkStore(listOf(Work("old", "Old", "")), "old"))!!.works.single()
         assertTrue(older.parameterValues.isEmpty())
     }
+
+    @Test fun parsesChoiceParametersAndHandlesDefaultsAndUpdates() {
+        val parameters = workParameters(mapOf("sketch.js" to """
+            // @rin choice shape "Shape" circle circle square triangle
+            // @rin choice mode "Draw Mode" fast slow normal
+            // @rin choice single "Single" only
+            // @rin choice badToken "Bad" circle square#1
+        """.trimIndent()))
+        assertEquals(listOf("shape", "mode"), parameters.map { it.name })
+
+        val shapeParam = parameters[0] as WorkParameter.Choice
+        assertEquals("shape", shapeParam.name)
+        assertEquals("Shape", shapeParam.label)
+        assertEquals("circle", shapeParam.defaultValue)
+        assertEquals(listOf("circle", "square", "triangle"), shapeParam.options)
+
+        val modeParam = parameters[1] as WorkParameter.Choice
+        assertEquals("mode", modeParam.name)
+        assertEquals("Draw Mode", modeParam.label)
+        assertEquals("fast", modeParam.defaultValue)
+        assertEquals(listOf("fast", "slow", "normal"), modeParam.options)
+
+        // Value lookup: valid vs invalid vs null
+        assertEquals("square", parameterValue(shapeParam, "square"))
+        assertEquals("circle", parameterValue(shapeParam, "hexagon"))
+        assertEquals("circle", parameterValue(shapeParam, null))
+
+        // JSON serialization
+        val json = JSONObject(parameterValuesJson(parameters, mapOf("shape" to "triangle", "mode" to "slow")))
+        assertEquals("triangle", json.getString("shape"))
+        assertEquals("slow", json.getString("mode"))
+
+        // Applying defaults rewrites source code and keeps remaining options
+        val source = "// @rin choice shape \"Shape\" circle circle square triangle\n"
+        val (rewritten1, changed1) = applyParameterDefaults(source, mapOf("shape" to "square"))!!
+        assertEquals(setOf("shape"), changed1)
+        val reparsed1 = workParameters(mapOf("sketch.js" to rewritten1)).single() as WorkParameter.Choice
+        assertEquals("square", reparsed1.defaultValue)
+        assertEquals(listOf("circle", "square", "triangle"), reparsed1.options)
+
+        // Sequential rewrite on the same line preserves options without duplicate ballooning
+        val (rewritten2, changed2) = applyParameterDefaults(rewritten1, mapOf("shape" to "triangle"))!!
+        assertEquals(setOf("shape"), changed2)
+        val reparsed2 = workParameters(mapOf("sketch.js" to rewritten2)).single() as WorkParameter.Choice
+        assertEquals("triangle", reparsed2.defaultValue)
+        assertEquals(listOf("circle", "square", "triangle"), reparsed2.options)
+
+        // Clean syntax without duplicate default rewrites cleanly as well
+        val sourceMode = "// @rin choice mode \"Draw Mode\" fast slow normal\n"
+        val (rewrittenMode, changedMode) = applyParameterDefaults(sourceMode, mapOf("mode" to "slow"))!!
+        assertEquals(setOf("mode"), changedMode)
+        val reparsedMode = workParameters(mapOf("sketch.js" to rewrittenMode)).single() as WorkParameter.Choice
+        assertEquals("slow", reparsedMode.defaultValue)
+        assertEquals(listOf("fast", "slow", "normal"), reparsedMode.options)
+    }
+
+    @Test fun rejectsInvalidChoiceDeclarations() {
+        val parameters = workParameters(mapOf("sketch.js" to """
+            // @rin choice valid "Valid" a b
+            // @rin choice onlyOne "One" only
+            // @rin choice identical "Identical" dup dup
+            // @rin choice tooLong "Long" valid ${"x".repeat(33)}
+            // @rin choice hasSlash "Slash" a b/c
+            // @rin choice hasHash "Hash" a #bc
+        """.trimIndent()))
+        assertEquals(listOf("valid"), parameters.map { it.name })
+    }
 }

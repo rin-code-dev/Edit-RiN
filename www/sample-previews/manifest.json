@@ -21,12 +21,12 @@
   },
   "wave-parameter": {
     "source": "wave Parameter.js",
-    "sha256": "a9e4179b587fc678da77436b19ab9f8739cfcaecc1829bec76a8cf0bd8114e17",
+    "sha256": "acfb70a3ed8a2ca1c4010492593eb164130f830ea939cb46db6be078ee4bb294",
     "p5Version": "2.3.4"
   },
   "webgpu": {
     "source": "WebGPU.js",
-    "sha256": "e9c71e1618a6dfc52e8bc45a70d6167605a3639171f4ad877a7c6a4b220e8284",
+    "sha256": "65bb1a4d76f5c14e979b8ae3e1301b57e90a6861e04f7f24752f9e51bf7ce558",
     "p5Version": "2.3.4"
   },
   "sound": {

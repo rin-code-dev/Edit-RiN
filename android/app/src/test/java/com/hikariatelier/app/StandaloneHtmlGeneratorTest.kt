@@ -85,15 +85,17 @@ class StandaloneHtmlGeneratorTest {
     }
 
     @Test
-    fun esModuleSyntaxTriggersModuleScriptTag() {
+    fun esModuleSyntaxTriggersModuleScriptTagAndCallbackRegistration() {
         val work = Work(
             id = "test-5",
             title = "Module Sketch",
-            code = "import { something } from './mod.js';\nexport function setup() {}"
+            code = "import { something } from './mod.js';\nexport function setup() { createCanvas(200, 200); }\nexport function draw() {}"
         )
         val html = StandaloneHtmlGenerator.generate(work)
 
         assertTrue(html.contains("<script type=\"module\">"))
+        assertTrue(html.contains("__registerP5ModuleCallbacks"))
+        assertTrue(html.contains("setup: typeof setup === 'function' ? setup : undefined"))
     }
 
     @Test
@@ -120,9 +122,10 @@ class StandaloneHtmlGeneratorTest {
             <head>
                 <script src="/__edit-rin__/p5_host.js"></script>
                 <script src="/__edit-rin__/p5_bootstrap.js"></script>
-                <link rel="stylesheet" href="style.css">
+                <link rel="stylesheet" href="style.css?t=123">
                 <script src="p5-v2.min.js"></script>
-                <script src="sketch.js"></script>
+                <script src="p5.webgpu.js"></script>
+                <script src="sketch.js?v=2"></script>
             </head>
             <body></body>
             </html>
@@ -134,7 +137,7 @@ class StandaloneHtmlGeneratorTest {
             code = "function setup() { createCanvas(100, 100); }",
             files = mutableMapOf(
                 "index.html" to existingHtml,
-                "style.css" to "body { background-color: purple; }",
+                "style.css" to "body { background-color: purple; content: \"</style>\"; }",
                 "sketch.js" to "function setup() { createCanvas(100, 100); }"
             )
         )
@@ -143,7 +146,8 @@ class StandaloneHtmlGeneratorTest {
         assertFalse(html.contains("p5_host.js"))
         assertFalse(html.contains("p5_bootstrap.js"))
         assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js"))
-        assertTrue(html.contains("<style>\nbody { background-color: purple; }\n</style>"))
+        assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.webgpu.js"))
+        assertTrue(html.contains("<style>\nbody { background-color: purple; content: \"<\\/style>\"; }\n</style>"))
         assertTrue(html.contains("function setup() { createCanvas(100, 100); }"))
     }
 }

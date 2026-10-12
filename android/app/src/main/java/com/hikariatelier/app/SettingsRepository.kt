@@ -13,6 +13,8 @@ internal interface SettingsPersistence {
     fun dismissSamplePrompt(version: Int) {}
     val releaseNotesPromptVersion: Int get() = 0
     fun dismissReleaseNotesPrompt(version: Int) {}
+    val onboardingVersion: Int get() = 0
+    fun completeOnboarding(version: Int) {}
     fun load(): SettingsUiState
     fun save(state: SettingsUiState)
 }
@@ -45,6 +47,12 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
     override val releaseNotesPromptVersion get() = preferences.getInt("dismissed_release_notes_version", 0)
     override fun dismissReleaseNotesPrompt(version: Int) {
         preferences.edit().putInt("dismissed_release_notes_version", version).apply()
+    }
+
+    // Not part of the backup format: restoring a backup must not hide or force the first-run tour.
+    override val onboardingVersion get() = preferences.getInt("completed_onboarding_version", 0)
+    override fun completeOnboarding(version: Int) {
+        preferences.edit().putInt("completed_onboarding_version", version).apply()
     }
 
     override fun load(): SettingsUiState = SettingsUiState(

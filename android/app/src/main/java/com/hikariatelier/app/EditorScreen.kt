@@ -442,7 +442,6 @@ internal fun EditorScreen(
     var pendingRevision by remember { mutableStateOf<WorkRevision?>(null) }
     var consoleExpanded by consoleViewModel::consoleExpanded
     val workSaving = workManagementViewModel.workSaving
-    var previewAsset by remember { mutableStateOf<Pair<String, ProjectAsset>?>(null) }
     if (workSaving && workManagementViewModel.showBlockingProgress) {
         Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
             Surface(shape = RoundedCornerShape(16.dp)) {
@@ -1618,6 +1617,10 @@ internal fun EditorScreen(
                     onImportJs = { importJsLauncher.launch(arrayOf("application/javascript", "text/javascript", "text/plain", "application/octet-stream")) },
                     onExportJs = { exportJsLauncher.launch(safeJsFileName(activeWork?.title ?: "sketch")) },
                     onExportHtml = { exportHtmlLauncher.launch(safeHtmlFileName(activeWork?.title ?: "sketch")) },
+                    onShowOnboarding = {
+                        showSettings = false
+                        settingsViewModel.replayOnboarding()
+                    },
                     onExportBackup = { exportBackupLauncher.launch("Edit-RiN-backup.zip") },
                     onImportBackup = { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
                     openExternalUrl = { onOpenExternalUrl(it) }

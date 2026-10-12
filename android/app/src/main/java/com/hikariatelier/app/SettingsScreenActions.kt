@@ -13,6 +13,7 @@ internal data class SettingsScreenActions(
     val onImportJs: () -> Unit,
     val onExportJs: () -> Unit,
     val onExportHtml: () -> Unit = {},
+    val onShowOnboarding: () -> Unit = {},
     val onExportBackup: () -> Unit,
     val onImportBackup: () -> Unit,
     val openExternalUrl: (String) -> Unit,

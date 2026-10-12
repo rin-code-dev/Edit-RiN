@@ -74,7 +74,6 @@ internal fun PreviewMediaSheets(
         } else {
             editorText
         }
-        val hasAssets = activeWork?.assets?.isNotEmpty() == true
         val initialRange = if (!editorValue.selection.collapsed) {
             val startChar = editorValue.selection.min
             val endChar = editorValue.selection.max
@@ -87,7 +86,6 @@ internal fun PreviewMediaSheets(
             artwork = artwork,
             workTitle = activeWork?.title ?: "",
             fullCode = fullCode,
-            hasAssets = hasAssets,
             initialAuthor = shareCardAuthor,
             onAuthorChange = { newAuthor ->
                 shareCardAuthor = newAuthor

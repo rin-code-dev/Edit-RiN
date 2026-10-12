@@ -29,7 +29,6 @@ internal fun ShareCardSheet(
     artwork: Bitmap,
     workTitle: String,
     fullCode: String,
-    hasAssets: Boolean,
     initialAuthor: String = "",
     onAuthorChange: (String) -> Unit = {},
     initialQrUrl: String = DEFAULT_SHARE_URL,
@@ -45,7 +44,10 @@ internal fun ShareCardSheet(
 
     var author by remember(initialAuthor) { mutableStateOf(initialAuthor) }
     var selectedTheme by remember { mutableStateOf(ShareCardTheme.DARK) }
-    var qrUrl by remember(initialQrUrl) { mutableStateOf(initialQrUrl.ifBlank { DEFAULT_SHARE_URL }) }
+
+    var qrUrl by remember(initialQrUrl) {
+        mutableStateOf(initialQrUrl.ifBlank { DEFAULT_SHARE_URL })
+    }
 
     val qrStatus = remember(qrUrl) {
         ShareCardGenerator.checkQrUrlStatus(qrUrl)
@@ -54,13 +56,6 @@ internal fun ShareCardSheet(
     var includeQr by remember {
         mutableStateOf(true)
     }
-
-    var allowWebCodeView by remember { mutableStateOf(true) }
-
-    val webPlayerQrStatus = remember(fullCode, hasAssets, allowWebCodeView) {
-        ShareCardGenerator.checkQrStatus(fullCode, hasAssets, allowWebCodeView)
-    }
-    val canUseWebPlayer = webPlayerQrStatus == QrStatus.AVAILABLE
 
     var includeCode by remember { mutableStateOf(true) }
 
@@ -87,8 +82,7 @@ internal fun ShareCardSheet(
         endLine,
         includeQr,
         qrUrl,
-        qrStatus,
-        allowWebCodeView
+        qrStatus
     ) {
         value = withContext(Dispatchers.Default) {
             val snippet = if (includeCode && lines.isNotEmpty()) {
@@ -109,7 +103,6 @@ internal fun ShareCardSheet(
                     snippetStartLine = startLine,
                     includeQr = includeQr,
                     qrStatus = qrStatus,
-                    allowWebCodeView = allowWebCodeView,
                     qrUrl = qrUrl
                 )
             )
@@ -203,7 +196,7 @@ internal fun ShareCardSheet(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ShareCardTheme.values().forEach { theme ->
+                        ShareCardTheme.entries.forEach { theme ->
                             val isSelected = selectedTheme == theme
                             FilterChip(
                                 selected = isSelected,
@@ -212,9 +205,8 @@ internal fun ShareCardSheet(
                                     Text(
                                         when (theme) {
                                             ShareCardTheme.DARK -> text("ダーク")
-                                            ShareCardTheme.MIDNIGHT -> text("ミッドナイト")
-                                            ShareCardTheme.CYBER -> text("サイバー")
                                             ShareCardTheme.LIGHT -> text("ライト")
+                                            ShareCardTheme.SUMI -> text("墨")
                                         }
                                     )
                                 }
@@ -320,20 +312,6 @@ internal fun ShareCardSheet(
                                 },
                                 label = { Text(text("公式ページ")) }
                             )
-
-                            if (canUseWebPlayer) {
-                                val webPlayerUrl = remember(fullCode, allowWebCodeView) {
-                                    ShareCardGenerator.buildWebPlayerUrl(fullCode, allowWebCodeView)
-                                }
-                                FilterChip(
-                                    selected = qrUrl == webPlayerUrl,
-                                    onClick = {
-                                        qrUrl = webPlayerUrl
-                                        onQrUrlChange(webPlayerUrl)
-                                    },
-                                    label = { Text(text("作品Webリンク")) }
-                                )
-                            }
                         }
 
                         if (qrUrl.isBlank()) {

@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 internal fun SettingsAboutSection(
     updateViewModel: UpdateViewModel,
     onShowGuide: () -> Unit,
+    onShowOnboarding: () -> Unit,
     onShowLicenses: () -> Unit,
     onShowReleaseNotes: () -> Unit,
     openExternalUrl: (String) -> Unit,
@@ -63,6 +64,12 @@ internal fun SettingsAboutSection(
                 contentPadding = PaddingValues(horizontal = 0.dp)
             ) {
                 Text(uiText("使い方ガイド"))
+            }
+            TextButton(
+                onClick = onShowOnboarding,
+                contentPadding = PaddingValues(horizontal = 0.dp)
+            ) {
+                Text(uiText("はじめてのガイドをもう一度見る"))
             }
             TextButton(
                 onClick = onShowLicenses,

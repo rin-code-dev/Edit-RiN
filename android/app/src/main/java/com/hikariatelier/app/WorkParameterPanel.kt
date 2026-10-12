@@ -59,6 +59,7 @@ internal fun WorkParameterPanel(
             when (p) {
                 is WorkParameter.Color -> !cur.equals(p.defaultValue, ignoreCase = true)
                 is WorkParameter.Boolean -> !cur.equals(p.defaultValue, ignoreCase = true)
+                is WorkParameter.Choice -> cur != p.defaultValue
                 is WorkParameter.Number -> {
                     val curF = cur.toFloatOrNull() ?: 0f
                     val defF = p.defaultValue.toFloatOrNull() ?: 0f
@@ -232,6 +233,7 @@ internal fun WorkParameterPanel(
             val isModified = when (parameter) {
                 is WorkParameter.Color -> !value.equals(parameter.defaultValue, ignoreCase = true)
                 is WorkParameter.Boolean -> !value.equals(parameter.defaultValue, ignoreCase = true)
+                is WorkParameter.Choice -> value != parameter.defaultValue
                 is WorkParameter.Number -> {
                     val curF = value.toFloatOrNull() ?: 0f
                     val defF = parameter.defaultValue.toFloatOrNull() ?: 0f
@@ -487,6 +489,87 @@ internal fun WorkParameterPanel(
                                 },
                                 text = text
                             )
+                        }
+
+                        is WorkParameter.Choice -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = parameter.label,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "rinParams.${parameter.name}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = value,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+
+                                    if (isModified && onResetParameter != null) {
+                                        IconButton(
+                                            onClick = { onResetParameter(parameter) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_restore),
+                                                contentDescription = text("初期値に戻す"),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            val selectedIdx = parameter.options.indexOf(value).let { if (it >= 0) it else 0 }
+                            ScrollableChoiceGroup(
+                                labels = parameter.options,
+                                selectedIndex = selectedIdx,
+                                onSelect = { idx ->
+                                    if (idx in parameter.options.indices) {
+                                        onChange(parameter, parameter.options[idx])
+                                        onCommit()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (isModified) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Text(
+                                        text = "${text("初期値")}: ${parameter.defaultValue}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
                 }

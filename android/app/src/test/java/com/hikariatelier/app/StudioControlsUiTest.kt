@@ -166,4 +166,48 @@ class StudioControlsUiTest {
         compose.onNodeWithText("練習用プレビュー").assertExists()
     }
 
+    @Test fun choiceParameterPanelRendersChipsAndUpdatesSelection() {
+        val choiceParam = WorkParameter.Choice(
+            name = "mode",
+            label = "Draw Mode",
+            defaultValue = "circle",
+            options = listOf("circle", "square", "triangle")
+        )
+        var currentValues by mutableStateOf(mapOf("mode" to "circle"))
+        var commitCount by mutableIntStateOf(0)
+        var resetParam: WorkParameter? by mutableStateOf(null)
+
+        compose.setContent {
+            MaterialTheme {
+                WorkParameterPanel(
+                    parameters = listOf(choiceParam),
+                    values = currentValues,
+                    onChange = { param, nextVal -> currentValues = currentValues + (param.name to nextVal) },
+                    onCommit = { commitCount++ },
+                    text = { it },
+                    onResetParameter = { resetParam = it }
+                )
+            }
+        }
+
+        compose.onNodeWithText("Draw Mode").assertIsDisplayed()
+        compose.onNodeWithText("rinParams.mode").assertIsDisplayed()
+        // The option chip (which has click action) should be selected
+        compose.onNode(hasClickAction() and hasText("circle")).assertIsSelected()
+        compose.onNode(hasClickAction() and hasText("square")).assertIsNotSelected()
+
+        // Click square
+        compose.onNode(hasClickAction() and hasText("square")).performClick()
+        compose.runOnIdle {
+            assertEquals("square", currentValues["mode"])
+            assertEquals(1, commitCount)
+        }
+
+        // Now that it is modified, reset button and initial value hint should be displayed
+        compose.onNodeWithText("初期値: circle").assertIsDisplayed()
+        compose.onNodeWithContentDescription("初期値に戻す").performClick()
+        compose.runOnIdle {
+            assertEquals(choiceParam, resetParam)
+        }
+    }
 }

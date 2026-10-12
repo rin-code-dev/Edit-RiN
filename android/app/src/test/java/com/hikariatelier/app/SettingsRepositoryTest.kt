@@ -40,6 +40,21 @@ class SettingsRepositoryTest {
             override fun apply() { commit() }
         }
     }
+    @Test fun onboardingVersionStartsUnsetAndIsIndependentOfOtherPrompts() {
+        val prefs = Preferences()
+        val repository = SettingsRepository(prefs)
+        assertEquals(0, repository.onboardingVersion)
+        repository.dismissReleaseNotesPrompt(33)
+        repository.dismissSamplePrompt(33)
+        assertEquals(0, repository.onboardingVersion)
+        repository.completeOnboarding(1)
+        // A new repository over the same storage (an app restart) still sees it, other prompts are untouched.
+        val restarted = SettingsRepository(prefs)
+        assertEquals(1, restarted.onboardingVersion)
+        assertEquals(33, restarted.releaseNotesPromptVersion)
+        assertEquals(33, restarted.samplePromptVersion)
+    }
+
     @Test fun freshInstallStartsLightWithoutWrappingAndRequestsPalette() {
         val repository = SettingsRepository(Preferences())
         assertEquals(AppThemeMode.LIGHT, repository.load().themeMode)

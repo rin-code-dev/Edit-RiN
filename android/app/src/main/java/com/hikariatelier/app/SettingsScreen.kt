@@ -1170,6 +1170,7 @@ internal fun SettingsScreen(
                 val context = androidx.compose.ui.platform.LocalContext.current
                 SettingsAboutSection(updateViewModel,
                     onShowGuide = { showUserGuide = true },
+                    onShowOnboarding = actions.onShowOnboarding,
                     onShowLicenses = { showLicenses = true },
                     onShowReleaseNotes = { showReleaseNotes = true },
                     openExternalUrl = actions.openExternalUrl,

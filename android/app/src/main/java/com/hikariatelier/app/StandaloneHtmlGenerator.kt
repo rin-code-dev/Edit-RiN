@@ -12,6 +12,7 @@ internal object StandaloneHtmlGenerator {
     private const val P5_SOUND_V1_CDN = "https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/addons/p5.sound.min.js"
     private const val MATTER_CDN = "https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"
     private const val BRUSH_CDN = "https://cdn.jsdelivr.net/npm/p5.brush@2.2.1/dist/p5.brush.js"
+    private const val P5_WEBGPU_CDN = "https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.webgpu.js"
 
     fun generate(work: Work, currentCode: String = work.code): String {
         val config = runCatching { readProjectDocumentConfig(work.files) }.getOrDefault(ProjectDocumentConfig())
@@ -45,10 +46,10 @@ internal object StandaloneHtmlGenerator {
             if (p5SoundUrl != null) {
                 add("<script src=\"$p5SoundUrl\"></script>")
             }
-            if (work.libraries["matter-js"] == "0.20.0") {
+            if (work.libraries.containsKey("matter-js")) {
                 add("<script src=\"$MATTER_CDN\"></script>")
             }
-            if (work.libraries["p5.brush"] == "2.2.1" && isV2) {
+            if (work.libraries.containsKey("p5.brush") && isV2) {
                 add("<script src=\"$BRUSH_CDN\"></script>")
             }
             for (lib in config.libraries) {
@@ -65,15 +66,55 @@ internal object StandaloneHtmlGenerator {
 
         val auxiliaryInlined = classicAuxiliaryScripts.joinToString("\n") { path ->
             val code = work.files[path].orEmpty()
-            "<!-- Project file: ${escapeHtml(path)} -->\n<script>\n${escapeScriptContent(code)}\n</script>"
+            val safeCommentPath = escapeHtml(path).replace("-->", "-- >")
+            "<!-- Project file: $safeCommentPath -->\n<script>\n${escapeScriptContent(code)}\n</script>"
         }
 
         val isModule = config.executionMode == "module" ||
             resolvedRun?.moduleMode == true ||
             projectUsesModuleSyntax(currentCode)
 
+        val moduleHelper = if (isModule) {
+            """
+  <script>
+    window.__registerP5ModuleCallbacks = function(c) {
+      for (var k in c) { if (typeof c[k] === 'function') window[k] = c[k]; }
+      if ((typeof c.setup === 'function' || typeof c.draw === 'function') && window.p5 && !window.p5.instance) {
+        new window.p5();
+      }
+    };
+  </script>
+            """.trimIndent()
+        } else ""
+
         val mainScript = if (isModule) {
-            "<script type=\"module\">\n${escapeScriptContent(currentCode)}\n</script>"
+            val tail = """
+;if (typeof window.__registerP5ModuleCallbacks === 'function') {
+  window.__registerP5ModuleCallbacks({
+    preload: typeof preload === 'function' ? preload : undefined,
+    setup: typeof setup === 'function' ? setup : undefined,
+    draw: typeof draw === 'function' ? draw : undefined,
+    windowResized: typeof windowResized === 'function' ? windowResized : undefined,
+    mouseMoved: typeof mouseMoved === 'function' ? mouseMoved : undefined,
+    mouseDragged: typeof mouseDragged === 'function' ? mouseDragged : undefined,
+    mousePressed: typeof mousePressed === 'function' ? mousePressed : undefined,
+    mouseReleased: typeof mouseReleased === 'function' ? mouseReleased : undefined,
+    mouseClicked: typeof mouseClicked === 'function' ? mouseClicked : undefined,
+    doubleClicked: typeof doubleClicked === 'function' ? doubleClicked : undefined,
+    mouseWheel: typeof mouseWheel === 'function' ? mouseWheel : undefined,
+    keyPressed: typeof keyPressed === 'function' ? keyPressed : undefined,
+    keyReleased: typeof keyReleased === 'function' ? keyReleased : undefined,
+    keyTyped: typeof keyTyped === 'function' ? keyTyped : undefined,
+    touchStarted: typeof touchStarted === 'function' ? touchStarted : undefined,
+    touchMoved: typeof touchMoved === 'function' ? touchMoved : undefined,
+    touchEnded: typeof touchEnded === 'function' ? touchEnded : undefined,
+    deviceMoved: typeof deviceMoved === 'function' ? deviceMoved : undefined,
+    deviceTurned: typeof deviceTurned === 'function' ? deviceTurned : undefined,
+    deviceShaken: typeof deviceShaken === 'function' ? deviceShaken : undefined
+  });
+}
+            """.trimIndent()
+            "<script type=\"module\">\n${escapeScriptContent(currentCode)}\n$tail\n</script>"
         } else {
             "<script>\n${escapeScriptContent(currentCode)}\n</script>"
         }
@@ -103,6 +144,9 @@ internal object StandaloneHtmlGenerator {
             appendLine("    }")
             appendLine("  </style>")
             scripts.forEach { appendLine("  $it") }
+            if (moduleHelper.isNotBlank()) {
+                appendLine("  $moduleHelper")
+            }
             if (auxiliaryInlined.isNotBlank()) {
                 appendLine(auxiliaryInlined)
             }
@@ -121,8 +165,7 @@ internal object StandaloneHtmlGenerator {
     ): String {
         // Strip Edit:RiN runtime wrappers
         var bundled = html
-            .replace(Regex("""<script[^>]*src=["'][^"']*p5_host\.js["'][^>]*>\s*</script>""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""<script[^>]*src=["'][^"']*p5_bootstrap\.js["'][^>]*>\s*</script>""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""<script[^>]*src=["'][^"']*(?:p5_host|p5_bootstrap|p5_sketch)\.js["'][^>]*>\s*</script>""", RegexOption.IGNORE_CASE), "")
 
         // Replace bundled offline asset URLs with public CDN
         bundled = bundled
@@ -132,13 +175,15 @@ internal object StandaloneHtmlGenerator {
             .replace("p5.sound-v1.min.js", P5_SOUND_V1_CDN)
             .replace("matter-0.20.0.min.js", MATTER_CDN)
             .replace("p5.brush-2.2.1.js", BRUSH_CDN)
+            .replace("p5.webgpu.js", P5_WEBGPU_CDN)
 
         // Inline local JS files referenced via <script src="...">
         val scriptRegex = Regex("""<script([^>]*)src=["']([^"']+)["']([^>]*)>\s*</script>""", RegexOption.IGNORE_CASE)
         bundled = scriptRegex.replace(bundled) { match ->
             val preAttrs = match.groupValues[1]
-            val src = match.groupValues[2].trimStart('.', '/')
+            val rawSrc = match.groupValues[2]
             val postAttrs = match.groupValues[3]
+            val src = rawSrc.substringBefore('?').substringBefore('#').trimStart('.', '/')
 
             val fileContent = when (src) {
                 "sketch.js" -> mainSource
@@ -157,10 +202,12 @@ internal object StandaloneHtmlGenerator {
         bundled = cssRegex.replace(bundled) { match ->
             val fullTag = match.value
             if (!fullTag.contains("stylesheet", ignoreCase = true)) return@replace fullTag
-            val href = match.groupValues[2].trimStart('.', '/')
+            val rawHref = match.groupValues[2]
+            val href = rawHref.substringBefore('?').substringBefore('#').trimStart('.', '/')
             val cssContent = files[href]
             if (cssContent != null) {
-                "<style>\n$cssContent\n</style>"
+                val safeCss = cssContent.replace(Regex("</style", RegexOption.IGNORE_CASE)) { "<\\/style" }
+                "<style>\n$safeCss\n</style>"
             } else {
                 fullTag
             }

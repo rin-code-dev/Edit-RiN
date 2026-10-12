@@ -39,6 +39,18 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
         releaseNotesPromptVersion = version
     }
 
+    var onboardingVersion by mutableIntStateOf(repository.onboardingVersion)
+        private set
+    /** True while the tour was opened on purpose from Settings; it does not depend on the stored version. */
+    var onboardingReplay by mutableStateOf(false)
+        private set
+    fun replayOnboarding() { onboardingReplay = true }
+    fun completeOnboarding() {
+        repository.completeOnboarding(ONBOARDING_VERSION)
+        onboardingVersion = ONBOARDING_VERSION
+        onboardingReplay = false
+    }
+
     private fun <T> setting(read: (SettingsUiState) -> T, write: (SettingsUiState, T) -> SettingsUiState) =
         object : ReadWriteProperty<Any?, T> {
             override fun getValue(thisRef: Any?, property: KProperty<*>) = read(state)

@@ -181,4 +181,29 @@ internal fun EditorAuthoringDialogs(
             )
         }
     }
+
+    val tourDue = onboardingDue(
+        settingsViewModel.onboardingVersion,
+        loadFailed = workManagementViewModel.loadFailure != null,
+        hasPendingDraft = workManagementViewModel.pendingDraft != null,
+        hasStorageFolder = workManagementViewModel.selectedFolderUri != null
+    )
+    if (tourDue || settingsViewModel.onboardingReplay) {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
+                dismissOnClickOutside = false)
+        ) {
+            val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
+            OnboardingTour(
+                language = resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage),
+                onFinish = { settingsViewModel.completeOnboarding() },
+                onSkip = { settingsViewModel.completeOnboarding() },
+                onOpenDetailedGuide = {
+                    settingsViewModel.completeOnboarding()
+                    onUserGuideChange(true)
+                }
+            )
+        }
+    }
 }

@@ -9,10 +9,13 @@ internal sealed class WorkParameter(open val name: String, open val label: Strin
         WorkParameter(name, label, defaultValue)
     data class Boolean(override val name: String, override val label: String, override val defaultValue: String) :
         WorkParameter(name, label, defaultValue)
+    data class Choice(override val name: String, override val label: String, override val defaultValue: String,
+                      val options: List<String>) : WorkParameter(name, label, defaultValue)
 }
 
-private val parameterLine = Regex("^\\s*//\\s*@rin\\s+(number|color|boolean)\\s+([A-Za-z_$][\\w$]*)\\s+\"([^\"]{1,40})\"\\s+(.+?)\\s*$")
+private val parameterLine = Regex("^\\s*//\\s*@rin\\s+(number|color|boolean|choice)\\s+([A-Za-z_$][\\w$]*)\\s+\"([^\"]{1,40})\"\\s+(.+?)\\s*$")
 private val hexColor = Regex("#[0-9a-fA-F]{6}")
+private val choiceToken = Regex("^[A-Za-z0-9_.-]{1,32}$")
 
 /** Parameter declarations are comments, so older app versions can still run the sketch. */
 internal fun workParameters(sources: Map<String, String>): List<WorkParameter> = buildList {
@@ -42,6 +45,15 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
             "boolean" -> parts.singleOrNull()?.lowercase()?.takeIf { it == "true" || it == "false" }?.let {
                 WorkParameter.Boolean(name, label, it)
             }
+            "choice" -> {
+                if (parts.size < 2) null else {
+                    val defaultVal = parts[0]
+                    val rawOptions = if (parts.drop(1).contains(defaultVal)) parts.drop(1) else parts
+                    val options = rawOptions.distinct()
+                    if (options.size < 2 || defaultVal !in options || options.any { !choiceToken.matches(it) }) null
+                    else WorkParameter.Choice(name, label, defaultVal, options)
+                }
+            }
             else -> null
         }
         if (parameter != null) { add(parameter); names += name }
@@ -57,6 +69,7 @@ internal fun parameterValue(parameter: WorkParameter, saved: String?): String = 
         "false" -> "false"
         else -> parameter.defaultValue
     }
+    is WorkParameter.Choice -> saved?.takeIf { it in parameter.options } ?: parameter.defaultValue
 }
 
 internal fun parameterValuesJson(parameters: List<WorkParameter>, values: Map<String, String>): String =
@@ -67,6 +80,7 @@ internal fun parameterValuesJson(parameters: List<WorkParameter>, values: Map<St
                 is WorkParameter.Number -> put(parameter.name, value.toDouble())
                 is WorkParameter.Boolean -> put(parameter.name, value.toBoolean())
                 is WorkParameter.Color -> put(parameter.name, value)
+                is WorkParameter.Choice -> put(parameter.name, value)
             }
         }
     }.toString()
@@ -99,6 +113,13 @@ internal fun applyParameterDefaults(source: String, values: Map<String, String>)
             is WorkParameter.Boolean -> {
                 if (current.equals(parameter.defaultValue, true)) return@map line
                 parts[0] = current.lowercase(); true
+            }
+            is WorkParameter.Choice -> {
+                if (current == parameter.defaultValue) return@map line
+                parts.clear()
+                parts.add(current)
+                parts.addAll(parameter.options)
+                true
             }
         }
         if (!replaced || kind.isEmpty()) return@map line

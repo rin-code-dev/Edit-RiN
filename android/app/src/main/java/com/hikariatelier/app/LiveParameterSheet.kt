@@ -48,7 +48,7 @@ internal fun LiveParameterSheet(
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, value) }
             val jsonValue = when (parameter) {
                 is WorkParameter.Number, is WorkParameter.Boolean -> value
-                is WorkParameter.Color -> JSONObject.quote(value)
+                is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(value)
             }
             preview.evaluate(
                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
@@ -58,7 +58,7 @@ internal fun LiveParameterSheet(
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
             val jsonValue = when (parameter) {
                 is WorkParameter.Number, is WorkParameter.Boolean -> parameter.defaultValue
-                is WorkParameter.Color -> JSONObject.quote(parameter.defaultValue)
+                is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(parameter.defaultValue)
             }
             preview.evaluate(
                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
@@ -70,7 +70,7 @@ internal fun LiveParameterSheet(
                 parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
                 val jsonValue = when (parameter) {
                     is WorkParameter.Number, is WorkParameter.Boolean -> parameter.defaultValue
-                    is WorkParameter.Color -> JSONObject.quote(parameter.defaultValue)
+                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(parameter.defaultValue)
                 }
                 preview.evaluate(
                     "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
