@@ -419,13 +419,14 @@ internal fun ParameterButton(
     iconSize: Dp,
     onClick: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    active: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
     val hasParameters = parameterCount > 0
-    val borderColor = if (hasParameters) colors.primary.copy(alpha = 0.9f) else colors.outlineVariant
-    val backgroundColor = if (hasParameters) colors.primaryContainer.copy(alpha = 0.22f) else Color.Transparent
-    val contentColor = if (hasParameters) colors.primary else colors.onSurfaceVariant
+    val borderColor = if (active) colors.primary else if (hasParameters) colors.primary.copy(alpha = 0.9f) else colors.outlineVariant
+    val backgroundColor = if (active) colors.primary.copy(alpha = 0.18f) else if (hasParameters) colors.primaryContainer.copy(alpha = 0.22f) else Color.Transparent
+    val contentColor = if (active || hasParameters) colors.primary else colors.onSurfaceVariant
 
     Box(
         modifier = modifier

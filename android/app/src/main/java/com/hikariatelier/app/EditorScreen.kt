@@ -358,7 +358,7 @@ internal fun EditorScreen(
     fun openPreviewParameters() {
         previewActionsExpanded = false
         showExpandedPreview = false
-        showParameterSheet = true
+        showParameterSheet = !showParameterSheet
     }
 
     LaunchedEffect(showExpandedPreview) {
@@ -1134,7 +1134,8 @@ internal fun EditorScreen(
             iconSize = if (isLandscape) 15.dp else 16.dp,
             onClick = ::openPreviewParameters,
             textTranslator = { s, args -> uiText(s, *args) },
-            modifier = modifier
+            modifier = modifier,
+            active = showParameterSheet
         )
     }
 
@@ -1656,6 +1657,7 @@ internal fun EditorScreen(
                     portraitRatioDragging = portraitRatioDragging,
                     codeFontFamily = codeFontFamily,
                     hasVisibleCompletions = editorSuggestions.isNotEmpty() && !inlineSearchVisible,
+                    showParameterPanel = USE_INLINE_PARAMETER_PANEL && showParameterSheet,
                     galleryVisible = galleryPresent,
                     galleryProgress = galleryProgress
                 ),
@@ -1671,6 +1673,18 @@ internal fun EditorScreen(
                     workBar = { WorkBar() }, landscapeBar = { LandscapeUnifiedBar() },
                     controlBar = { ControlBar() }, console = { ConsolePanel(it) },
                     previewActions = { PreviewActionsTray(it) }, editor = { EditorArea(it) },
+                    parameterPanel = { modifier ->
+                        LiveParameterPanel(
+                            work = activeWork,
+                            editorText = editorText,
+                            sessionViewModel = sessionViewModel,
+                            workManagementViewModel = workManagementViewModel,
+                            preview = preview,
+                            textTranslator = { source, args -> uiText(source, *args) },
+                            onDismiss = { showParameterSheet = false },
+                            modifier = modifier
+                        )
+                    },
                     completions = { CompletionBar(it) }, accessory = { EditorAccessoryBar(it) },
                     preview = { MainPreviewArea(it) },
                     gallery = { InlineGallery(it) },
@@ -1769,7 +1783,7 @@ internal fun EditorScreen(
         textTranslator = { s, args -> uiText(s, *args) }
     )
 
-    if (showParameterSheet) {
+    if (!USE_INLINE_PARAMETER_PANEL && showParameterSheet) {
         LiveParameterSheet(activeWork, editorText, sessionViewModel, workManagementViewModel, preview,
             ParameterSheetLayout(isLandscape, landscapeEditorOnLeft, 1f - animatedLandscapePreviewFraction, showStatusBar),
             { source, args -> uiText(source, *args) },

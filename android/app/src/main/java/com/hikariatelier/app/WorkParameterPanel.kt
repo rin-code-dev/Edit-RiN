@@ -50,7 +50,8 @@ internal fun WorkParameterPanel(
     onApplyDefaults: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     onAddParameter: (() -> Unit)? = null,
-    onInsertSample: (() -> Unit)? = null
+    onInsertSample: (() -> Unit)? = null,
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
     val hasModified = remember(parameters, values) {
@@ -74,7 +75,7 @@ internal fun WorkParameterPanel(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp),
+            .padding(top = topPadding, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Header
@@ -644,7 +645,7 @@ internal fun WorkParameterBottomSheet(
                         RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
                     color = colors.surface,
                     border = BorderStroke(1.dp, colors.outlineVariant),
-                    tonalElevation = 6.dp
+                    tonalElevation = 0.dp
                 ) {
                     panelContent()
                 }
@@ -652,6 +653,55 @@ internal fun WorkParameterBottomSheet(
         } else {
             panelContent()
         }
+    }
+}
+
+@Composable
+internal fun InlineWorkParameterPanel(
+    parameters: List<WorkParameter>,
+    values: Map<String, String>,
+    onChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    text: (String) -> String,
+    onResetParameter: ((WorkParameter) -> Unit)? = null,
+    onResetAll: (() -> Unit)? = null,
+    onApplyDefaults: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
+    onAddParameter: (() -> Unit)? = null,
+    onInsertSample: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Card(
+        modifier = modifier
+            .fillMaxSize()
+            .border(
+                width = 1.dp,
+                color = colors.outlineVariant,
+                shape = RoundedCornerShape(18.dp)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp
+        )
+    ) {
+        WorkParameterPanel(
+            parameters = parameters,
+            values = values,
+            onChange = onChange,
+            onCommit = onCommit,
+            text = text,
+            onResetParameter = onResetParameter,
+            onResetAll = onResetAll,
+            onApplyDefaults = onApplyDefaults,
+            onDismiss = onDismiss,
+            onAddParameter = onAddParameter,
+            onInsertSample = onInsertSample,
+            topPadding = 16.dp
+        )
     }
 }
 

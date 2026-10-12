@@ -50,6 +50,7 @@ internal data class EditorWorkspaceState(
     val portraitRatioDragging: Boolean,
     val codeFontFamily: FontFamily,
     val hasVisibleCompletions: Boolean,
+    val showParameterPanel: Boolean = false,
     val galleryVisible: Boolean = false,
     val galleryProgress: Float = 0f,
 )
@@ -73,6 +74,7 @@ internal data class EditorWorkspaceSlots(
     val completions: @Composable (Modifier) -> Unit,
     val accessory: @Composable (Modifier) -> Unit,
     val preview: @Composable (Modifier) -> Unit,
+    val parameterPanel: @Composable (Modifier) -> Unit = {},
     val gallery: @Composable (Modifier) -> Unit = {},
     val galleryPreview: @Composable (Modifier) -> Unit = {},
     val previewChrome: @Composable (Modifier) -> Unit = {},
@@ -272,12 +274,21 @@ internal fun EditorWorkspaceLayout(
                                     )
                                 }
 
-                                slots.editor(
-                                    Modifier
+                                Crossfade(
+                                    targetState = state.showParameterPanel,
+                                    animationSpec = tween(180),
+                                    modifier = Modifier
                                         .weight(1f)
                                         .fillMaxWidth()
-                                        .galleryEditorReveal(galleryProgress, true, state.landscapeEditorOnLeft)
-                                )
+                                        .galleryEditorReveal(galleryProgress, true, state.landscapeEditorOnLeft),
+                                    label = "landscapeEditorParameterCrossfade"
+                                ) { isParameter ->
+                                    if (isParameter) {
+                                        slots.parameterPanel(Modifier.fillMaxSize())
+                                    } else {
+                                        slots.editor(Modifier.fillMaxSize())
+                                    }
+                                }
 
                                 slots.completions(
                                     Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 6.dp)
@@ -636,26 +647,28 @@ internal fun EditorWorkspaceLayout(
                         }
 
                         val editorBottomPadding by animateDpAsState(
-                            targetValue = if (state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
+                            targetValue = if (state.editorFocused && state.showEditorAccessoryBar) 0.dp else 20.dp,
                             animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                             label = "editorBottomPadding"
                         )
 
-                        slots.editor(
-                            Modifier
-                                    .weight(
-                                        1f
-                                    )
-                                    .fillMaxWidth()
-                                    .galleryEditorReveal(galleryProgress, false, state.landscapeEditorOnLeft)
-                                    .padding(
-                                        horizontal =
-                                            12.dp
-                                    )
-                                    .padding(
-                                        bottom = editorBottomPadding
-                                    )
-                        )
+                        Crossfade(
+                            targetState = state.showParameterPanel,
+                            animationSpec = tween(180),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .galleryEditorReveal(galleryProgress, false, state.landscapeEditorOnLeft)
+                                .padding(horizontal = 12.dp)
+                                .padding(bottom = editorBottomPadding),
+                            label = "portraitEditorParameterCrossfade"
+                        ) { isParameter ->
+                            if (isParameter) {
+                                slots.parameterPanel(Modifier.fillMaxSize())
+                            } else {
+                                slots.editor(Modifier.fillMaxSize())
+                            }
+                        }
 
                         slots.completions(
                             Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(
