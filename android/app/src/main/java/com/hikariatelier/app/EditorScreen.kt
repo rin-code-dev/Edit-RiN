@@ -1217,7 +1217,7 @@ internal fun EditorScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             WorkSelector(
-                modifier = Modifier.widthIn(min = 90.dp, max = 180.dp)
+                modifier = Modifier.widthIn(max = 120.dp)
             )
 
             RunStatusControls(

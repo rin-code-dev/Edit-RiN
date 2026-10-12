@@ -227,7 +227,7 @@ internal fun WorkSelectorChip(
         ) {
             if (isLandscape) {
                 Row(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.wrapContentWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -241,14 +241,14 @@ internal fun WorkSelectorChip(
                     }
                     Text(
                         activeWorkTitle ?: uiText("作品を選択"),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f, fill = false),
                         color = colors.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    saveLabel?.let { Text(it, modifier = Modifier.widthIn(max = 60.dp),
+                    saveLabel?.let { Text(it, modifier = Modifier.wrapContentWidth(),
                         color = if (saveFailed) colors.error else colors.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }

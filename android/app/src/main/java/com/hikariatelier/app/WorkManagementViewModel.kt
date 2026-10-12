@@ -217,7 +217,7 @@ internal class WorkManagementViewModel(
         }.takeIf { loadFailure == null && settings?.weaveStartupPending == true }
         val initialPalette = officialSamples.firstOrNull {
             it.id.removePrefix("builtin-sample:").trimEnd(':') == "shapes"
-        }.takeIf { loadFailure == null && initialWeave == null && settings?.paletteStartupPending == true }
+        }.takeIf { loadFailure == null && settings?.weaveStartupPending != true && settings?.paletteStartupPending == true }
         val activeId = initialWeave?.id ?: initialPalette?.id
             ?: remembered?.takeIf { id -> officialSamples.any { it.id == id } }
             ?: store.activeWorkId.takeIf { id -> store.works.any { it.id == id } }

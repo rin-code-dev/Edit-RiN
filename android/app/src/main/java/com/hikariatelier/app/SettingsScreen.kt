@@ -173,6 +173,23 @@ internal fun SettingsScreen(
                                 }
                             }
                         }
+                        Surface(
+                            onClick = { showUserGuide = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = colors.surface,
+                            contentColor = colors.onSurface
+                        ) {
+                            Row(Modifier.heightIn(min = 48.dp).padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(painterResource(R.drawable.ic_help), null, Modifier.size(18.dp),
+                                    tint = colors.onSurfaceVariant)
+                                Spacer(Modifier.width(8.dp))
+                                Text(uiText("使い方ガイド"), modifier = Modifier.weight(1f),
+                                    color = colors.onSurface,
+                                    style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
                     }
                 }
             }
@@ -289,6 +306,23 @@ internal fun SettingsScreen(
                             Spacer(Modifier.width(14.dp))
                             Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         }
+                    }
+                }
+                Surface(
+                    onClick = { showUserGuide = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    contentColor = colors.onSurface,
+                    border = BorderStroke(1.dp, colors.outlineVariant)
+                ) {
+                    Row(
+                        Modifier.heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(painterResource(R.drawable.ic_help), null, Modifier.size(22.dp), tint = colors.primary)
+                        Spacer(Modifier.width(14.dp))
+                        Text(uiText("使い方ガイド"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
