@@ -161,6 +161,7 @@ class StudioControlsUiTest {
         compose.onNodeWithTag("guide-chapters").performScrollToIndex(4)
         compose.onAllNodesWithText("4. パラメータを調整する").onFirst().performClick()
         compose.onNodeWithTag("guide-slider").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("目次へ戻る").performClick()
         compose.onNodeWithTag("guide-chapters").performScrollToIndex(0)
         compose.onNodeWithText("操作を試す").performClick()
         compose.onNodeWithText("練習用プレビュー").assertExists()

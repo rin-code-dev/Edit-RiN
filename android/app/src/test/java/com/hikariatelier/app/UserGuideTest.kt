@@ -51,4 +51,23 @@ class UserGuideTest {
         }
     }
 
+    @Test fun referenceParameterExampleMatchesTheParser() {
+        val japanese = guideReferenceEntries("ja")
+        for (language in listOf("ja", "en", "zh")) {
+            val entries = guideReferenceEntries(language)
+            assertEquals(japanese.size, entries.size)
+            assertEquals(entries.size, entries.map { it.title }.distinct().size)
+            entries.zip(japanese).forEach { (entry, source) ->
+                assertTrue(entry.title.isNotBlank() && entry.summary.isNotBlank() && entry.group.isNotBlank())
+                assertTrue(entry.paragraphs.isNotEmpty() && entry.paragraphs.all { it.isNotBlank() })
+                assertEquals(source.paragraphs.size, entry.paragraphs.size)
+                assertEquals(source.notes.size, entry.notes.size)
+                assertEquals(source.code, entry.code)
+            }
+            val code = entries.mapNotNull { it.code }.first()
+            val parameters = workParameters(mapOf("sketch.js" to code))
+            assertEquals(setOf("size", "ink", "fillOn", "shape"), parameters.map { it.name }.toSet())
+        }
+    }
+
 }
