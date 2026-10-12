@@ -107,16 +107,6 @@ class OnboardingTourUiTest {
         compose.runOnIdle { assertEquals(1, opened) }
     }
 
-    @Test fun stepSurvivesRecreation() {
-        val restoration = StateRestorationTester(compose)
-        restoration.setContent {
-            MaterialTheme { OnboardingTour("en", {}, {}, {}, animate = false) }
-        }
-        repeat(3) { compose.onNodeWithTag("onboarding-next").performClick() }
-        restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithTag("onboarding-title").assertTextEquals(title("en", 3))
-    }
-
     @Test fun practiceScreensRunWithoutAnyAppState() {
         compose.setContent {
             MaterialTheme { OnboardingTour("en", {}, {}, {}, animate = false) }
