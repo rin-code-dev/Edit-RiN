@@ -212,10 +212,14 @@ internal class WorkManagementViewModel(
         val loadedOrder = withContext(io) { folders?.galleryTabsOrder(selectedFolderUri).orEmpty() }
         galleryTabs = syncGalleryTabs(loadedOrder, emptyGalleryFolders, store.works)
         val remembered = persistence.selectedWorkId(selectedFolderUri)
+        val initialWeave = officialSamples.firstOrNull {
+            it.id.removePrefix("builtin-sample:").trimEnd(':') == "wave-parameter"
+        }.takeIf { loadFailure == null && settings?.weaveStartupPending == true }
         val initialPalette = officialSamples.firstOrNull {
             it.id.removePrefix("builtin-sample:").trimEnd(':') == "shapes"
-        }.takeIf { loadFailure == null && settings?.paletteStartupPending == true }
-        val activeId = initialPalette?.id ?: remembered?.takeIf { id -> officialSamples.any { it.id == id } }
+        }.takeIf { loadFailure == null && initialWeave == null && settings?.paletteStartupPending == true }
+        val activeId = initialWeave?.id ?: initialPalette?.id
+            ?: remembered?.takeIf { id -> officialSamples.any { it.id == id } }
             ?: store.activeWorkId.takeIf { id -> store.works.any { it.id == id } }
             ?: store.works.firstOrNull()?.id ?: officialSamples.firstOrNull()?.id.orEmpty()
         val rawDraft = if (settings?.draftRecovery != false) withContext(io) { drafts?.load() } else null
@@ -234,7 +238,11 @@ internal class WorkManagementViewModel(
                 (compatible.first.workId != activeId && compatible.first.code != works.firstOrNull { it.id == compatible.first.workId }?.code))) pendingDraft = rawDraft
         compatible?.second?.let(session.fileDrafts::putAll)
         session.initialize(if (loadFailure == null) works + officialSamples else works, activeId, compatible?.first?.takeIf { it.workId == activeId }?.code)
-        if (initialPalette != null) {
+        if (initialWeave != null) {
+            persistence.rememberSelectedWork(selectedFolderUri, initialWeave.id)
+            settings?.completeWeaveStartup()
+            settings?.completePaletteStartup()
+        } else if (initialPalette != null) {
             persistence.rememberSelectedWork(selectedFolderUri, initialPalette.id)
             settings?.completePaletteStartup()
         }

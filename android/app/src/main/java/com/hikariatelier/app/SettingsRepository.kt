@@ -15,6 +15,8 @@ internal interface SettingsPersistence {
     fun dismissReleaseNotesPrompt(version: Int) {}
     val onboardingVersion: Int get() = 0
     fun completeOnboarding(version: Int) {}
+    val weaveStartupPending: Boolean get() = false
+    fun completeWeaveStartup() {}
     fun load(): SettingsUiState
     fun save(state: SettingsUiState)
 }
@@ -32,11 +34,22 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
                 .putBoolean("v230_defaults_applied", true)
                 .apply()
         }
+        if (!preferences.getBoolean("v250_defaults_applied", false)) {
+            preferences.edit()
+                .putBoolean("v250_weave_pending", true)
+                .putBoolean("v250_defaults_applied", true)
+                .apply()
+        }
     }
 
     override val paletteStartupPending get() = preferences.getBoolean("v230_palette_pending", false)
     override fun completePaletteStartup() {
         preferences.edit().putBoolean("v230_palette_pending", false).apply()
+    }
+
+    override val weaveStartupPending get() = preferences.getBoolean("v250_weave_pending", false)
+    override fun completeWeaveStartup() {
+        preferences.edit().putBoolean("v250_weave_pending", false).apply()
     }
 
     override val samplePromptVersion get() = preferences.getInt("dismissed_sample_prompt_version", 0)

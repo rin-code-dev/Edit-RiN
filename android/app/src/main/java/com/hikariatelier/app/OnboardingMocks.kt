@@ -189,7 +189,7 @@ private fun MockRun(language: String, animate: Boolean) {
         }
         MockCaption(
             if (ran) t("プレビューが更新されました（練習用）", "The preview is updated (practice)", "预览已更新（练习）")
-            else t("コードを編集しました。プレビューはまだ前のままです", "The code is edited. The preview still shows the old result", "代码已编辑，预览仍是之前的结果")
+            else t("コードを変更しました。「実行」を押して反映しましょう", "Code edited. Press Run to see the update!", "代码已修改，点击“运行”查看效果")
         )
     }
 }
@@ -280,14 +280,14 @@ private fun MockCapture(language: String, animate: Boolean) {
             FilledTonalIconButton(
                 onClick = {
                     captured = true
-                    note = t("画像を書き出しました。練習用のため、保存はされません", "Image exported. This is a practice, so nothing is saved", "已导出图片。这是练习，不会保存")
+                    note = t("画像を書き出しました（練習用：端末には保存されません）", "Image exported (Practice mode: not saved to device)", "已导出图片（练习模式：不会保存到设备）")
                 },
                 modifier = Modifier.tapHint(note == null, animate)
             ) { Icon(painterResource(R.drawable.ic_camera), contentDescription = t("画像を書き出す", "Export image", "导出图片")) }
             FilledTonalIconButton(onClick = {
                 recording = !recording
                 if (recording) note = t("録画を開始しました", "Recording started", "已开始录制")
-                else { captured = true; note = t("録画を止めました。練習用のため、保存はされません", "Recording stopped. This is a practice, so nothing is saved", "已停止录制。这是练习，不会保存") }
+                else { captured = true; note = t("録画を止めました（練習用：端末には保存されません）", "Recording stopped (Practice mode: not saved to device)", "已停止录制（练习模式：不会保存到设备）") }
             }) {
                 Box(Modifier.size(18.dp).clip(CircleShape).background(Color(0xFFD93025)))
             }

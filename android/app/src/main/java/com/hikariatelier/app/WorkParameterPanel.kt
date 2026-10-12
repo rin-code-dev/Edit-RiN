@@ -620,10 +620,11 @@ internal fun WorkParameterBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = false,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = isLandscape),
+        sheetGesturesEnabled = !isLandscape,
         containerColor = if (isLandscape) Color.Transparent else colors.surface,
-        scrimColor = if (isLandscape) MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f) else BottomSheetDefaults.ScrimColor,
+        scrimColor = if (isLandscape) MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
+            else MaterialTheme.colorScheme.scrim.copy(alpha = 0.14f),
         dragHandle = if (isLandscape) null else { { BottomSheetDefaults.DragHandle() } }
     ) {
         windowSetup()

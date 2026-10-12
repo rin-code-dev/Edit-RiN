@@ -20,6 +20,8 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
         private set
     val paletteStartupPending get() = repository.paletteStartupPending
     fun completePaletteStartup() = repository.completePaletteStartup()
+    val weaveStartupPending get() = repository.weaveStartupPending
+    fun completeWeaveStartup() = repository.completeWeaveStartup()
 
     var customFontFamily by mutableStateOf<FontFamily?>(null)
         private set

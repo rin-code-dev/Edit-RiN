@@ -60,6 +60,21 @@ class SettingsRepositoryTest {
         assertEquals(AppThemeMode.LIGHT, repository.load().themeMode)
         assertFalse(repository.load().editorWordWrap)
         assertTrue(repository.paletteStartupPending)
+        assertTrue(repository.weaveStartupPending)
+    }
+
+    @Test fun v250UpgradeRequestsWeaveStartupOnce() {
+        val prefs = Preferences().apply {
+            values["v230_defaults_applied"] = true
+        }
+        val repository = SettingsRepository(prefs)
+        assertTrue(repository.weaveStartupPending)
+
+        repository.completeWeaveStartup()
+        assertFalse(repository.weaveStartupPending)
+
+        val restarted = SettingsRepository(prefs)
+        assertFalse(restarted.weaveStartupPending)
     }
 
     @Test fun v230UpgradeResetsOnlyRequestedDefaultsOnce() {

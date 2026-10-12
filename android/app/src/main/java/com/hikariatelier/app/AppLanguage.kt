@@ -250,7 +250,7 @@ internal val uiTranslations = mapOf(
     "カーソル位置に定番コードを挿入" to ("Insert common code at the cursor" to "在光标处插入常用代码"),
     "画像を書き出し中…" to ("Exporting image…" to "正在导出图像…"),
     "使い方ガイド" to ("User Guide" to "使用指南"),
-    "はじめてのガイドをもう一度見る" to ("Watch the intro tour again" to "再次查看入门引导"),
+    "入門ツアーをもう一度見る" to ("Take the intro tour again" to "再次查看入门引导"),
     "更新履歴 (What's New)" to ("What's New" to "更新日志"),
     "ヘルプ" to ("Help" to "帮助"),
     "操作方法や機能の解説" to ("Learn features and shortcuts" to "功能与操作说明"),

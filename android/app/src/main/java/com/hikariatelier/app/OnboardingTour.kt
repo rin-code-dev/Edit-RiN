@@ -30,38 +30,38 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
     return listOf(
         OnboardingStep(
             t("作品を開く", "Open a work", "打开作品"),
-            t("ギャラリーでサムネイルをタップすると、作品が開きます。まずは動いているサンプルを選んでみましょう。",
+            t("ギャラリーでサムネイルをタップすると作品が開きます。まずは動くサンプルを選んでみましょう。",
                 "Tap a thumbnail in the gallery to open a work. Start by choosing a running sample.",
                 "在作品库中点击缩略图即可打开作品。先从正在运行的示例开始吧。")
         ),
         OnboardingStep(
             t("書いて、動かす", "Write and run", "编写并运行"),
-            t("自分の作品ではコードを編集できます。「実行」を押すと、変更がプレビューに反映されます。",
-                "In your own works you can edit the code. Press Run to update the preview with your changes.",
-                "在自己的作品中可以编辑代码。点击“运行”即可把更改应用到预览。")
+            t("コードを編集したら、「実行」を押してプレビューに変更を反映しましょう。",
+                "Edit the code and press Run to see your changes in the preview.",
+                "编辑代码后，点击“运行”即可把更改应用到预览。")
         ),
         OnboardingStep(
-            t("パラメータで調整", "Tune with parameters", "用参数调整"),
-            t("コードに宣言した数値や色を、スライダーで動かしながら調整できます。",
-                "Move sliders to adjust the numbers and colors declared in your code while the work runs.",
-                "作品运行时，可以用滑块调整代码中声明的数值和颜色。")
+            t("パラメータで調整", "Tune with parameters", "实时参数调整"),
+            t("コードに宣言した数値や色を、スライダーを使ってリアルタイムに調整できます。",
+                "Adjust numbers and colors declared in your code in real time using sliders.",
+                "作品运行时，可以通过滑块实时调整代码中声明的数值和颜色。")
         ),
         OnboardingStep(
-            t("止めて、戻す", "Pause and go back", "暂停与恢复"),
-            t("一時停止で動きを止められます。履歴から、スナップショットの作成や保存済みの状態への復元ができます。",
-                "Pause the artwork at any time. From History you can create a snapshot or revert to the saved work.",
+            t("一時停止と履歴", "Pause and History", "暂停与恢复"),
+            t("作品の動きを一時停止したり、「履歴」からスナップショット作成や保存済み状態への復元ができます。",
+                "Pause the artwork at any time. From History, you can take snapshots or revert to your saved work.",
                 "可以随时暂停作品。在“历史”中可以创建快照，或恢复到已保存的状态。")
         ),
         OnboardingStep(
-            t("記録して、共有", "Capture and share", "记录与分享"),
-            t("画像の書き出しや、MP4・GIFの録画ができます。保存した画像や録画は、ほかのアプリで共有できます。",
-                "Export images or record MP4 and GIF files. After saving, you can share the result through another app.",
+            t("記録して、共有", "Capture and share", "导出与分享"),
+            t("画像の書き出しや、MP4・GIFの録画ができます。保存した作品は、ほかのアプリへすぐに共有できます。",
+                "Export images or record MP4 and GIF files, then share your creations through other apps.",
                 "可以导出图片，或录制 MP4 和 GIF。保存后，可通过其他应用分享。")
         ),
         OnboardingStep(
-            t("さあ、はじめましょう", "Make it yours", "开始创作吧"),
-            t("このガイドは、設定からいつでももう一度見られます。くわしい使い方は「使い方ガイド」で確認できます。",
-                "You can watch this tour again from Settings at any time. The User Guide explains each feature in detail.",
+            t("さあ、始めましょう", "Make it yours", "开始创作吧"),
+            t("このツアーは設定からいつでも再確認できます。詳しい使い方は「使い方ガイド」をご覧ください。",
+                "You can revisit this tour from Settings at any time. The User Guide explains each feature in detail.",
                 "您可以随时在设置中再次查看此引导。各项功能的详细说明请参阅“使用指南”。")
         )
     )
@@ -138,11 +138,11 @@ internal fun OnboardingTour(
                 Button(
                     onClick = { if (last) onFinish() else step++ },
                     modifier = Modifier.weight(if (step > 0) 2f else 1f).heightIn(min = 48.dp).testTag("onboarding-next")
-                ) { Text(if (last) t("はじめる", "Start using Edit:RiN", "开始使用") else t("次へ", "Next", "下一步")) }
+                ) { Text(if (last) t("始める", "Start Creating", "开始创作") else t("次へ", "Next", "下一步")) }
             }
             if (last) {
                 TextButton(onClick = onOpenDetailedGuide, modifier = Modifier.fillMaxWidth().testTag("onboarding-guide")) {
-                    Text(t("くわしい使い方を見る", "Open the User Guide", "查看使用指南"))
+                    Text(t("詳しい使い方を見る", "Open the User Guide", "查看使用指南"))
                 }
             }
         }

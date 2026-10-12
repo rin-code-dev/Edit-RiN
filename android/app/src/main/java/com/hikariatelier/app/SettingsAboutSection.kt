@@ -69,7 +69,7 @@ internal fun SettingsAboutSection(
                 onClick = onShowOnboarding,
                 contentPadding = PaddingValues(horizontal = 0.dp)
             ) {
-                Text(uiText("はじめてのガイドをもう一度見る"))
+                Text(uiText("入門ツアーをもう一度見る"))
             }
             TextButton(
                 onClick = onShowLicenses,
