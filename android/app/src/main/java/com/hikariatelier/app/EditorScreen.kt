@@ -1642,7 +1642,7 @@ internal fun EditorScreen(
                     keyboardVisible = keyboardVisible && !galleryPresent,
                     showResizeHandles = showResizeHandles,
                     showConsole = showConsole,
-                    showEditorAccessoryBar = showEditorAccessoryBar && !inlineSearchVisible,
+                    showEditorAccessoryBar = showEditorAccessoryBar && !inlineSearchVisible && !sessionViewModel.sampleReadOnly,
                     compactPreview = compactPreview,
                     hideEditingPreview = hideEditingPreview,
                     themeMode = themeMode,
@@ -1658,6 +1658,7 @@ internal fun EditorScreen(
                     codeFontFamily = codeFontFamily,
                     hasVisibleCompletions = editorSuggestions.isNotEmpty() && !inlineSearchVisible,
                     showParameterPanel = USE_INLINE_PARAMETER_PANEL && showParameterSheet,
+                    isSample = sessionViewModel.sampleReadOnly || activeWork?.isSample == true,
                     galleryVisible = galleryPresent,
                     galleryProgress = galleryProgress
                 ),

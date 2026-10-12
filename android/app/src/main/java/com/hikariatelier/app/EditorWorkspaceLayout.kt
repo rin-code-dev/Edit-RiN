@@ -51,6 +51,7 @@ internal data class EditorWorkspaceState(
     val codeFontFamily: FontFamily,
     val hasVisibleCompletions: Boolean,
     val showParameterPanel: Boolean = false,
+    val isSample: Boolean = false,
     val galleryVisible: Boolean = false,
     val galleryProgress: Float = 0f,
 )
@@ -647,7 +648,9 @@ internal fun EditorWorkspaceLayout(
                         }
 
                         val editorBottomPadding by animateDpAsState(
-                            targetValue = if (state.editorFocused && state.showEditorAccessoryBar) 0.dp else 20.dp,
+                            targetValue = if (state.isSample) 24.dp
+                            else if (state.editorFocused && state.showEditorAccessoryBar) 0.dp
+                            else 12.dp,
                             animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                             label = "editorBottomPadding"
                         )
