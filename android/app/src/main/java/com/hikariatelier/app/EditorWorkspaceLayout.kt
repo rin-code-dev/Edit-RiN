@@ -636,7 +636,7 @@ internal fun EditorWorkspaceLayout(
                         }
 
                         val editorBottomPadding by animateDpAsState(
-                            targetValue = if (state.editorFocused && state.showEditorAccessoryBar) 0.dp else 18.dp,
+                            targetValue = if (state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
                             animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                             label = "editorBottomPadding"
                         )

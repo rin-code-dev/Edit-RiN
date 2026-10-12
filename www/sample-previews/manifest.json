@@ -1,12 +1,12 @@
 {
   "halo": {
     "source": "Halo.js",
-    "sha256": "322a836b7487f4b38757ec85e12bdfebfb7982bc4a0871435494782af477e6f5",
+    "sha256": "a1dc9afdd5f4879565ea6162ace291c20039106f13268e984e9dd0582b53bf4b",
     "p5Version": "2.3.4"
   },
   "shapes": {
     "source": "Shapes.js",
-    "sha256": "8bc16874435c9c686168383e3bbad2ac7f9a55cd13e5ea57d564c12a13a07ffa",
+    "sha256": "0b3bae0809be12560e513144ad26a50ee027eef36e5fd412ca28e2f09d20d425",
     "p5Version": "2.3.4"
   },
   "touch": {
@@ -16,7 +16,7 @@
   },
   "gravity": {
     "source": "Gravity.js",
-    "sha256": "9b1b92e61c0bd5ce181c60b158b23d74187fb6d6063491506fec27ffc3171765",
+    "sha256": "77387cc73661c8b4658f250bd4a21c182c339ce8512105acb2beaf0cb4f7674d",
     "p5Version": "2.3.4"
   },
   "wave-parameter": {
@@ -31,7 +31,7 @@
   },
   "sound": {
     "source": "Sound.js",
-    "sha256": "5e5fe00bbb23dbbb7f5569e98ef8cf510eae5395b7854603fe03e3481571548b",
+    "sha256": "768a09fa2e1937107750ea066a60947f7b8fb359cea810ed160c3076c196d3d7",
     "p5Version": "2.3.4"
   },
   "camera": {
