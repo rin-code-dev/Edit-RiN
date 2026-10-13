@@ -152,7 +152,14 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
         )
     }
 
-    val showReleaseNotesPrompt = settingsViewModel.releaseNotesPromptVersion < BuildConfig.VERSION_CODE &&
+    // The first-run tour (EditorAuthoringDialogs) comes first; release notes follow once it is done.
+    val tourPending = onboardingDue(
+        settingsViewModel.onboardingVersion,
+        loadFailed = workManagementViewModel.loadFailure != null,
+        hasPendingDraft = workManagementViewModel.pendingDraft != null,
+        hasStorageFolder = selectedFolderUri != null
+    ) || settingsViewModel.onboardingReplay
+    val showReleaseNotesPrompt = !tourPending && settingsViewModel.releaseNotesPromptVersion < BuildConfig.VERSION_CODE &&
         workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null && selectedFolderUri != null
 
     if (showReleaseNotesPrompt) {

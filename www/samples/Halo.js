@@ -14,7 +14,7 @@ function draw() {
   const seconds = constrain(deltaTime / 1000, 0, 0.05);
   time += seconds * (parameters.speed ?? 0.6);
 
-  background(28, 27, 26);
+  background(51, 49, 50);
   translate(width / 2, height / 2);
   rotate(time * 0.08);
   noFill();

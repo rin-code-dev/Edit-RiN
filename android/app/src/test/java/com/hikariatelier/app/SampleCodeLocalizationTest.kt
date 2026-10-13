@@ -20,7 +20,20 @@ class SampleCodeLocalizationTest {
                 assertEquals("$name line numbers", originalLines.size, localizedLines.size)
                 for ((index, line) in originalLines.withIndex()) {
                     val comment = line.trimStart()
-                    if (comment.startsWith("// ") && !comment.startsWith("// @rin")) {
+                    if (comment.startsWith("// @rin")) {
+                        val original = workParameters(mapOf("sketch.js" to line)).single()
+                        val translated = workParameters(mapOf("sketch.js" to localizedLines[index])).single()
+                        val normalized = when (translated) {
+                            is WorkParameter.Number -> translated.copy(label = original.label)
+                            is WorkParameter.Color -> translated.copy(label = original.label)
+                            is WorkParameter.Boolean -> translated.copy(label = original.label)
+                            is WorkParameter.Choice -> translated.copy(label = original.label)
+                        }
+                        assertEquals("$name parameter contract $index", original, normalized)
+                        if (name == "wave Parameter" || name == "WebGPU") {
+                            assertNotEquals(original.label, translated.label)
+                        }
+                    } else if (comment.startsWith("// ")) {
                         assertNotEquals("$name $language comment: $comment", line, localizedLines[index])
                     } else {
                         assertEquals("$name executable/metadata line $index", line, localizedLines[index])

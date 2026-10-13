@@ -29,9 +29,10 @@ internal fun ShareCardSheet(
     artwork: Bitmap,
     workTitle: String,
     fullCode: String,
-    hasAssets: Boolean,
     initialAuthor: String = "",
     onAuthorChange: (String) -> Unit = {},
+    initialQrUrl: String = DEFAULT_SHARE_URL,
+    onQrUrlChange: (String) -> Unit = {},
     initialSelectedRange: Pair<Int, Int>? = null,
     text: (String) -> String,
     onSave: (Bitmap) -> Unit,
@@ -44,15 +45,17 @@ internal fun ShareCardSheet(
     var author by remember(initialAuthor) { mutableStateOf(initialAuthor) }
     var selectedTheme by remember { mutableStateOf(ShareCardTheme.DARK) }
 
-    val qrStatus = remember(fullCode, hasAssets) {
-        ShareCardGenerator.checkQrStatus(fullCode, hasAssets)
+    var qrUrl by remember(initialQrUrl) {
+        mutableStateOf(initialQrUrl.ifBlank { DEFAULT_SHARE_URL })
     }
 
-    var includeQr by remember(qrStatus) {
-        mutableStateOf(qrStatus == QrStatus.AVAILABLE)
+    val qrStatus = remember(qrUrl) {
+        ShareCardGenerator.checkQrUrlStatus(qrUrl)
     }
 
-    var allowWebCodeView by remember { mutableStateOf(true) }
+    var includeQr by remember {
+        mutableStateOf(true)
+    }
 
     var includeCode by remember { mutableStateOf(true) }
 
@@ -78,8 +81,8 @@ internal fun ShareCardSheet(
         startLine,
         endLine,
         includeQr,
-        qrStatus,
-        allowWebCodeView
+        qrUrl,
+        qrStatus
     ) {
         value = withContext(Dispatchers.Default) {
             val snippet = if (includeCode && lines.isNotEmpty()) {
@@ -100,7 +103,7 @@ internal fun ShareCardSheet(
                     snippetStartLine = startLine,
                     includeQr = includeQr,
                     qrStatus = qrStatus,
-                    allowWebCodeView = allowWebCodeView
+                    qrUrl = qrUrl
                 )
             )
         }
@@ -193,7 +196,7 @@ internal fun ShareCardSheet(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ShareCardTheme.values().forEach { theme ->
+                        ShareCardTheme.entries.forEach { theme ->
                             val isSelected = selectedTheme == theme
                             FilterChip(
                                 selected = isSelected,
@@ -202,9 +205,8 @@ internal fun ShareCardSheet(
                                     Text(
                                         when (theme) {
                                             ShareCardTheme.DARK -> text("ダーク")
-                                            ShareCardTheme.MIDNIGHT -> text("ミッドナイト")
-                                            ShareCardTheme.CYBER -> text("サイバー")
                                             ShareCardTheme.LIGHT -> text("ライト")
+                                            ShareCardTheme.SUMI -> text("墨")
                                         }
                                     )
                                 }
@@ -248,83 +250,81 @@ internal fun ShareCardSheet(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = when (qrStatus) {
-                        QrStatus.AVAILABLE -> MaterialTheme.colorScheme.surfaceContainerHigh
-                        else -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
-                    }
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 )
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    when (qrStatus) {
-                        QrStatus.AVAILABLE -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text("QRコードを含める"),
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    Text(
-                                        text("カメラ等でスキャンしてブラウザで作品を実行できます"),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = includeQr,
-                                    onCheckedChange = { includeQr = it }
-                                )
-                            }
-
-                            if (includeQr) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(vertical = 4.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text("Webのコード表示ボタン"),
-                                            style = MaterialTheme.typography.titleSmall
-                                        )
-                                        Text(
-                                            text("OFFで表示ボタンを隠します。コードはリンクに含まれるため、非公開にはなりません"),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Switch(
-                                        checked = allowWebCodeView,
-                                        onCheckedChange = { allowWebCodeView = it }
-                                    )
-                                }
-                            }
-                        }
-                        QrStatus.CONTAINS_ASSETS -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text("⚠️ 作品に画像・音声などの外部素材が含まれているため、QRコードでのWeb実行は利用できません。プレビューとコードのみのカードを作成します。"),
+                                text("QRコードを含める"),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text("スキャン時に指定したURLへアクセスできます"),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        QrStatus.TOO_LARGE -> {
+                        Switch(
+                            checked = includeQr,
+                            onCheckedChange = { includeQr = it }
+                        )
+                    }
+
+                    if (includeQr) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+
+                        Text(text("QRコードのURL"), style = MaterialTheme.typography.titleSmall)
+                        OutlinedTextField(
+                            value = qrUrl,
+                            onValueChange = {
+                                qrUrl = it
+                                onQrUrlChange(it)
+                            },
+                            placeholder = { Text(text("https://example.com")) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = qrUrl == DEFAULT_SHARE_URL,
+                                onClick = {
+                                    qrUrl = DEFAULT_SHARE_URL
+                                    onQrUrlChange(DEFAULT_SHARE_URL)
+                                },
+                                label = { Text(text("公式ページ")) }
+                            )
+                        }
+
+                        if (qrUrl.isBlank()) {
                             Text(
-                                text("⚠️ コード容量がQRコードの上限を超えているため、QRコードを含められません。プレビューとコードのみのカードを作成します。"),
+                                text("URLを入力するとQRコードが生成されます"),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (qrStatus == QrStatus.TOO_LARGE) {
+                            Text(
+                                text("⚠️ URLが長すぎるため、QRコードを生成できません"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
                     }

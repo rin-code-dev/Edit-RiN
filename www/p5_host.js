@@ -136,11 +136,25 @@
   try { initial = JSON.parse(window.Android?.getWorkParameters?.(window.__editRinRunToken) || '{}'); } catch (_) {}
   window.rinParams = Object.assign(Object.create(null), initial);
   window.__editRinSetParameter = (name, value) => {
-    if (Object.prototype.hasOwnProperty.call(window.rinParams, name) &&
-        (typeof value === 'number' && Number.isFinite(value) ||
-         typeof value === 'boolean' ||
-         typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value))) {
-      window.rinParams[name] = value;
+    if (Object.prototype.hasOwnProperty.call(window.rinParams, name)) {
+      const current = window.rinParams[name];
+      if (typeof current === 'number') {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          window.rinParams[name] = value;
+        }
+      } else if (typeof current === 'boolean') {
+        if (typeof value === 'boolean') {
+          window.rinParams[name] = value;
+        }
+      } else if (typeof current === 'string' && typeof value === 'string') {
+        if (/^#[0-9a-fA-F]{6}$/.test(current)) {
+          if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+            window.rinParams[name] = value;
+          }
+        } else {
+          window.rinParams[name] = value;
+        }
+      }
     }
   };
 })();

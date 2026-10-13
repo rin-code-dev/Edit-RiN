@@ -2,7 +2,7 @@
 // Tap to change the palette.
 const palettes = [
   ['#F2EFE7', '#2B2825', '#D67856', '#C8C2B8'],
-  ['#1C1B1A', '#F2EFE7', '#D67856', '#302D2B'],
+  ['#333132', '#F2EFE7', '#D67856', '#302D2B'],
   ['#E6E2DD', '#34302D', '#D67856', '#C8C2B8'],
 ];
 let paletteIndex = 0;

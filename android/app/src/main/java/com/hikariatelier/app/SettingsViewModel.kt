@@ -20,6 +20,8 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
         private set
     val paletteStartupPending get() = repository.paletteStartupPending
     fun completePaletteStartup() = repository.completePaletteStartup()
+    val weaveStartupPending get() = repository.weaveStartupPending
+    fun completeWeaveStartup() = repository.completeWeaveStartup()
 
     var customFontFamily by mutableStateOf<FontFamily?>(null)
         private set
@@ -37,6 +39,18 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     fun dismissReleaseNotesPrompt(version: Int) {
         repository.dismissReleaseNotesPrompt(version)
         releaseNotesPromptVersion = version
+    }
+
+    var onboardingVersion by mutableIntStateOf(repository.onboardingVersion)
+        private set
+    /** True while the tour was opened on purpose from Settings; it does not depend on the stored version. */
+    var onboardingReplay by mutableStateOf(false)
+        private set
+    fun replayOnboarding() { onboardingReplay = true }
+    fun completeOnboarding() {
+        repository.completeOnboarding(ONBOARDING_VERSION)
+        onboardingVersion = ONBOARDING_VERSION
+        onboardingReplay = false
     }
 
     private fun <T> setting(read: (SettingsUiState) -> T, write: (SettingsUiState, T) -> SettingsUiState) =
@@ -77,6 +91,7 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     var xShareText by setting({ it.xShareText }, { old, value -> old.copy(xShareText = value) })
     var recordingCountdownSeconds by setting({ it.recordingCountdownSeconds }, { old, value -> old.copy(recordingCountdownSeconds = value) })
     var shareCardAuthor by setting({ it.shareCardAuthor }, { old, value -> old.copy(shareCardAuthor = value) })
+    var shareCardQrUrl by setting({ it.shareCardQrUrl }, { old, value -> old.copy(shareCardQrUrl = value) })
     var p5Username by setting({ it.p5Username }, { old, value -> old.copy(p5Username = value) })
     var fontLigatures by setting({ it.fontLigatures }, { old, value -> old.copy(fontLigatures = value) })
     var customFontFile by setting({ it.customFontFile }, { old, value -> old.copy(customFontFile = value) })

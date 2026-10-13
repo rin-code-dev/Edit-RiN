@@ -10,7 +10,7 @@ let t = 0;
 function setup() {
   createCanvas(600, 600);
   pixelDensity(1);
-  background(28, 27, 26);
+  background(51, 49, 50);
   for (let i = 0; i < COUNT; i++) {
     const angle = (i * TWO_PI) / COUNT;
     const radius = min(width, height) * (0.19 + (i % 4) * 0.048);
@@ -31,7 +31,7 @@ function draw() {
     2,
   );
   t += step / 60;
-  background(28, 27, 26, 12);
+  background(51, 49, 50, 12);
   const centerX = mouseIsPressed ? constrain(mouseX, 0, width) : width / 2;
   const centerY = mouseIsPressed ? constrain(mouseY, 0, height) : height / 2;
   const pull = parameters.pull ?? 0.8;
@@ -54,7 +54,7 @@ function draw() {
     point.y = (point.y + height) % height;
   }
   noStroke();
-  fill(28, 27, 26);
+  fill(51, 49, 50);
   circle(centerX, centerY, 36);
   fill(214, 120, 86);
   circle(centerX, centerY, 7);

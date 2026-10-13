@@ -39,6 +39,42 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "2.5.0",
+        versionCode = 34,
+        titleEn = "What's New in v2.5.0",
+        titleJa = "v2.5.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Adaptive Parameter Controls",
+                titleJa = "向きに合わせたパラメータ操作",
+                descEn = "In landscape mode, parameters now dock beside the preview for live tweaking. Portrait mode retains the convenient bottom sheet.",
+                descJa = "横画面ではプレビュー横にパラメータパネルが常駐して操作しやすくなりました。縦画面では使い慣れたボトムシートで調整できます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Expanded Editor Layout",
+                titleJa = "エディター表示とレイアウトの改善",
+                descEn = "Fixed editor overflow when inspecting sample sketches. Expanding the editor extends upward while keeping comfortable bottom margins.",
+                descJa = "サンプル作品のコードを開いた際の下部見切れを解消しました。エディターを開いた際も上方向に自然に広がり、コードが読みやすくなりました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_history,
+                titleEn = "Refreshed About & Official Links",
+                titleJa = "アプリ情報画面の刷新と公式リンク",
+                descEn = "Redesigned About section into 3 organized cards with quick links to the official website and GitHub repository.",
+                descJa = "アプリ情報画面を3つのカードに整理し、公式サイトやGitHubリポジトリへの直接リンクを追加しました。アプリアイコン表示も安定化しています。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_play,
+                titleEn = "Weave Sample & Onboarding Tour",
+                titleJa = "新サンプル「Weave」とガイドツアー",
+                descEn = "Explore the new Weave generative art sample, try out the beginner onboarding tour, and export standalone HTML sketches.",
+                descJa = "波形生成サンプル「Weave」を追加しました。基本操作を学べるオンボーディングツアーや、単体HTMLファイルの書き出しにも対応しています。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.4.0",
         versionCode = 33,
         titleEn = "What's New in v2.4.0",
