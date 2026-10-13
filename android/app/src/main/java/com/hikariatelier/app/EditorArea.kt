@@ -477,7 +477,8 @@ internal fun EditorArea(
                     }
                     onClearNavigationTarget()
                 }
-                val contentMinHeight = (maxHeight - 32.dp).coerceAtLeast(0.dp)
+                val containerMaxHeight = maxHeight
+                val contentMinHeight = (containerMaxHeight - 32.dp).coerceAtLeast(0.dp)
 
                 Row(
                     modifier = Modifier
@@ -500,7 +501,7 @@ internal fun EditorArea(
                             digits = lineNumberDigits,
                             width = gutterWidth,
                             minimumHeight = contentMinHeight,
-                            viewportHeight = with(localDensity) { maxHeight.toPx() },
+                            viewportHeight = with(localDensity) { containerMaxHeight.toPx() },
                             scroll = editorScrollState,
                             style = TextStyle(
                                 fontFamily = codeFontFamily,

@@ -343,8 +343,8 @@ internal fun EditorAccessoryBar(
                                 detectHorizontalDragGestures(
                                     onDragStart = {
                                         val target = findNumberAtSelection(
-                                            currentEditingValue.value.text,
-                                            currentEditingValue.value.selection
+                                            currentEditingValue.text,
+                                            currentEditingValue.selection
                                         )
                                         activeRange = target?.range
                                         startNumber = target?.value ?: 0.0
@@ -359,7 +359,7 @@ internal fun EditorAccessoryBar(
                                         val deltaSteps = (accumulatedDx / scrubStepPx).toInt()
                                         val nextVal = startNumber + deltaSteps * step
                                         val formatted = formatScrubbedNumber(nextVal, decimals)
-                                        val latestText = currentEditingValue.value.text
+                                        val latestText = currentEditingValue.text
                                         if (range.first >= 0 && range.last < latestText.length) {
                                             val currentSlice = latestText.substring(range.first, range.last + 1)
                                             if (currentSlice != formatted) {
