@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Edit:RiN Google Drive Append-Only Sync Runner
+# Edit:RiN Google Drive Non-deleting Copy Runner
 # ==============================================================================
-set -eo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-python3 "${SCRIPT_DIR}/sync-gdrive.py" "$@"
+exec python3 "${SCRIPT_DIR}/sync-gdrive.py" "$@"

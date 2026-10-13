@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,7 +51,8 @@ internal fun WorkParameterPanel(
     onApplyDefaults: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     onAddParameter: (() -> Unit)? = null,
-    onInsertSample: (() -> Unit)? = null
+    onInsertSample: (() -> Unit)? = null,
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
     val hasModified = remember(parameters, values) {
@@ -59,6 +61,7 @@ internal fun WorkParameterPanel(
             when (p) {
                 is WorkParameter.Color -> !cur.equals(p.defaultValue, ignoreCase = true)
                 is WorkParameter.Boolean -> !cur.equals(p.defaultValue, ignoreCase = true)
+                is WorkParameter.Choice -> cur != p.defaultValue
                 is WorkParameter.Number -> {
                     val curF = cur.toFloatOrNull() ?: 0f
                     val defF = p.defaultValue.toFloatOrNull() ?: 0f
@@ -73,7 +76,7 @@ internal fun WorkParameterPanel(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp),
+            .padding(top = topPadding, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Header
@@ -232,6 +235,7 @@ internal fun WorkParameterPanel(
             val isModified = when (parameter) {
                 is WorkParameter.Color -> !value.equals(parameter.defaultValue, ignoreCase = true)
                 is WorkParameter.Boolean -> !value.equals(parameter.defaultValue, ignoreCase = true)
+                is WorkParameter.Choice -> value != parameter.defaultValue
                 is WorkParameter.Number -> {
                     val curF = value.toFloatOrNull() ?: 0f
                     val defF = parameter.defaultValue.toFloatOrNull() ?: 0f
@@ -488,6 +492,87 @@ internal fun WorkParameterPanel(
                                 text = text
                             )
                         }
+
+                        is WorkParameter.Choice -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = parameter.label,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "rinParams.${parameter.name}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = value,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+
+                                    if (isModified && onResetParameter != null) {
+                                        IconButton(
+                                            onClick = { onResetParameter(parameter) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_restore),
+                                                contentDescription = text("初期値に戻す"),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            val selectedIdx = parameter.options.indexOf(value).let { if (it >= 0) it else 0 }
+                            ScrollableChoiceGroup(
+                                labels = parameter.options,
+                                selectedIndex = selectedIdx,
+                                onSelect = { idx ->
+                                    if (idx in parameter.options.indices) {
+                                        onChange(parameter, parameter.options[idx])
+                                        onCommit()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (isModified) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    Text(
+                                        text = "${text("初期値")}: ${parameter.defaultValue}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -537,10 +622,11 @@ internal fun WorkParameterBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = false,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = isLandscape),
+        sheetGesturesEnabled = !isLandscape,
         containerColor = if (isLandscape) Color.Transparent else colors.surface,
-        scrimColor = if (isLandscape) MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f) else BottomSheetDefaults.ScrimColor,
+        scrimColor = if (isLandscape) MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
+            else MaterialTheme.colorScheme.scrim.copy(alpha = 0.14f),
         dragHandle = if (isLandscape) null else { { BottomSheetDefaults.DragHandle() } }
     ) {
         windowSetup()
@@ -560,7 +646,7 @@ internal fun WorkParameterBottomSheet(
                         RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
                     color = colors.surface,
                     border = BorderStroke(1.dp, colors.outlineVariant),
-                    tonalElevation = 6.dp
+                    tonalElevation = 0.dp
                 ) {
                     panelContent()
                 }
@@ -568,6 +654,55 @@ internal fun WorkParameterBottomSheet(
         } else {
             panelContent()
         }
+    }
+}
+
+@Composable
+internal fun InlineWorkParameterPanel(
+    parameters: List<WorkParameter>,
+    values: Map<String, String>,
+    onChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    text: (String) -> String,
+    onResetParameter: ((WorkParameter) -> Unit)? = null,
+    onResetAll: (() -> Unit)? = null,
+    onApplyDefaults: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
+    onAddParameter: (() -> Unit)? = null,
+    onInsertSample: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Card(
+        modifier = modifier
+            .fillMaxSize()
+            .border(
+                width = 1.dp,
+                color = colors.outlineVariant,
+                shape = RoundedCornerShape(18.dp)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp
+        )
+    ) {
+        WorkParameterPanel(
+            parameters = parameters,
+            values = values,
+            onChange = onChange,
+            onCommit = onCommit,
+            text = text,
+            onResetParameter = onResetParameter,
+            onResetAll = onResetAll,
+            onApplyDefaults = onApplyDefaults,
+            onDismiss = onDismiss,
+            onAddParameter = onAddParameter,
+            onInsertSample = onInsertSample,
+            topPadding = 16.dp
+        )
     }
 }
 

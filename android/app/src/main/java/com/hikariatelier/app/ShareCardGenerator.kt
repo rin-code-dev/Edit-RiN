@@ -11,21 +11,19 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
-import android.util.Base64
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
-import java.util.zip.Deflater
 
 internal enum class QrStatus {
     AVAILABLE,
-    CONTAINS_ASSETS,
     TOO_LARGE
 }
 
-// Keep the implementation for a future sharing workflow, without exposing UI.
-internal const val SHARE_CARDS_AVAILABLE = false
+// Share cards revival
+internal const val SHARE_CARDS_AVAILABLE = true
+internal const val DEFAULT_SHARE_URL = "https://rin-code-dev.github.io/Edit-RiN"
 
 internal enum class ShareCardTheme(
     val id: String,
@@ -42,126 +40,76 @@ internal enum class ShareCardTheme(
 ) {
     DARK(
         id = "dark",
-        bgColor = "#101014",
-        artBorderColor = "#262833",
+        bgColor = "#09090B",
+        artBorderColor = "#303038",
         titleColor = "#FFFFFF",
-        subtitleColor = "#8E919A",
-        dividerColor = "#262833",
-        codeBoxBg = "#14141B",
-        codeBoxBorder = "#262833",
-        codeTextColor = "#D4D7E2",
-        codeLineNumColor = "#494C5C",
-        urlColor = "#5A5E70"
-    ),
-    MIDNIGHT(
-        id = "midnight",
-        bgColor = "#0A0E1A",
-        artBorderColor = "#1E283D",
-        titleColor = "#FFFFFF",
-        subtitleColor = "#7E8B9F",
-        dividerColor = "#1E283D",
-        codeBoxBg = "#0F1626",
-        codeBoxBorder = "#1E283D",
-        codeTextColor = "#D6E0F0",
-        codeLineNumColor = "#43526E",
-        urlColor = "#50617F"
-    ),
-    CYBER(
-        id = "cyber",
-        bgColor = "#130D22",
-        artBorderColor = "#311F54",
-        titleColor = "#FFFFFF",
-        subtitleColor = "#A685D4",
-        dividerColor = "#311F54",
-        codeBoxBg = "#1A122E",
-        codeBoxBorder = "#311F54",
-        codeTextColor = "#E5DAF7",
-        codeLineNumColor = "#624B82",
-        urlColor = "#795B9E"
+        subtitleColor = "#8E9099",
+        dividerColor = "#303038",
+        codeBoxBg = "#16161A",
+        codeBoxBorder = "#303038",
+        codeTextColor = "#E6E6E9",
+        codeLineNumColor = "#8E9099",
+        urlColor = "#A8C7FA"
     ),
     LIGHT(
         id = "light",
-        bgColor = "#F3F4F8",
-        artBorderColor = "#D5D8E2",
-        titleColor = "#12151F",
-        subtitleColor = "#606677",
-        dividerColor = "#D5D8E2",
+        bgColor = "#F2EFE7",
+        artBorderColor = "#CEC5BA",
+        titleColor = "#2B2825",
+        subtitleColor = "#5D554D",
+        dividerColor = "#CEC5BA",
         codeBoxBg = "#FFFFFF",
-        codeBoxBorder = "#D5D8E2",
-        codeTextColor = "#1E2333",
-        codeLineNumColor = "#9FA5B5",
-        urlColor = "#7E8496"
+        codeBoxBorder = "#CEC5BA",
+        codeTextColor = "#2B2825",
+        codeLineNumColor = "#81776D",
+        urlColor = "#9F4029"
+    ),
+    SUMI(
+        id = "sumi",
+        bgColor = "#333132",
+        artBorderColor = "#4B4540",
+        titleColor = "#F2EFE7",
+        subtitleColor = "#C8C2B8",
+        dividerColor = "#4B4540",
+        codeBoxBg = "#3C3A3B",
+        codeBoxBorder = "#4B4540",
+        codeTextColor = "#F2EFE7",
+        codeLineNumColor = "#9A9288",
+        urlColor = "#E7A083"
     )
 }
 
 internal data class ShareCardConfig(
     val title: String,
     val author: String = "",
-    val fullCode: String,
+    val fullCode: String = "",
     val theme: ShareCardTheme = ShareCardTheme.DARK,
     val includeCode: Boolean = true,
     val snippetCode: String = "",
     val snippetStartLine: Int = 1,
     val includeQr: Boolean = true,
     val qrStatus: QrStatus = QrStatus.AVAILABLE,
-    val allowWebCodeView: Boolean = true
+    val qrUrl: String = DEFAULT_SHARE_URL
 )
 
 internal object ShareCardGenerator {
 
-    private const val WEB_VIEWER_BASE_URL = "https://rin-code-dev.github.io/Edit-RiN/share/#c="
-
     /**
-     * Cleans code of non-functional overhead (comments, extra empty lines, sourceURL)
-     * to minimize data payload and maximize QR module size, preserving // @rin declarations.
+     * Validates if a QR code can be generated for an arbitrary URL.
      */
-    private fun cleanCodeForQr(code: String): String {
-        return code
-            .replace(Regex("""//#\s*sourceURL=[^\r\n]*"""), "")
-            .lines()
-            .map { it.trim() }
-            .filter { line ->
-                line.isNotEmpty() && (!line.startsWith("//") || line.startsWith("// @rin"))
-            }
-            .joinToString("\n")
-    }
-
-    /**
-     * Checks if a QR code can be generated for this sketch.
-     */
-    fun checkQrStatus(code: String, hasAssets: Boolean, allowWebCodeView: Boolean = true): QrStatus {
-        if (hasAssets) return QrStatus.CONTAINS_ASSETS
-        val cleaned = cleanCodeForQr(code)
+    fun checkQrUrlStatus(url: String): QrStatus {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return QrStatus.TOO_LARGE
         return try {
-            val compressed = compressCodeForUrl(cleaned)
-            val suffix = if (!allowWebCodeView) "&src=0" else ""
-            val url = WEB_VIEWER_BASE_URL + compressed + suffix
             val hints = mapOf(
                 EncodeHintType.MARGIN to 1,
                 EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.L
             )
-            QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, 200, 200, hints)
+            QRCodeWriter().encode(trimmed, BarcodeFormat.QR_CODE, 200, 200, hints)
             QrStatus.AVAILABLE
         } catch (_: Exception) {
             QrStatus.TOO_LARGE
         }
-    }
-
-    /**
-     * Compresses JavaScript source code using zlib Deflate (RFC 1951) and encodes with URL-safe Base64.
-     */
-    fun compressCodeForUrl(code: String): String {
-        val input = code.toByteArray(Charsets.UTF_8)
-        val deflater = Deflater(Deflater.BEST_COMPRESSION)
-        deflater.setInput(input)
-        deflater.finish()
-
-        val output = ByteArray(input.size + 256)
-        val compressedSize = deflater.deflate(output)
-        deflater.end()
-
-        val trimmed = output.copyOf(compressedSize)
-        return Base64.encodeToString(trimmed, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
     /**
@@ -290,9 +238,8 @@ internal object ShareCardGenerator {
         }
         canvas.drawLine(rightX, 236f, rightX + contentWidth, 236f, dividerPaint)
 
-        val hasQr = config.includeQr && config.qrStatus == QrStatus.AVAILABLE
+        val hasQr = config.includeQr && config.qrStatus == QrStatus.AVAILABLE && config.qrUrl.isNotBlank()
         val hasCode = config.includeCode && config.snippetCode.isNotBlank()
-        val cleanedQrCode = cleanCodeForQr(config.fullCode)
 
         if (hasCode && hasQr) {
             // Layout A: Both Code and QR (Expanded 390x390 QR)
@@ -306,29 +253,37 @@ internal object ShareCardGenerator {
             drawCodeBox(canvas, rightX, 260f, contentWidth, codeBoxH, config.snippetCode, config.snippetStartLine, theme)
 
             // QR Card at Bottom Right
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, padding = qrPadding, allowWebCodeView = config.allowWebCodeView)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, config.qrUrl, padding = qrPadding)
 
-            // Scan Info to the left of the QR
+            val hintTitle = "Scan QR code"
+            val hintSub = "Open in browser"
+
+            val maxTextW = (qrX - rightX - 24f).coerceAtLeast(100f)
+
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.titleColor)
                 textSize = 30f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", rightX, qrY + 120f, hintTitlePaint)
+            val displayTitleText = TextUtils.ellipsize(hintTitle, TextPaint(hintTitlePaint), maxTextW, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(displayTitleText, rightX, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.subtitleColor)
                 textSize = 22f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs in browser with p5.js", rightX, qrY + 165f, hintSubPaint)
+            val displaySubText = TextUtils.ellipsize(hintSub, TextPaint(hintSubPaint), maxTextW, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(displaySubText, rightX, qrY + 165f, hintSubPaint)
 
             val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.urlColor)
                 textSize = 19f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             }
-            canvas.drawText("rin-code-dev.github.io/Edit-RiN", rightX, qrY + 205f, urlPaint)
+            val displayHost = formatDisplayUrl(config.qrUrl)
+            val displayHostText = TextUtils.ellipsize(displayHost, TextPaint(urlPaint), maxTextW, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(displayHostText, rightX, qrY + 205f, urlPaint)
 
         } else if (hasCode) {
             // Layout B: Code only (Full height)
@@ -342,21 +297,37 @@ internal object ShareCardGenerator {
             val qrX = rightX
             val qrY = 320f
 
-            drawQrCard(canvas, qrX, qrY, qrCardSize, cleanedQrCode, qrPadding, allowWebCodeView = config.allowWebCodeView)
+            drawQrCard(canvas, qrX, qrY, qrCardSize, config.qrUrl, qrPadding)
+
+            val hintTitle = "Scan QR code"
+            val hintSub = "Open in browser"
+
+            val maxTextW = (width - 80f - (qrX + qrCardSize + 40f)).coerceAtLeast(100f)
 
             val hintTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.titleColor)
                 textSize = 36f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            canvas.drawText("Scan to run sketch", qrX + qrCardSize + 40f, qrY + 120f, hintTitlePaint)
+            val displayTitleText = TextUtils.ellipsize(hintTitle, TextPaint(hintTitlePaint), maxTextW, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(displayTitleText, qrX + qrCardSize + 40f, qrY + 120f, hintTitlePaint)
 
             val hintSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor(theme.subtitleColor)
                 textSize = 26f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             }
-            canvas.drawText("Runs live in browser with p5.js", qrX + qrCardSize + 40f, qrY + 175f, hintSubPaint)
+            val displaySubText = TextUtils.ellipsize(hintSub, TextPaint(hintSubPaint), maxTextW, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(displaySubText, qrX + qrCardSize + 40f, qrY + 175f, hintSubPaint)
+
+            val urlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor(theme.urlColor)
+                textSize = 20f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            }
+            val displayHost = formatDisplayUrl(config.qrUrl)
+            val displayHostText = TextUtils.ellipsize(displayHost, TextPaint(urlPaint), maxTextW, TextUtils.TruncateAt.END).toString()
+            canvas.drawText(displayHostText, qrX + qrCardSize + 40f, qrY + 220f, urlPaint)
 
         } else {
             // Layout D: Minimal
@@ -371,14 +342,26 @@ internal object ShareCardGenerator {
         return card
     }
 
+    private fun formatDisplayUrl(url: String): String {
+        return try {
+            val uri = android.net.Uri.parse(url)
+            val host = uri.host
+            if (!host.isNullOrBlank()) {
+                val path = uri.path.orEmpty().trimEnd('/')
+                if (path.isNotEmpty() && path != "/") "$host$path" else host
+            } else url.trim()
+        } catch (_: Exception) {
+            url.trim()
+        }.take(45)
+    }
+
     private fun drawQrCard(
         canvas: Canvas,
         x: Float,
         y: Float,
         size: Float,
-        code: String,
-        padding: Float = 22f,
-        allowWebCodeView: Boolean = true
+        qrUrl: String,
+        padding: Float = 22f
     ) {
         val qrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -386,11 +369,13 @@ internal object ShareCardGenerator {
         }
         canvas.drawRoundRect(x, y, x + size, y + size, 28f, 28f, qrBgPaint)
 
-        val suffix = if (!allowWebCodeView) "&src=0" else ""
-        val qrUrl = WEB_VIEWER_BASE_URL + compressCodeForUrl(code) + suffix
         val rawQrSize = (size - padding * 2).toInt()
-        val qrBitmap = generateQrBitmap(qrUrl, rawQrSize)
-        canvas.drawBitmap(qrBitmap, x + padding, y + padding, null)
+        try {
+            val qrBitmap = generateQrBitmap(qrUrl, rawQrSize)
+            canvas.drawBitmap(qrBitmap, x + padding, y + padding, null)
+        } catch (_: Exception) {
+            // Gracefully handle any unexpected encode error without crashing
+        }
     }
 
     private fun drawCodeBox(

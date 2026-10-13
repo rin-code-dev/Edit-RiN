@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.5.0 — 2026-10-13
+
+### English
+
+- Added an adaptive parameter layout: in landscape orientation, parameters dock as an inline side panel beside the canvas, while portrait orientation maintains the modal bottom sheet.
+- Fixed editor overflow when opening read-only sample code, expanding the editor smoothly upward while preserving bottom canvas margins.
+- Redesigned the About section into three structured cards (App Info, Official Links & Community, Support & Legal) with external links to the official website and GitHub repository.
+- Replaced the adaptive launcher icon in the About screen with a vector resource to eliminate an Android 13+ rendering crash, and unified app branding to "Edit:RiN".
+- Featured the "Weave" generative art sample for fresh installations and updates, while safely preserving existing user works and unsaved drafts.
+- Added an interactive onboarding tour for new users to explore essential editor actions.
+- Added standalone single-file HTML sketch export for viewing and sharing creations directly in web browsers.
+
+### 日本語
+
+- 画面の向きに応じたパラメータ操作に対応しました。横画面ではプレビュー横のインラインパネルでリアルタイムに調整でき、縦画面では使い慣れたボトムシートを維持します。
+- 閲覧専用サンプルのコードを開いた際にエディター下部が画面外にはみ出る問題を修正し、下部余白を維持したまま上方向へ自然に展開するように改善しました。
+- アプリ情報（About）画面を「アプリ情報」「公式リンク・コミュニティ」「サポート・法的情報」の3カードに再編成し、公式WebサイトやGitHubリポジトリへのリンクを追加しました。
+- Android 13以降でアプリアイコン読み込み時に発生していたクラッシュを解消し、アプリアイコンをベクター描画で安定化して表記を「Edit:RiN」に統一しました。
+- 初期起動およびアップデート時の体験作品として、波形生成サンプル「Weave」を採用しました（既存の作品や下書きは安全に保持されます）。
+- 初めての利用時に主要な機能を案内する対話型オンボーディングツアーを追加しました。
+- ブラウザでそのまま実行できる単一HTMLファイル書き出しに対応しました。
+
+
 ## 2.4.0 — 2026-10-10
 
 ### English

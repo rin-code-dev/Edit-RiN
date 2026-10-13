@@ -357,6 +357,9 @@ function sampleContext(extra = {}) {
     millis: () => 1000, addEventListener: noop, document: { addEventListener: noop },
     redraw: noop,
     min: Math.min, lerp: (a, b, t) => a + (b - a) * t,
+    abs: Math.abs, HALF_PI: Math.PI / 2, radians: value => value * Math.PI / 180,
+    color: value => ({ value, setAlpha: noop }),
+    lerpColor: (a, b, t) => ({ a, b, t, setAlpha: noop }),
     sin: Math.sin, cos: Math.cos, sqrt: Math.sqrt, exp: Math.exp, atan2: Math.atan2, pow: Math.pow,
     round: Math.round, floor: Math.floor, sq: value => value * value,
     HSB: 'hsb', ROUND: 'round', noise: () => 0.5,
@@ -439,9 +442,70 @@ test('bundled Halo.js and Gravity.js draw frames', async () => {
 });
 
 test('bundled wave Parameter.js draws with rinParams', async () => {
-  const { context, source } = await runSample('wave Parameter', { rinParams: { speed: 1, lineWidth: 4, ink: '#BA90E2' } });
-  for (const type of ['number speed', 'number lineWidth', 'color ink']) assert.ok(source.includes('// @rin ' + type), type);
-  assert.ok(vm.runInContext('phase', context) > 0);
+  const { context, source } = await runSample('wave Parameter', { rinParams: { speed: 1, thickness: 2, ink: '#BA90E2' } });
+  for (const type of ['number speed', 'number thickness', 'color ink', 'choice weave', 'choice palette']) assert.ok(source.includes('// @rin ' + type), type);
+  assert.ok(vm.runInContext('weaveTime', context) > 0);
+  context.rinParams.animate = false;
+  const paused = vm.runInContext('weaveTime', context);
+  vm.runInContext('draw()', context);
+  assert.equal(vm.runInContext('weaveTime', context), paused);
+});
+
+test('choice parameters update in rinParams via __editRinSetParameter and enforce type safety', () => {
+  const r = runner('function setup() {}', {}, {
+    Android: {
+      getSketchCode: () => 'function setup() {}',
+      getProjectConfig: () => '{}',
+      getWorkParameters: () => JSON.stringify({ mode: 'circle', count: 5, active: true, ink: '#BA90E2' }),
+      getP5Version: () => '1.11.5',
+      isP5SoundEnabled: () => false,
+      onStatusChanged: () => {},
+      onError: () => {},
+      onRuntimeError: () => {},
+      onRecordingStatusChanged: () => {},
+      onCaptureError: () => {}
+    }
+  });
+  assert.equal(r.context.window.rinParams.mode, 'circle');
+  assert.equal(r.context.window.rinParams.count, 5);
+  assert.equal(r.context.window.rinParams.active, true);
+  assert.equal(r.context.window.rinParams.ink, '#BA90E2');
+
+  // String updates to choice parameter should succeed
+  r.context.window.__editRinSetParameter('mode', 'square');
+  assert.equal(r.context.window.rinParams.mode, 'square');
+
+  // Number / boolean updates to choice parameter should be rejected
+  r.context.window.__editRinSetParameter('mode', 42);
+  assert.equal(r.context.window.rinParams.mode, 'square');
+  r.context.window.__editRinSetParameter('mode', false);
+  assert.equal(r.context.window.rinParams.mode, 'square');
+
+  // String / hex updates to number parameter should be rejected
+  r.context.window.__editRinSetParameter('count', 'invalid');
+  assert.equal(r.context.window.rinParams.count, 5);
+  r.context.window.__editRinSetParameter('count', '#FF0000');
+  assert.equal(r.context.window.rinParams.count, 5);
+
+  // Number / string updates to boolean parameter should be rejected
+  r.context.window.__editRinSetParameter('active', 1);
+  assert.equal(r.context.window.rinParams.active, true);
+  r.context.window.__editRinSetParameter('active', 'false');
+  assert.equal(r.context.window.rinParams.active, true);
+  r.context.window.__editRinSetParameter('active', '#FF0000');
+  assert.equal(r.context.window.rinParams.active, true);
+
+  // Color updates with hex strings should succeed; non-hex strings should be rejected
+  r.context.window.__editRinSetParameter('ink', '#00FF00');
+  assert.equal(r.context.window.rinParams.ink, '#00FF00');
+  r.context.window.__editRinSetParameter('ink', 'circle');
+  assert.equal(r.context.window.rinParams.ink, '#00FF00');
+  r.context.window.__editRinSetParameter('ink', 123);
+  assert.equal(r.context.window.rinParams.ink, '#00FF00');
+
+  // Undeclared parameter should be ignored
+  r.context.window.__editRinSetParameter('other', 'val');
+  assert.equal(r.context.window.rinParams.other, undefined);
 });
 
 test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async () => {

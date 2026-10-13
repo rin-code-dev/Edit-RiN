@@ -33,6 +33,7 @@ internal data class SettingsUiState(
     val xShareText: String = DEFAULT_X_SHARE_TEXT,
     val recordingCountdownSeconds: Int = 3,
     val shareCardAuthor: String = "",
+    val shareCardQrUrl: String = DEFAULT_SHARE_URL,
     val p5Username: String = "",
     val fontLigatures: Boolean = false,
     val customFontFile: String = "",

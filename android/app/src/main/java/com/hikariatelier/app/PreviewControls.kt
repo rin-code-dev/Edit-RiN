@@ -155,6 +155,7 @@ internal fun PreviewActionsTray(
     colors: ColorScheme,
     onOpenParameters: () -> Unit = {},
     onScreenshot: () -> Unit,
+    onShareCard: () -> Unit = {},
     onRecordToggle: () -> Unit,
     onFullscreen: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
@@ -254,6 +255,11 @@ internal fun PreviewActionsTray(
                 iconRes = R.drawable.ic_camera,
                 label = uiText("スクショ"),
                 onClick = onScreenshot
+            )
+            ActionChip(
+                iconRes = R.drawable.ic_share_card,
+                label = uiText("シェアカード"),
+                onClick = onShareCard
             )
             ActionChip(
                 iconRes = if (isRecordingOrCountingDown) R.drawable.ic_stop else R.drawable.ic_record,
@@ -413,13 +419,14 @@ internal fun ParameterButton(
     iconSize: Dp,
     onClick: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    active: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
     val hasParameters = parameterCount > 0
-    val borderColor = if (hasParameters) colors.primary.copy(alpha = 0.9f) else colors.outlineVariant
-    val backgroundColor = if (hasParameters) colors.primaryContainer.copy(alpha = 0.22f) else Color.Transparent
-    val contentColor = if (hasParameters) colors.primary else colors.onSurfaceVariant
+    val borderColor = if (active) colors.primary else if (hasParameters) colors.primary.copy(alpha = 0.9f) else colors.outlineVariant
+    val backgroundColor = if (active) colors.primary.copy(alpha = 0.18f) else if (hasParameters) colors.primaryContainer.copy(alpha = 0.22f) else Color.Transparent
+    val contentColor = if (active || hasParameters) colors.primary else colors.onSurfaceVariant
 
     Box(
         modifier = modifier
@@ -549,6 +556,7 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
     onClosePreviewActions: () -> Unit,
     onRotate: () -> Unit,
     onScreenshot: () -> Unit,
+    onShareCard: () -> Unit = {},
     onOpenParameters: () -> Unit,
     onToggleRecording: () -> Unit,
     onCancelCountdown: () -> Unit,
@@ -575,6 +583,13 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                 description = uiText("プレビューをスクリーンショット"),
                 colors = colors,
                 onClick = onScreenshot
+            )
+
+            PreviewOverlayButton(
+                iconRes = R.drawable.ic_share_card,
+                description = uiText("シェアカードを作成"),
+                colors = colors,
+                onClick = onShareCard
             )
 
             PreviewOverlayButton(

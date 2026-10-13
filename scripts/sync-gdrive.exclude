@@ -1,0 +1,36 @@
+# Applied to both copy and verification, at every directory depth.
+# Private instructions, credentials and local configuration
+GEMINI.md
+AGENTS.md
+MODIFICATIONS.md
+GITHUB_RELEASE_GUIDE.md
+EDIT_RIN_IMPLEMENTATION_SPEC.txt
+local.properties
+release-signing.properties
+sync-gdrive.local.json
+rclone.conf
+.env*
+*.keystore
+*.jks
+*.pem
+*.key
+*.p12
+*.pfx
+# Internal folders and generated caches
+.git/**
+.agents/**
+.codex/**
+.gemini/**
+.idea/**
+.vscode/**
+.gradle/**
+.kotlin/**
+node_modules/**
+__pycache__/**
+private-signing/**
+# Local handoffs, audits and logs
+*handoff*
+*audit*
+*引き継ぎ*
+*監査*
+*.log

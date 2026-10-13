@@ -1,158 +1,106 @@
 #!/usr/bin/env python3
-"""
-Edit:RiN Google Drive Append-Only Sync Script
---------------------------------------------
-- Synchronizes ~/Documents/EditRiNデータ/ to a locally configured Google Drive account.
-- Append-Only policy: UPLOADS and UPDATES only.
-- NEVER deletes any file on Google Drive even if deleted locally.
-"""
-
+"""Copy Edit:RiN artifacts to Google Drive without deleting destination files."""
+import argparse
+import datetime as dt
 import json
 import os
-import sys
-import subprocess
 from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
 
-def load_account():
-    account = os.environ.get("EDIT_RIN_DRIVE_ACCOUNT")
-    if not account:
-        config = Path(__file__).with_name("sync-gdrive.local.json")
+SCRIPT_DIR = Path(__file__).resolve().parent
+LOCAL_ROOT = Path.home() / 'Documents' / 'EditRiNデータ'
+FILTERS = SCRIPT_DIR / 'sync-gdrive.exclude'
+
+
+def load_remote():
+    remote = os.environ.get('EDIT_RIN_DRIVE_REMOTE')
+    if not remote:
+        config = SCRIPT_DIR / 'sync-gdrive.local.json'
         if config.is_file():
-            account = json.loads(config.read_text(encoding="utf-8")).get("account")
-    if not isinstance(account, str) or not account.strip():
-        raise RuntimeError("Set EDIT_RIN_DRIVE_ACCOUNT or configure scripts/sync-gdrive.local.json")
-    return account.strip()
+            settings = json.loads(config.read_text(encoding='utf-8'))
+            if not isinstance(settings, dict):
+                raise ValueError('sync-gdrive.local.json must contain a JSON object')
+            remote = settings.get('remote')
+    if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', remote):
+        raise ValueError('Set EDIT_RIN_DRIVE_REMOTE or the local JSON "remote" field to an rclone remote name (without colon/path). The old "account" setting is not an rclone credential. See docs/google-drive-sync.md.')
+    return remote
 
-ACCOUNT = load_account()
-LOCAL_ROOT = Path.home() / "Documents" / "EditRiNデータ"
 
-def run_cmd(cmd):
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return res.returncode, res.stdout.strip(), res.stderr.strip()
+def rclone_binary():
+    found = shutil.which('rclone')
+    if found:
+        return found
+    local = Path.home() / '.local' / 'bin' / 'rclone'
+    if local.is_file() and os.access(local, os.X_OK):
+        return str(local)
+    raise ValueError('rclone is not installed. See docs/google-drive-sync.md.')
 
-def ensure_mounted():
-    code, stdout, _ = run_cmd(["gio", "mount", "-l"])
-    if f"google-drive://{ACCOUNT}/" not in stdout:
-        run_cmd(["gio", "mount", f"google-drive://{ACCOUNT}/"])
 
-def get_drive_root():
-    ensure_mounted()
-    code, stdout, _ = run_cmd(["gio", "list", f"google-drive://{ACCOUNT}/"])
-    if code != 0:
-        raise RuntimeError(f"Failed to access Google Drive for {ACCOUNT}")
-    for item in stdout.splitlines():
-        item = item.strip()
-        if item and not item.startswith("GVfs"):
-            # This is the My Drive root ID
-            return f"google-drive://{ACCOUNT}/{item}"
-    raise RuntimeError("Could not find My Drive root directory ID")
+def rclone_environment():
+    # Do not let ambient flags disable checking, follow links, or change filters.
+    return {key: value for key, value in os.environ.items()
+            if not key.startswith('RCLONE_') or key in {'RCLONE_CONFIG', 'RCLONE_CONFIG_PASS'}}
 
-def get_children(parent_uri):
-    code, stdout, _ = run_cmd(["gio", "list", parent_uri])
-    if code != 0 or not stdout:
-        return {}
-    children = {}
-    for item_id in stdout.splitlines():
-        item_id = item_id.strip()
-        if not item_id:
-            continue
-        child_uri = f"{parent_uri}/{item_id}"
-        c_code, c_out, _ = run_cmd(["gio", "info", "-a", "standard::display-name,standard::type,standard::size", child_uri])
-        if c_code == 0:
-            name, item_type, size = "", "", 0
-            for line in c_out.splitlines():
-                line = line.strip()
-                if "standard::display-name:" in line:
-                    name = line.split("standard::display-name:", 1)[1].strip()
-                elif "standard::type:" in line:
-                    item_type = line.split("standard::type:", 1)[1].strip()
-                elif "standard::size:" in line:
-                    try:
-                        size = int(line.split("standard::size:", 1)[1].strip())
-                    except ValueError:
-                        size = 0
-            if name:
-                children[name] = {"id": item_id, "uri": child_uri, "type": item_type, "size": size}
-    return children
 
-def get_or_create_remote_dir(parent_uri, dir_name):
-    children = get_children(parent_uri)
-    if dir_name in children and children[dir_name]["type"] in ["2", "directory"]:
-        return children[dir_name]["uri"]
-    # Create directory
-    target_uri = f"{parent_uri}/{dir_name}"
-    run_cmd(["gio", "mkdir", target_uri])
-    # Re-fetch children to get newly created ID
-    new_children = get_children(parent_uri)
-    if dir_name in new_children:
-        return new_children[dir_name]["uri"]
-    return target_uri
+def transfer(binary, source, destination, filters, logfile, dry_run=False, env=None):
+    common = ['--exclude-from', str(filters), '--ignore-case', '--skip-links',
+              '--checkers', '4', '--retries', '3', '--low-level-retries', '10',
+              '--contimeout', '30s', '--timeout', '5m',
+              '--log-file', str(logfile), '--log-level', 'INFO', '--stats', '30s']
+    command = [binary, 'copy', str(source), destination, '--checksum', '--transfers', '2', *common]
+    if dry_run:
+        command.append('--dry-run')
+    subprocess.run(command, check=True, env=env)
+    if not dry_run:
+        # Extra remote files are intentionally retained and ignored by this check.
+        subprocess.run([binary, 'check', str(source), destination, '--one-way', *common],
+                       check=True, env=env)
 
-def sync_folder(local_path, remote_uri, rel_prefix=""):
-    uploaded = 0
-    updated = 0
-    skipped = 0
 
-    remote_children = get_children(remote_uri)
-
-    for entry in sorted(os.scandir(local_path), key=lambda e: e.name):
-        rel_item = f"{rel_prefix}/{entry.name}" if rel_prefix else entry.name
-        if entry.is_dir():
-            sub_remote_uri = get_or_create_remote_dir(remote_uri, entry.name)
-            u, up, s = sync_folder(entry.path, sub_remote_uri, rel_item)
-            uploaded += u
-            updated += up
-            skipped += s
-        elif entry.is_file():
-            local_size = entry.stat().st_size
-            if entry.name in remote_children:
-                rem_info = remote_children[entry.name]
-                if rem_info["size"] == local_size:
-                    skipped += 1
-                    continue
-                else:
-                    print(f"  [UPDATE] {rel_item} ({local_size} bytes)")
-                    dest_uri = f"{remote_uri}/{entry.name}"
-                    code, _, err = run_cmd(["gio", "copy", entry.path, dest_uri])
-                    if code == 0:
-                        updated += 1
-                    else:
-                        print(f"    Failed: {err}", file=sys.stderr)
-            else:
-                print(f"  [UPLOAD] {rel_item} ({local_size} bytes)")
-                dest_uri = f"{remote_uri}/{entry.name}"
-                code, _, err = run_cmd(["gio", "copy", entry.path, dest_uri])
-                if code == 0:
-                    uploaded += 1
-                else:
-                    print(f"    Failed: {err}", file=sys.stderr)
-
-    return uploaded, updated, skipped
-
-def main():
-    if not LOCAL_ROOT.exists():
-        LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
-        for sub in ["デバッグ", "リリース", "プロジェクト"]:
-            (LOCAL_ROOT / sub).mkdir(exist_ok=True)
-
-    print(f"==> Google Drive Append-Only Sync: {ACCOUNT}")
-    print(f"    Local:  {LOCAL_ROOT}")
-    
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dry-run', action='store_true', help='Preview transfers without modifying Drive')
+    args = parser.parse_args(argv)
+    logfile = None
     try:
-        drive_root_uri = get_drive_root()
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        binary = rclone_binary()
+        remote = load_remote()
+        if not LOCAL_ROOT.is_dir() or LOCAL_ROOT.is_symlink():
+            raise ValueError('The local artifact directory must exist and must not be a symlink.')
+        if not FILTERS.is_file():
+            raise ValueError('Required exclusion file is missing.')
+        env = rclone_environment()
+        # listremotes does not expose OAuth tokens or contact Drive.
+        result = subprocess.run([binary, 'listremotes', '--long'], check=True,
+                                capture_output=True, text=True, env=env)
+        remotes = dict(re.findall(r'^([^:\r\n]+):\s+(\S+)\s*$', result.stdout, re.M))
+        if remotes.get(remote) != 'drive':
+            raise ValueError('The selected remote must be a configured Google Drive (drive) remote. See docs/google-drive-sync.md.')
+        state = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'edit-rin/drive-sync'
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, name = tempfile.mkstemp(prefix=dt.datetime.now().strftime('%Y%m%d-%H%M%S-'),
+                                    suffix='.log', dir=state)
+        os.close(fd)
+        logfile = Path(name)
+        destination = f'{remote}:EditRiNデータ'
+        print(f'Local: {LOCAL_ROOT}\nDestination: {destination}\nLog: {logfile}', flush=True)
+        transfer(binary, LOCAL_ROOT, destination, FILTERS, logfile, args.dry_run, env)
+        print('Dry run complete; Drive was not modified.' if args.dry_run
+              else 'Copy and checksum verification complete. No destination files deleted.', flush=True)
+        return 0
+    except subprocess.CalledProcessError as error:
+        print(f'Drive operation failed (exit {error.returncode}); completion is NOT confirmed.', file=sys.stderr)
+        if logfile:
+            print(f'Inspect log: {logfile}', file=sys.stderr)
+        return error.returncode if 0 < error.returncode < 126 else 1
+    except (OSError, ValueError) as error:
+        print(f'Drive operation stopped: {error}', file=sys.stderr)
+        return 1
 
-    # Find or create EditRiNデータ
-    editrin_remote_uri = get_or_create_remote_dir(drive_root_uri, "EditRiNデータ")
-    print(f"    Remote: EditRiNデータ")
-    print("------------------------------------------------------------")
 
-    u, up, s = sync_folder(LOCAL_ROOT, editrin_remote_uri)
-
-    print("------------------------------------------------------------")
-    print(f"==> Complete: {u} uploaded, {up} updated, {s} up-to-date (0 deleted - Protected)")
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    sys.exit(main())

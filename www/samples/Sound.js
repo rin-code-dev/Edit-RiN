@@ -74,7 +74,7 @@ function soundOff() {
 
 function draw() {
   if (active && millis() - lastNoteAt > 160) playNote();
-  background(28, 27, 26);
+  background(51, 49, 50);
   noFill();
   const unit = min(width, height),
     time = millis() / 1000;

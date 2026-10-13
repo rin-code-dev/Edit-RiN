@@ -1,6 +1,7 @@
 package com.hikariatelier.app
 
 import android.content.res.AssetManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,7 +53,7 @@ internal fun SettingsScreen(
         val settingsLandscape = settingsConfiguration.screenWidthDp >= 640 &&
             settingsConfiguration.screenWidthDp / settingsConfiguration.fontScale >= 560
 
-        var settingsTab by rememberSaveable { mutableStateOf(0) }
+        var settingsTab by rememberSaveable { mutableStateOf(-1) }
         var showLicenses by remember { mutableStateOf(false) }
         var showUserGuide by remember { mutableStateOf(false) }
         var showReleaseNotes by remember { mutableStateOf(false) }
@@ -97,8 +98,23 @@ internal fun SettingsScreen(
                 }
             )
         }
-        val categoryScrolls = List(5) { rememberScrollState() }
-        val settingsScroll = categoryScrolls[settingsTab]
+        val categories = listOf(
+            R.drawable.ic_settings to uiText("外観"),
+            R.drawable.ic_tune to uiText("画面と実行"),
+            R.drawable.ic_code to uiText("エディター"),
+            R.drawable.ic_folder_code to uiText("保存"),
+            R.drawable.ic_save to uiText("バックアップ"),
+            R.drawable.ic_record to uiText("録画と共有"),
+            R.drawable.ic_more_horizontal to "About"
+        )
+        // Portrait shows the category list (-1) first; landscape always shows a category.
+        val tab = if (settingsLandscape) settingsTab.coerceIn(0, categories.lastIndex) else settingsTab
+        if (!settingsLandscape && tab >= 0) {
+            BackHandler { settingsTab = -1 }
+        }
+        val categoryScrolls = List(categories.size) { rememberScrollState() }
+        val settingsScroll = categoryScrolls[tab.coerceAtLeast(0)]
+
 
         Row(
             modifier =
@@ -135,27 +151,21 @@ internal fun SettingsScreen(
                         }
                         Text(uiText("設定"), Modifier.padding(horizontal = 8.dp),
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        listOf(
-                            R.drawable.ic_settings to uiText("外観"),
-                            R.drawable.ic_code to uiText("エディター"),
-                            R.drawable.ic_folder_code to uiText("保存とバックアップ"),
-                            R.drawable.ic_record to uiText("録画と共有"),
-                            R.drawable.ic_more_horizontal to "About"
-                        ).forEachIndexed { index, (icon, label) ->
+                        categories.forEachIndexed { index, (icon, label) ->
                             Surface(
                                 onClick = { settingsTab = index },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (settingsTab == index) colors.primary.copy(alpha = 0.1f)
+                                color = if (tab == index) colors.primary.copy(alpha = 0.1f)
                                     else colors.surface,
                                 contentColor = colors.onSurface,
-                                border = if (settingsTab == index) BorderStroke(1.dp, colors.primary)
+                                border = if (tab == index) BorderStroke(1.dp, colors.primary)
                                     else null
                             ) {
                                 Row(Modifier.heightIn(min = 48.dp).padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
                                     Icon(painterResource(icon), null, Modifier.size(18.dp),
-                                        tint = if (settingsTab == index) colors.primary else colors.onSurfaceVariant)
+                                        tint = if (tab == index) colors.primary else colors.onSurfaceVariant)
                                     Spacer(Modifier.width(8.dp))
                                     Text(label, modifier = Modifier.weight(1f),
                                         color = colors.onSurface,
@@ -163,9 +173,27 @@ internal fun SettingsScreen(
                                 }
                             }
                         }
+                        Surface(
+                            onClick = { showUserGuide = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = colors.surface,
+                            contentColor = colors.onSurface
+                        ) {
+                            Row(Modifier.heightIn(min = 48.dp).padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(painterResource(R.drawable.ic_help), null, Modifier.size(18.dp),
+                                    tint = colors.onSurfaceVariant)
+                                Spacer(Modifier.width(8.dp))
+                                Text(uiText("使い方ガイド"), modifier = Modifier.weight(1f),
+                                    color = colors.onSurface,
+                                    style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
                     }
                 }
             }
+
 
         Column(
             modifier =
@@ -199,7 +227,7 @@ internal fun SettingsScreen(
 
                 IconButton(
                     onClick =
-                        actions.onBack
+                        { if (tab >= 0) settingsTab = -1 else actions.onBack() }
                 ) {
 
                     Icon(
@@ -227,7 +255,7 @@ internal fun SettingsScreen(
                 ) {
 
                     Text(
-                        text = uiText("設定"),
+                        text = if (tab >= 0) categories[tab].second else uiText("設定"),
                         style =
                             MaterialTheme
                                 .typography
@@ -260,30 +288,46 @@ internal fun SettingsScreen(
             }
             }
 
-            if (!settingsLandscape) {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            if (!settingsLandscape && tab < 0) {
+                categories.forEachIndexed { index, (icon, label) ->
+                    Surface(
+                        onClick = { settingsTab = index },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.surface,
+                        contentColor = colors.onSurface,
+                        border = BorderStroke(1.dp, colors.outlineVariant)
+                    ) {
+                        Row(
+                            Modifier.heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(painterResource(icon), null, Modifier.size(22.dp), tint = colors.primary)
+                            Spacer(Modifier.width(14.dp))
+                            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                }
+                Surface(
+                    onClick = { showUserGuide = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surface,
+                    contentColor = colors.onSurface,
+                    border = BorderStroke(1.dp, colors.outlineVariant)
                 ) {
-                    listOf(
-                        R.drawable.ic_settings to uiText("外観"),
-                        R.drawable.ic_code to uiText("エディター"),
-                        R.drawable.ic_folder_code to uiText("保存とバックアップ"),
-                        R.drawable.ic_record to uiText("録画と共有"),
-                        R.drawable.ic_more_horizontal to "About"
-                    ).forEachIndexed { index, (icon, label) ->
-                        FilterChip(
-                            selected = settingsTab == index,
-                            onClick = { settingsTab = index },
-                            label = { Text(label) },
-                            leadingIcon = { Icon(painterResource(icon), null, Modifier.size(18.dp)) },
-                            shape = RoundedCornerShape(14.dp)
-                        )
+                    Row(
+                        Modifier.heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(painterResource(R.drawable.ic_help), null, Modifier.size(22.dp), tint = colors.primary)
+                        Spacer(Modifier.width(14.dp))
+                        Text(uiText("使い方ガイド"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
 
-            if (settingsTab == 0) {
+            if (tab == 0) {
             SettingsSection(
                 title = uiText("外観"),
                 description = uiText("テーマとシステムUI")
@@ -311,46 +355,6 @@ internal fun SettingsScreen(
                     }
                 }
                 SettingsDivider()
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp)
-                ) {
-                    Text(
-                        text = uiText("p5.js Web Editor"),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = uiText("アカウントの公開作品を選んで取り込みます"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    if (state.p5Username.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "@${state.p5Username}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.primary
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    FilledTonalButton(shape = ButtonDefaults.filledTonalShape,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = actions.onImportP5
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_import_js),
-                            contentDescription = null,
-                            modifier = Modifier.size(17.dp)
-                        )
-                        Spacer(Modifier.width(7.dp))
-                        Text(uiText("p5.jsから作品を取り込む"))
-                    }
-                }
-
-                SettingsDivider()
-
                 Column(
                     modifier =
                         Modifier
@@ -503,15 +507,13 @@ internal fun SettingsScreen(
                         { value -> onSettingsChange { copy(manualRotation = value) } }
                 )
             }
-
             }
 
-            if (settingsTab == 1) {
+            if (tab == 1) {
             SettingsSection(
-                title = uiText("エディター"),
-                description = uiText("編集とプレビューの動作")
+                title = uiText("画面と実行"),
+                description = uiText("プレビューと画面の配置")
             ) {
-
                 SettingSwitchRow(
                     title =
                         uiText("作品切替時に自動実行"),
@@ -524,28 +526,36 @@ internal fun SettingsScreen(
                 )
 
                 SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("編集時にプレビューを隠す"),
-                    description = uiText("縦画面でコード欄を選ぶと、プレビューを隠します。編集を終えると再び表示します"),
-                    checked = state.hideEditingPreview,
-                    onCheckedChange = { value -> onSettingsChange { copy(hideEditingPreview = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    enabled = !state.hideEditingPreview,
-                    title =
-                        uiText("編集時にプレビューを縮小"),
-                    description =
-                        if (state.hideEditingPreview) uiText("プレビューを隠す設定が優先されます")
-                        else uiText("縦画面の編集中だけプレビューを低く表示します"),
-                    checked =
-                        state.compactPreview,
-                    onCheckedChange =
-                        { value -> onSettingsChange { copy(compactPreview = value) } }
-                )
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)
+                ) {
+                    Text(
+                        text = uiText("編集時のプレビュー"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = uiText("縦画面でコード欄を編集するときのプレビューの扱いです"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    ScrollableChoiceGroup(
+                        labels = listOf(uiText("そのまま"), uiText("縮小"), uiText("隠す")),
+                        selectedIndex = if (state.hideEditingPreview) 2 else if (state.compactPreview) 1 else 0,
+                        onSelect = { index ->
+                            onSettingsChange {
+                                when (index) {
+                                    2 -> copy(hideEditingPreview = true)
+                                    1 -> copy(hideEditingPreview = false, compactPreview = true)
+                                    else -> copy(hideEditingPreview = false, compactPreview = false)
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
                 SettingsDivider()
 
@@ -619,108 +629,14 @@ internal fun SettingsScreen(
                     checked = state.preserveExpandedPreview,
                     onCheckedChange = { value -> onSettingsChange { copy(preserveExpandedPreview = value) } }
                 )
+            }
+            }
 
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("自動インデント"),
-                    description = uiText("改行時に現在の字下げを引き継ぎ、括弧内を一段下げます"),
-                    checked = state.autoIndent,
-                    onCheckedChange = { value -> onSettingsChange { copy(autoIndent = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("行番号"),
-                    description = uiText("コードの各行に番号を表示します"),
-                    checked = state.showLineNumbers,
-                    onCheckedChange = { value -> onSettingsChange { copy(showLineNumbers = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("コードを画面幅で折り返す"),
-                    description = if (state.editorWordWrap)
-                        uiText("長い行を画面幅に合わせて折り返します")
-                    else uiText("長い行は折り返さず、横スクロールで表示します"),
-                    checked = state.editorWordWrap,
-                    onCheckedChange = { value -> onSettingsChange { copy(editorWordWrap = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("編集キー"),
-                    description = uiText("編集中にTAB、カーソル移動、記号ボタンを表示します"),
-                    checked = state.showEditorAccessoryBar,
-                    onCheckedChange = { value -> onSettingsChange { copy(showEditorAccessoryBar = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("入力候補"),
-                    description = uiText("p5.jsの関数名や変数名の候補を表示します"),
-                    checked = state.codeCompletion,
-                    onCheckedChange = { value -> onSettingsChange { copy(codeCompletion = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("移動キーを表示"),
-                    description = uiText("操作パネルにTABとカーソルキーを表示します"),
-                    checked = state.showAccessoryNavigation,
-                    enabled = state.showEditorAccessoryBar,
-                    onCheckedChange = { value -> onSettingsChange { copy(showAccessoryNavigation = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("記号キーを表示"),
-                    description = uiText("操作パネルに括弧や記号キーを表示します"),
-                    checked = state.showAccessorySymbols,
-                    enabled = state.showEditorAccessoryBar,
-                    onCheckedChange = { value -> onSettingsChange { copy(showAccessorySymbols = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("編集キーを小さくする"),
-                    description = uiText("操作パネルの高さとキー幅を小さくします"),
-                    checked = state.compactAccessoryKeys,
-                    enabled = state.showEditorAccessoryBar,
-                    onCheckedChange = { value -> onSettingsChange { copy(compactAccessoryKeys = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title =
-                        uiText("未保存のコードを復元"),
-                    description =
-                        uiText("未保存の変更を一時保存し、次回起動時に復元します"),
-                    checked =
-                        state.draftRecovery,
-                    onCheckedChange =
-                        { value -> onSettingsChange { copy(draftRecovery = value) } }
-                )
-
-                SettingsDivider()
-
-                SettingSwitchRow(
-                    title = uiText("アプリを離れるときに自動保存"),
-                    description = uiText("別のアプリへ切り替えたとき、編集中の作品を自動で保存します"),
-                    checked = state.autoSaveOnLeave,
-                    onCheckedChange = { value -> onSettingsChange { copy(autoSaveOnLeave = value) } }
-                )
-
-                SettingsDivider()
-
+            if (tab == 2) {
+            SettingsSection(
+                title = uiText("エディター"),
+                description = uiText("文字入力と編集キー")
+            ) {
                 Column(
                     modifier =
                         Modifier
@@ -811,16 +727,103 @@ internal fun SettingsScreen(
                             15
                     )
                 }
+                SettingsDivider()
+                SettingSwitchRow(
+                    title = uiText("自動インデント"),
+                    description = uiText("改行時に現在の字下げを引き継ぎ、括弧内を一段下げます"),
+                    checked = state.autoIndent,
+                    onCheckedChange = { value -> onSettingsChange { copy(autoIndent = value) } }
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    title = uiText("行番号"),
+                    description = uiText("コードの各行に番号を表示します"),
+                    checked = state.showLineNumbers,
+                    onCheckedChange = { value -> onSettingsChange { copy(showLineNumbers = value) } }
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    title = uiText("コードを画面幅で折り返す"),
+                    description = if (state.editorWordWrap)
+                        uiText("長い行を画面幅に合わせて折り返します")
+                    else uiText("長い行は折り返さず、横スクロールで表示します"),
+                    checked = state.editorWordWrap,
+                    onCheckedChange = { value -> onSettingsChange { copy(editorWordWrap = value) } }
+                )
+                SettingsDivider()
+                SettingSwitchRow(
+                    title = uiText("入力候補"),
+                    description = uiText("p5.jsの関数名や変数名の候補を表示します"),
+                    checked = state.codeCompletion,
+                    onCheckedChange = { value -> onSettingsChange { copy(codeCompletion = value) } }
+                )
+                SettingsDivider()
+                SettingSwitchRow(
+                    title = uiText("編集キー"),
+                    description = uiText("編集中にTAB、カーソル移動、記号ボタンを表示します"),
+                    checked = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(showEditorAccessoryBar = value) } }
+                )
+                SettingsDivider()
+                SettingSwitchRow(
+                    title = uiText("移動キーを表示"),
+                    description = uiText("操作パネルにTABとカーソルキーを表示します"),
+                    checked = state.showAccessoryNavigation,
+                    enabled = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(showAccessoryNavigation = value) } }
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    title = uiText("記号キーを表示"),
+                    description = uiText("操作パネルに括弧や記号キーを表示します"),
+                    checked = state.showAccessorySymbols,
+                    enabled = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(showAccessorySymbols = value) } }
+                )
+
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    title = uiText("編集キーを小さくする"),
+                    description = uiText("操作パネルの高さとキー幅を小さくします"),
+                    checked = state.compactAccessoryKeys,
+                    enabled = state.showEditorAccessoryBar,
+                    onCheckedChange = { value -> onSettingsChange { copy(compactAccessoryKeys = value) } }
+                )
+            }
             }
 
-            }
-
-            if (settingsTab == 2) {
+            if (tab == 3) {
             SettingsSection(
-                title = uiText("保存とバックアップ"),
-                description = uiText("保存先とファイルの読み込み・書き出し")
+                title = uiText("保存"),
+                description = uiText("保存の動作と保存先")
             ) {
+                SettingSwitchRow(
+                    title =
+                        uiText("未保存のコードを復元"),
+                    description =
+                        uiText("未保存の変更を一時保存し、次回起動時に復元します"),
+                    checked =
+                        state.draftRecovery,
+                    onCheckedChange =
+                        { value -> onSettingsChange { copy(draftRecovery = value) } }
+                )
 
+                SettingsDivider()
+
+                SettingSwitchRow(
+                    title = uiText("アプリを離れるときに自動保存"),
+                    description = uiText("別のアプリへ切り替えたとき、編集中の作品を自動で保存します"),
+                    checked = state.autoSaveOnLeave,
+                    onCheckedChange = { value -> onSettingsChange { copy(autoSaveOnLeave = value) } }
+                )
+                SettingsDivider()
                 Column(
                     modifier =
                         Modifier
@@ -932,9 +935,7 @@ internal fun SettingsScreen(
                         )
                     }
                 }
-
                 SettingsDivider()
-
                 Column(
                     modifier =
                         Modifier
@@ -1036,9 +1037,51 @@ internal fun SettingsScreen(
                         }
                     }
                 }
-
                 SettingsDivider()
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp)
+                ) {
+                    Text(
+                        text = uiText("p5.js Web Editor"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = uiText("アカウントの公開作品を選んで取り込みます"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    if (state.p5Username.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "@${state.p5Username}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.primary
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    FilledTonalButton(shape = ButtonDefaults.filledTonalShape,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = actions.onImportP5
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_import_js),
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Text(uiText("p5.jsから作品を取り込む"))
+                    }
+                }
+            }
+            }
 
+            if (tab == 4) {
+            SettingsSection(
+                title = uiText("バックアップ"),
+                description = uiText("ZIPで保存・復元")
+            ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(18.dp)
                 ) {
@@ -1085,15 +1128,13 @@ internal fun SettingsScreen(
                     }
                 }
             }
-
             }
 
-            if (settingsTab == 3) {
+            if (tab == 5) {
             SettingsSection(
                 title = uiText("録画と共有"),
                 description = uiText("録画の画質と共有時の定型文")
             ) {
-
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1166,15 +1207,14 @@ internal fun SettingsScreen(
             }
             }
 
-            if (settingsTab == 4) {
-                val context = androidx.compose.ui.platform.LocalContext.current
+            if (tab == 6) {
                 SettingsAboutSection(updateViewModel,
                     onShowGuide = { showUserGuide = true },
+                    onShowOnboarding = actions.onShowOnboarding,
                     onShowLicenses = { showLicenses = true },
                     onShowReleaseNotes = { showReleaseNotes = true },
                     openExternalUrl = actions.openExternalUrl,
                     textTranslator = textTranslator)
-
             }
         }
     }

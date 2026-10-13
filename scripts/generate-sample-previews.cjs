@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Regenerate bundled canvas previews after changing a canonical sample.
 // Requires Playwright and its Chromium headless browser. Run from the repository root.
-const { chromium } = require('playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { createServer } = require('node:http');
 const { readFileSync, mkdirSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
@@ -25,18 +25,28 @@ const server = createServer((req, res) => {
 });
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const browser = await chromium.launch({ executablePath: process.env.BROWSER_PATH || undefined,
+    headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   try {
     mkdirSync(out, { recursive: true });
-    const manifest = {};
+    const selected = process.argv.slice(2);
+    for (const id of selected) {
+      if (!definitions.some(([known]) => known === id)) throw new Error(`Unknown sample: ${id}`);
+    }
+    const manifest = selected.length ? JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8')) : {};
     for (const [id, file] of definitions) {
+      if (selected.length && !selected.includes(id)) continue;
       const source = readFileSync(join(web, 'samples', file), 'utf8');
       const parameters = {};
       for (const line of source.split('\n')) {
         const number = line.match(/^\/\/ @rin number (\w+) "[^"]+" \S+ \S+ (\S+)/);
         const color = line.match(/^\/\/ @rin color (\w+) "[^"]+" (#[\da-fA-F]+)/);
+        const boolean = line.match(/^\/\/ @rin boolean (\w+) "[^"]+" (true|false)$/);
+        const choice = line.match(/^\/\/ @rin choice (\w+) "[^"]+" (\S+)/);
         if (number) parameters[number[1]] = Number(number[2]);
         if (color) parameters[color[1]] = color[2];
+        if (boolean) parameters[boolean[1]] = boolean[2] === 'true';
+        if (choice) parameters[choice[1]] = choice[2];
       }
       const page = await browser.newPage({ viewport: { width: 480, height: 480 }, deviceScaleFactor: 1 });
       await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:') ? route.continue() : route.abort());
