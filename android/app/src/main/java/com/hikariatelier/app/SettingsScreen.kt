@@ -1208,7 +1208,6 @@ internal fun SettingsScreen(
             }
 
             if (tab == 6) {
-                val context = androidx.compose.ui.platform.LocalContext.current
                 SettingsAboutSection(updateViewModel,
                     onShowGuide = { showUserGuide = true },
                     onShowOnboarding = actions.onShowOnboarding,
