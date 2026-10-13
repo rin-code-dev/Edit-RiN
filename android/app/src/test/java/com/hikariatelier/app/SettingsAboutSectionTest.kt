@@ -68,7 +68,7 @@ class SettingsAboutSectionTest {
             }
         }
 
-        compose.onNodeWithText("Edit:RiN").assertExists()
+        compose.onNodeWithText("Android向けクリエイティブコーディング環境").assertExists()
         compose.onNodeWithText("アップデートを確認").assertExists()
         compose.onNodeWithText("公式サイト").assertExists()
         compose.onNodeWithText("使い方ガイド").assertExists()
