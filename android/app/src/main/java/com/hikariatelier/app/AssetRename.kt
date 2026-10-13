@@ -118,11 +118,11 @@ private fun codePathLiterals(code: String): List<AssetPathLiteral> = buildList {
         val c = code[index]
         when {
             c.isWhitespace() -> index++
-            code.startsWith("//", index) -> index = code.indexOf('\n', index + 2).let { if (it < 0) code.length else it }
-            code.startsWith("/*", index) -> index = skipBlock(code, index, "*/")
+            code.startsWith("//", index) -> index = skipJsLineComment(code, index)
+            code.startsWith("/*", index) -> index = skipJsBlockComment(code, index)
             c == '`' -> { index = skipTemplate(code, index); previousToken = "literal" }
             c == '\'' || c == '"' -> {
-                val next = skipQuoted(code, index)
+                val next = skipJsQuotedLiteral(code, index)
                 val contentEnd = next - 1
                 val complete = next <= code.length && contentEnd > index && code.getOrNull(contentEnd) == c
                 val raw = if (complete) code.substring(index + 1, contentEnd) else ""
@@ -134,7 +134,7 @@ private fun codePathLiterals(code: String): List<AssetPathLiteral> = buildList {
                 index = next; previousToken = "literal"
             }
             c == '/' && previousToken in setOf("", "=", "(", ",", ":", "[", "{", ";", "!", "?", "return", "throw", "case", "yield", "=>") -> {
-                index = skipRegularExpression(code, index); previousToken = "literal"
+                index = skipJsRegexLiteral(code, index); previousToken = "literal"
             }
             c.isLetterOrDigit() || c == '_' || c == '$' -> {
                 val begin = index++
@@ -154,28 +154,12 @@ private fun nextCodeToken(code: String, from: Int): String {
     while (index < code.length) {
         when {
             code[index].isWhitespace() -> index++
-            code.startsWith("//", index) -> index = code.indexOf('\n', index + 2).let { if (it < 0) code.length else it }
-            code.startsWith("/*", index) -> index = skipBlock(code, index, "*/")
+            code.startsWith("//", index) -> index = skipJsLineComment(code, index)
+            code.startsWith("/*", index) -> index = skipJsBlockComment(code, index)
             else -> return code[index].toString()
         }
     }
     return ""
-}
-
-private fun skipBlock(code: String, start: Int, closing: String): Int =
-    code.indexOf(closing, start + 2).let { if (it < 0) code.length else it + closing.length }
-
-private fun skipQuoted(code: String, start: Int): Int {
-    val quote = code[start]
-    var index = start + 1
-    while (index < code.length) {
-        when (code[index]) {
-            '\\' -> index = (index + 2).coerceAtMost(code.length)
-            quote -> return index + 1
-            else -> index++
-        }
-    }
-    return code.length
 }
 
 private fun skipTemplate(code: String, start: Int, depth: Int = 0): Int {
@@ -197,29 +181,13 @@ private fun skipTemplateExpression(code: String, start: Int, depth: Int): Int {
     var index = start
     while (index < code.length) {
         when {
-            code.startsWith("//", index) -> index = code.indexOf('\n', index + 2).let { if (it < 0) code.length else it }
-            code.startsWith("/*", index) -> index = skipBlock(code, index, "*/")
-            code[index] == '\'' || code[index] == '"' -> index = skipQuoted(code, index)
+            code.startsWith("//", index) -> index = skipJsLineComment(code, index)
+            code.startsWith("/*", index) -> index = skipJsBlockComment(code, index)
+            code[index] == '\'' || code[index] == '"' -> index = skipJsQuotedLiteral(code, index)
             code[index] == '`' -> index = skipTemplate(code, index, depth)
-            code[index] == '/' -> index = skipRegularExpression(code, index)
+            code[index] == '/' -> index = skipJsRegexLiteral(code, index)
             code[index] == '{' -> { braces++; index++ }
             code[index] == '}' -> { braces--; index++; if (braces == 0) return index }
-            else -> index++
-        }
-    }
-    return index
-}
-
-private fun skipRegularExpression(code: String, start: Int): Int {
-    var index = start + 1
-    var characterClass = false
-    while (index < code.length) {
-        when (code[index]) {
-            '\\' -> index = (index + 2).coerceAtMost(code.length)
-            '[' -> { characterClass = true; index++ }
-            ']' -> { characterClass = false; index++ }
-            '/' -> if (!characterClass) return index + 1 else index++
-            '\n', '\r' -> return index
             else -> index++
         }
     }
@@ -264,9 +232,9 @@ private fun cssPathLiterals(code: String): List<AssetPathLiteral> = buildList {
     var index = 0
     while (index < code.length) {
         when {
-            code.startsWith("/*", index) -> index = skipBlock(code, index, "*/")
+            code.startsWith("/*", index) -> index = skipJsBlockComment(code, index)
             code[index] == '\'' || code[index] == '"' -> {
-                val end = skipQuoted(code, index) - 1
+                val end = skipJsQuotedLiteral(code, index) - 1
                 var prefixEnd = index
                 while (prefixEnd > 0 && code[prefixEnd - 1].isWhitespace()) prefixEnd--
                 val isUrl = prefixEnd >= 4 && code.substring(prefixEnd - 4, prefixEnd).equals("url(", ignoreCase = true)

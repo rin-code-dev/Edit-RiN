@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -103,8 +102,7 @@ internal fun EditorArea(
     onJumpToSource: (String, Int) -> Unit = { _, _ -> },
     onOpenProjectFiles: (() -> Unit)? = null
 ) {
-    @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberClipboardCopy()
     val currentFontSize = rememberUpdatedState(editorFontSize)
     val currentFontSizeChange = rememberUpdatedState(onEditorFontSizeChange)
     var pinchFontSize by remember { mutableStateOf<Float?>(null) }
@@ -410,7 +408,7 @@ internal fun EditorArea(
                                         horizontalArrangement = Arrangement.End
                                     ) {
                                         TextButton(
-                                            onClick = { clipboard.setText(AnnotatedString(latestError.copyText())) },
+                                            onClick = { copyToClipboard(latestError.copyText()) },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                             modifier = Modifier.height(28.dp)
                                         ) {
@@ -663,7 +661,7 @@ internal fun EditorArea(
                 },
                 dismissButton = {
                     TextButton(onClick = {
-                        clipboard.setText(AnnotatedString(errorDetail.copyText()))
+                        copyToClipboard(errorDetail.copyText())
                         errorTooltipLine = null
                     }) {
                         Text(textTranslator("エラーをコピー", emptyArray()))

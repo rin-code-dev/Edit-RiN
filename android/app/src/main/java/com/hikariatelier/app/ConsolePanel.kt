@@ -19,14 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -46,8 +44,7 @@ internal fun ConsolePanel(
 ) {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current.density
-    @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberClipboardCopy()
     val colors = MaterialTheme.colorScheme
     val listState = rememberLazyListState()
     var followLatest by rememberSaveable { mutableStateOf(true) }
@@ -173,7 +170,7 @@ internal fun ConsolePanel(
                         IconButton(
                             modifier = Modifier.size(30.dp),
                             enabled = viewModel.entries.isNotEmpty(),
-                            onClick = { clipboard.setText(AnnotatedString(viewModel.entries.joinToString("\n") { it.copyText() })) }
+                            onClick = { copyToClipboard(viewModel.entries.joinToString("\n") { it.copyText() }) }
                         ) {
                             Icon(painterResource(R.drawable.ic_console_copy), contentDescription = uiText("ログをすべてコピー"), modifier = Modifier.size(16.dp))
                         }
@@ -230,7 +227,7 @@ internal fun ConsolePanel(
                                             }
                                         },
                                         onLongClick = {
-                                            clipboard.setText(AnnotatedString(entry.copyText()))
+                                            copyToClipboard(entry.copyText())
                                         }
                                     )
                                     .padding(horizontal = 12.dp, vertical = 5.dp),

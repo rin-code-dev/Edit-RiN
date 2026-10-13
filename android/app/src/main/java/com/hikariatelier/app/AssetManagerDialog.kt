@@ -1,72 +1,195 @@
 package com.hikariatelier.app
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AssetManagerDialog(
-    assets: Map<String, ProjectAsset>, busy: Boolean, text: (String) -> String,
-    onAdd: () -> Unit, onRename: (AssetRenameRequest) -> Unit, onDelete: (String) -> Unit, onClose: () -> Unit,
-    onPreview: (String, ProjectAsset) -> Unit, onInsert: (String, ProjectAsset) -> Unit,
+    assets: Map<String, ProjectAsset>,
+    busy: Boolean,
+    text: (String) -> String,
+    onAdd: () -> Unit,
+    onRename: (AssetRenameRequest) -> Unit,
+    onDelete: (String) -> Unit,
+    onClose: () -> Unit,
+    onPreview: (String, ProjectAsset) -> Unit,
+    onInsert: (String, ProjectAsset) -> Unit,
     referenceSources: Map<String, String> = emptyMap()
 ) {
-    @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberClipboardCopy()
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
     var renaming by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
     var selectedReferences by remember { mutableStateOf<Set<AssetRenameCandidate>>(emptySet()) }
     var renameCandidates by remember { mutableStateOf<List<AssetRenameCandidate>?>(null) }
     var renamePending by remember { mutableStateOf(false) }
+
     LaunchedEffect(assets, renamePending, renaming, newName) {
         if (renamePending && renaming !in assets && newName in assets) {
-            renaming = null; renamePending = false
+            renaming = null
+            renamePending = false
         }
     }
+
     EditSettingsDialog(
         onDismissRequest = { if (!busy) onClose() },
         title = { Text(text("作品の素材")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(text("画像・音声・動画・フォント・データを追加できます"))
-                Text(text("1ファイル50MBまで、1作品200MB・100ファイルまで"), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text("1ファイル50MBまで、1作品200MB・100ファイルまで"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant
+                )
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (assets.isEmpty()) Text(text("素材を追加すると、ここに表示されます"))
-                LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (assets.isEmpty()) {
+                    Text(
+                        text("素材を追加すると、ここに表示されます"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                }
+                LazyColumn(
+                    Modifier.heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(assets.toSortedMap().entries.toList(), key = { it.key }, contentType = { "asset_item" }) { (name, asset) ->
-                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                            Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                                Text(name, style = MaterialTheme.typography.titleSmall)
-                                Text("assets/$name", style = MaterialTheme.typography.bodySmall)
-                                Text(android.text.format.Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, asset.size), style = MaterialTheme.typography.bodySmall)
-                                FlowRow {
-                                    TextButton(enabled = !busy, onClick = { onPreview(name, asset) }) { Text(text("プレビュー")) }
-                                    TextButton(enabled = !busy, onClick = { onInsert(name, asset) }) { Text(text("読み込みコードを挿入")) }
-                                    TextButton(enabled = !busy, onClick = { clipboard.setText(AnnotatedString("assets/$name")) }) { Text(text("パスをコピー")) }
-                                    TextButton(enabled = !busy, onClick = {
-                                        selectedReferences = emptySet(); renameCandidates = null; renamePending = false
-                                        renaming = name; newName = name
-                                    }) { Text(text("名前を変更")) }
-                                    TextButton(enabled = !busy, onClick = { deleting = name }) { Text(text("削除")) }
+                        Surface(
+                            onClick = { if (!busy) onPreview(name, asset) },
+                            enabled = !busy,
+                            color = colors.surface,
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            text = name,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "assets/$name · ${android.text.format.Formatter.formatShortFileSize(context, asset.size)}",
+                                            fontFamily = FontFamily.Monospace,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = colors.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            IconButton(
+                                                enabled = !busy,
+                                                modifier = Modifier.size(32.dp),
+                                                onClick = { copyToClipboard("assets/$name") }
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_copy),
+                                                    contentDescription = text("パスをコピー"),
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = colors.onSurfaceVariant
+                                                )
+                                            }
+                                            IconButton(
+                                                enabled = !busy,
+                                                modifier = Modifier.size(32.dp),
+                                                onClick = {
+                                                    selectedReferences = emptySet()
+                                                    renameCandidates = null
+                                                    renamePending = false
+                                                    renaming = name
+                                                    newName = name
+                                                }
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_rename),
+                                                    contentDescription = text("名前を変更"),
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = colors.onSurfaceVariant
+                                                )
+                                            }
+                                            IconButton(
+                                                enabled = !busy,
+                                                modifier = Modifier.size(32.dp),
+                                                onClick = { deleting = name }
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.ic_delete),
+                                                    contentDescription = text("削除"),
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = colors.error.copy(alpha = 0.85f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(
+                                        enabled = !busy,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(30.dp),
+                                        onClick = { onInsert(name, asset) }
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_code),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(text("読み込みコードを挿入"), style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    TextButton(
+                                        enabled = !busy,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(30.dp),
+                                        onClick = { onPreview(name, asset) }
+                                    ) {
+                                        Text(text("プレビュー"), style = MaterialTheme.typography.labelMedium)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                Text("loadImage(\"assets/photo.png\")", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "loadImage(\"assets/photo.png\")",
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant
+                )
             }
         },
         confirmButton = { TextButton(enabled = !busy, onClick = onAdd) { Text(text("素材を追加")) } },
@@ -79,62 +202,104 @@ internal fun AssetManagerDialog(
             selectedReferences = emptySet()
             renameCandidates = withContext(Dispatchers.Default) { assetRenameCandidates(referenceSources, old) }
         }
-        EditSettingsDialog(onDismissRequest = { if (!busy) renaming = null }, title = { Text(text("名前を変更")) },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = newName, onValueChange = { newName = it }, enabled = !busy, singleLine = true,
-                    label = { Text(text("ファイル名")) }, isError = !valid)
-                Text(text("素材名と一緒に変更する参照パスを選んでください。選ばなかった箇所のコードは変わりません。"),
-                    style = MaterialTheme.typography.bodySmall)
-                Text(text("素材のパスと完全に一致する文字列だけを表示します。動的に組み立てたパスやテンプレート文字列は対象外です。"),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val candidates = renameCandidates
-                when {
-                    candidates == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    candidates.isEmpty() -> Text(text("変更できる参照パスはありません"), style = MaterialTheme.typography.bodySmall)
-                    else -> {
-                        Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
-                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 240.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(candidates, key = { "${it.file}:${it.start}" }) { candidate ->
-                                val checked = candidate in selectedReferences
-                                fun toggle() {
-                                    selectedReferences = if (checked) selectedReferences - candidate else selectedReferences + candidate
-                                }
-                                Row(Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = ::toggle)) {
-                                    Checkbox(checked = checked, enabled = !busy, onCheckedChange = { toggle() })
-                                    Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
-                                        Text("${candidate.file}:${candidate.line}", style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary)
-                                        Text(candidate.excerpt, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                                        if (valid) Text("${candidate.original} → " +
-                                            (if (candidate.original.startsWith("./")) "./" else "") + "assets/$newName",
-                                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+        EditSettingsDialog(
+            onDismissRequest = { if (!busy) renaming = null },
+            title = { Text(text("名前を変更")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        enabled = !busy,
+                        singleLine = true,
+                        label = { Text(text("ファイル名")) },
+                        isError = !valid,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text("素材名と一緒に変更する参照パスを選んでください。選ばなかった箇所のコードは変わりません。"),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text("素材のパスと完全に一致する文字列だけを表示します。動的に組み立てたパスやテンプレート文字列は対象外です。"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val candidates = renameCandidates
+                    when {
+                        candidates == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        candidates.isEmpty() -> Text(text("変更できる参照パスはありません"), style = MaterialTheme.typography.bodySmall)
+                        else -> {
+                            Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
+                            LazyColumn(
+                                Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(candidates, key = { "${it.file}:${it.start}" }) { candidate ->
+                                    val checked = candidate in selectedReferences
+                                    fun toggle() {
+                                        selectedReferences = if (checked) selectedReferences - candidate else selectedReferences + candidate
+                                    }
+                                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = ::toggle)) {
+                                        Checkbox(checked = checked, enabled = !busy, onCheckedChange = { toggle() })
+                                        Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                                            Text(
+                                                "${candidate.file}:${candidate.line}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                candidate.excerpt,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontFamily = FontFamily.Monospace,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            if (valid) Text(
+                                                "${candidate.original} → " +
+                                                    (if (candidate.original.startsWith("./")) "./" else "") + "assets/$newName",
+                                                fontFamily = FontFamily.Monospace,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            } },
-            confirmButton = { TextButton(enabled = valid && !busy && renameCandidates != null, onClick = {
-                if (old == newName) { renaming = null; renamePending = false }
-                else {
-                    renamePending = true
-                    onRename(AssetRenameRequest(old, newName, selectedReferences.toList()))
-                }
-            }) { Text(text("保存")) } },
-            dismissButton = { TextButton(enabled = !busy, onClick = { renaming = null }) { Text(text("閉じる")) } })
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = valid && !busy && renameCandidates != null,
+                    onClick = {
+                        if (old == newName) {
+                            renaming = null
+                            renamePending = false
+                        } else {
+                            renamePending = true
+                            onRename(AssetRenameRequest(old, newName, selectedReferences.toList()))
+                        }
+                    }
+                ) { Text(text("保存")) }
+            },
+            dismissButton = { TextButton(enabled = !busy, onClick = { renaming = null }) { Text(text("閉じる")) } }
+        )
     }
     deleting?.let { name ->
-        EditSettingsDialog(onDismissRequest = { deleting = null }, title = { Text(text("素材を削除")) },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(name)
-                Text(text("削除してもコードは変更されません。"), style = MaterialTheme.typography.bodySmall)
-                AssetReferenceSummary(referenceSources, name, text)
-            } },
+        EditSettingsDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text(text("素材を削除")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(name)
+                    Text(text("削除してもコードは変更されません。"), style = MaterialTheme.typography.bodySmall)
+                    AssetReferenceSummary(referenceSources, name, text)
+                }
+            },
             confirmButton = { TextButton(onClick = { onDelete(name); deleting = null }) { Text(text("削除")) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text(text("閉じる")) } })
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(text("閉じる")) } }
+        )
     }
 }
 
@@ -145,8 +310,11 @@ private fun AssetReferenceSummary(sources: Map<String, String>, name: String, te
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text("コード内の参照候補"), style = MaterialTheme.typography.labelLarge)
-        Text(text("素材のパスと一致する文字列を表示します。動的に組み立てたパスは検出できません。"),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text("素材のパスと一致する文字列を表示します。動的に組み立てたパスは検出できません。"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         val found = result
         when {
             found == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -156,10 +324,18 @@ private fun AssetReferenceSummary(sources: Map<String, String>, name: String, te
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 160.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(found.matches, key = { "${it.file}:${it.start}" }) { match ->
                         Column {
-                            Text("${match.file}:${match.line}", style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary)
-                            Text(match.excerpt, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "${match.file}:${match.line}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                match.excerpt,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                fontFamily = FontFamily.Monospace,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                     }
                 }

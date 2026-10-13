@@ -30,7 +30,7 @@ internal class WorkSnapshotViewModel(
         if (revisions.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { WorkSnapshotStore.ensureLegacyMigrated(filesDir, work.id, revisions) }
-                .onFailure { Log.w("EditKIRO", "Could not migrate legacy snapshots; preserving revisions", it) }
+                .onFailure { Log.w(LOG_TAG, "Could not migrate legacy snapshots; preserving revisions", it) }
         }
     }
 
