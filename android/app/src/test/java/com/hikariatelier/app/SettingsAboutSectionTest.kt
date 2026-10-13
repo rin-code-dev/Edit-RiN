@@ -4,11 +4,16 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -50,30 +55,32 @@ class SettingsAboutSectionTest {
 
         compose.setContent {
             MaterialTheme {
-                SettingsAboutSection(
-                    updateViewModel = updateVm,
-                    onShowGuide = { guideShown = true },
-                    onShowOnboarding = { onboardingShown = true },
-                    onShowLicenses = { licensesShown = true },
-                    onShowReleaseNotes = { releaseNotesShown = true },
-                    openExternalUrl = { openedUrl = it },
-                    textTranslator = { s, args ->
-                        if (args.isEmpty()) s else java.lang.String.format(java.util.Locale.ROOT, s, *args)
-                    }
-                )
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    SettingsAboutSection(
+                        updateViewModel = updateVm,
+                        onShowGuide = { guideShown = true },
+                        onShowOnboarding = { onboardingShown = true },
+                        onShowLicenses = { licensesShown = true },
+                        onShowReleaseNotes = { releaseNotesShown = true },
+                        openExternalUrl = { openedUrl = it },
+                        textTranslator = { s, args ->
+                            if (args.isEmpty()) s else java.lang.String.format(java.util.Locale.ROOT, s, *args)
+                        }
+                    )
+                }
             }
         }
 
-        compose.onNodeWithText("Edit:RiN").assertIsDisplayed()
-        compose.onNodeWithText("アップデートを確認").assertIsDisplayed()
-        compose.onNodeWithText("公式サイト").assertIsDisplayed()
-        compose.onNodeWithText("使い方ガイド").assertIsDisplayed()
+        compose.onNodeWithText("Edit:RiN").assertExists()
+        compose.onNodeWithText("アップデートを確認").assertExists()
+        compose.onNodeWithText("公式サイト").assertExists()
+        compose.onNodeWithText("使い方ガイド").assertExists()
 
         // Test interaction
-        compose.onNodeWithText("使い方ガイド").performClick()
+        compose.onNodeWithText("使い方ガイド").performScrollTo().performClick()
         assertTrue(guideShown)
 
-        compose.onNodeWithText("公式サイト").performClick()
+        compose.onNodeWithText("公式サイト").performScrollTo().performClick()
         assertEquals(OFFICIAL_WEBSITE_URL, openedUrl)
     }
 }
