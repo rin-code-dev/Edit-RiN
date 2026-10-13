@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 
-internal const val GALLERY_MOTION_DURATION_MS = 420
+internal const val GALLERY_MOTION_DURATION_MS = 300
 
 internal enum class GalleryPart(val start: Float, val end: Float) {
     EDITOR(0.12f, 0.68f), TITLE(0.18f, 0.72f), PRIMARY(0.26f, 0.82f),

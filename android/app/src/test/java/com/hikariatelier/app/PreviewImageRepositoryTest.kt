@@ -94,11 +94,11 @@ class PreviewImageRepositoryTest {
         val active = AtomicInteger(); val maximum = AtomicInteger()
         val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
         val repository = PreviewImageRepository(directory, RuntimeEnvironment.getApplication().assets, this,
-            PerformanceMeasurements(false)) {
-            val concurrent = active.incrementAndGet(); maximum.accumulateAndGet(concurrent, ::maxOf)
-            try { started.countDown(); check(release.await(5, TimeUnit.SECONDS)); bitmap }
-            finally { active.decrementAndGet() }
-        }
+            PerformanceMeasurements(false), decoder = {
+                val concurrent = active.incrementAndGet(); maximum.accumulateAndGet(concurrent, ::maxOf)
+                try { started.countDown(); check(release.await(5, TimeUnit.SECONDS)); bitmap }
+                finally { active.decrementAndGet() }
+            }, concurrentPermits = 2)
         try {
             val requests = (1..12).map { async { repository.load("work-$it") } }
             yield(); assertTrue(withContext(Dispatchers.IO) { started.await(5, TimeUnit.SECONDS) })
@@ -106,6 +106,23 @@ class PreviewImageRepositoryTest {
             requests.awaitAll().forEach { assertSame(bitmap, it) }
             assertEquals(2, maximum.get())
         } finally { release.countDown(); repository.close(); directory.deleteRecursively() }
+    }
+    @Test fun dynamicScalingComputesPermitsAndMemoryLimits() {
+        assertEquals(2, defaultConcurrentPermits(1))
+        assertEquals(2, defaultConcurrentPermits(2))
+        assertEquals(2, defaultConcurrentPermits(4))
+        assertEquals(3, defaultConcurrentPermits(6))
+        assertEquals(3, defaultConcurrentPermits(7))
+        assertEquals(4, defaultConcurrentPermits(8))
+        assertEquals(4, defaultConcurrentPermits(16))
+
+        val mb = 1024 * 1024
+        assertEquals(12 * mb, defaultMaxCacheBytes(32L * mb))
+        assertEquals(12 * mb, defaultMaxCacheBytes(96L * mb))
+        assertEquals(16 * mb, defaultMaxCacheBytes(128L * mb))
+        assertEquals(32 * mb, defaultMaxCacheBytes(256L * mb))
+        assertEquals(48 * mb, defaultMaxCacheBytes(512L * mb))
+        assertEquals(48 * mb, defaultMaxCacheBytes(1024L * mb))
     }
     @Test fun cachedConsumersAreReportedWithoutDecodingAgain() = runBlocking {
         val directory = Files.createTempDirectory("preview-cache-metric").toFile()
@@ -117,6 +134,62 @@ class PreviewImageRepositoryTest {
             assertSame(first, repository.peek("work"))
             assertTrue(metrics.operation(PerformanceOperation.IMAGE_CACHE_HIT).count >= 1)
         } finally { repository.close(); directory.deleteRecursively() }
+    }
+
+    @Test fun galleryPrefetchUsesAllFourDecodeSlotsInBoundedBatches() = runBlocking {
+        val directory = Files.createTempDirectory("preview-prefetch-parallel").toFile()
+        val works = (1..9).map { Work("work-$it", "Work $it", "") }
+        val bytes = png(-1)
+        works.forEach { workPreviewFile(directory, it.id).also { file ->
+            file.parentFile!!.mkdirs(); file.writeBytes(bytes)
+        } }
+        val started = CountDownLatch(4); val release = CountDownLatch(1)
+        val active = AtomicInteger(); val maximum = AtomicInteger(); val decoded = AtomicInteger()
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        val repository = PreviewImageRepository(directory, RuntimeEnvironment.getApplication().assets, this,
+            PerformanceMeasurements(false), concurrentPermits = 4, decoder = {
+                val concurrent = active.incrementAndGet(); maximum.accumulateAndGet(concurrent, ::maxOf)
+                try {
+                    decoded.incrementAndGet(); started.countDown()
+                    check(release.await(5, TimeUnit.SECONDS)); bitmap
+                } finally { active.decrementAndGet() }
+            })
+        try {
+            val prefetch = async { repository.prefetch(works) }
+            yield()
+            assertTrue(withContext(Dispatchers.IO) { started.await(5, TimeUnit.SECONDS) })
+            assertEquals(4, maximum.get())
+            assertEquals(4, decoded.get())
+            release.countDown(); prefetch.await()
+            assertEquals(9, decoded.get())
+            assertEquals(4, maximum.get())
+        } finally { release.countDown(); repository.close(); directory.deleteRecursively() }
+    }
+
+    @Test fun cancelledGalleryPrefetchDoesNotQueueTheNextBatch() = runBlocking {
+        val directory = Files.createTempDirectory("preview-prefetch-cancel").toFile()
+        val works = (1..9).map { Work("work-$it", "Work $it", "") }
+        val bytes = png(-1)
+        works.forEach { workPreviewFile(directory, it.id).also { file ->
+            file.parentFile!!.mkdirs(); file.writeBytes(bytes)
+        } }
+        val started = CountDownLatch(2); val release = CountDownLatch(1)
+        val decoded = AtomicInteger()
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        val repository = PreviewImageRepository(directory, RuntimeEnvironment.getApplication().assets, this,
+            PerformanceMeasurements(false), concurrentPermits = 2, decoder = {
+                decoded.incrementAndGet(); started.countDown()
+                check(release.await(5, TimeUnit.SECONDS)); bitmap
+            })
+        try {
+            val prefetch = launch { repository.prefetch(works) }
+            yield()
+            assertTrue(withContext(Dispatchers.IO) { started.await(5, TimeUnit.SECONDS) })
+            prefetch.cancelAndJoin()
+            release.countDown()
+            assertEquals(2, decoded.get())
+            assertNull(repository.peek("work-3"))
+        } finally { release.countDown(); repository.close(); directory.deleteRecursively() }
     }
 
 }

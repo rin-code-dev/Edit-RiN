@@ -6,7 +6,7 @@ import org.junit.Test
 class ThumbnailPolicyTest {
     private val fast = ThumbnailDeviceState(8, 512, 2048, false, false)
     @Test fun budgetUsesMemoryPowerAndTemperatureNotOnlyCoreCount() {
-        assertEquals(2, thumbnailWorkerCount(fast))
+        assertEquals(3, thumbnailWorkerCount(fast))
         assertEquals(1, thumbnailWorkerCount(fast.copy(lowRam = true)))
         assertEquals(1, thumbnailWorkerCount(fast.copy(heapMb = 128)))
         assertEquals(1, thumbnailWorkerCount(fast.copy(availableMb = 256)))
@@ -19,6 +19,13 @@ class ThumbnailPolicyTest {
         assertEquals(0, thumbnailWorkerCount(fast.copy(heapAvailableMb = 16)))
         assertEquals(1, thumbnailWorkerCount(fast.copy(heapAvailableMb = 48)))
     }
+    @Test fun thirdWorkerRequiresCpuAndBothSystemAndHeapHeadroom() {
+        assertEquals(2, thumbnailWorkerCount(fast.copy(cores = 6)))
+        assertEquals(2, thumbnailWorkerCount(fast.copy(heapMb = 384)))
+        assertEquals(2, thumbnailWorkerCount(fast.copy(availableMb = 1023)))
+        assertEquals(2, thumbnailWorkerCount(fast.copy(heapAvailableMb = 127)))
+        assertEquals(3, thumbnailWorkerCount(fast.copy(heapAvailableMb = 128)))
+    }
     @Test fun visiblePriorityCanChangeWithoutRestartingRemainingQueue() {
         val remaining = linkedSetOf("old", "active", "visible", "next")
         assertEquals("visible", nextThumbnailId(remaining, listOf("deleted", "visible", "next"), "active"))
@@ -29,9 +36,9 @@ class ThumbnailPolicyTest {
         assertNull(nextThumbnailId(emptySet(), listOf("visible"), "active"))
     }
     @Test fun uiLoadThrottlesWorkerCountWithinDeviceLimits() {
-        // Fast device: normal=2, jankActive=1, heavyLoad=0
-        assertEquals(2, thumbnailWorkerCount(fast, ThumbnailLoadState()))
-        assertEquals(1, thumbnailWorkerCount(fast, ThumbnailLoadState(jankActive = true)))
+        // Fast device: normal=3, jankActive=2, heavyLoad=0
+        assertEquals(3, thumbnailWorkerCount(fast, ThumbnailLoadState()))
+        assertEquals(2, thumbnailWorkerCount(fast, ThumbnailLoadState(jankActive = true)))
         assertEquals(0, thumbnailWorkerCount(fast, ThumbnailLoadState(heavyLoad = true)))
 
         // 1-worker device: normal=1, jankActive=0, heavyLoad=0

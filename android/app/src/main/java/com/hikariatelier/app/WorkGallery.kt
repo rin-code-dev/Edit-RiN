@@ -507,10 +507,7 @@ private fun WorkGalleryContent(
             if (visible.isEmpty()) visibleWorks.indices.take(6) else
                 (visible.min()..(visible.max() + 4).coerceAtMost(visibleWorks.lastIndex)).toList()
         }.collectLatest { indices ->
-            indices.map { visibleWorks[it] }.forEach { work ->
-                val input = if (work.isSample) capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
-                images.load(work.id, work, input)
-            }
+            images.prefetch(indices.map { visibleWorks[it] })
         }
     }
 
