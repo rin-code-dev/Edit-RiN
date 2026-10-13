@@ -28,6 +28,22 @@ internal fun editorTextChange(before: TextFieldValue, after: TextFieldValue): Ed
     return EditorTextChange(prefix, old.length - suffix, next.length - suffix)
 }
 
+/** One verified edit range shared by line indexing, syntax rebasing and folds. */
+internal data class EditorDocumentChange(val before: String, val after: String, val range: EditorTextChange)
+
+internal class EditorChangeTracker {
+    private var previous: TextFieldValue? = null
+    private var change: EditorDocumentChange? = null
+    fun update(value: TextFieldValue): EditorDocumentChange? {
+        val old = previous
+        if (old != null && old.text != value.text) {
+            change = EditorDocumentChange(old.text, value.text, editorTextChange(old, value))
+        }
+        previous = value
+        return change
+    }
+}
+
 internal fun shiftedFoldRegions(folds: List<CodeFold>, change: EditorTextChange): List<CodeFold> =
     folds.mapNotNull { fold ->
         when {
@@ -48,11 +64,11 @@ internal class EditorFoldAnalysis {
     private var previous: TextFieldValue? = null
     private var snapshot = EditorFoldSnapshot(null, null, null)
 
-    fun update(value: TextFieldValue, completed: Pair<String, List<CodeFold>>? = null): EditorFoldSnapshot {
+    fun update(value: TextFieldValue, completed: Pair<String, List<CodeFold>>? = null, shared: EditorDocumentChange? = null): EditorFoldSnapshot {
         val old = previous
         if (old != null && old.text != value.text) {
             val regions = snapshot.regions
-            val change = if (regions.isNullOrEmpty()) null else editorTextChange(old, value)
+            val change = if (regions.isNullOrEmpty()) null else shared?.takeIf { it.before == old.text && it.after == value.text }?.range ?: editorTextChange(old, value)
             snapshot = EditorFoldSnapshot(if (change == null) regions else shiftedFoldRegions(regions!!, change), old.text, change)
         }
         if (completed?.first == value.text && snapshot.regions !== completed.second) {

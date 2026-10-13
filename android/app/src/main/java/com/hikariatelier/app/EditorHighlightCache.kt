@@ -7,32 +7,74 @@ import androidx.compose.ui.text.SpanStyle
 /** UI-thread cache. Keep untouched syntax spans while a fresh background parse is pending. */
 internal class EditorHighlightCache {
     private var displayed: AnnotatedString? = null
+    private var blocks = emptyList<AnnotatedString>()
+    internal var reusedBlocks = 0
+        private set
 
-    fun highlight(input: AnnotatedString, completed: AnnotatedString? = null): AnnotatedString {
+    fun highlight(input: AnnotatedString, completed: AnnotatedString? = null,
+                  shared: EditorDocumentChange? = null): AnnotatedString {
         val previous = displayed
-        val next = when {
-            completed != null && completed.text == input.text -> completed
-            previous == null -> input
-            previous.text == input.text -> previous
-            else -> rebaseEditorHighlight(previous, input)
+        if (completed != null && completed.text == input.text) {
+            if (completed !== previous) blocks = highlightBlocks(completed)
+            displayed = completed
+            return completed
         }
-        displayed = next
-        return next
+        if (previous == null) {
+            blocks = highlightBlocks(input); displayed = input
+            return input
+        }
+        if (previous.text == input.text) return previous
+        val change = shared?.takeIf { it.before == previous.text && it.after == input.text }?.range
+            ?: editorTextChange(androidx.compose.ui.text.input.TextFieldValue(previous.text),
+                androidx.compose.ui.text.input.TextFieldValue(input.text))
+        reusedBlocks = 0
+        val next = mutableListOf<AnnotatedString>()
+        fun retain(start: Int, end: Int) {
+            var offset = 0
+            for (block in blocks) {
+                val limit = offset + block.length
+                if (offset >= end) break
+                if (limit > start) {
+                    if (offset >= start && limit <= end) { next.add(block); reusedBlocks++ }
+                    else next.add(block.subSequence(maxOf(0, start - offset), minOf(block.length, end - offset)))
+                }
+                offset = limit
+            }
+        }
+        retain(0, change.start)
+        if (change.newEnd > change.start) next.addAll(highlightBlocks(input.subSequence(change.start, change.newEnd)))
+        retain(change.oldEnd, previous.length)
+        // Coalesce adjacent tiny edit fragments so prolonged typing cannot grow one block per keystroke.
+        blocks = buildList {
+            var small = AnnotatedString.Builder()
+            fun flush() { if (small.length > 0) { add(small.toAnnotatedString()); small = AnnotatedString.Builder() } }
+            for (block in next) {
+                if (block.length >= 1024) { flush(); add(block) }
+                else { small.append(block); if (small.length >= 1024) flush() }
+            }
+            flush()
+        }
+        return AnnotatedString.Builder().apply { blocks.forEach { append(it) } }.toAnnotatedString().also { displayed = it }
     }
 }
 
-private fun rebaseEditorHighlight(before: AnnotatedString, after: AnnotatedString): AnnotatedString {
-    var prefix = 0
-    val commonLength = minOf(before.length, after.length)
-    while (prefix < commonLength && before[prefix] == after[prefix]) prefix++
-    var suffix = 0
-    while (suffix < commonLength - prefix &&
-        before[before.length - suffix - 1] == after[after.length - suffix - 1]) suffix++
-    return AnnotatedString.Builder().apply {
-        if (prefix > 0) append(before.subSequence(0, prefix))
-        if (after.length - suffix > prefix) append(after.subSequence(prefix, after.length - suffix))
-        if (suffix > 0) append(before.subSequence(before.length - suffix, before.length))
-    }.toAnnotatedString()
+/** Partition once; subsequent edits reuse unaffected text/style blocks rather than slicing all spans. */
+private fun highlightBlocks(text: AnnotatedString): List<AnnotatedString> {
+    if (text.length <= 2048) return listOf(text)
+    val count = (text.length + 2047) / 2048
+    val styles = List(count) { mutableListOf<AnnotatedString.Range<SpanStyle>>() }
+    for (span in text.spanStyles) {
+        if (span.start >= span.end) continue
+        for (block in span.start / 2048..(span.end - 1) / 2048) {
+            val start = block * 2048
+            styles[block].add(AnnotatedString.Range(span.item,
+                maxOf(span.start, start) - start, minOf(span.end, start + 2048) - start))
+        }
+    }
+    return List(count) { index ->
+        val start = index * 2048
+        AnnotatedString(text.text.substring(start, minOf(start + 2048, text.length)), styles[index])
+    }
 }
 
 /** Diagnostics are transient and must never be carried over by the syntax cache. */

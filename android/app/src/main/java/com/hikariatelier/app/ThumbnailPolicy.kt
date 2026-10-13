@@ -4,6 +4,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
+internal const val MAX_THUMBNAIL_WORKERS = 3
+
 /** Keep a foreground editor's CPU/GPU and memory budget ahead of disposable previews. */
 internal data class ThumbnailDeviceState(
     val cores: Int, val heapMb: Int, val availableMb: Long,
@@ -23,6 +25,8 @@ internal fun thumbnailWorkerCount(
     val base = when {
         device.lowMemory || device.availableMb < 96 || device.heapAvailableMb < 24 || device.thermalStatus >= 3 -> 0
         device.lowRam || device.powerSave || device.thermalStatus >= 1 || device.heapAvailableMb < 64 -> 1
+        device.cores >= 8 && device.heapMb >= 512 && device.availableMb >= 1024 &&
+            device.heapAvailableMb >= 128 -> MAX_THUMBNAIL_WORKERS
         device.cores >= 4 && device.heapMb >= 192 && device.availableMb >= 384 -> 2
         else -> 1
     }

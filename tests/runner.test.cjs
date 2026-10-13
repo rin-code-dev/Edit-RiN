@@ -357,6 +357,9 @@ function sampleContext(extra = {}) {
     millis: () => 1000, addEventListener: noop, document: { addEventListener: noop },
     redraw: noop,
     min: Math.min, lerp: (a, b, t) => a + (b - a) * t,
+    abs: Math.abs, HALF_PI: Math.PI / 2, radians: value => value * Math.PI / 180,
+    color: value => ({ value, setAlpha: noop }),
+    lerpColor: (a, b, t) => ({ a, b, t, setAlpha: noop }),
     sin: Math.sin, cos: Math.cos, sqrt: Math.sqrt, exp: Math.exp, atan2: Math.atan2, pow: Math.pow,
     round: Math.round, floor: Math.floor, sq: value => value * value,
     HSB: 'hsb', ROUND: 'round', noise: () => 0.5,
@@ -439,9 +442,70 @@ test('bundled Halo.js and Gravity.js draw frames', async () => {
 });
 
 test('bundled wave Parameter.js draws with rinParams', async () => {
-  const { context, source } = await runSample('wave Parameter', { rinParams: { speed: 1, lineWidth: 4, ink: '#BA90E2' } });
-  for (const type of ['number speed', 'number lineWidth', 'color ink']) assert.ok(source.includes('// @rin ' + type), type);
-  assert.ok(vm.runInContext('phase', context) > 0);
+  const { context, source } = await runSample('wave Parameter', { rinParams: { speed: 1, thickness: 2, ink: '#BA90E2' } });
+  for (const type of ['number speed', 'number thickness', 'color ink', 'choice weave', 'choice palette']) assert.ok(source.includes('// @rin ' + type), type);
+  assert.ok(vm.runInContext('weaveTime', context) > 0);
+  context.rinParams.animate = false;
+  const paused = vm.runInContext('weaveTime', context);
+  vm.runInContext('draw()', context);
+  assert.equal(vm.runInContext('weaveTime', context), paused);
+});
+
+test('choice parameters update in rinParams via __editRinSetParameter and enforce type safety', () => {
+  const r = runner('function setup() {}', {}, {
+    Android: {
+      getSketchCode: () => 'function setup() {}',
+      getProjectConfig: () => '{}',
+      getWorkParameters: () => JSON.stringify({ mode: 'circle', count: 5, active: true, ink: '#BA90E2' }),
+      getP5Version: () => '1.11.5',
+      isP5SoundEnabled: () => false,
+      onStatusChanged: () => {},
+      onError: () => {},
+      onRuntimeError: () => {},
+      onRecordingStatusChanged: () => {},
+      onCaptureError: () => {}
+    }
+  });
+  assert.equal(r.context.window.rinParams.mode, 'circle');
+  assert.equal(r.context.window.rinParams.count, 5);
+  assert.equal(r.context.window.rinParams.active, true);
+  assert.equal(r.context.window.rinParams.ink, '#BA90E2');
+
+  // String updates to choice parameter should succeed
+  r.context.window.__editRinSetParameter('mode', 'square');
+  assert.equal(r.context.window.rinParams.mode, 'square');
+
+  // Number / boolean updates to choice parameter should be rejected
+  r.context.window.__editRinSetParameter('mode', 42);
+  assert.equal(r.context.window.rinParams.mode, 'square');
+  r.context.window.__editRinSetParameter('mode', false);
+  assert.equal(r.context.window.rinParams.mode, 'square');
+
+  // String / hex updates to number parameter should be rejected
+  r.context.window.__editRinSetParameter('count', 'invalid');
+  assert.equal(r.context.window.rinParams.count, 5);
+  r.context.window.__editRinSetParameter('count', '#FF0000');
+  assert.equal(r.context.window.rinParams.count, 5);
+
+  // Number / string updates to boolean parameter should be rejected
+  r.context.window.__editRinSetParameter('active', 1);
+  assert.equal(r.context.window.rinParams.active, true);
+  r.context.window.__editRinSetParameter('active', 'false');
+  assert.equal(r.context.window.rinParams.active, true);
+  r.context.window.__editRinSetParameter('active', '#FF0000');
+  assert.equal(r.context.window.rinParams.active, true);
+
+  // Color updates with hex strings should succeed; non-hex strings should be rejected
+  r.context.window.__editRinSetParameter('ink', '#00FF00');
+  assert.equal(r.context.window.rinParams.ink, '#00FF00');
+  r.context.window.__editRinSetParameter('ink', 'circle');
+  assert.equal(r.context.window.rinParams.ink, '#00FF00');
+  r.context.window.__editRinSetParameter('ink', 123);
+  assert.equal(r.context.window.rinParams.ink, '#00FF00');
+
+  // Undeclared parameter should be ignored
+  r.context.window.__editRinSetParameter('other', 'val');
+  assert.equal(r.context.window.rinParams.other, undefined);
 });
 
 test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async () => {
@@ -1145,7 +1209,7 @@ test('addon selection follows the actual custom p5 version rather than the work 
   assert.equal(writes.length,0);assert.match(r.errors[0],/p5.VERSION/);
 });
 
-test('video elements receive transparent poster and offscreen canvas sets willReadFrequently', () => {
+test('video posters remain transparent and artwork canvas context options stay unchanged', () => {
   const recorded = [];
   class FakeCanvas {
     constructor(id = '', isConnected = false) {
@@ -1164,15 +1228,23 @@ test('video elements receive transparent poster and offscreen canvas sets willRe
   const video = r.context.document.createElement('video');
   assert.match(video.getAttribute('poster') || '', /^data:image\/gif/);
 
-  // 2. Offscreen canvas gets willReadFrequently: true
+  // Detached artwork may be attached later or composited via drawImage; keep GPU eligibility.
   const offscreen = new FakeCanvas('', false);
   offscreen.getContext('2d');
-  assert.equal(recorded[0].attrs.willReadFrequently, true);
+  assert.equal(recorded[0].attrs, undefined);
 
-  // 3. Main presentation canvas does not get forced willReadFrequently
+  // Main presentation canvas also retains the browser's defaults.
   const main = new FakeCanvas('defaultCanvas0', true);
   main.getContext('2d');
   assert.equal(recorded[1].attrs, undefined);
+  const explicit = { willReadFrequently: false, alpha: false };
+  offscreen.getContext('2d', explicit);
+  assert.equal(recorded[2].attrs, explicit);
+  const readback = { willReadFrequently: true };
+  offscreen.getContext('2d', readback);
+  assert.equal(recorded[3].attrs, readback);
+  offscreen.getContext('webgl2');
+  assert.equal(recorded[4].attrs, undefined);
 });
 
 
@@ -1211,4 +1283,57 @@ test('an error before visual handoff never uncovers an unfinished preview', () =
   r.instances.forEach(instance => { r.setup(instance); r.hooks.post.call(instance); });
   r.context.__editKiroRuntimeHasError = true; r.flush(); r.flush();
   assert.deepEqual(visual, []);
+});
+
+
+test('initialized draw paths preserve direct results and do not add a promise per frame', async () => {
+  const r = runner();
+  function DirectP5() {}
+  DirectP5.prototype._draw = function (value) { return { owner: this, value }; };
+  r.context.p5 = DirectP5;
+  const sketch = new DirectP5();
+  const direct = sketch._draw(120);
+  assert.equal(direct.owner, sketch);
+  assert.equal(direct.value, 120);
+  assert.equal(direct.then, undefined);
+  sketch._renderer = { contextReady: Promise.resolve() };
+  await sketch._draw(0);
+  for (let frame = 0; frame < 240; frame++) {
+    const result = sketch._draw(frame);
+    assert.equal(result.then, undefined);
+    assert.equal(result.value, frame);
+  }
+});
+
+test('draw waits again when the GPU renderer or its initialization promise changes', async () => {
+  const r = runner();
+  let drawn = 0;
+  function GpuP5() {}
+  GpuP5.prototype._draw = () => ++drawn;
+  r.context.p5 = GpuP5;
+  const sketch = new GpuP5();
+  for (let generation = 0; generation < 3; generation++) {
+    let ready;
+    const contextReady = new Promise(resolve => { ready = resolve; });
+    if (generation < 2) sketch._renderer = { contextReady };
+    else sketch._renderer.contextReady = contextReady;
+    const before = drawn;
+    const pending = sketch._draw();
+    assert.equal(drawn, before);
+    ready();
+    assert.equal(await pending, before + 1);
+    assert.equal(sketch._draw(), before + 2);
+  }
+});
+
+test('GPU initialization rejection and asynchronous draw results retain their behavior', async () => {
+  const r = runner();
+  const drawn = Promise.resolve('async frame');
+  function AsyncP5() {}
+  AsyncP5.prototype._draw = () => drawn;
+  r.context.p5 = AsyncP5;
+  const sketch = new AsyncP5();
+  sketch._renderer = { contextReady: Promise.reject(new Error('GPU unavailable')) };
+  assert.equal(await sketch._draw(), 'async frame');
+  assert.equal(sketch._draw(), drawn);
 });

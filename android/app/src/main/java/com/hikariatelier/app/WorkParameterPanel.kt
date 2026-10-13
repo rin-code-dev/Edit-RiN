@@ -7,14 +7,19 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -52,9 +57,40 @@ internal fun WorkParameterPanel(
     onDismiss: (() -> Unit)? = null,
     onAddParameter: (() -> Unit)? = null,
     onInsertSample: (() -> Unit)? = null,
-    topPadding: androidx.compose.ui.unit.Dp = 0.dp
+    onJumpToParameter: ((String) -> Unit)? = null,
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    onCompareHold: ((Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    var lockedParameters by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val compareInteractionSource = remember { MutableInteractionSource() }
+    val isComparing by compareInteractionSource.collectIsPressedAsState()
+    var comparisonSnapshot by remember { mutableStateOf<Map<String, String>?>(null) }
+
+    LaunchedEffect(isComparing) {
+        if (parameters.isEmpty()) return@LaunchedEffect
+        if (onCompareHold != null) {
+            onCompareHold(isComparing)
+        } else {
+            if (isComparing) {
+                comparisonSnapshot = values.toMap()
+                parameters.forEach { p ->
+                    onChange(p, p.defaultValue)
+                }
+            } else {
+                val snapshot = comparisonSnapshot
+                if (snapshot != null) {
+                    parameters.forEach { p ->
+                        val saved = snapshot[p.name]
+                        if (saved != null) {
+                            onChange(p, saved)
+                        }
+                    }
+                    comparisonSnapshot = null
+                }
+            }
+        }
+    }
     val hasModified = remember(parameters, values) {
         parameters.any { p ->
             val cur = parameterValue(p, values[p.name])
@@ -101,6 +137,45 @@ internal fun WorkParameterPanel(
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val randomMap = randomizeWorkParameters(parameters, values, lockedParameters)
+                                randomMap.forEach { (name, value) ->
+                                    val param = parameters.find { it.name == name }
+                                    if (param != null && values[name] != value) {
+                                        onChange(param, value)
+                                    }
+                                }
+                                onCommit()
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_dice),
+                                contentDescription = text("パラメータをランダムに変更"),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {},
+                            interactionSource = compareInteractionSource,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_compare),
+                                contentDescription = text("押している間、初期値と比較"),
+                                tint = if (isComparing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -229,6 +304,67 @@ internal fun WorkParameterPanel(
             }
         }
 
+        @Composable
+        fun ParameterLabelHeader(parameter: WorkParameter) {
+            val isLocked = parameter.name in lockedParameters
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = {
+                        lockedParameters = if (isLocked) {
+                            lockedParameters - parameter.name
+                        } else {
+                            lockedParameters + parameter.name
+                        }
+                    },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(if (isLocked) R.drawable.ic_pin_filled else R.drawable.ic_pin),
+                        contentDescription = text(if (isLocked) "パラメータの固定を解除" else "パラメータを固定"),
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (onJumpToParameter != null) {
+                                Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { onJumpToParameter(parameter.name) }
+                            } else Modifier
+                        )
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = parameter.label,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (onJumpToParameter != null) {
+                            Text(
+                                text = "↗",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    Text(
+                        text = "rinParams.${parameter.name}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
         // Parameter items
         parameters.forEach { parameter ->
             val value = parameterValue(parameter, values[parameter.name])
@@ -267,19 +403,7 @@ internal fun WorkParameterPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = parameter.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "rinParams.${parameter.name}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                ParameterLabelHeader(parameter)
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -391,19 +515,7 @@ internal fun WorkParameterPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = parameter.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "rinParams.${parameter.name}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                ParameterLabelHeader(parameter)
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -453,19 +565,7 @@ internal fun WorkParameterPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = parameter.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "rinParams.${parameter.name}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                ParameterLabelHeader(parameter)
 
                                 if (isModified && onResetParameter != null) {
                                     IconButton(
@@ -499,19 +599,7 @@ internal fun WorkParameterPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = parameter.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "rinParams.${parameter.name}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                ParameterLabelHeader(parameter)
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -600,7 +688,9 @@ internal fun WorkParameterBottomSheet(
     textTranslator: (String, Array<out Any?>) -> String,
     windowSetup: @Composable () -> Unit = {},
     onAddParameter: (() -> Unit)? = null,
-    onInsertSample: (() -> Unit)? = null
+    onInsertSample: (() -> Unit)? = null,
+    onJumpToParameter: ((String) -> Unit)? = null,
+    onCompareHold: ((Boolean) -> Unit)? = null
 ) {
     if (!visible) return
 
@@ -616,7 +706,9 @@ internal fun WorkParameterBottomSheet(
             onApplyDefaults = onApplyDefaults,
             onDismiss = onDismiss,
             onAddParameter = onAddParameter,
-            onInsertSample = onInsertSample
+            onInsertSample = onInsertSample,
+            onJumpToParameter = onJumpToParameter,
+            onCompareHold = onCompareHold
         )
     }
 
@@ -670,7 +762,9 @@ internal fun InlineWorkParameterPanel(
     onDismiss: (() -> Unit)? = null,
     onAddParameter: (() -> Unit)? = null,
     onInsertSample: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onJumpToParameter: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    onCompareHold: ((Boolean) -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -701,7 +795,9 @@ internal fun InlineWorkParameterPanel(
             onDismiss = onDismiss,
             onAddParameter = onAddParameter,
             onInsertSample = onInsertSample,
-            topPadding = 16.dp
+            onJumpToParameter = onJumpToParameter,
+            topPadding = 16.dp,
+            onCompareHold = onCompareHold
         )
     }
 }

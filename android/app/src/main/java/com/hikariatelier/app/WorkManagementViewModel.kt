@@ -28,6 +28,9 @@ internal data class WorkEvent(
 internal enum class WorkOperationState { IDLE, SAVING, SAVED, FAILED, CONFLICT }
 private class WorkConflictException : IllegalStateException()
 
+private const val PREFETCH_MAX_WORKS = 12
+private const val PREFETCH_MAX_TEXT_BYTES = 4L * 1024 * 1024
+
 /** Owns work commands and publishes state only after durable persistence succeeds. */
 internal class WorkManagementViewModel(
     private val session: EditorSessionViewModel,
@@ -38,7 +41,8 @@ internal class WorkManagementViewModel(
     private val folders: WorkFolderRepository? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val operationScope: CoroutineScope? = null,
-    private val templatePersistence: UserTemplatePersistence? = null
+    private val templatePersistence: UserTemplatePersistence? = null,
+    private val main: CoroutineDispatcher = Dispatchers.Main
 ) : ViewModel() {
     var workMenuExpanded by mutableStateOf(false)
     var workSettingsMenuExpanded by mutableStateOf(false)
@@ -174,7 +178,76 @@ internal class WorkManagementViewModel(
     val previewRevisions = mutableStateMapOf<String, Int>()
     var thumbnailPriorityIds by mutableStateOf<List<String>>(emptyList())
         private set
-    fun prioritizeThumbnails(ids: List<String>) { thumbnailPriorityIds = ids.distinct() }
+    fun prioritizeThumbnails(ids: List<String>) {
+        val distinct = ids.distinct()
+        if (thumbnailPriorityIds != distinct) {
+            thumbnailPriorityIds = distinct
+            prefetchJob?.cancel()
+            prefetchJob = null
+        }
+        requestPrefetch()
+    }
+
+    private var prefetchJob: Job? = null
+    private var prefetchAllowed = false
+    // Cumulative for this ViewModel: reopening/scrolling must not reset the budget
+    // and gradually materialize the entire store. Foreground loads are unrestricted.
+    private var prefetchedCount = 0
+    private var prefetchedTextBytes = 0L
+
+    fun setPrefetchAllowed(allowed: Boolean) {
+        prefetchAllowed = allowed
+        if (!allowed) {
+            prefetchJob?.cancel()
+            prefetchJob = null
+        } else requestPrefetch()
+    }
+
+    private fun canPrefetch(): Boolean = prefetchAllowed && workMenuExpanded &&
+        !thumbnailScrolling && !workSaving && !session.assetBusy &&
+        session.snapshotOperationWorkId == null && loadFailure == null &&
+        measurements?.loadState?.let { !it.heavyLoad && !it.jankActive } != false &&
+        prefetchedCount < PREFETCH_MAX_WORKS && prefetchedTextBytes < PREFETCH_MAX_TEXT_BYTES
+
+    fun requestPrefetch() {
+        if (!canPrefetch() || deferredWorkIds.isEmpty() || prefetchJob?.isActive == true) return
+        val folder = selectedFolderUri
+        // The gallery already supplies visible items and four nearby items.
+        // Empty priorities (including onDispose) must never start a full-store scan.
+        val targetOrder = thumbnailPriorityIds.filter { it in deferredWorkIds }.take(PREFETCH_MAX_WORKS)
+        if (targetOrder.isEmpty()) return
+        val job = scope.launch(io, start = CoroutineStart.LAZY) {
+            for (targetId in targetOrder) {
+                ensureActive()
+                val needsLoad = withContext(main) {
+                    canPrefetch() && targetId in deferredWorkIds && folder == selectedFolderUri
+                }
+                if (!needsLoad) break
+                val body = try { persistence.loadWorkLowPriority(folder, targetId) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
+                ensureActive()
+                if (body != null && body.bodyLoaded && body.id == targetId) {
+                    val textBytes = prefetchTextBytes(body)
+                    withContext(main) {
+                        if (canPrefetch() && targetId in deferredWorkIds && folder == selectedFolderUri &&
+                            prefetchedTextBytes + textBytes <= PREFETCH_MAX_TEXT_BYTES &&
+                            session.worksState.value.any { it.id == targetId && !it.bodyLoaded }) {
+                            session.worksState.value = session.worksState.value.map {
+                                if (it.id == targetId && !it.bodyLoaded) body else it
+                            }
+                            deferredWorkIds.remove(targetId)
+                            prefetchedCount++
+                            prefetchedTextBytes += textBytes
+                        }
+                    }
+                }
+                delay(32)
+            }
+        }
+        prefetchJob = job
+        job.start()
+    }
     fun notifyPreviewUpdated(workId: String) {
         updatedPreviewId = workId; previewRevision++
         previewRevisions[workId] = (previewRevisions[workId] ?: 0) + 1
@@ -335,6 +408,8 @@ internal class WorkManagementViewModel(
             if (!session.assetBusy && session.snapshotOperationWorkId == null) {
                 val first = operationQueue.peekFirst() ?: pendingNavigation
                 if (first != null) {
+                    prefetchJob?.cancel()
+                    prefetchJob = null
                     queueOwnsInteraction = true
                     workSaving = true
                     session.assetBusy = true
@@ -352,7 +427,8 @@ internal class WorkManagementViewModel(
                         if (operationQueue.isNotEmpty()) operationQueue.removeFirst()
                         else pendingNavigation.also { pendingNavigation = null }
                     } ?: break
-
+                    prefetchJob?.cancel()
+                    prefetchJob = null
                     queueOwnsInteraction = true
                     workSaving = true
                     showBlockingProgress = next.blockUi && next.progressDelayMillis == 0L
@@ -1264,6 +1340,8 @@ internal class WorkManagementViewModel(
         }
         folderRepository.select(uri)
         selectedFolderUri = uri
+        prefetchJob?.cancel()
+        prefetchJob = null
         baseHashCache.clear()
         emptyGalleryFolders = withContext(io) { folderRepository.galleryFolders(uri) }
         val loadedOrder = withContext(io) { folderRepository.galleryTabsOrder(uri) }
@@ -1393,5 +1471,16 @@ internal class WorkManagementViewModel(
         }
     }
 
-    override fun onCleared() { settings?.onDraftRecoveryDisabled = null; drafts?.close(); super.onCleared() }
+    override fun onCleared() { prefetchJob?.cancel(); settings?.onDraftRecoveryDisabled = null; drafts?.close(); super.onCleared() }
+}
+
+/** Retained UTF-16 text budget, not a claim about total heap or asset-file size. */
+internal fun prefetchTextBytes(work: Work): Long {
+    fun String.bytes() = length.toLong() * 2
+    fun Map<String, String>.bytes() = entries.sumOf { it.key.bytes() + it.value.bytes() }
+    return work.code.bytes() + work.title.bytes() + work.id.bytes() +
+        work.files.bytes() + work.libraries.bytes() + work.parameterValues.bytes() +
+        work.revisions.sumOf { it.code.bytes() } + work.tags.sumOf { it.bytes() } +
+        work.assets.entries.sumOf { it.key.bytes() + it.value.hash.bytes() + it.value.mime.bytes() } +
+        work.folderName.bytes() + work.previewAspectRatio.bytes() + work.p5Version.bytes()
 }

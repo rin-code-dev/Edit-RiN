@@ -12,6 +12,22 @@ internal fun translateUi(source: String, language: String): String {
 }
 
 internal val uiTranslations = mapOf(
+    "エラー詳細" to ("Error details" to "错误详情"),
+    "エラー詳細を折りたたむ" to ("Collapse error details" to "折叠错误详情"),
+    "エラー詳細を展開" to ("Expand error details" to "展开错误详情"),
+    "エラーをコピー" to ("Copy error" to "复制错误"),
+    "エラーをコピーしました" to ("Error copied to clipboard" to "已复制错误到剪贴板"),
+    "ヒント: p5.js 2.x では preload() は廃止されました。async function setup() 内で await loadImage() などを使用するか、実行環境で p5.js 1.11.5 を選択してください。" to
+        ("Tip: preload() is removed in p5.js 2.x. Use await inside async function setup(), or switch to p5.js 1.11.5 in Runtime settings." to
+        "提示：p5.js 2.x 已移除 preload()。请在 async function setup() 中使用 await，或在运行环境中切换为 p5.js 1.11.5。"),
+    "ヒント: p5.js 2.x の読み込み関数は Promise を返します。async function setup() 内で await を付けて呼び出してください。" to
+        ("Tip: Loading functions in p5.js 2.x return a Promise. Call them with await inside async function setup()." to
+        "提示：p5.js 2.x 的加载函数返回 Promise。请在 async function setup() 中使用 await 调用。"),
+    "左右にドラッグして数値を調整" to ("Drag horizontally to adjust number" to "左右拖动以调整数值"),
+    "解像度: %s × %s px" to ("Resolution: %s × %s px" to "分辨率：%s × %s px"),
+    "再生時間: %s" to ("Duration: %s" to "时长：%s"),
+    "宣言へ移動" to ("Jump to declaration" to "跳转到声明"),
+    "＋ @rin %s を宣言" to ("＋ Declare @rin %s" to "＋ 声明 @rin %s"),
     "アプリ情報とアップデート" to ("App information and updates" to "应用信息与更新"),
     "Android向けクリエイティブコーディング環境" to ("Creative coding environment for Android" to "面向 Android 的创意编程环境"),
     "最新バージョンをチェック" to ("Check for the latest version" to "检查最新版本"),
@@ -872,5 +888,13 @@ internal val uiTranslations = mapOf(
     "指で弾く短い音と波形の作品。押したまま横へ動かすと音程が変わります。小さな音量から試してください。" to ("Play short notes with a waveform. Hold and move horizontally to change pitch. Start at a low volume." to "用手指演奏短音并显示波形。按住水平移动改变音高。请从低音量开始。"),
     "カメラ映像を白黒の網点で映します。タップで開始・停止できます。カメラの許可が必要です。失敗したときは、もう一度タップしてお試しください。" to ("A mirror turns camera video into monochrome halftone dots. Tap to start or stop. Requires camera permission; tap again to retry on failure." to "将摄像头画面转换为黑白网点的镜子。点击开始或停止。需要摄像头权限，失败后可再次点击重试。"),
     "声の大きさに合わせて、放射状の線が開きます。タップで開始・停止できます。マイクの許可が必要です。音はスピーカーへ出力しません。" to ("Fine radial lines open with your voice level. Tap to start or stop. Requires microphone permission. Audio is not sent to speakers." to "放射状细线随着声音大小展开。点击开始或停止，需要麦克风权限。声音不会输出到扬声器。"),
-    "端末を傾けてビー玉を動かします。タップで傾きを補正し、端末を振るとリセットします。センサーがなくてもドラッグで操作できます。" to ("Tilt to move a marble. Tap to calibrate; shake to reset. Drag also works without sensors." to "倾斜设备移动弹珠。点击校准，摇动重置。无传感器时也可拖动操作。")
+    "端末を傾けてビー玉を動かします。タップで傾きを補正し、端末を振るとリセットします。センサーがなくてもドラッグで操作できます。" to ("Tilt to move a marble. Tap to calibrate; shake to reset. Drag also works without sensors." to "倾斜设备移动弹珠。点击校准，摇动重置。无传感器时也可拖动操作。"),
+    "ランダム" to ("Randomize" to "随机"),
+    "パラメータをランダムに変更" to ("Randomize parameters" to "随机调整参数"),
+    "パラメータを固定" to ("Lock parameter" to "锁定参数"),
+    "パラメータの固定を解除" to ("Unlock parameter" to "解锁参数"),
+    "押している間、初期値と比較" to ("Hold to compare with defaults" to "按住以对比默认值"),
+    "比較" to ("Compare" to "对比"),
+    "ログをコピーしました" to ("Log copied to clipboard" to "已复制日志"),
+    "長押しでコピー" to ("Long-press to copy" to "长按复制")
 )

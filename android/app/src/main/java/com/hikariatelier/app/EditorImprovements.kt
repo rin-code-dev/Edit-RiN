@@ -22,7 +22,8 @@ import kotlinx.coroutines.withContext
 
 @Composable
 internal fun editorHighlight(
-    source: String, dark: Boolean, errors: Set<Int>, file: String = "sketch.js", documentKey: String = file
+    source: String, dark: Boolean, errors: Set<Int>, file: String = "sketch.js", documentKey: String = file,
+    change: EditorDocumentChange? = null
 ): VisualTransformation {
     val immediate = remember(file, dark) { projectFileHighlighter(file, dark, emptySet()) }
     val cache = remember(documentKey, file, dark) { EditorHighlightCache() }
@@ -35,10 +36,10 @@ internal fun editorHighlight(
             }
         }.value
     }
-    return remember(source, result, immediate, cache, dark, errors) {
+    return remember(source, result, immediate, cache, dark, errors, change) {
         VisualTransformation { text ->
             val completed = if (text.length < 500) immediate.filter(text).text else result
-            val syntax = cache.highlight(text, completed)
+            val syntax = cache.highlight(text, completed, change)
             TransformedText(withEditorErrorLines(syntax, dark, errors), OffsetMapping.Identity)
         }
     }
@@ -51,7 +52,8 @@ internal const val EDITOR_FOLD_IDLE_MS = 350L
 internal fun editorFoldRegions(
     editingValue: androidx.compose.ui.text.input.TextFieldValue,
     documentKey: String,
-    parse: (String) -> List<CodeFold> = ::codeFolds
+    parse: (String) -> List<CodeFold> = ::codeFolds,
+    change: EditorDocumentChange? = null
 ): EditorFoldSnapshot = key(documentKey) {
     val analysis = remember { EditorFoldAnalysis() }
     val source = editingValue.text
@@ -59,7 +61,7 @@ internal fun editorFoldRegions(
         delay(EDITOR_FOLD_IDLE_MS)
         value = withContext(Dispatchers.Default) { source to parse(source) }
     }
-    analysis.update(editingValue, result)
+    analysis.update(editingValue, result, change)
 }
 
 internal fun revisionDifference(current: String, revision: String): String {

@@ -2,9 +2,9 @@ package com.hikariatelier.app
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,7 +15,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -23,27 +22,42 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.runtime.rememberUpdatedState
-import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
+
+private val PRELOAD_DECLARATION_REGEX = Regex("""\bfunction\s+preload\s*\(""")
+private val P5_ASYNC_LOADER_REGEX = Regex("""\b(loadImage|loadSound|loadFont|loadJSON|loadTable|loadStrings|loadBytes|loadXML|loadModel|loadShader)\s*\(""")
+
+internal fun p5ErrorDiagnosticHint(errorMessage: String, sourceCode: String, p5Version: String?): String? {
+    if (p5Version != null && p5Version != P5_VERSION_CURRENT) return null
+    if (PRELOAD_DECLARATION_REGEX.containsMatchIn(sourceCode)) {
+        return "ヒント: p5.js 2.x では preload() は廃止されました。async function setup() 内で await loadImage() などを使用するか、実行環境で p5.js 1.11.5 を選択してください。"
+    }
+    val lower = errorMessage.lowercase()
+    val looksLikePromiseIssue = lower.contains("promise") ||
+        lower.contains("is not a function") ||
+        lower.contains("cannot read properties of undefined")
+    if (looksLikePromiseIssue && P5_ASYNC_LOADER_REGEX.containsMatchIn(sourceCode) && !sourceCode.contains("await ")) {
+        return "ヒント: p5.js 2.x の読み込み関数は Promise を返します。async function setup() 内で await を付けて呼び出してください。"
+    }
+    return null
+}
 
 @Composable
 internal fun EditorArea(
@@ -86,20 +100,35 @@ internal fun EditorArea(
     onCopySample: () -> Unit = {},
     onEditorFontSizeChange: (Float) -> Unit = {},
     showErrorBanner: Boolean = true,
-    onJumpToSource: (String, Int) -> Unit = { _, _ -> }
+    onJumpToSource: (String, Int) -> Unit = { _, _ -> },
+    onOpenProjectFiles: (() -> Unit)? = null
 ) {
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
     val currentFontSize = rememberUpdatedState(editorFontSize)
     val currentFontSizeChange = rememberUpdatedState(onEditorFontSizeChange)
+    var pinchFontSize by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(editorFontSize) {
+        pinchFontSize = null
+    }
+    val effectiveFontSize = pinchFontSize ?: editorFontSize
+
     val darkEditorTheme = colors.surface.luminance() < 0.5f
     val dirtyFiles by remember(activeWorkId, activeWork?.code, activeWork?.files, sessionViewModel) {
         derivedStateOf {
-            dirtyProjectFiles(activeWorkId, activeWork?.code.orEmpty(),
-                sessionViewModel.editorValueState.value.text, activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
+            dirtyProjectFiles(
+                activeWorkId,
+                activeWork?.code.orEmpty(),
+                sessionViewModel.editorValueState.value.text,
+                activeWork?.files.orEmpty(),
+                sessionViewModel.fileDrafts
+            )
         }
     }
     LaunchedEffect(readOnly) { if (readOnly) focusManager.clearFocus(force = true) }
 
     var errorTooltipLine by remember(editingKey, errorsCurrent) { mutableStateOf<Int?>(null) }
+    var errorBannerExpanded by remember(activeWorkId, errorsCurrent) { mutableStateOf(false) }
     val editorErrorLines by remember(editingFile, activeWorkId, errorsCurrent, consoleEntries) {
         derivedStateOf {
             if (!errorsCurrent) emptySet() else consoleEntries.asSequence()
@@ -109,22 +138,26 @@ internal fun EditorArea(
         }
     }
 
-    val currentEditorErrorLines by rememberUpdatedState(editorErrorLines)
-    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile, editingKey)
+    val changes = remember(editingKey) { EditorChangeTracker() }
+    val sharedChange = changes.update(editingValue)
+    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile, editingKey, sharedChange)
 
     val foldSnapshot = if (isJavaScriptProjectFile(editingFile) ||
-        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingValue, editingKey)
-        else EditorFoldSnapshot(emptyList(), null, null)
+        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingValue, editingKey, change = sharedChange)
+    else EditorFoldSnapshot(emptyList(), null, null)
     val parsedFoldRegions = foldSnapshot.regions
     val foldRegions = parsedFoldRegions.orEmpty()
+    val hasFolds = foldRegions.isNotEmpty()
     val storedFolds = sessionViewModel.codeFoldStates[editingKey]
     val collapsedFolds = remember(storedFolds, editingText, parsedFoldRegions) {
         if (parsedFoldRegions == null) emptySet()
         else {
             val retained = if (storedFolds != null && storedFolds.source == foldSnapshot.previousSource &&
                 foldSnapshot.change != null && storedFolds.collapsed.isNotEmpty()) {
-                shiftedFoldRegions(storedFolds.regions.orEmpty().filter { it.open in storedFolds.collapsed },
-                    foldSnapshot.change).map { it.open }.toSet()
+                shiftedFoldRegions(
+                    storedFolds.regions.orEmpty().filter { it.open in storedFolds.collapsed },
+                    foldSnapshot.change
+                ).map { it.open }.toSet()
             } else rebasedFolds(storedFolds, editingText)
             if (retained.isEmpty()) emptySet() else retained.intersect(foldRegions.map { it.open }.toSet())
         }
@@ -162,15 +195,14 @@ internal fun EditorArea(
     }
     LaunchedEffect(editingKey, editingValue.selection, collapsedFolds) {
         val selection = editingValue.selection
-        val reveal = foldRegions.filter { it.open in collapsedFolds &&
-            (if (selection.collapsed) selection.start > it.open + 1 && selection.start < it.close
-            else selection.min < it.close && selection.max > it.open + 1) }.map { it.open }.toSet()
+        val reveal = foldRegions.filter {
+            it.open in collapsedFolds &&
+                (if (selection.collapsed) selection.start > it.open + 1 && selection.start < it.close
+                else selection.min < it.close && selection.max > it.open + 1)
+        }.map { it.open }.toSet()
         if (reveal.isNotEmpty()) sessionViewModel.codeFoldStates[editingKey] =
             CodeFoldState(editingText, collapsedFolds - reveal, foldRegions)
     }
-    // A local function reference (::toggleFold) compares equal across recompositions,
-    // so rememberUpdatedState can retain the initial source/regions/collapsed set.
-    // Use a capturing lambda whose identity follows those changing values instead.
     val toggleFold: (CodeFold) -> Unit = { fold ->
         toggleEditorFold(editingText, editingValue, collapsedFolds, foldRegions, fold)?.let { toggle ->
             if (toggle.value != editingValue) onUpdateEditingValue(toggle.value)
@@ -178,149 +210,63 @@ internal fun EditorArea(
         }
     }
     val currentToggleFold by rememberUpdatedState(toggleFold)
-    var gutterLayout by remember(editingKey) { mutableStateOf<TextLayoutResult?>(null) }
     var editorTextLayout by remember(editingKey) {
         mutableStateOf<TextLayoutResult?>(null)
     }
 
     val lineIndex = remember(editingKey) { EditorLineIndex() }
-    val logicalLineStarts = remember(editingText, lineIndex) { lineIndex.update(editingText) }
+    val logicalLineStarts = remember(editingText, lineIndex) { lineIndex.update(editingText, sharedChange) }
+    val activeLineNumber = remember(editingValue.selection.start, logicalLineStarts, editorFocused) {
+        if (!editorFocused) -1
+        else {
+            val pos = editingValue.selection.start.coerceIn(0, editingText.length)
+            val idx = logicalLineStarts.binarySearch(pos)
+            (if (idx >= 0) idx else -idx - 2).coerceAtLeast(0) + 1
+        }
+    }
 
     val foldsByLine = remember(foldRegions, logicalLineStarts) {
         foldRegions.groupBy { fold ->
             logicalLineStarts.binarySearch(fold.open).let { if (it >= 0) it else -it - 2 }
         }.mapValues { (_, regions) -> regions.first() }
     }
-    // Keep the gesture detector alive while text/layout/highlighting updates arrive.
-    // Restarting pointerInput between down/up silently cancels the user's tap.
-    val currentGutterTap by rememberUpdatedState<(androidx.compose.ui.geometry.Offset) -> Unit>({ position ->
-        val gutter = gutterLayout
-        val layout = editorTextLayout
-        if (gutter != null && layout != null && layout.layoutInput.text.text == displayText &&
-            position.y >= 0 && position.y < gutter.getLineBottom(gutter.lineCount - 1)) {
-            val visualLine = gutter.getLineForVerticalPosition(position.y)
-            if (visualLine < layout.lineCount) {
-                val original = projection.transformedToOriginal(layout.getLineStart(visualLine))
-                val line = logicalLineStarts.binarySearch(original)
-                if (line >= 0) {
-                    val fold = foldsByLine[line]
-                    val start = gutter.getLineStart(visualLine)
-                    val marker = gutter.layoutInput.text.text.getOrNull(start)
-                    val onArrow = fold != null && (marker == '▸' || marker == '▾') &&
-                        position.x <= gutter.getBoundingBox(start).right
-                    when (editorGutterAction(fold != null, (line + 1) in currentEditorErrorLines, onArrow)) {
-                        EditorGutterAction.FOLD -> fold?.let(currentToggleFold)
-                        EditorGutterAction.ERROR -> errorTooltipLine = line + 1
-                        null -> Unit
-                    }
-                }
-            }
-        }
-    })
     val lineNumberDigits = maxOf(1, logicalLineStarts.size.toString().length)
-    val hasFolds = foldRegions.isNotEmpty()
-
-    // Capture one layout for this source; the worker must not read changing Compose state.
-    val gutterSourceLayout = editorTextLayout
-    val gutterTextState = key(editingKey) {
-        produceState(
-            initialValue = AnnotatedString(""),
-            showLineNumbers,
-            hasFolds,
-            projection,
-            foldsByLine,
-            gutterSourceLayout,
-            logicalLineStarts,
-            lineNumberDigits,
-            editorErrorLines,
-            colors.error
-        ) {
-            // While BasicTextField measures the edited source, keep the last visual rows.
-            // Falling back to logical rows here shrinks wrapped gutters out of the viewport.
-            if (gutterSourceLayout != null && gutterSourceLayout.layoutInput.text.text != displayText) {
-                return@produceState
-            }
-            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                val visualStarts = gutterSourceLayout?.let { layout ->
-                    List(layout.lineCount) { visualLine ->
-                        projection.transformedToOriginal(layout.getLineStart(visualLine))
-                    }
-                } ?: logicalLineStarts.filterNot(projection::isHidden)
-
-                AnnotatedString.Builder().apply {
-                    visualStarts.forEachIndexed { visualIndex, offset ->
-                        val logicalIndex = logicalLineStarts.binarySearch(offset).let {
-                            if (it >= 0) it else -it - 2
-                        }.coerceAtLeast(0)
-                        val startsLogicalLine =
-                            logicalLineStarts.getOrNull(logicalIndex) == offset
-
-                        if (startsLogicalLine) {
-                            if (hasFolds) {
-                                val fold = foldsByLine[logicalIndex]
-                                append(when {
-                                    fold == null -> " "
-                                    fold.open in collapsedFolds -> "▸"
-                                    else -> "▾"
-                                })
-                            }
-                            val numberStart = length
-                            if (showLineNumbers) {
-                                append((logicalIndex + 1).toString().padStart(lineNumberDigits))
-                            }
-                            if (logicalIndex + 1 in editorErrorLines) {
-                                addStyle(
-                                    SpanStyle(
-                                        color = colors.error,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    numberStart,
-                                    length
-                                )
-                            }
-                        } else {
-                            append(" ".repeat((if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)))
-                        }
-
-                        if (visualIndex < visualStarts.lastIndex) {
-                            append('\n')
-                        }
-                    }
-                }.toAnnotatedString()
-            }
-        }
-    }
 
     Card(
         modifier = modifier.pointerInput(Unit) {
-            // Two-finger pinch resizes the code; single-finger scrolling and selection are untouched.
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 var startDistance = 0f
                 var startSize = currentFontSize.value
+                var pendingSize: Float? = null
                 do {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val pressed = event.changes.filter { it.pressed }
                     if (pressed.size >= 2) {
                         val distance = (pressed[0].position - pressed[1].position).getDistance()
-                        if (startDistance <= 0f) { startDistance = distance; startSize = currentFontSize.value }
-                        else if (distance > 0f) {
-                            val next = (startSize * distance / startDistance).coerceIn(12f, 28f)
-                            if (kotlin.math.abs(next - currentFontSize.value) >= 0.5f) {
-                                currentFontSizeChange.value(next.roundToInt().toFloat())
+                        if (startDistance <= 0f) {
+                            startDistance = distance
+                            startSize = pinchFontSize ?: currentFontSize.value
+                        } else if (distance > 0f) {
+                            val next = (startSize * distance / startDistance).coerceIn(12f, 28f).roundToInt().toFloat()
+                            if (next != (pinchFontSize ?: currentFontSize.value)) {
+                                pinchFontSize = next
+                                pendingSize = next
                             }
                         }
                         event.changes.forEach { it.consume() }
-                    } else startDistance = 0f
+                    } else {
+                        startDistance = 0f
+                    }
                 } while (event.changes.any { it.pressed })
+                val committed = pendingSize
+                if (committed != null && committed != currentFontSize.value) {
+                    currentFontSizeChange.value(committed)
+                }
             }
         }.border(
             width = 1.dp,
-            color = if (editorFocused) {
-                colors.primary
-            } else {
-                colors.outlineVariant
-            },
+            color = colors.outlineVariant,
             shape = RoundedCornerShape(18.dp)
         ),
         shape = RoundedCornerShape(18.dp),
@@ -332,10 +278,15 @@ internal fun EditorArea(
         )
     ) {
         Column(Modifier.fillMaxSize()) {
-            if (activeWork?.isSample == true) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(textTranslator("サンプル・閲覧専用", emptyArray()),
-                    style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            if (activeWork?.isSample == true) Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    textTranslator("サンプル・閲覧専用", emptyArray()),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f)
+                )
                 TextButton(onClick = onCopySample, enabled = !sessionViewModel.assetBusy) {
                     Text(textTranslator("コピーして編集", emptyArray()))
                 }
@@ -344,13 +295,17 @@ internal fun EditorArea(
             val hasMultipleFiles = projectFiles.size > 1
             if (hasMultipleFiles) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
-                        FileTabs(projectFiles, selectedEditorFile,
-                            dirtyFiles = dirtyFiles, unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
-                            enabled = !sessionViewModel.editorInputLocked) {
+                        FileTabs(
+                            projectFiles,
+                            selectedEditorFile,
+                            dirtyFiles = dirtyFiles,
+                            unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
+                            enabled = !sessionViewModel.editorInputLocked
+                        ) {
                             if (selectedEditorFile != it) {
                                 focusManager.clearFocus(force = true)
                                 onFocusChange(false)
@@ -358,32 +313,30 @@ internal fun EditorArea(
                             }
                         }
                     }
-                    if (editorFocused && previewHasChanges) {
-                        TextButton(onClick = onRunChanges, enabled = !readOnly,
-                            contentPadding = PaddingValues(horizontal = 6.dp)) {
-                            Text(textTranslator("変更を実行", emptyArray()), style = MaterialTheme.typography.labelSmall,
-                                color = colors.tertiary)
+                    if (!readOnly && onOpenProjectFiles != null) {
+                        IconButton(
+                            onClick = onOpenProjectFiles,
+                            enabled = !sessionViewModel.editorInputLocked,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = textTranslator("ファイルを追加", emptyArray()),
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.onSurfaceVariant
+                            )
                         }
-                    }
-                }
-            } else if (editorFocused && previewHasChanges) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onRunChanges, enabled = !readOnly,
-                        contentPadding = PaddingValues(horizontal = 6.dp)) {
-                        Text(textTranslator("変更を実行", emptyArray()), style = MaterialTheme.typography.labelSmall,
-                            color = colors.tertiary)
                     }
                 }
             }
             inlineSearch()
             if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
-                Text(textTranslator("前回の実行時に発生したエラーです", emptyArray()),
+                Text(
+                    textTranslator("前回の実行時に発生したエラーです", emptyArray()),
                     Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall, color = colors.tertiary)
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.tertiary
+                )
             }
             val latestError = if (showErrorBanner && errorsCurrent) {
                 consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
@@ -391,30 +344,85 @@ internal fun EditorArea(
             if (latestError != null) {
                 val errorFile = latestError.file ?: editingFile
                 val errorLine = latestError.line
+                val hintKey = remember(latestError.message, editingText, activeWork?.p5Version) {
+                    p5ErrorDiagnosticHint(latestError.message, editingText, activeWork?.p5Version)
+                }
                 Surface(
-                    onClick = { if (errorLine != null) onJumpToSource(errorFile, errorLine) },
-                    enabled = errorLine != null,
+                    onClick = {
+                        if (errorLine != null) onJumpToSource(errorFile, errorLine)
+                        else errorBannerExpanded = !errorBannerExpanded
+                    },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                     shape = RoundedCornerShape(10.dp),
                     color = colors.errorContainer,
                     contentColor = colors.onErrorContainer
                 ) {
-                    Row(
-                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = (if (errorLine != null) "${errorFile}:$errorLine  " else "") +
-                                latestError.message.lineSequence().firstOrNull().orEmpty(),
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                        if (errorLine != null) {
-                            Spacer(Modifier.width(8.dp))
-                            Text(textTranslator("移動", emptyArray()),
-                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = (if (errorLine != null) "${errorFile}:$errorLine  " else "") +
+                                    latestError.message.lineSequence().firstOrNull().orEmpty(),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = if (errorBannerExpanded) 6 else 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (errorLine != null) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    textTranslator("移動", emptyArray()),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            IconButton(
+                                onClick = { errorBannerExpanded = !errorBannerExpanded },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Text(
+                                    text = if (errorBannerExpanded) "▴" else "▾",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                        AnimatedVisibility(visible = errorBannerExpanded || hintKey != null) {
+                            Column(
+                                modifier = Modifier.padding(top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (errorBannerExpanded && latestError.message.lines().size > 1) {
+                                    Text(
+                                        text = latestError.message,
+                                        fontFamily = codeFontFamily,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                if (hintKey != null) {
+                                    Text(
+                                        text = textTranslator(hintKey, emptyArray()),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                if (errorBannerExpanded) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        TextButton(
+                                            onClick = { clipboard.setText(AnnotatedString(latestError.copyText())) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Text(
+                                                textTranslator("エラーをコピー", emptyArray()),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = colors.onErrorContainer
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -426,17 +434,20 @@ internal fun EditorArea(
                 val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
                 val localDensity = LocalDensity.current
                 val gutterMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-                val gutterPixels = remember(gutterMeasurer, hasFolds, showLineNumbers, lineNumberDigits,
-                    codeFontFamily, editorFontSize, localDensity) {
-                    ('0'..'9').maxOf { digit ->
-                        gutterMeasurer.measure(
-                            AnnotatedString((if (hasFolds) "▾" else "") +
-                                (if (showLineNumbers) digit.toString().repeat(lineNumberDigits) else "")),
-                            style = TextStyle(fontFamily = codeFontFamily, fontSize = editorFontSize.sp,
-                                fontWeight = FontWeight.Bold), softWrap = false
-                        ).size.width
+                val singleDigitAndFoldWidth = remember(gutterMeasurer, codeFontFamily, effectiveFontSize, localDensity) {
+                    val style = TextStyle(
+                        fontFamily = codeFontFamily,
+                        fontSize = effectiveFontSize.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val maxDigit = ('0'..'9').maxOf { digit ->
+                        gutterMeasurer.measure(AnnotatedString(digit.toString()), style = style, softWrap = false).size.width
                     }
+                    val foldArrow = gutterMeasurer.measure(AnnotatedString("▾"), style = style, softWrap = false).size.width
+                    maxDigit to foldArrow
                 }
+                val gutterPixels = (if (hasFolds) singleDigitAndFoldWidth.second else 0) +
+                    (if (showLineNumbers) singleDigitAndFoldWidth.first * lineNumberDigits else 0)
                 val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
                 val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
                 LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
@@ -467,7 +478,6 @@ internal fun EditorArea(
                     onClearNavigationTarget()
                 }
                 val contentMinHeight = (maxHeight - 32.dp).coerceAtLeast(0.dp)
-                val gutterDividerColor = colors.outlineVariant
 
                 Row(
                     modifier = Modifier
@@ -476,42 +486,37 @@ internal fun EditorArea(
                         .padding(vertical = 16.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    if (showLineNumbers || foldRegions.isNotEmpty()) {
-                        Text(
-                            text = gutterTextState.value,
-                            softWrap = false,
-                            onTextLayout = { if (!it.hasSameEditorLines(gutterLayout)) gutterLayout = it },
-                            modifier = Modifier
-                                .width(gutterWidth)
-                                .pointerInput(editingKey) {
-                                    detectTapGestures { position -> currentGutterTap(position) }
-                                }
-                                .semantics {
-                                    customActions = foldsByLine.asSequence().mapNotNull { (line, fold) ->
-                                        if (projection.hidden.any { fold.open > it.open && fold.close <= it.close }) null
-                                        else CustomAccessibilityAction(textTranslator(
-                                            if (fold.open in collapsedFolds) "%s行目を展開" else "%s行目を折りたたむ",
-                                            arrayOf(line + 1)
-                                        )) {
-                                            toggleFold(fold); true
-                                        }
-                                    }.take(24).toList()
-                                }
-                                .heightIn(min = contentMinHeight)
-                                .drawBehind {
-                                    drawLine(
-                                        color = gutterDividerColor,
-                                        start = androidx.compose.ui.geometry.Offset(size.width, 0f),
-                                        end = androidx.compose.ui.geometry.Offset(size.width, size.height),
-                                        strokeWidth = 1.dp.toPx()
-                                    )
-                                }
-                                .padding(end = 5.dp),
-                            color = colors.onSurfaceVariant.copy(alpha = 0.72f),
-                            fontFamily = codeFontFamily,
-                            fontSize = editorFontSize.sp,
-                            lineHeight = (editorFontSize * 1.55f).sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                    if (showLineNumbers || hasFolds) {
+                        EditorGutter(
+                            documentKey = editingKey,
+                            layout = editorTextLayout,
+                            displayText = displayText,
+                            projection = projection,
+                            starts = logicalLineStarts,
+                            folds = foldsByLine,
+                            collapsed = collapsedFolds,
+                            errors = editorErrorLines,
+                            numbers = showLineNumbers,
+                            digits = lineNumberDigits,
+                            width = gutterWidth,
+                            minimumHeight = contentMinHeight,
+                            viewportHeight = with(localDensity) { maxHeight.toPx() },
+                            scroll = editorScrollState,
+                            style = TextStyle(
+                                fontFamily = codeFontFamily,
+                                fontSize = effectiveFontSize.sp,
+                                lineHeight = (effectiveFontSize * 1.55f).sp,
+                                color = colors.onSurfaceVariant.copy(alpha = 0.38f)
+                            ),
+                            errorColor = colors.error,
+                            dividerColor = Color.Transparent,
+                            activeLine = activeLineNumber,
+                            activeColor = colors.primary,
+                            onFold = currentToggleFold,
+                            onError = { errorTooltipLine = it },
+                            foldDescription = { closed, line ->
+                                textTranslator(if (closed) "%s行目を展開" else "%s行目を折りたたむ", arrayOf(line))
+                            }
                         )
                     }
 
@@ -533,7 +538,7 @@ internal fun EditorArea(
                                         sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
                                     } else onApplyEditorChange(
                                         if (autoIndent && (isJavaScriptProjectFile(editingFile) ||
-                                            projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) &&
+                                                projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) &&
                                             editingValue.composition == null && it.composition == null) {
                                             applyAutomaticIndent(editingValue, it)
                                         } else {
@@ -549,8 +554,9 @@ internal fun EditorArea(
                                 )
                                 .heightIn(min = contentMinHeight)
                                 .padding(
-                                    start = if (showLineNumbers || foldRegions.isNotEmpty()) 6.dp else 12.dp,
-                                    end = 16.dp
+                                    start = if (showLineNumbers || hasFolds) 8.dp else 14.dp,
+                                    end = 16.dp,
+                                    bottom = 28.dp
                                 )
                                 .focusRequester(editorFocusRequester)
                                 .onFocusChanged {
@@ -559,8 +565,8 @@ internal fun EditorArea(
                             textStyle = TextStyle(
                                 fontFeatureSettings = fontFeatures,
                                 fontFamily = codeFontFamily,
-                                fontSize = editorFontSize.sp,
-                                lineHeight = (editorFontSize * 1.55f).sp,
+                                fontSize = effectiveFontSize.sp,
+                                lineHeight = (effectiveFontSize * 1.55f).sp,
                                 color = colors.onSurface
                             ),
                             visualTransformation = foldedHighlighter,
@@ -569,24 +575,99 @@ internal fun EditorArea(
                         )
                     }
                 }
+
+                // Bottom-Right Minimal Floating Status & Run Changes Pill (Zero layout shift)
+                val showRunAction = !readOnly && previewHasChanges
+                val statsText = "${editingText.length}c · ${logicalLineStarts.size}L"
+                if (showRunAction || editorFocused) {
+                    Surface(
+                        onClick = { if (showRunAction) onRunChanges() },
+                        enabled = showRunAction,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 10.dp, bottom = 8.dp)
+                            .semantics {
+                                if (showRunAction) contentDescription = textTranslator("変更を実行", emptyArray())
+                            },
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (showRunAction) colors.tertiaryContainer else colors.surface.copy(alpha = 0.85f),
+                        contentColor = if (showRunAction) colors.onTertiaryContainer else colors.onSurfaceVariant.copy(alpha = 0.65f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (showRunAction) colors.tertiary.copy(alpha = 0.5f) else colors.outlineVariant.copy(alpha = 0.5f)
+                        ),
+                        tonalElevation = 0.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            if (showRunAction) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_play),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = textTranslator("変更を実行", emptyArray()),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "· $statsText",
+                                    fontFamily = codeFontFamily,
+                                    fontSize = 10.sp,
+                                    color = colors.onTertiaryContainer.copy(alpha = 0.75f)
+                                )
+                            } else {
+                                Text(
+                                    text = statsText,
+                                    fontFamily = codeFontFamily,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
     if (errorsCurrent && errorTooltipLine != null) {
-        val errorDetail = consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.file == editingFile && it.workId == activeWorkId && it.line == errorTooltipLine }
+        val errorDetail = consoleEntries.lastOrNull {
+            it.level == ConsoleLevel.ERROR && it.file == editingFile && it.workId == activeWorkId && it.line == errorTooltipLine
+        }
         if (errorDetail != null) {
-            AlertDialog(
+            val hintKey = p5ErrorDiagnosticHint(errorDetail.message, editingText, activeWork?.p5Version)
+            EditSettingsDialog(
                 onDismissRequest = { errorTooltipLine = null },
                 title = { Text(textTranslator("エラー詳細", emptyArray())) },
-                text = { Text(errorDetail.message) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(errorDetail.message, fontFamily = codeFontFamily, style = MaterialTheme.typography.bodySmall)
+                        if (hintKey != null) {
+                            Text(
+                                text = textTranslator(hintKey, emptyArray()),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                },
                 confirmButton = {
                     TextButton(onClick = { errorTooltipLine = null }) {
                         Text(textTranslator("閉じる", emptyArray()))
                     }
                 },
-                containerColor = colors.errorContainer,
-                titleContentColor = colors.onErrorContainer,
-                textContentColor = colors.onErrorContainer
+                dismissButton = {
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(errorDetail.copyText()))
+                        errorTooltipLine = null
+                    }) {
+                        Text(textTranslator("エラーをコピー", emptyArray()))
+                    }
+                }
             )
         }
     }

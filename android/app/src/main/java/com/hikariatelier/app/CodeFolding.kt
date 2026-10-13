@@ -180,10 +180,13 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         return preceding >= 0 && offset < hidden[preceding].close
     }
     private var cachedInput: AnnotatedString? = null
+    private var cachedInputHash: Int = 0
     private var cachedResult: TransformedText? = null
     fun transform(text: AnnotatedString): TransformedText {
         if (text.text != source || hidden.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
-        if (text == cachedInput) return cachedResult!!
+        if (text === cachedInput) return cachedResult!!
+        val inputHash = text.hashCode()
+        if (inputHash == cachedInputHash && text == cachedInput) return cachedResult!!
         val output = AnnotatedString.Builder()
         var from = 0
         for (fold in hidden) {
@@ -194,6 +197,7 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         output.append(text.subSequence(from, text.length))
         return TransformedText(output.toAnnotatedString(), this).also {
             cachedInput = text
+            cachedInputHash = inputHash
             cachedResult = it
         }
     }

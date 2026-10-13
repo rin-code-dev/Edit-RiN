@@ -102,31 +102,9 @@
     };
   }
 
-  // 2. Optimize offscreen 2D canvas readbacks (e.g. p5.MediaElement.loadPixels, image readbacks)
-  // by ensuring willReadFrequently is true for offscreen helper canvases, eliminating GPU stalls and Chromium warnings.
-  if (typeof HTMLCanvasElement !== 'undefined' && HTMLCanvasElement.prototype) {
-    const origGetContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (type, attributes) {
-      if (type === '2d') {
-        const isMainDisplay = Boolean(
-          this.id === 'defaultCanvas0' ||
-          this.classList?.contains('p5Canvas') ||
-          this.parentNode ||
-          this.isConnected
-        );
-        if (!isMainDisplay) {
-          if (attributes && typeof attributes === 'object') {
-            if (attributes.willReadFrequently === undefined) {
-              attributes = Object.assign({ willReadFrequently: true }, attributes);
-            }
-          } else {
-            attributes = { willReadFrequently: true };
-          }
-        }
-      }
-      return origGetContext.call(this, type, attributes);
-    };
-  }
+  // Keep artwork canvas options intact, including canvases created before DOM attachment.
+  // Readback-heavy host helpers opt in to willReadFrequently at their own call sites.
+
 })();
   
 
@@ -1315,11 +1293,17 @@ function attachP5(constructor) {
   }
   const origDraw = constructor.prototype._draw;
   if (typeof origDraw === 'function') {
-    constructor.prototype._draw = async function (...args) {
-      if (this._renderer?.contextReady) {
-        try { await this._renderer.contextReady; } catch (_) {}
-      }
-      return origDraw.apply(this, args);
+    const readyContexts = new WeakMap();
+    constructor.prototype._draw = function (...args) {
+      const renderer = this._renderer;
+      const readiness = renderer?.contextReady;
+      // Ordinary 2D/WebGL and initialized WebGPU frames keep p5's direct draw path.
+      // Replacing a renderer or its readiness promise must wait for initialization again.
+      if (!readiness || readyContexts.get(renderer) === readiness) return origDraw.apply(this, args);
+      return Promise.resolve(readiness).catch(() => {}).then(() => {
+        readyContexts.set(renderer, readiness);
+        return origDraw.apply(this, args);
+      });
     };
   }
   const download = constructor.prototype.downloadFile;
