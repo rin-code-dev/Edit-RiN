@@ -15,10 +15,32 @@ class WorkManagementViewModelTest {
         var persisted: WorkStore? = null
         var selectedId: String? = null
         var duringSave: (() -> Unit)? = null
+        var lowPriorityCalls = mutableListOf<String>()
+        var deferredIds = emptySet<String>()
+        var duringLowPriorityLoad: ((String) -> Unit)? = null
+
+        override fun loadResult(folderUri: Uri?, eager: Boolean): WorkLoadResult {
+            val p = persisted ?: return WorkLoadResult.Empty
+            val selected = selectedWorkId(folderUri)?.takeIf { id -> p.works.any { it.id == id } }
+            val store = if (selected == null) p else p.copy(activeWorkId = selected)
+            val unloaded = if (eager) emptySet() else deferredIds
+            return WorkLoadResult.Loaded(store.copy(works = store.works.map { work ->
+                if (work.id in unloaded) Work(work.id, work.title, "", isPinned = work.isPinned).apply {
+                    bodyLoaded = false
+                } else snapshotWork(work)
+            }), deferredWorkIds = unloaded)
+        }
         override fun loadLocal() = persisted
         override fun loadFolder(folderUri: Uri) = persisted
         override fun selectedWorkId(folderUri: Uri?) = selectedId
         override fun rememberSelectedWork(folderUri: Uri?, activeId: String) { selectedId = activeId }
+        override fun loadWorkLowPriority(folderUri: Uri?, workId: String): Work? {
+            lowPriorityCalls.add(workId)
+            duringLowPriorityLoad?.invoke(workId)
+            return persisted?.works?.find { it.id == workId }?.let(::snapshotWork)
+        }
+        override fun loadWork(folderUri: Uri?, workId: String): Work? =
+            persisted?.works?.find { it.id == workId }?.let(::snapshotWork)
         override fun save(folderUri: Uri?, works: List<Work>, activeId: String): Boolean {
             calls++
             duringSave?.invoke()
@@ -34,7 +56,7 @@ class WorkManagementViewModelTest {
         undoStack.add(TextFieldValue("before editing"))
     }
     private fun vm(session: EditorSessionViewModel, store: Store, scope: CoroutineScope) =
-        WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = scope)
+        WorkManagementViewModel(session, store, io = Dispatchers.Unconfined, operationScope = scope, main = Dispatchers.Unconfined)
 
     @Test fun thumbnailReadDoesNotSelectSaveOrReplaceUnsavedEditorContent() = runBlocking {
         val session = session(); val store = Store(); val vm = vm(session, store, this)
@@ -980,6 +1002,165 @@ class WorkManagementViewModelTest {
         withTimeout(5000) { job.join() }
         assertEquals("two", session.activeWorkIdState.value)
         assertEquals("unsaved", store.persisted!!.works.first { it.id == "one" }.code)
+    }
+
+    private suspend fun prefetchFixture(scope: CoroutineScope, count: Int = 5):
+        Triple<EditorSessionViewModel, Store, WorkManagementViewModel> {
+        val session = EditorSessionViewModel()
+        val store = Store().apply {
+            persisted = WorkStore((1..count).map { index ->
+                Work("$index", "Work $index", "saved code $index",
+                    files = mutableMapOf("helper.js" to "helper $index"),
+                    isPinned = index == 3)
+            }, "1")
+            deferredIds = (2..count).map { "$it" }.toSet()
+        }
+        val model = vm(session, store, scope)
+        model.initialize { emptyList() }
+        model.workMenuExpanded = true
+        return Triple(session, store, model)
+    }
+
+    @Test fun prefetchPublishesIndependentBodiesOnlyForNearbyWorks() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        val placeholder = session.worksState.value.first { it.id == "4" }
+        assertFalse(placeholder.bodyLoaded)
+        session.editorValueState.value = TextFieldValue("unsaved editor")
+        model.prioritizeThumbnails(listOf("4", "5"))
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "5" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+        assertEquals(listOf("4", "5"), store.lowPriorityCalls)
+        val loaded = session.worksState.value.first { it.id == "4" }
+        assertNotSame(placeholder, loaded)
+        assertFalse(placeholder.bodyLoaded)
+        assertEquals("", placeholder.code)
+        assertEquals("saved code 4", loaded.code)
+        assertEquals("helper 4", loaded.files["helper.js"])
+        assertFalse(session.worksState.value.first { it.id == "3" }.bodyLoaded) // Pinned, but offscreen.
+        assertEquals("unsaved editor", session.editorValueState.value.text)
+        assertEquals("1", session.activeWorkIdState.value)
+        assertEquals(0, store.calls)
+    }
+
+    @Test fun prefetchStopsOnCloseAndEmptyDisposalPriorityCannotRestartIt() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        store.duringLowPriorityLoad = {
+            model.workMenuExpanded = false
+            model.prioritizeThumbnails(emptyList())
+        }
+        model.prioritizeThumbnails(listOf("2", "3"))
+        model.setPrefetchAllowed(true)
+        delay(100)
+        assertEquals(listOf("2"), store.lowPriorityCalls)
+        assertFalse(session.worksState.value.first { it.id == "2" }.bodyLoaded)
+        model.requestPrefetch()
+        delay(50)
+        assertEquals(listOf("2"), store.lowPriorityCalls)
+    }
+
+    @Test fun prefetchRejectsResultAfterLeavingForegroundAndResumesWhenAllowed() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        store.duringLowPriorityLoad = { model.setPrefetchAllowed(false) }
+        model.prioritizeThumbnails(listOf("2"))
+        model.setPrefetchAllowed(true)
+        delay(50)
+        assertFalse(session.worksState.value.first { it.id == "2" }.bodyLoaded)
+        store.duringLowPriorityLoad = null
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "2" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+        assertEquals(listOf("2", "2"), store.lowPriorityCalls)
+    }
+
+    @Test fun prefetchWaitsForScrollingAndSnapshotOperations() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        model.prioritizeThumbnails(listOf("2"))
+        model.thumbnailScrolling = true
+        model.setPrefetchAllowed(true)
+        delay(50)
+        assertTrue(store.lowPriorityCalls.isEmpty())
+        model.thumbnailScrolling = false
+        session.snapshotOperationWorkId = "1"
+        model.requestPrefetch()
+        delay(50)
+        assertTrue(store.lowPriorityCalls.isEmpty())
+        session.snapshotOperationWorkId = null
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "2" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+    }
+
+    @Test fun prefetchDoesNotRunWhileWorkIsSaving() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        model.prioritizeThumbnails(listOf("2"))
+        session.editorValueState.value = TextFieldValue("modified")
+        store.duringSave = {
+            model.setPrefetchAllowed(true)
+            assertTrue(store.lowPriorityCalls.isEmpty())
+        }
+        model.saveCurrentWork()!!.join()
+        model.setPrefetchAllowed(false)
+        assertTrue(store.lowPriorityCalls.isEmpty())
+    }
+
+    @Test fun prefetchReordersAnAlreadyStartedReadWithoutPublishingItsStaleResult() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        store.duringLowPriorityLoad = { id ->
+            if (id == "2") model.prioritizeThumbnails(listOf("4", "3"))
+        }
+        model.prioritizeThumbnails(listOf("2", "3"))
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "3" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+        assertEquals(listOf("2", "4", "3"), store.lowPriorityCalls)
+        assertFalse(session.worksState.value.first { it.id == "2" }.bodyLoaded)
+    }
+
+    @Test fun prefetchCountBudgetSurvivesReopeningAndPriorityChanges() = runBlocking {
+        val (session, store, model) = prefetchFixture(this, count = 16)
+        model.prioritizeThumbnails((2..13).map { "$it" })
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "13" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+        model.workMenuExpanded = false
+        model.prioritizeThumbnails(emptyList())
+        model.workMenuExpanded = true
+        model.prioritizeThumbnails(listOf("14", "15", "16"))
+        model.setPrefetchAllowed(true)
+        delay(100)
+        assertEquals(12, store.lowPriorityCalls.size)
+        assertFalse(session.worksState.value.first { it.id == "14" }.bodyLoaded)
+        model.setPrefetchAllowed(false)
+        model.selectWork("14", false)!!.join()
+        assertEquals("saved code 14", session.editorValueState.value.text)
+    }
+
+    @Test fun prefetchTextBudgetIncludesSupportingFilesAndHistory() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        val large = store.persisted!!.works.first { it.id == "2" }
+        large.files["large.js"] = "x".repeat(1024 * 1024)
+        large.revisions.add(WorkRevision("x".repeat(1024 * 1024), 1L))
+        model.prioritizeThumbnails(listOf("2", "3"))
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "3" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+        assertFalse(session.worksState.value.first { it.id == "2" }.bodyLoaded)
+        assertEquals(listOf("2", "3"), store.lowPriorityCalls)
+    }
+    @Test fun prefetchTextBudgetIsCumulativeAcrossPriorityChanges() = runBlocking {
+        val (session, store, model) = prefetchFixture(this)
+        store.persisted!!.works.filter { it.id in setOf("2", "3") }.forEach {
+            it.files["large.js"] = "x".repeat(1100 * 1024)
+        }
+        model.prioritizeThumbnails(listOf("2"))
+        model.setPrefetchAllowed(true)
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "2" }.bodyLoaded) delay(10) }
+        model.prioritizeThumbnails(listOf("3", "4"))
+        withTimeout(3000) { while (!session.worksState.value.first { it.id == "4" }.bodyLoaded) delay(10) }
+        model.setPrefetchAllowed(false)
+        assertFalse(session.worksState.value.first { it.id == "3" }.bodyLoaded)
+        assertEquals(listOf("2", "3", "4"), store.lowPriorityCalls)
     }
 
 }

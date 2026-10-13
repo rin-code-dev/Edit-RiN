@@ -146,7 +146,8 @@ internal class PreviewController(
     fun runSketch(
         source: String = models.session.editorValueState.value.text,
         supportingFiles: Map<String, String> = currentWork()?.files.orEmpty(),
-        sourceAssets: Map<String, ProjectAsset> = currentWork()?.assets.orEmpty()
+        sourceAssets: Map<String, ProjectAsset> = currentWork()?.assets.orEmpty(),
+        awaitTransition: (suspend () -> Unit)? = null
     ) {
         if (disposed) return
         val recording = models.recording
@@ -185,6 +186,9 @@ internal class PreviewController(
                 if (disposed || !session.publish(preparedRun)) return@launch
                 runInput = input
                 prepared = true
+                awaitTransition?.invoke()
+                ensureActive()
+                if (disposed || !session.isRequested(input.token)) return@launch
                 sensors.setEnabled(usesSensors)
                 updateSensorPlayback()
                 webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }

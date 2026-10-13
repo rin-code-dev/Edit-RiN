@@ -1209,7 +1209,7 @@ test('addon selection follows the actual custom p5 version rather than the work 
   assert.equal(writes.length,0);assert.match(r.errors[0],/p5.VERSION/);
 });
 
-test('video elements receive transparent poster and offscreen canvas sets willReadFrequently', () => {
+test('video posters remain transparent and artwork canvas context options stay unchanged', () => {
   const recorded = [];
   class FakeCanvas {
     constructor(id = '', isConnected = false) {
@@ -1228,15 +1228,23 @@ test('video elements receive transparent poster and offscreen canvas sets willRe
   const video = r.context.document.createElement('video');
   assert.match(video.getAttribute('poster') || '', /^data:image\/gif/);
 
-  // 2. Offscreen canvas gets willReadFrequently: true
+  // Detached artwork may be attached later or composited via drawImage; keep GPU eligibility.
   const offscreen = new FakeCanvas('', false);
   offscreen.getContext('2d');
-  assert.equal(recorded[0].attrs.willReadFrequently, true);
+  assert.equal(recorded[0].attrs, undefined);
 
-  // 3. Main presentation canvas does not get forced willReadFrequently
+  // Main presentation canvas also retains the browser's defaults.
   const main = new FakeCanvas('defaultCanvas0', true);
   main.getContext('2d');
   assert.equal(recorded[1].attrs, undefined);
+  const explicit = { willReadFrequently: false, alpha: false };
+  offscreen.getContext('2d', explicit);
+  assert.equal(recorded[2].attrs, explicit);
+  const readback = { willReadFrequently: true };
+  offscreen.getContext('2d', readback);
+  assert.equal(recorded[3].attrs, readback);
+  offscreen.getContext('webgl2');
+  assert.equal(recorded[4].attrs, undefined);
 });
 
 
@@ -1275,4 +1283,57 @@ test('an error before visual handoff never uncovers an unfinished preview', () =
   r.instances.forEach(instance => { r.setup(instance); r.hooks.post.call(instance); });
   r.context.__editKiroRuntimeHasError = true; r.flush(); r.flush();
   assert.deepEqual(visual, []);
+});
+
+
+test('initialized draw paths preserve direct results and do not add a promise per frame', async () => {
+  const r = runner();
+  function DirectP5() {}
+  DirectP5.prototype._draw = function (value) { return { owner: this, value }; };
+  r.context.p5 = DirectP5;
+  const sketch = new DirectP5();
+  const direct = sketch._draw(120);
+  assert.equal(direct.owner, sketch);
+  assert.equal(direct.value, 120);
+  assert.equal(direct.then, undefined);
+  sketch._renderer = { contextReady: Promise.resolve() };
+  await sketch._draw(0);
+  for (let frame = 0; frame < 240; frame++) {
+    const result = sketch._draw(frame);
+    assert.equal(result.then, undefined);
+    assert.equal(result.value, frame);
+  }
+});
+
+test('draw waits again when the GPU renderer or its initialization promise changes', async () => {
+  const r = runner();
+  let drawn = 0;
+  function GpuP5() {}
+  GpuP5.prototype._draw = () => ++drawn;
+  r.context.p5 = GpuP5;
+  const sketch = new GpuP5();
+  for (let generation = 0; generation < 3; generation++) {
+    let ready;
+    const contextReady = new Promise(resolve => { ready = resolve; });
+    if (generation < 2) sketch._renderer = { contextReady };
+    else sketch._renderer.contextReady = contextReady;
+    const before = drawn;
+    const pending = sketch._draw();
+    assert.equal(drawn, before);
+    ready();
+    assert.equal(await pending, before + 1);
+    assert.equal(sketch._draw(), before + 2);
+  }
+});
+
+test('GPU initialization rejection and asynchronous draw results retain their behavior', async () => {
+  const r = runner();
+  const drawn = Promise.resolve('async frame');
+  function AsyncP5() {}
+  AsyncP5.prototype._draw = () => drawn;
+  r.context.p5 = AsyncP5;
+  const sketch = new AsyncP5();
+  sketch._renderer = { contextReady: Promise.reject(new Error('GPU unavailable')) };
+  assert.equal(await sketch._draw(), 'async frame');
+  assert.equal(sketch._draw(), drawn);
 });

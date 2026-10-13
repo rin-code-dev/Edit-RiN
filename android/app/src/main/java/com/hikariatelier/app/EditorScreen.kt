@@ -61,8 +61,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -201,7 +204,7 @@ internal fun EditorScreen(
     val galleryTarget = workMenuExpanded
     val galleryProgress by animateFloatAsState(
         targetValue = if (galleryTarget) 1f else 0f,
-        animationSpec = tween(GALLERY_MOTION_DURATION_MS, easing = androidx.compose.animation.core.LinearEasing),
+        animationSpec = tween(GALLERY_MOTION_DURATION_MS, easing = FastOutSlowInEasing),
         label = "inlineWorkGallery"
     )
     val galleryPresent = galleryTarget || galleryProgress > 0f
@@ -649,7 +652,7 @@ internal fun EditorScreen(
     }
 
 
-    fun runSketch() = preview.runSketch()
+    fun runSketch(awaitTransition: (suspend () -> Unit)? = null) = preview.runSketch(awaitTransition = awaitTransition)
 
     LaunchedEffect(sessionViewModel.assetPreviewRevision) {
         if (sessionViewModel.assetPreviewRevision > 0) runSketch()
@@ -725,7 +728,16 @@ internal fun EditorScreen(
         if (event.closeHistory) { pendingRevision = null; showHistoryDialog = false }
         if (event.openSettings) showSettings = true
         if (event.openFolder) folderLauncher.launch(selectedFolderUri)
-        if (event.forceRun || (event.rerun && autoRun)) runSketch()
+        if (event.forceRun || (event.rerun && autoRun)) {
+            val awaitClose: (suspend () -> Unit)? = if (!workMenuExpanded && galleryProgress > 0f) {
+                {
+                    withTimeoutOrNull(1000L) {
+                        androidx.compose.runtime.snapshotFlow { galleryProgress == 0f || workMenuExpanded }.first { it }
+                    }
+                }
+            } else null
+            runSketch(awaitTransition = awaitClose)
+        }
     }
     LaunchedEffect(workManagementViewModel) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -824,6 +836,27 @@ internal fun EditorScreen(
             gallerySelectionPrepared = false
         }
         workMenuExpanded = false
+    }
+
+    LaunchedEffect(workManagementViewModel, lifecycle, preview) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                combine(
+                    snapshotFlow {
+                        workMenuExpanded && !workManagementViewModel.thumbnailScrolling &&
+                            !workManagementViewModel.workSaving && !sessionViewModel.assetBusy &&
+                            sessionViewModel.snapshotOperationWorkId == null &&
+                            !recordingViewModel.isPreviewRecording && !recordingViewModel.isRecordingSaving &&
+                            recordingViewModel.pendingRecordingFormat == null &&
+                            !preview.screenshotBusy && !preview.isLoading
+                    },
+                    preview.performance.measurements.loadChanges
+                ) { idle, load -> idle && !load.heavyLoad && !load.jankActive }
+                    .collect { workManagementViewModel.setPrefetchAllowed(it) }
+            } finally {
+                workManagementViewModel.setPrefetchAllowed(false)
+            }
+        }
     }
 
     // Capture the renderer's owner, which can differ from the selected work when auto-run is off.

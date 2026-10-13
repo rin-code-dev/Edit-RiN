@@ -14,6 +14,16 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
+internal fun defaultMaxCacheBytes(maxMemory: Long = Runtime.getRuntime().maxMemory()): Int =
+    (maxMemory / 8L).coerceIn(12L * 1024 * 1024, 48L * 1024 * 1024).toInt()
+
+internal fun defaultConcurrentPermits(cores: Int = Runtime.getRuntime().availableProcessors()): Int =
+    when {
+        cores >= 8 -> 4
+        cores >= 6 -> 3
+        else -> 2
+    }
+
 /** All preview consumers share decoded images and in-flight reads for this Activity. */
 @Suppress("DEPRECATION")
 internal class PreviewImageRepository(
@@ -21,10 +31,12 @@ internal class PreviewImageRepository(
     private val assets: AssetManager,
     parent: CoroutineScope,
     private val metrics: PerformanceMeasurements = PerformanceMeasurements(),
+    val maxCacheBytes: Int = defaultMaxCacheBytes(),
+    val concurrentPermits: Int = defaultConcurrentPermits(),
     private val decoder: (File) -> Bitmap? = { BitmapFactory.decodeFile(it.path) }
 ) {
     private data class Cached(val bitmap: Bitmap, val modified: Long, val length: Long)
-    private val bitmaps = object : LruCache<String, Cached>(12 * 1024 * 1024) {
+    private val bitmaps = object : LruCache<String, Cached>(maxCacheBytes) {
         override fun sizeOf(key: String, value: Cached) = value.bitmap.allocationByteCount
     }
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
@@ -32,7 +44,7 @@ internal class PreviewImageRepository(
     private val fileIds = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val lock = Any()
     private val reads = mutableMapOf<String, Deferred<Bitmap?>>()
-    private val permits = Semaphore(2)
+    private val permits = Semaphore(concurrentPermits)
     private val catalog = BundledThumbnailCatalog(assets)
     private val changesMutable = MutableSharedFlow<String?>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val changes = changesMutable.asSharedFlow()
@@ -125,6 +137,20 @@ internal class PreviewImageRepository(
         }
         return deferred.await()
     }
+    /** Bounded batches let multicore devices fill their decode slots without queuing the whole gallery. */
+    suspend fun prefetch(works: List<Work>) = coroutineScope {
+        for (batch in works.chunked(concurrentPermits)) {
+            ensureActive()
+            batch.map { work ->
+                async {
+                    val input = if (work.isSample)
+                        capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
+                    load(work.id, work, input)
+                }
+            }.awaitAll()
+        }
+    }
+
     suspend fun store(id: String, bytes: ByteArray, expectedModified: Long? = null, fingerprint: String? = null): Boolean =
         metrics.measure(PerformanceOperation.IMAGE_WRITE) {
             val file = file(id)

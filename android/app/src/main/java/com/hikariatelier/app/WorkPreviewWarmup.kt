@@ -37,8 +37,8 @@ internal class WorkPreviewWarmup(
     suspend fun run() = coroutineScope {
         val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
         val budget = kotlinx.coroutines.flow.MutableStateFlow(0)
-        val renderers = arrayOfNulls<ThumbnailRenderer>(2)
-        val jobs = arrayOfNulls<Job>(2)
+        val renderers = arrayOfNulls<ThumbnailRenderer>(MAX_THUMBNAIL_WORKERS)
+        val jobs = arrayOfNulls<Job>(MAX_THUMBNAIL_WORKERS)
         val retryAfter = mutableMapOf<String, Long>()
         var collection: Collection? = null
         var interaction = Interaction(emptyList(), "", true, false)
@@ -103,10 +103,16 @@ internal class WorkPreviewWarmup(
                 }
                 budget.value = if (busy()) 0 else count
                 jobs.forEachIndexed { index, job -> if (index >= budget.value) job?.cancel(ThumbnailInterruptedException()) }
+                // Release idle renderers immediately when thermal/memory/load budgets shrink.
+                renderers.forEachIndexed { index, renderer ->
+                    if (index >= budget.value && jobs[index] == null) {
+                        renderer?.close(); renderers[index] = null
+                    }
+                }
                 val now = android.os.SystemClock.elapsedRealtime()
                 val excluded = retryAfter.filterValues { it > now }.keys +
                     if (interaction.unsaved) setOf(interaction.active) else emptySet()
-                for (index in 0..1) {
+                for (index in jobs.indices) {
                     if (jobs[index] != null || index >= budget.value) continue
                     val (id, candidate) = queue.claim(interaction.priority, interaction.active, excluded) ?: continue
                     runningIds[index] = id
@@ -175,7 +181,7 @@ internal class WorkPreviewWarmup(
             renderers.forEach { it?.close() }; wake.close()
         }
     }
-    private val runningIds = arrayOfNulls<String>(2)
+    private val runningIds = arrayOfNulls<String>(MAX_THUMBNAIL_WORKERS)
 }
 
 @SuppressLint("SetJavaScriptEnabled")
