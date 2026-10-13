@@ -53,4 +53,48 @@ class EditorFoldAnalysisTest {
         val first = analysis.update(next)
         assertSame(first.regions, analysis.update(next.copy(selection = TextRange.Zero)).regions)
     }
+
+    @Test fun changeTrackerReusesDocumentChangeBetweenSyntaxAndFolds() {
+        val tracker = EditorChangeTracker()
+        val initial = TextFieldValue("function hello() {\n  return 1;\n}\n")
+        assertNull(tracker.update(initial))
+        val edited = TextFieldValue("function hello() {\n  return 42;\n}\n", TextRange(29))
+        val change = tracker.update(edited)
+        assertNotNull(change)
+        assertEquals(initial.text, change!!.before)
+        assertEquals(edited.text, change.after)
+        assertEquals(28, change.range.start)
+        assertEquals(29, change.range.oldEnd)
+        assertEquals(30, change.range.newEnd)
+        assertEquals(1, change.range.delta)
+    }
+
+    @Test fun editorGutterRowFormatsLineNumbersAndFoldArrows() {
+        val starts = listOf(0, 10, 25)
+        val fold = CodeFold(10, 20)
+        val folds = mapOf(1 to fold)
+
+        // First line: starts at 0, no fold, line 1
+        val row0 = editorGutterRow(0, 0, starts, folds, emptySet(), numbers = true, digits = 2)
+        assertNotNull(row0)
+        assertEquals(1, row0!!.logicalLine)
+        assertEquals("  1", row0.label)
+        assertNull(row0.fold)
+
+        // Continuation offset inside line 1: binarySearch returns negative -> null
+        val rowCont = editorGutterRow(1, 5, starts, folds, emptySet(), numbers = true, digits = 2)
+        assertNull(rowCont)
+
+        // Second line: fold open, expanded -> "▾ 2"
+        val row1 = editorGutterRow(2, 10, starts, folds, emptySet(), numbers = true, digits = 2)
+        assertNotNull(row1)
+        assertEquals(2, row1!!.logicalLine)
+        assertEquals("▾ 2", row1.label)
+        assertEquals(fold, row1.fold)
+
+        // Second line: collapsed -> "▸ 2"
+        val row1Collapsed = editorGutterRow(2, 10, starts, folds, setOf(10), numbers = true, digits = 2)
+        assertNotNull(row1Collapsed)
+        assertEquals("▸ 2", row1Collapsed!!.label)
+    }
 }

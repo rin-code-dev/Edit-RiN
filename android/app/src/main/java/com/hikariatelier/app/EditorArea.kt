@@ -110,10 +110,12 @@ internal fun EditorArea(
     }
 
     val currentEditorErrorLines by rememberUpdatedState(editorErrorLines)
-    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile, editingKey)
+    val changes = remember(editingKey) { EditorChangeTracker() }
+    val sharedChange = changes.update(editingValue)
+    val javascriptHighlighter = editorHighlight(editingText, darkEditorTheme, editorErrorLines, editingFile, editingKey, sharedChange)
 
     val foldSnapshot = if (isJavaScriptProjectFile(editingFile) ||
-        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingValue, editingKey)
+        projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) editorFoldRegions(editingValue, editingKey, change = sharedChange)
         else EditorFoldSnapshot(emptyList(), null, null)
     val parsedFoldRegions = foldSnapshot.regions
     val foldRegions = parsedFoldRegions.orEmpty()
@@ -178,118 +180,19 @@ internal fun EditorArea(
         }
     }
     val currentToggleFold by rememberUpdatedState(toggleFold)
-    var gutterLayout by remember(editingKey) { mutableStateOf<TextLayoutResult?>(null) }
     var editorTextLayout by remember(editingKey) {
         mutableStateOf<TextLayoutResult?>(null)
     }
 
     val lineIndex = remember(editingKey) { EditorLineIndex() }
-    val logicalLineStarts = remember(editingText, lineIndex) { lineIndex.update(editingText) }
+    val logicalLineStarts = remember(editingText, lineIndex) { lineIndex.update(editingText, sharedChange) }
 
     val foldsByLine = remember(foldRegions, logicalLineStarts) {
         foldRegions.groupBy { fold ->
             logicalLineStarts.binarySearch(fold.open).let { if (it >= 0) it else -it - 2 }
         }.mapValues { (_, regions) -> regions.first() }
     }
-    // Keep the gesture detector alive while text/layout/highlighting updates arrive.
-    // Restarting pointerInput between down/up silently cancels the user's tap.
-    val currentGutterTap by rememberUpdatedState<(androidx.compose.ui.geometry.Offset) -> Unit>({ position ->
-        val gutter = gutterLayout
-        val layout = editorTextLayout
-        if (gutter != null && layout != null && layout.layoutInput.text.text == displayText &&
-            position.y >= 0 && position.y < gutter.getLineBottom(gutter.lineCount - 1)) {
-            val visualLine = gutter.getLineForVerticalPosition(position.y)
-            if (visualLine < layout.lineCount) {
-                val original = projection.transformedToOriginal(layout.getLineStart(visualLine))
-                val line = logicalLineStarts.binarySearch(original)
-                if (line >= 0) {
-                    val fold = foldsByLine[line]
-                    val start = gutter.getLineStart(visualLine)
-                    val marker = gutter.layoutInput.text.text.getOrNull(start)
-                    val onArrow = fold != null && (marker == '▸' || marker == '▾') &&
-                        position.x <= gutter.getBoundingBox(start).right
-                    when (editorGutterAction(fold != null, (line + 1) in currentEditorErrorLines, onArrow)) {
-                        EditorGutterAction.FOLD -> fold?.let(currentToggleFold)
-                        EditorGutterAction.ERROR -> errorTooltipLine = line + 1
-                        null -> Unit
-                    }
-                }
-            }
-        }
-    })
     val lineNumberDigits = maxOf(1, logicalLineStarts.size.toString().length)
-    val hasFolds = foldRegions.isNotEmpty()
-
-    // Capture one layout for this source; the worker must not read changing Compose state.
-    val gutterSourceLayout = editorTextLayout
-    val gutterTextState = key(editingKey) {
-        produceState(
-            initialValue = AnnotatedString(""),
-            showLineNumbers,
-            hasFolds,
-            projection,
-            foldsByLine,
-            gutterSourceLayout,
-            logicalLineStarts,
-            lineNumberDigits,
-            editorErrorLines,
-            colors.error
-        ) {
-            // While BasicTextField measures the edited source, keep the last visual rows.
-            // Falling back to logical rows here shrinks wrapped gutters out of the viewport.
-            if (gutterSourceLayout != null && gutterSourceLayout.layoutInput.text.text != displayText) {
-                return@produceState
-            }
-            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                val visualStarts = gutterSourceLayout?.let { layout ->
-                    List(layout.lineCount) { visualLine ->
-                        projection.transformedToOriginal(layout.getLineStart(visualLine))
-                    }
-                } ?: logicalLineStarts.filterNot(projection::isHidden)
-
-                AnnotatedString.Builder().apply {
-                    visualStarts.forEachIndexed { visualIndex, offset ->
-                        val logicalIndex = logicalLineStarts.binarySearch(offset).let {
-                            if (it >= 0) it else -it - 2
-                        }.coerceAtLeast(0)
-                        val startsLogicalLine =
-                            logicalLineStarts.getOrNull(logicalIndex) == offset
-
-                        if (startsLogicalLine) {
-                            if (hasFolds) {
-                                val fold = foldsByLine[logicalIndex]
-                                append(when {
-                                    fold == null -> " "
-                                    fold.open in collapsedFolds -> "▸"
-                                    else -> "▾"
-                                })
-                            }
-                            val numberStart = length
-                            if (showLineNumbers) {
-                                append((logicalIndex + 1).toString().padStart(lineNumberDigits))
-                            }
-                            if (logicalIndex + 1 in editorErrorLines) {
-                                addStyle(
-                                    SpanStyle(
-                                        color = colors.error,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    numberStart,
-                                    length
-                                )
-                            }
-                        } else {
-                            append(" ".repeat((if (hasFolds) 1 else 0) + (if (showLineNumbers) lineNumberDigits else 0)))
-                        }
-
-                        if (visualIndex < visualStarts.lastIndex) {
-                            append('\n')
-                        }
-                    }
-                }.toAnnotatedString()
-            }
-        }
-    }
 
     Card(
         modifier = modifier.pointerInput(Unit) {
@@ -477,41 +380,32 @@ internal fun EditorArea(
                     verticalAlignment = Alignment.Top
                 ) {
                     if (showLineNumbers || foldRegions.isNotEmpty()) {
-                        Text(
-                            text = gutterTextState.value,
-                            softWrap = false,
-                            onTextLayout = { if (!it.hasSameEditorLines(gutterLayout)) gutterLayout = it },
-                            modifier = Modifier
-                                .width(gutterWidth)
-                                .pointerInput(editingKey) {
-                                    detectTapGestures { position -> currentGutterTap(position) }
-                                }
-                                .semantics {
-                                    customActions = foldsByLine.asSequence().mapNotNull { (line, fold) ->
-                                        if (projection.hidden.any { fold.open > it.open && fold.close <= it.close }) null
-                                        else CustomAccessibilityAction(textTranslator(
-                                            if (fold.open in collapsedFolds) "%s行目を展開" else "%s行目を折りたたむ",
-                                            arrayOf(line + 1)
-                                        )) {
-                                            toggleFold(fold); true
-                                        }
-                                    }.take(24).toList()
-                                }
-                                .heightIn(min = contentMinHeight)
-                                .drawBehind {
-                                    drawLine(
-                                        color = gutterDividerColor,
-                                        start = androidx.compose.ui.geometry.Offset(size.width, 0f),
-                                        end = androidx.compose.ui.geometry.Offset(size.width, size.height),
-                                        strokeWidth = 1.dp.toPx()
-                                    )
-                                }
-                                .padding(end = 5.dp),
-                            color = colors.onSurfaceVariant.copy(alpha = 0.72f),
-                            fontFamily = codeFontFamily,
-                            fontSize = editorFontSize.sp,
-                            lineHeight = (editorFontSize * 1.55f).sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End
+                        EditorGutter(
+                            documentKey = editingKey,
+                            layout = editorTextLayout,
+                            displayText = displayText,
+                            projection = projection,
+                            starts = logicalLineStarts,
+                            folds = foldsByLine,
+                            collapsed = collapsedFolds,
+                            errors = editorErrorLines,
+                            numbers = showLineNumbers,
+                            digits = lineNumberDigits,
+                            width = gutterWidth,
+                            minimumHeight = contentMinHeight,
+                            viewportHeight = with(localDensity) { maxHeight.toPx() },
+                            scroll = editorScrollState,
+                            style = TextStyle(
+                                fontFamily = codeFontFamily,
+                                fontSize = editorFontSize.sp,
+                                lineHeight = (editorFontSize * 1.55f).sp,
+                                color = colors.onSurfaceVariant.copy(alpha = 0.72f)
+                            ),
+                            errorColor = colors.error,
+                            dividerColor = gutterDividerColor,
+                            onFold = currentToggleFold,
+                            onError = { errorTooltipLine = it },
+                            foldDescription = { closed, line -> textTranslator(if (closed) "%s行目を展開" else "%s行目を折りたたむ", arrayOf(line)) }
                         )
                     }
 

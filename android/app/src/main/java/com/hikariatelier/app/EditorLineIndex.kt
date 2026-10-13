@@ -5,16 +5,15 @@ internal class EditorLineIndex {
     private var source = ""
     private var starts: List<Int> = listOf(0)
 
-    fun update(next: String): List<Int> {
+    fun update(next: String, shared: EditorDocumentChange? = null): List<Int> {
         if (next == source) return starts
-        var prefix = 0
-        while (prefix < minOf(source.length, next.length) && source[prefix] == next[prefix]) prefix++
-        var suffix = 0
-        while (suffix < minOf(source.length, next.length) - prefix &&
-            source[source.lastIndex - suffix] == next[next.lastIndex - suffix]) suffix++
-        val oldEnd = source.length - suffix
-        val newEnd = next.length - suffix
-        val delta = next.length - source.length
+        val change = shared?.takeIf { it.before == source && it.after == next }?.range
+            ?: editorTextChange(androidx.compose.ui.text.input.TextFieldValue(source),
+                androidx.compose.ui.text.input.TextFieldValue(next))
+        val prefix = change.start
+        val oldEnd = change.oldEnd
+        val newEnd = change.newEnd
+        val delta = change.delta
         starts = buildList {
             for (start in starts) {
                 if (start > prefix) break
