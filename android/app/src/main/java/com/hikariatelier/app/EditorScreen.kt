@@ -1657,7 +1657,7 @@ internal fun EditorScreen(
                     portraitRatioDragging = portraitRatioDragging,
                     codeFontFamily = codeFontFamily,
                     hasVisibleCompletions = editorSuggestions.isNotEmpty() && !inlineSearchVisible,
-                    showParameterPanel = USE_INLINE_PARAMETER_PANEL && showParameterSheet,
+                    showParameterPanel = USE_INLINE_PARAMETER_PANEL && isLandscape && showParameterSheet,
                     isSample = sessionViewModel.sampleReadOnly || activeWork?.isSample == true,
                     galleryVisible = galleryPresent,
                     galleryProgress = galleryProgress
@@ -1784,7 +1784,7 @@ internal fun EditorScreen(
         textTranslator = { s, args -> uiText(s, *args) }
     )
 
-    if (!USE_INLINE_PARAMETER_PANEL && showParameterSheet) {
+    if ((!USE_INLINE_PARAMETER_PANEL || !isLandscape) && showParameterSheet) {
         LiveParameterSheet(activeWork, editorText, sessionViewModel, workManagementViewModel, preview,
             ParameterSheetLayout(isLandscape, landscapeEditorOnLeft, 1f - animatedLandscapePreviewFraction, showStatusBar),
             { source, args -> uiText(source, *args) },

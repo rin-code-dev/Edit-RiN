@@ -12,6 +12,19 @@ internal fun translateUi(source: String, language: String): String {
 }
 
 internal val uiTranslations = mapOf(
+    "アプリ情報とアップデート" to ("App information and updates" to "应用信息与更新"),
+    "Android向けクリエイティブコーディング環境" to ("Creative coding environment for Android" to "面向 Android 的创意编程环境"),
+    "最新バージョンをチェック" to ("Check for the latest version" to "检查最新版本"),
+    "最近のアップデート内容と変更点" to ("Recent updates and release changes" to "最近的更新与版本变更"),
+    "リンクとコミュニティ" to ("Links and community" to "链接与社区"),
+    "公式ウェブサイト・リポジトリ・SNS" to ("Official website, repository and social" to "官方网站、代码仓库与社交平台"),
+    "公式サイト" to ("Official website" to "官方网站"),
+    "X (旧Twitter)" to ("X (Twitter)" to "X (原 Twitter)"),
+    "ヘルプとライセンス" to ("Help and licenses" to "帮助与许可"),
+    "使い方とオープンソース情報" to ("User guide and open source notices" to "使用指南与开源声明"),
+    "エディターの操作や各機能の解説" to ("Editor guides and feature walk-throughs" to "编辑器指南与功能说明"),
+    "初回起動時のツアーを再開します" to ("Restart the initial onboarding tour" to "重新开始初次使用导览"),
+    "オープンソースソフトウェアのライセンス" to ("Open-source software licenses" to "开源软件许可"),
     "36本の楕円が静かに回る光の輪。パラメータで速度を変更します。回転・繰り返し・位相のずれを学べます。" to ("A halo of 36 ellipses rotates quietly. Adjust speed in Parameters and explore rotation, repetition and phase offsets." to "36个椭圆静静旋转形成光环。用参数调整速度，学习旋转、重复与相位差。"),
     "墨色と生成り、朱色のアクセント" to ("Charcoal, warm paper and terracotta accents" to "墨色、米白与朱色点缀"),
     "自分の作品" to ("My works" to "我的作品"),
