@@ -56,7 +56,11 @@ internal data class EditorWorkspaceState(
     val galleryProgress: Float = 0f,
     val pipModeWhenEditing: Boolean = true,
     val autoRunEnabled: Boolean = false,
-    val previewHasChanges: Boolean = false
+    val previewHasChanges: Boolean = false,
+    val pipSizePreset: PipSizePreset = PipSizePreset.SMALL,
+    val pipTranslucent: Boolean = false,
+    val pipMinimized: Boolean = false,
+    val pipSnapCorner: PipCorner = PipCorner.TOP_END
 )
 
 internal data class EditorWorkspaceActions(
@@ -67,7 +71,11 @@ internal data class EditorWorkspaceActions(
     val onCommitPreviewRatio: () -> Unit,
     val onSavePreviewRatio: (String) -> Unit,
     val onToggleAutoRun: () -> Unit = {},
-    val onRunNow: () -> Unit = {}
+    val onRunNow: () -> Unit = {},
+    val onPipSizePresetChanged: (PipSizePreset) -> Unit = {},
+    val onPipTranslucentChanged: (Boolean) -> Unit = {},
+    val onPipMinimizedChanged: (Boolean) -> Unit = {},
+    val onPipSnapCornerChanged: (PipCorner) -> Unit = {}
 )
 
 internal data class EditorWorkspaceSlots(
@@ -559,6 +567,14 @@ internal fun EditorWorkspaceLayout(
                             onRunNow = actions.onRunNow,
                             colors = colors,
                             textTranslator = textTranslator,
+                            sizePreset = state.pipSizePreset,
+                            onSizePresetChange = actions.onPipSizePresetChanged,
+                            translucent = state.pipTranslucent,
+                            onTranslucentChange = actions.onPipTranslucentChanged,
+                            minimized = state.pipMinimized,
+                            onMinimizedChange = actions.onPipMinimizedChanged,
+                            snapCorner = state.pipSnapCorner,
+                            onSnapCornerChange = actions.onPipSnapCornerChanged,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = 6.dp, start = 8.dp, end = 8.dp, bottom = bottomReserved)

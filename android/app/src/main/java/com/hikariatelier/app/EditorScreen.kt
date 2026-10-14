@@ -1743,7 +1743,11 @@ internal fun EditorScreen(
                     galleryProgress = galleryProgress,
                     pipModeWhenEditing = compactPreview && !showExpandedPreview,
                     autoRunEnabled = sessionViewModel.autoRunEnabled,
-                    previewHasChanges = previewHasChanges && !preview.isLoading
+                    previewHasChanges = previewHasChanges && !preview.isLoading,
+                    pipSizePreset = sessionViewModel.pipSizePreset,
+                    pipTranslucent = sessionViewModel.pipTranslucent,
+                    pipMinimized = sessionViewModel.pipMinimized,
+                    pipSnapCorner = sessionViewModel.pipSnapCorner
                 ),
                 actions = EditorWorkspaceActions(
                     onSplitChanged = { landscapePreviewFraction = it },
@@ -1753,7 +1757,11 @@ internal fun EditorScreen(
                     onCommitPreviewRatio = { workManagementViewModel.commitPreviewRatio() },
                     onSavePreviewRatio = { updateActiveWorkPreviewRatio(it) },
                     onToggleAutoRun = { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled },
-                    onRunNow = { runSketch() }
+                    onRunNow = { runSketch() },
+                    onPipSizePresetChanged = { sessionViewModel.pipSizePreset = it },
+                    onPipTranslucentChanged = { sessionViewModel.pipTranslucent = it },
+                    onPipMinimizedChanged = { sessionViewModel.pipMinimized = it },
+                    onPipSnapCornerChanged = { sessionViewModel.pipSnapCorner = it }
                 ),
                 slots = EditorWorkspaceSlots(
                     workBar = { WorkBar() }, landscapeBar = { LandscapeUnifiedBar() },

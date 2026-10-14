@@ -85,6 +85,10 @@ class EditorSessionViewModel : ViewModel() {
     var autoRunEnabled by mutableStateOf(false)
     var pipModeEnabled by mutableStateOf(true)
     var showInspectorSheet by mutableStateOf(false)
+    var pipSizePreset by mutableStateOf(PipSizePreset.SMALL)
+    var pipTranslucent by mutableStateOf(false)
+    var pipMinimized by mutableStateOf(false)
+    var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
 
     /** Navigation keeps history only while its saved source still matches the work. */
     internal fun activateWorkEditor(workId: String, code: String, resume: Boolean, retainedIds: Set<String>) {

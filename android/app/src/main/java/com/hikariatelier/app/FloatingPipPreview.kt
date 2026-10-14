@@ -200,17 +200,19 @@ internal fun FloatingPipPreviewHost(
     colors: ColorScheme,
     textTranslator: (String, Array<out Any?>) -> String,
     modifier: Modifier = Modifier,
+    sizePreset: PipSizePreset = PipSizePreset.SMALL,
+    onSizePresetChange: (PipSizePreset) -> Unit = {},
+    translucent: Boolean = false,
+    onTranslucentChange: (Boolean) -> Unit = {},
+    minimized: Boolean = false,
+    onMinimizedChange: (Boolean) -> Unit = {},
+    snapCorner: PipCorner = PipCorner.TOP_END,
+    onSnapCornerChange: (PipCorner) -> Unit = {},
     previewContent: @Composable (Modifier) -> Unit
 ) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     fun uiText(source: String, vararg args: Any?): String = textTranslator(source, args)
-
-    // Default initial size is SMALL (S) per user preference
-    var sizePreset by rememberSaveable { mutableStateOf(PipSizePreset.SMALL) }
-    var translucent by rememberSaveable { mutableStateOf(false) }
-    var minimized by rememberSaveable { mutableStateOf(false) }
-    var snapCorner by rememberSaveable { mutableStateOf(PipCorner.TOP_END) }
 
     val safeRatio = aspectRatio.coerceIn(0.45f, 2.2f)
     val baseSize = sizePreset.baseDp.dp
@@ -307,7 +309,7 @@ internal fun FloatingPipPreviewHost(
                     if (nextCorner != snapCorner) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
-                    snapCorner = nextCorner
+                    onSnapCornerChange(nextCorner)
                     dragDx = 0f
                     dragDy = 0f
                     isDragging = false
@@ -380,7 +382,7 @@ internal fun FloatingPipPreviewHost(
                                 description = uiText("半透明表示を切り替え"),
                                 colors = colors,
                                 active = translucent,
-                                onClick = { translucent = !translucent }
+                                onClick = { onTranslucentChange(!translucent) }
                             )
 
                             // Button 3: Size Cycle (S -> M -> L)
@@ -391,11 +393,12 @@ internal fun FloatingPipPreviewHost(
                                 active = false,
                                 badgeText = sizePreset.shortLabel,
                                 onClick = {
-                                    sizePreset = when (sizePreset) {
+                                    val nextPreset = when (sizePreset) {
                                         PipSizePreset.SMALL -> PipSizePreset.MEDIUM
                                         PipSizePreset.MEDIUM -> PipSizePreset.LARGE
                                         PipSizePreset.LARGE -> PipSizePreset.SMALL
                                     }
+                                    onSizePresetChange(nextPreset)
                                 }
                             )
                         }
@@ -406,7 +409,7 @@ internal fun FloatingPipPreviewHost(
                             description = uiText(if (minimized) "小窓を展開" else "小窓を最小化"),
                             colors = colors,
                             active = minimized,
-                            onClick = { minimized = !minimized }
+                            onClick = { onMinimizedChange(!minimized) }
                         )
                     }
                 }
