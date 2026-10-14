@@ -2,6 +2,7 @@ package com.hikariatelier.app
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
@@ -11,26 +12,36 @@ import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebMessage
+import android.webkit.WebMessagePort
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.os.ConfigurationCompat
-import java.io.File
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
-import org.json.JSONObject
-import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.lifecycleScope
+import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
-/** Owns one Activity's WebView. No ViewModel retains this controller or the Activity. */
+/**
+ * PreviewController (v3.1 — Fixed for p5.js 2.x Global Mode & Loading State):
+ * - Uses clean document navigation (`loadUrl`) backed by in-memory `AssetWebClient` byte caching
+ *   so p5.js 2.x async `remove()` never deletes `window.createCanvas` and `runToken` is 100% consistent.
+ * - Guarantees `isLoading = false` even on devices where `postVisualStateCallback` is dropped by WebView.
+ * - Uses `WebMessagePort` for low-overhead 60fps sensor and live watch (`// ?`) streaming.
+ */
 internal class PreviewController(
     private val activity: ComponentActivity,
     val assetStorage: AssetStorage,
@@ -39,6 +50,7 @@ internal class PreviewController(
     val performance = PerformanceMonitor(activity.window)
     val images = PreviewImageRepository(activity.cacheDir, activity.assets, activity.lifecycleScope, performance.measurements)
     val session = PreviewSession()
+    val watchValues = mutableStateMapOf<Int, String>()
     var runInput by mutableStateOf<PreviewRunInput?>(null)
         private set
     private val transfer = RecordingTransfer(File(activity.cacheDir, "recording-transfer"))
@@ -55,8 +67,12 @@ internal class PreviewController(
     private var runStartedAt = 0L
     private var prepared = false
     private var preparationJob: Job? = null
+    private var loadingFallbackJob: Job? = null
+    private var passThroughThumbJob: Job? = null
     var webView: WebView? = null
         private set
+    private var controlPort: WebMessagePort? = null
+    private var portToken: String? = null
     var isError by mutableStateOf(false)
     private var pausedState by mutableStateOf(false)
     private var activityActive = true
@@ -70,34 +86,42 @@ internal class PreviewController(
     @Volatile private var captureForShareCard = false
     var screenshotBusy by mutableStateOf(false)
         private set
+
     private val sensors = PreviewSensors(activity) { alpha, beta, gamma, ax, ay, az, gx, gy, gz ->
         if (!disposed && !isPaused && session.isCurrent(session.assets.token)) {
-            val owner = JSONObject.quote(session.assets.token)
-            val script = "if(window.__editRinRunToken === $owner) " +
-                "window.__editRinUpdateSensors?.($alpha,$beta,$gamma,$ax,$ay,$az,$gx,$gy,$gz)"
-            evaluate(script)
+            val port = controlPort
+            if (port != null && portToken == session.assets.token) {
+                runCatching { port.postMessage(WebMessage("S:$alpha,$beta,$gamma,$ax,$ay,$az,$gx,$gy,$gz")) }
+            } else {
+                val owner = JSONObject.quote(session.assets.token)
+                val script = "if(window.__editRinRunToken === $owner) " +
+                    "window.__editRinUpdateSensors?.($alpha,$beta,$gamma,$ax,$ay,$az,$gx,$gy,$gz)"
+                evaluate(script)
+            }
         }
     }
     private val downloads = ViewModelProvider(activity)[SketchDownloadsViewModel::class.java]
-    private val browserFeatures = PreviewBrowserFeatures(activity,
+    private val browserFeatures = PreviewBrowserFeatures(
+        activity,
         currentOwner = { session.assets.token.takeIf { !disposed && session.isCurrent(it) } },
-        currentView = { webView }, downloads = downloads,
-        report = { message -> if (!disposed) Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show() })
+        currentView = { webView },
+        downloads = downloads,
+        report = { message -> if (!disposed) Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show() }
+    )
 
     private var downloadToast: Toast? = null
     private val downloadResultsJob = activity.lifecycleScope.launch {
-            downloads.results.collect { result ->
-                if (!disposed) {
-                    val message = text(if (result.saved) "ファイルを保存しました" else "ファイルを保存できませんでした")
-                    // A saveFrames batch should not leave a backlog of per-frame toasts.
-                    downloadToast?.cancel()
-                    downloadToast = Toast.makeText(activity, "$message: ${result.metadata.name}", Toast.LENGTH_SHORT)
-                        .also { it.show() }
-                    if (session.isCurrent(result.metadata.owner)) {
-                        evaluate("window.__editRinFileDownloadResult?.(${JSONObject.quote(result.metadata.id)},${result.saved},${JSONObject.quote(message)})")
-                    }
+        downloads.results.collect { result ->
+            if (!disposed) {
+                val message = text(if (result.saved) "ファイルを保存しました" else "ファイルを保存できませんでした")
+                downloadToast?.cancel()
+                downloadToast = Toast.makeText(activity, "$message: ${result.metadata.name}", Toast.LENGTH_SHORT)
+                    .also { it.show() }
+                if (session.isCurrent(result.metadata.owner)) {
+                    evaluate("window.__editRinFileDownloadResult?.(${JSONObject.quote(result.metadata.id)},${result.saved},${JSONObject.quote(message)})")
                 }
             }
+        }
     }
 
     private fun text(source: String): String {
@@ -116,6 +140,7 @@ internal class PreviewController(
     private fun append(level: ConsoleLevel, message: String, line: Int? = null, file: String? = null) {
         models.console.append(level, message, line, file, session.workId)
         if (level == ConsoleLevel.ERROR) {
+            loadingFallbackJob?.cancel()
             isLoading = false
             loadingThumbnail = null
             isError = true
@@ -124,7 +149,9 @@ internal class PreviewController(
         }
     }
 
-    fun evaluate(script: String) { if (!disposed) webView?.evaluateJavascript(script, null) }
+    fun evaluate(script: String) {
+        if (!disposed) webView?.evaluateJavascript(script, null)
+    }
 
     fun requestScreenshot(forShareCard: Boolean = false, scale: Int = 1) {
         if (disposed || webView == null || screenshotBusy || recording.screenshotSaving) return
@@ -139,8 +166,10 @@ internal class PreviewController(
         }
         screenshotBusy = true
         captureForShareCard = forShareCard
-        evaluate("if (typeof window.__editKiroCaptureScreenshot === 'function') { window.__editKiroCaptureScreenshot($scale); } " +
-            "else { window.Android?.onScreenshotError('${session.assets.token}', 'プレビューの準備ができてから再度お試しください'); }")
+        evaluate(
+            "if (typeof window.__editKiroCaptureScreenshot === 'function') { window.__editKiroCaptureScreenshot($scale); } " +
+                "else { window.Android?.onScreenshotError('${session.assets.token}', 'プレビューの準備ができてから再度お試しください'); }"
+        )
     }
 
     fun runSketch(
@@ -155,8 +184,6 @@ internal class PreviewController(
             Toast.makeText(activity, text("録画を停止してから再実行してください"), Toast.LENGTH_SHORT).show()
             return
         }
-        // A new page invalidates any unfinished capture owned by the previous run.
-        // A transfer can begin before its recording-status callback reaches the UI thread.
         transfer.abort()
         screenshotTransfer.abort()
         abortFileTransfer()
@@ -164,11 +191,23 @@ internal class PreviewController(
         screenshotBusy = false
         captureForShareCard = false
         preparationJob?.cancel()
+        loadingFallbackJob?.cancel()
+        passThroughThumbJob?.cancel()
+        runCatching { controlPort?.close() }
+        controlPort = null
+        portToken = null
+        watchValues.clear()
         val work = currentWork()
         sensors.setEnabled(false)
         sensors.stop()
-        val input = capturePreviewRun(work, source, supportingFiles, sourceAssets,
-            models.session.fileDrafts.toMap(), work?.let { models.works.parameterValues(it) }.orEmpty())
+        val input = capturePreviewRun(
+            work,
+            source,
+            supportingFiles,
+            sourceAssets,
+            models.session.fileDrafts.toMap(),
+            work?.let { models.works.parameterValues(it) }.orEmpty()
+        )
         session.request(input.token)
         beginLoading(input.workId, input.token)
         isPaused = false
@@ -178,8 +217,10 @@ internal class PreviewController(
             try {
                 val (preparedRun, usesSensors) = performance.measurements.measure(PerformanceOperation.PREVIEW_PREPARE) {
                     withContext(Dispatchers.Default) {
-                        preparePreviewRun(input) to (SENSOR_KEYWORDS_REGEX.containsMatchIn(input.source) ||
-                            input.files.values.any { SENSOR_KEYWORDS_REGEX.containsMatchIn(it) })
+                        preparePreviewRun(input) to (
+                            SENSOR_KEYWORDS_REGEX.containsMatchIn(input.source) ||
+                                input.files.values.any { SENSOR_KEYWORDS_REGEX.containsMatchIn(it) }
+                            )
                     }
                 }
                 ensureActive()
@@ -192,11 +233,54 @@ internal class PreviewController(
                 sensors.setEnabled(usesSensors)
                 updateSensorPlayback()
                 webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) {
-                if (!disposed && session.isRequested(input.token)) append(ConsoleLevel.ERROR,
-                    error.message ?: text("プレビューを準備できませんでした"))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (!disposed && session.isRequested(input.token)) {
+                    append(ConsoleLevel.ERROR, error.message ?: text("プレビューを準備できませんでした"))
+                }
             }
+        }
+    }
+
+    private fun setupWebMessagePort(view: WebView, token: String) {
+        runCatching {
+            controlPort?.close()
+            val channel = view.createWebMessageChannel()
+            val nativePort = channel[0]
+            val jsPort = channel[1]
+            nativePort.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
+                override fun onMessage(port: WebMessagePort?, message: WebMessage?) {
+                    val data = message?.data ?: return
+                    if (data.startsWith("W:")) {
+                        val parts = data.split(':', limit = 4)
+                        if (parts.size == 4 && session.isCurrent(parts[1])) {
+                            val line = parts[2].toIntOrNull() ?: return
+                            watchValues[line] = parts[3]
+                        }
+                    }
+                }
+            })
+            controlPort = nativePort
+            portToken = token
+            view.postWebMessage(WebMessage("INIT_PORT", arrayOf(jsPort)), Uri.parse(PREVIEW_ORIGIN))
+        }
+    }
+
+    private fun markVisualReadyAndClearLoading(token: String) {
+        if (disposed || !session.isCurrent(token) || isError) return
+        loadingFallbackJob?.cancel()
+        isLoading = false
+        schedulePassThroughThumbnailCapture(token)
+    }
+
+    private fun schedulePassThroughThumbnailCapture(token: String) {
+        if (session.workId == null || runInput?.token != token) return
+        passThroughThumbJob?.cancel()
+        passThroughThumbJob = activity.lifecycleScope.launch {
+            delay(280L)
+            if (disposed || isError || !session.isCurrent(token)) return@launch
+            evaluate("window.__editRinCapturePassThroughThumbnail?.(${JSONObject.quote(token)})")
         }
     }
 
@@ -214,14 +298,32 @@ internal class PreviewController(
         it.id == models.session.activeWorkIdState.value
     }
 
-    // Recording survives Activity recreation; the WebView itself does not.
     private val recording get() = models.recording
 
+    @SuppressLint("ClickableViewAccessibility")
+    fun bindTouchBehavior(view: WebView, clearEditorFocus: () -> Unit, clearFocusOnTouch: Boolean) {
+        view.setOnTouchListener { v, event ->
+            if (clearFocusOnTouch && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                clearEditorFocus()
+                v.requestFocus()
+            }
+            false
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
-    fun createHost(context: Context, clearEditorFocus: () -> Unit): PreviewWebViewHost {
+    fun createHost(
+        context: Context,
+        clearEditorFocus: () -> Unit,
+        clearFocusOnTouch: Boolean = true
+    ): PreviewWebViewHost {
         check(!disposed) { "Preview has been disposed" }
         val preview = webView?.also {
             (it.parent as? ViewGroup)?.removeView(it)
+            it.scaleX = 1f
+            it.scaleY = 1f
+            it.translationX = 0f
+            it.translationY = 0f
             it.onResume()
             it.post { if (!disposed) it.onResume() }
         } ?: WebView(context).also { view ->
@@ -237,8 +339,11 @@ internal class PreviewController(
                     android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
                 override fun onPermissionRequest(request: PermissionRequest) = browserFeatures.requestMedia(request)
                 override fun onPermissionRequestCanceled(request: PermissionRequest) = browserFeatures.cancelMedia(request)
-                override fun onShowFileChooser(webView: WebView?, callback: ValueCallback<Array<android.net.Uri>>,
-                    params: FileChooserParams?): Boolean = browserFeatures.chooseFiles(webView, callback, params)
+                override fun onShowFileChooser(
+                    webView: WebView?,
+                    callback: ValueCallback<Array<android.net.Uri>>,
+                    params: FileChooserParams?
+                ): Boolean = browserFeatures.chooseFiles(webView, callback, params)
                 override fun onShowCustomView(view: android.view.View, callback: CustomViewCallback) =
                     browserFeatures.showFullscreen(view, callback)
                 override fun onHideCustomView() = browserFeatures.hideFullscreen()
@@ -265,36 +370,36 @@ internal class PreviewController(
                     return true
                 }
             }
-            view.webViewClient = AssetWebClient(activity.assets, assetStorage, onRendererCrash = { crashed ->
-                onMain {
-                    if (webView !== view) return@onMain
-                    webView = null
-                    transfer.abort()
-                    screenshotTransfer.abort()
-                    abortFileTransfer()
-                    browserFeatures.invalidatePage()
-                    recording.onPreviewDestroyed()
-                    screenshotBusy = false
-                    captureForShareCard = false
-                    val message = if (crashed) {
-                        text("描画プロセスが異常終了しました（メモリまたはGPU負荷が高すぎる可能性があります）")
-                    } else text("描画プロセスがメモリ不足等により終了されました")
-                    append(ConsoleLevel.ERROR, message)
-                }
-            }, onExternalNavigation = browserFeatures::openExternal) { session.assets }
+            view.webViewClient = AssetWebClient(
+                activity.assets,
+                assetStorage,
+                onRendererCrash = { crashed ->
+                    onMain {
+                        if (webView !== view) return@onMain
+                        webView = null
+                        controlPort = null
+                        portToken = null
+                        transfer.abort()
+                        screenshotTransfer.abort()
+                        abortFileTransfer()
+                        browserFeatures.invalidatePage()
+                        recording.onPreviewDestroyed()
+                        screenshotBusy = false
+                        captureForShareCard = false
+                        val message = if (crashed) {
+                            text("描画プロセスが異常終了しました（メモリまたはGPU負荷が高すぎる可能性があります）")
+                        } else text("描画プロセスがメモリ不足等により終了されました")
+                        append(ConsoleLevel.ERROR, message)
+                    }
+                },
+                onExternalNavigation = browserFeatures::openExternal
+            ) { session.assets }
             webView = view
-            // Read the current session, rather than capturing a work from the first composition.
             if (prepared && session.isCurrent(session.assets.token)) {
                 view.loadUrl(previewUrl(session.assets))
             } else if (preparationJob?.isActive != true) runSketch()
         }
-        preview.setOnTouchListener { view, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                clearEditorFocus()
-                view.requestFocus()
-            }
-            false
-        }
+        bindTouchBehavior(preview, clearEditorFocus, clearFocusOnTouch)
         return PreviewWebViewHost(context, preview)
     }
 
@@ -308,6 +413,7 @@ internal class PreviewController(
         sensors.stop()
         webView?.onPause()
     }
+
     fun resume() {
         if (!disposed) {
             activityActive = true
@@ -320,9 +426,15 @@ internal class PreviewController(
     fun close() {
         if (disposed) return
         disposed = true
-        performance.close(); images.close()
+        performance.close()
+        images.close()
         sensors.destroy()
         preparationJob?.cancel()
+        loadingFallbackJob?.cancel()
+        passThroughThumbJob?.cancel()
+        runCatching { controlPort?.close() }
+        controlPort = null
+        portToken = null
         session.invalidate()
         captureForShareCard = false
         transfer.abort()
@@ -348,37 +460,85 @@ internal class PreviewController(
         fileTransferMetadata = null
     }
 
-    /** Called on the WebView bridge thread; UI changes are dispatched and guarded by close(). */
     private inner class Bridge {
-        @JavascriptInterface fun onPreviewReady(token: String) {
+        @JavascriptInterface
+        fun onPreviewReady(token: String) {
             onMain(token) {
+                webView?.let { setupWebMessagePort(it, token) }
                 if (!isError && isLoading) {
-                    performance.measurements.record(PerformanceOperation.PREVIEW_READY,
-                        (SystemClock.elapsedRealtime() - runStartedAt) * 1_000_000)
-                    // Keep the placeholder until WebView has committed the first drawn frame.
-                    if (BuildConfig.DEBUG) Log.d("EditRiNPreview", "Preview ready in ${SystemClock.elapsedRealtime() - runStartedAt} ms")
+                    performance.measurements.record(
+                        PerformanceOperation.PREVIEW_READY,
+                        (SystemClock.elapsedRealtime() - runStartedAt) * 1_000_000
+                    )
+                    // Safety fallback: if a sketch has no draw() loop or WebView drops VisualStateCallback,
+                    // guarantee that the loading spinner clears within 350ms of setup completion.
+                    loadingFallbackJob?.cancel()
+                    loadingFallbackJob = activity.lifecycleScope.launch {
+                        delay(350L)
+                        markVisualReadyAndClearLoading(token)
+                    }
                 }
             }
         }
-        @JavascriptInterface fun onPreviewVisualReady(token: String) {
+
+        @JavascriptInterface
+        fun onPreviewVisualReady(token: String) {
             onMain(token) {
                 val host = webView ?: return@onMain
-                host.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
-                    override fun onComplete(requestId: Long) {
-                        if (!disposed && webView === host && session.isCurrent(token) && !isError) {
-                            isLoading = false
+                // Primary: clear on next committed WebView frame
+                runCatching {
+                    host.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) {
+                            markVisualReadyAndClearLoading(token)
                         }
-                    }
-                })
+                    })
+                }
+                // Fallback: guarantee spinner clears within 120ms even if WebView compositor skips callback
+                loadingFallbackJob?.cancel()
+                loadingFallbackJob = activity.lifecycleScope.launch {
+                    delay(120L)
+                    markVisualReadyAndClearLoading(token)
+                }
             }
         }
-        @JavascriptInterface fun setSensorsEnabled(token: String, enabled: Boolean) {
+
+        @JavascriptInterface
+        fun onPassThroughThumbnailReady(token: String, encoded: String) {
+            if (encoded.isBlank()) return
+            onMain(token) {
+                val workId = session.workId ?: return@onMain
+                val input = runInput?.takeIf { it.token == token } ?: return@onMain
+                activity.lifecycleScope.launch {
+                    val fp = withContext(Dispatchers.Default) { thumbnailFingerprint(input) }
+                    val stored = images.storeEncoded(workId, encoded, fp)
+                    if (stored != null && !disposed) {
+                        models.works.notifyPreviewUpdated(workId)
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onWatchValue(token: String, line: Int, textValue: String) {
+            onMain(token) {
+                if (line > 0) watchValues[line] = textValue
+            }
+        }
+
+        @JavascriptInterface
+        fun setSensorsEnabled(token: String, enabled: Boolean) {
             onMain(token) {
                 sensors.setEnabled(enabled)
                 updateSensorPlayback()
             }
         }
-        @JavascriptInterface fun getSketchCode(token: String): String = session.snapshotFor(token)?.sketchCode.orEmpty()
+
+        @JavascriptInterface
+        fun getSketchCode(token: String): String {
+            val raw = session.snapshotFor(token)?.sketchCode.orEmpty()
+            return instrumentInlineWatchComments(raw)
+        }
+
         @JavascriptInterface fun getP5Version(token: String): String = session.snapshotFor(token)?.p5Version.orEmpty()
         @JavascriptInterface fun isP5SoundEnabled(token: String): Boolean = session.snapshotFor(token)?.soundEnabled == true
         @JavascriptInterface fun getWorkLibraries(token: String): String = session.snapshotFor(token)?.libraries ?: "{}"
@@ -387,23 +547,30 @@ internal class PreviewController(
         @JavascriptInterface fun getProjectConfig(token: String): String = session.snapshotFor(token)?.projectConfig ?: "{}"
         @JavascriptInterface fun supportsFileDownloadResult(): Boolean = true
 
-        @JavascriptInterface fun beginFileDownload(owner: String, id: String, filename: String, mime: String): Boolean =
+        @JavascriptInterface
+        fun beginFileDownload(owner: String, id: String, filename: String, mime: String): Boolean =
             synchronized(fileTransferLock) {
                 val metadata = sketchDownloadMetadata(owner, id, filename, mime) ?: return@synchronized false
                 if (disposed || !session.isCurrent(owner) || fileTransferMetadata != null || !fileTransfer.begin(id)) false
                 else { fileTransferMetadata = metadata; true }
             }
-        @JavascriptInterface fun appendFileDownloadChunk(owner: String, id: String, encoded: String): Boolean =
+
+        @JavascriptInterface
+        fun appendFileDownloadChunk(owner: String, id: String, encoded: String): Boolean =
             synchronized(fileTransferLock) {
                 if (disposed || !session.isCurrent(owner) || fileTransferMetadata?.id != id || fileTransferMetadata?.owner != owner) false
                 else fileTransfer.append(id, encoded).also { if (!it) fileTransferMetadata = null }
             }
-        @JavascriptInterface fun abortFileDownload(owner: String, id: String) {
+
+        @JavascriptInterface
+        fun abortFileDownload(owner: String, id: String) {
             synchronized(fileTransferLock) {
                 if (fileTransferMetadata?.id == id && fileTransferMetadata?.owner == owner) abortFileTransfer()
             }
         }
-        @JavascriptInterface fun finishFileDownload(owner: String, id: String) {
+
+        @JavascriptInterface
+        fun finishFileDownload(owner: String, id: String) {
             val completed = synchronized(fileTransferLock) {
                 val metadata = fileTransferMetadata
                 if (disposed || !session.isCurrent(owner) || metadata?.id != id || metadata.owner != owner) null
@@ -421,17 +588,22 @@ internal class PreviewController(
             }
         }
 
-        @JavascriptInterface fun onError(token: String, message: String) {
+        @JavascriptInterface
+        fun onError(token: String, message: String) {
             onMain(token) { Log.e("P5JS", message); append(ConsoleLevel.ERROR, message) }
         }
-        @JavascriptInterface fun onRuntimeError(token: String, message: String, line: Int) {
+
+        @JavascriptInterface
+        fun onRuntimeError(token: String, message: String, line: Int) {
             onMain(token) {
                 val location = previewSourceLocation(session.sourceFiles, line)
                 Log.e("P5JS", "$message ($line)")
                 append(ConsoleLevel.ERROR, message, location?.line, location?.file)
             }
         }
-        @JavascriptInterface fun onRuntimeErrorFile(token: String, message: String, file: String, line: Int) {
+
+        @JavascriptInterface
+        fun onRuntimeErrorFile(token: String, message: String, file: String, line: Int) {
             onMain(token) {
                 val location = previewProjectSourceLocation(session.assets, file, line)
                 val relativeFile = location?.file ?: file.takeIf {
@@ -440,25 +612,38 @@ internal class PreviewController(
                 append(ConsoleLevel.ERROR, message, line.takeIf { relativeFile != null && it > 0 }, relativeFile)
             }
         }
-        @JavascriptInterface fun onStatusChanged(token: String, status: String) {
+
+        @JavascriptInterface
+        fun onStatusChanged(token: String, status: String) {
             onMain(token) {
                 if (status == "実行中") isPaused = false
                 if (status == "一時停止中") isPaused = true
             }
         }
+
         @JavascriptInterface fun onScreenshotReady(token: String, dataUrl: String) = screenshotReady(token, dataUrl, 0, 0)
-        @JavascriptInterface fun onScreenshotExportReady(token: String, dataUrl: String, width: Int, height: Int) =
+        @JavascriptInterface
+        fun onScreenshotExportReady(token: String, dataUrl: String, width: Int, height: Int) =
             screenshotReady(token, dataUrl, width, height)
+
         private fun currentScreenshot(owner: String, token: String) =
             !disposed && session.isCurrent(owner) && token.startsWith("$owner:png-")
-        @JavascriptInterface fun beginScreenshotTransfer(owner: String, token: String): Boolean =
+
+        @JavascriptInterface
+        fun beginScreenshotTransfer(owner: String, token: String): Boolean =
             currentScreenshot(owner, token) && screenshotTransfer.begin(token)
-        @JavascriptInterface fun appendScreenshotChunk(owner: String, token: String, encoded: String): Boolean =
+
+        @JavascriptInterface
+        fun appendScreenshotChunk(owner: String, token: String, encoded: String): Boolean =
             currentScreenshot(owner, token) && screenshotTransfer.append(token, encoded)
-        @JavascriptInterface fun abortScreenshotTransfer(owner: String, token: String) {
+
+        @JavascriptInterface
+        fun abortScreenshotTransfer(owner: String, token: String) {
             if (currentScreenshot(owner, token)) screenshotTransfer.abort(token)
         }
-        @JavascriptInterface fun finishScreenshotTransfer(owner: String, token: String, width: Int, height: Int) {
+
+        @JavascriptInterface
+        fun finishScreenshotTransfer(owner: String, token: String, width: Int, height: Int) {
             if (!currentScreenshot(owner, token)) return
             val file = screenshotTransfer.finish(token)
             activity.runOnUiThread {
@@ -470,13 +655,16 @@ internal class PreviewController(
                 }
             }
         }
-        @JavascriptInterface fun onScreenshotError(token: String, message: String) {
+
+        @JavascriptInterface
+        fun onScreenshotError(token: String, message: String) {
             onMain(token) {
                 screenshotBusy = false
                 captureForShareCard = false
                 Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show()
             }
         }
+
         private fun screenshotReady(token: String, dataUrl: String, width: Int, height: Int) {
             onMain(token) {
                 val forCard = captureForShareCard
@@ -485,18 +673,28 @@ internal class PreviewController(
                 recording.saveScreenshot(dataUrl, forCard, width, height)
             }
         }
-        @JavascriptInterface fun onRecordingStatusChanged(token: String, value: Boolean) {
+
+        @JavascriptInterface
+        fun onRecordingStatusChanged(token: String, value: Boolean) {
             onMain(token) { recording.isPreviewRecording = value }
         }
-        @JavascriptInterface fun beginRecordingTransfer(owner: String, token: String): Boolean =
+
+        @JavascriptInterface
+        fun beginRecordingTransfer(owner: String, token: String): Boolean =
             !disposed && session.isCurrent(owner) && transfer.begin(token)
-        @JavascriptInterface fun appendRecordingChunk(owner: String, token: String, encoded: String): Boolean =
+
+        @JavascriptInterface
+        fun appendRecordingChunk(owner: String, token: String, encoded: String): Boolean =
             !disposed && session.isCurrent(owner) && transfer.append(token, encoded)
-        @JavascriptInterface fun abortRecordingTransfer(owner: String, token: String) {
+
+        @JavascriptInterface
+        fun abortRecordingTransfer(owner: String, token: String) {
             if (!disposed && session.isCurrent(owner)) transfer.abort(token)
             onMain(owner) { recording.abortTransfer() }
         }
-        @JavascriptInterface fun onRecordingSaving(token: String) {
+
+        @JavascriptInterface
+        fun onRecordingSaving(token: String) {
             onMain(token) {
                 if (!recording.isRecordingSaving) {
                     recording.recordingElapsedMillis = (SystemClock.elapsedRealtime() - recording.recordingStartedAt)
@@ -505,15 +703,18 @@ internal class PreviewController(
                 recording.isRecordingSaving = true
             }
         }
-        @JavascriptInterface fun finishRecordingTransfer(owner: String, token: String, mimeType: String) {
+
+        @JavascriptInterface
+        fun finishRecordingTransfer(owner: String, token: String, mimeType: String) {
             if (disposed || !session.isCurrent(owner)) return
             val file = transfer.finish(token)
-            // Do not strand a file if the Activity is destroyed before its queued callback executes.
             activity.runOnUiThread {
                 if (disposed || !session.isCurrent(owner)) file?.delete() else recording.saveTransferredRecording(file, mimeType)
             }
         }
-        @JavascriptInterface fun onCaptureError(token: String, message: String) {
+
+        @JavascriptInterface
+        fun onCaptureError(token: String, message: String) {
             onMain(token) {
                 Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show()
             }

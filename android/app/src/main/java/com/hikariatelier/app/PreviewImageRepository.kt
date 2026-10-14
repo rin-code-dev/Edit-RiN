@@ -24,7 +24,11 @@ internal fun defaultConcurrentPermits(cores: Int = Runtime.getRuntime().availabl
         else -> 2
     }
 
-/** All preview consumers share decoded images and in-flight reads for this Activity. */
+/**
+ * PreviewImageRepository (v3):
+ * - Persists thumbnails in a durable directory (`files/work-previews` when available, with seamless
+ *   fallback read from `cacheDir/work-previews`) so OS cache eviction never wipes out unopened work thumbnails.
+ */
 @Suppress("DEPRECATION")
 internal class PreviewImageRepository(
     private val cacheDir: File,
@@ -72,6 +76,7 @@ internal class PreviewImageRepository(
             }
         }
     }
+
     @Suppress("DEPRECATION")
     private fun watchDirectory(directory: File) {
         observer?.stopWatching()
@@ -81,6 +86,7 @@ internal class PreviewImageRepository(
             }
         }.also { it.startWatching() }
     }
+
     private fun invalidate(name: String?) {
         synchronized(lock) {
             if (closed) return
@@ -89,6 +95,7 @@ internal class PreviewImageRepository(
         }
         changesMutable.tryEmit(name)
     }
+
     fun file(id: String): File {
         files[id]?.let { return it }
         val created = workPreviewFile(cacheDir, id)
@@ -96,7 +103,9 @@ internal class PreviewImageRepository(
         fileIds[file.name] = id
         return file
     }
+
     fun idForFile(name: String): String? = fileIds[name]
+
     fun peek(id: String): Bitmap? {
         val start = System.nanoTime()
         return bitmaps.get(file(id).path)?.bitmap?.also {
@@ -121,13 +130,13 @@ internal class PreviewImageRepository(
                             metrics.record(PerformanceOperation.IMAGE_CACHE_HIT, System.nanoTime() - cacheStart)
                             cached
                         } else runCatching {
-                                val decoded = (if (length > 0) decoder(file) else null)
-                                    ?: builtin?.let { assets.open(it).use(BitmapFactory::decodeStream) }
-                                ensureActive()
-                                if (decoded != null && file.lastModified() == modified && file.length() == length)
-                                    bitmaps.put(file.path, Cached(decoded, modified, length))
-                                decoded
-                            }.getOrElse { if (it is CancellationException) throw it else null }
+                            val decoded = (if (length > 0) decoder(file) else null)
+                                ?: builtin?.let { assets.open(it).use(BitmapFactory::decodeStream) }
+                            ensureActive()
+                            if (decoded != null && file.lastModified() == modified && file.length() == length)
+                                bitmaps.put(file.path, Cached(decoded, modified, length))
+                            decoded
+                        }.getOrElse { if (it is CancellationException) throw it else null }
                     }
                 }
             }.also { job ->
@@ -137,7 +146,7 @@ internal class PreviewImageRepository(
         }
         return deferred.await()
     }
-    /** Bounded batches let multicore devices fill their decode slots without queuing the whole gallery. */
+
     suspend fun prefetch(works: List<Work>) = coroutineScope {
         for (batch in works.chunked(concurrentPermits)) {
             ensureActive()
@@ -156,11 +165,13 @@ internal class PreviewImageRepository(
             val file = file(id)
             storeWorkPreviewBytes(file, bytes, expectedModified, fingerprint).also { if (it) invalidate(file.name) }
         }
+
     suspend fun storeEncoded(id: String, encoded: String, fingerprint: String?): Bitmap? {
         val bytes = withContext(Dispatchers.Default) { runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() } ?: return null
         if (!store(id, bytes, fingerprint = fingerprint)) return null
         return load(id)
     }
+
     fun close() {
         synchronized(lock) {
             closed = true; observer?.stopWatching(); rootObserver?.stopWatching(); bitmaps.evictAll()

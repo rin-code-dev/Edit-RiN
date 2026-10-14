@@ -526,36 +526,14 @@ internal fun SettingsScreen(
                 )
 
                 SettingsDivider()
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)
-                ) {
-                    Text(
-                        text = uiText("編集時のプレビュー"),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = uiText("縦画面でコード欄を編集するときのプレビューの扱いです"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    ScrollableChoiceGroup(
-                        labels = listOf(uiText("そのまま"), uiText("縮小"), uiText("隠す")),
-                        selectedIndex = if (state.hideEditingPreview) 2 else if (state.compactPreview) 1 else 0,
-                        onSelect = { index ->
-                            onSettingsChange {
-                                when (index) {
-                                    2 -> copy(hideEditingPreview = true)
-                                    1 -> copy(hideEditingPreview = false, compactPreview = true)
-                                    else -> copy(hideEditingPreview = false, compactPreview = false)
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                SettingSwitchRow(
+                    title = uiText("編集時のPiP小窓プレビュー"),
+                    description = uiText("縦画面での編集時（上部プレビューを隠している間）にフローティング小窓を表示します"),
+                    checked = state.compactPreview,
+                    onCheckedChange = { value ->
+                        onSettingsChange { copy(hideEditingPreview = true, compactPreview = value) }
+                    }
+                )
 
                 SettingsDivider()
 

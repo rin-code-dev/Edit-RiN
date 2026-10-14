@@ -26,7 +26,7 @@ RELEASE_SECRETS = {'CLOUD_RELEASE_KEYSTORE_BASE64', 'CLOUD_RELEASE_STORE_PASSWOR
 INPUTS = ['android', 'www', 'third_party', 'LICENSE', 'THIRD_PARTY_LICENSES.md',
           '.github/workflows/build-debug.yml', '.github/workflows/build-release.yml',
           'scripts/cloud-release-runner.py', 'scripts/setup-cloud-release-signing.py', 'scripts/cloud-build.sh',
-          'scripts/cloud-build.py', 'docs/cloud-build.md']
+          'scripts/cloud-build.py', 'scripts/verify-kotlin-sources.py', 'docs/cloud-build.md']
 PRIVATE_NAMES = {'AGENTS.md', 'GEMINI.md', 'MODIFICATIONS.md', 'GITHUB_RELEASE_GUIDE.md',
                  'EDIT_RIN_IMPLEMENTATION_SPEC.txt', 'local.properties',
                  'release-signing.properties', 'sync-gdrive.local.json'}
@@ -69,6 +69,42 @@ def audit(root):
                 raise RuntimeError(f'Potential private content; review before upload: {relative}')
 
 
+def verify_kotlin_snapshot(root):
+    """Detect broken symbols from patches or missing drawables before uploading to cloud."""
+    kotlin_dir = root / 'android' / 'app' / 'src' / 'main' / 'java' / 'com' / 'hikariatelier' / 'app'
+    drawable_dir = root / 'android' / 'app' / 'src' / 'main' / 'res' / 'drawable'
+    if not kotlin_dir.exists():
+        return
+    problems = []
+    if drawable_dir.exists():
+        drawables = {p.stem for p in drawable_dir.glob('*')}
+        pattern = re.compile(r'R\.drawable\.([a-zA-Z0-9_]+)')
+        for kt in kotlin_dir.glob('*.kt'):
+            text = kt.read_text(encoding='utf-8')
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                code = line.split('//')[0]
+                for m in pattern.finditer(code):
+                    if m.group(1) not in drawables:
+                        problems.append(f"{kt.name}:{lineno}: R.drawable.{m.group(1)} does not exist")
+    raw_text = re.compile(r'\btarget\.rawText\b')
+    broken_helper = re.compile(r'fun\s+formatColorReplacement\s*\(')
+    broken_range = re.compile(r'\btarget\.range\.(?:first|last)\b')
+    for kt in kotlin_dir.glob('*.kt'):
+        text = kt.read_text(encoding='utf-8')
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            code = line.split('//')[0].strip()
+            if not code or code.startswith('*'):
+                continue
+            if raw_text.search(code):
+                problems.append(f"{kt.name}:{lineno}: target.rawText found (EditorColorTarget uses originalText)")
+            if broken_helper.search(code):
+                problems.append(f"{kt.name}:{lineno}: formatColorReplacement found (use replaceColorTarget)")
+            if broken_range.search(code):
+                problems.append(f"{kt.name}:{lineno}: target.range.first/last found on TextRange")
+    if problems:
+        raise RuntimeError("Kotlin source verification failed before upload:\n  " + "\n  ".join(problems))
+
+
 def prepare_snapshot(root, destination):
     """HEAD for unrelated files; live contents/deletions/new files for build inputs."""
     with tarfile.open(fileobj=io.BytesIO(git(root, 'archive', 'HEAD'))) as archive:
@@ -95,6 +131,7 @@ def prepare_snapshot(root, destination):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     audit(destination)
+    verify_kotlin_snapshot(destination)
     return len([p for p in destination.rglob('*') if p.is_file()])
 
 

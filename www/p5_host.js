@@ -1,4 +1,3 @@
-
 (() => {
   // Keep the URL identity even if a newer run replaces the native snapshot.
   const runToken = window.location?.pathname?.match(/^\/project\/([^/]+)\//)?.[1] || '';
@@ -1373,4 +1372,79 @@ window.addEventListener('beforeunload', () => {
   artworkFrames.clear();
 }, { once: true });
 })();
-  
+
+// ============================================================================
+// Edit:RiN v3.1 — WebMessagePort Sensor/Watch Channel & Pass-Through Thumbnail
+// ============================================================================
+(() => {
+  let activePort = null;
+  const watchLastSentAt = new Map();
+
+  function formatWatchValue(val) {
+    if (val === null) return 'null';
+    if (val === undefined) return 'undefined';
+    if (typeof val === 'number') return Number.isInteger(val) ? String(val) : val.toFixed(3).replace(/\.?0+$/, '');
+    if (typeof val === 'boolean' || typeof val === 'string') return String(val).slice(0, 36);
+    if (Array.isArray(val)) return '[' + val.slice(0, 4).map(formatWatchValue).join(', ') + (val.length > 4 ? ', …' : '') + ']';
+    if (typeof val === 'object') {
+      if ('x' in val && 'y' in val) {
+        const zPart = 'z' in val ? `, ${formatWatchValue(val.z)}` : '';
+        return `(${formatWatchValue(val.x)}, ${formatWatchValue(val.y)}${zPart})`;
+      }
+      try { return JSON.stringify(val).slice(0, 36); } catch (_) { return '[Object]'; }
+    }
+    return String(val).slice(0, 36);
+  }
+
+  window.rinWatch = (lineOrLabel, labelOrVal, maybeVal) => {
+    const hasLine = typeof lineOrLabel === 'number';
+    const line = hasLine ? lineOrLabel : 1;
+    const label = hasLine ? String(labelOrVal || '') : String(lineOrLabel || '');
+    const value = hasLine ? maybeVal : labelOrVal;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const prev = watchLastSentAt.get(line) || 0;
+    if (now - prev >= 90) {
+      watchLastSentAt.set(line, now);
+      const formatted = (label ? `${label} = ` : '') + formatWatchValue(value);
+      const token = window.__editRinRunToken || '';
+      if (activePort) {
+        try { activePort.postMessage(`W:${token}:${line}:${formatted}`); } catch (_) {}
+      } else {
+        try { window.Android?.onWatchValue?.(token, line, formatted); } catch (_) {}
+      }
+    }
+    return value;
+  };
+
+  window.__editRinCapturePassThroughThumbnail = token => {
+    try {
+      const targetToken = token || window.__editRinRunToken || '';
+      const source = document.querySelector('canvas.p5Canvas') || document.querySelector('canvas');
+      if (!source || !source.width || !source.height) return;
+      const scale = Math.min(1, 480 / Math.max(source.width, source.height));
+      const copy = document.createElement('canvas');
+      copy.width = Math.max(1, Math.round(source.width * scale));
+      copy.height = Math.max(1, Math.round(source.height * scale));
+      const ctx = copy.getContext('2d');
+      ctx.drawImage(source, 0, 0, copy.width, copy.height);
+      const dataUrl = copy.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1] || '';
+      if (base64) window.Android?.onPassThroughThumbnailReady?.(targetToken, base64);
+    } catch (_) {}
+  };
+
+  window.addEventListener('message', event => {
+    if (event.data === 'INIT_PORT' && event.ports?.[0]) {
+      activePort = event.ports[0];
+      activePort.onmessage = msgEvent => {
+        const text = String(msgEvent.data || '');
+        if (text.startsWith('S:')) {
+          const nums = text.slice(2).split(',').map(Number);
+          if (nums.length >= 9) {
+            window.__editRinUpdateSensors?.(...nums);
+          }
+        }
+      };
+    }
+  });
+})();

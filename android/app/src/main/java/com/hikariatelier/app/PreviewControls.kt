@@ -334,25 +334,34 @@ internal fun RunStatusControls(
             maxLines = 1,
             letterSpacing = 0.6.sp
         )
-        IconButton(
-            onClick = onTogglePause,
-            modifier = Modifier.size(buttonSize)
+        Spacer(Modifier.width(4.dp))
+        Box(
+            modifier = Modifier
+                .size(buttonSize)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onTogglePause)
+                .semantics { contentDescription = uiText(if (isPaused) "再生" else "一時停止") },
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(if (isPaused) R.drawable.ic_play else R.drawable.ic_pause),
-                contentDescription = uiText(if (isPaused) "再生" else "一時停止"),
+                contentDescription = null,
                 tint = colors.onSurface,
                 modifier = Modifier.size(iconSize)
             )
         }
-        IconButton(
-            onClick = onReload,
-            modifier = Modifier.size(buttonSize)
+        Box(
+            modifier = Modifier
+                .size(buttonSize)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onReload)
+                .semantics { contentDescription = uiText(if (hasPendingChanges) "変更を実行" else "再読み込み") },
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_reload),
-                contentDescription = uiText(if (hasPendingChanges) "変更を実行" else "再読み込み"),
-                tint = colors.onSurface,
+                contentDescription = null,
+                tint = if (hasPendingChanges) colors.tertiary else colors.onSurface,
                 modifier = Modifier.size(iconSize)
             )
         }

@@ -108,7 +108,7 @@ internal class WorkStoreRepository(
                 WorkLoadResult.Loaded(restoreSelection(store, folderUri), split.recovered, split.deferredWorkIds)
         } catch (error: Exception) {
             unreadableFolders.add(key)
-            Log.e("EditKIRO", "Failed to load work store; refusing overwrite", error)
+            Log.e(LOG_TAG, "Failed to load work store; refusing overwrite", error)
             val reason = if (error is SecurityException || error is java.io.IOException) WorkLoadFailure.UNAVAILABLE else WorkLoadFailure.CORRUPT
             WorkLoadResult.Failed(reason, error.message.orEmpty())
         }
@@ -296,7 +296,7 @@ internal class WorkStoreRepository(
                 saveFolderAssets(directory, split.worksWithChangedAssets(works))
                 split.saveResult(works, activeId)
             } catch (error: Exception) {
-                Log.e("EditKIRO", "Failed to save work store", error)
+                Log.e(LOG_TAG, "Failed to save work store", error)
                 WorkSaveResult.Failed
             }
         }

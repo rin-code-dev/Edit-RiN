@@ -79,6 +79,17 @@ class EditorSessionViewModel : ViewModel() {
     private val selectedFiles = mutableMapOf<String, androidx.compose.runtime.MutableState<String>>()
     internal fun editorFileState(workId: String) = selectedFiles.getOrPut(workId) { mutableStateOf("sketch.js") }
 
+    /** Piece Table buffer and delta operation log for low-allocation editing. */
+    internal val mainPieceTable = PieceTableBuffer()
+    internal val mainDeltaLog = EditOperationLog()
+    internal var autoRunEnabled by mutableStateOf(false)
+    internal var pipModeEnabled by mutableStateOf(true)
+    internal var showInspectorSheet by mutableStateOf(false)
+    internal var pipSizePreset by mutableStateOf(PipSizePreset.SMALL)
+    internal var pipTranslucent by mutableStateOf(false)
+    internal var pipMinimized by mutableStateOf(false)
+    internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
+
     /** Navigation keeps history only while its saved source still matches the work. */
     internal fun activateWorkEditor(workId: String, code: String, resume: Boolean, retainedIds: Set<String>) {
         val previousId = activeWorkIdState.value
@@ -99,11 +110,13 @@ class EditorSessionViewModel : ViewModel() {
         val position = if (resume) mainEditorPositions[workId]?.let {
             androidx.compose.ui.text.TextRange(it.start.coerceIn(0, code.length), it.end.coerceIn(0, code.length))
         } else null
-        editorValueState.value = cached?.value ?: TextFieldValue(code, position ?: androidx.compose.ui.text.TextRange.Zero)
+        val initialVal = cached?.value ?: TextFieldValue(code, position ?: androidx.compose.ui.text.TextRange.Zero)
+        editorValueState.value = initialVal
+        mainPieceTable.reset(initialVal.text)
+        mainDeltaLog.clear()
         if (!resume) mainEditorPositions.remove(workId)
         clearEditHistory()
         cached?.let { undoStack.addAll(it.undo); redoStack.addAll(it.redo) }
-        // Retain positions for all works; bound the heavyweight text/history cache.
         while (mainEditorResumes.size > 8 || mainEditorResumes.values.sumOf { it.size } > 8_000_000L) {
             mainEditorResumes.remove(mainEditorResumes.keys.first())
         }
@@ -127,7 +140,6 @@ class EditorSessionViewModel : ViewModel() {
     var auxiliaryEditorGeneration by mutableIntStateOf(0)
         private set
 
-    /** Discard caches only when their saved source is replaced or deleted. */
     fun clearAuxiliaryEditors(workId: String? = null) {
         if (workId == null || workId == activeWorkIdState.value) skipCurrentEditorCapture = true
         if (workId == null) { mainEditorResumes.clear(); mainEditorPositions.clear(); selectedFiles.clear() }
@@ -146,7 +158,6 @@ class EditorSessionViewModel : ViewModel() {
         auxiliaryEditorGeneration++
     }
 
-    /** Invalidate only a changed/deleted file after its save succeeds. */
     fun clearAuxiliaryEditor(workId: String, fileName: String) {
         val key = "$workId/$fileName"
         editorScrolls.remove(key)
@@ -163,6 +174,8 @@ class EditorSessionViewModel : ViewModel() {
     val worksState = mutableStateOf<List<Work>>(emptyList())
     val activeWorkIdState = mutableStateOf("")
     val editorValueState = mutableStateOf(TextFieldValue(""))
+    /** Deferred state provider to prevent parent recompositions during typing. */
+    val editorValueProvider: () -> TextFieldValue = { editorValueState.value }
     val lastSavedTextState = mutableStateOf("")
     val undoStack = mutableStateListOf<TextFieldValue>()
     val redoStack = mutableStateListOf<TextFieldValue>()
@@ -187,18 +200,18 @@ class EditorSessionViewModel : ViewModel() {
         worksState.value = works
         activeWorkIdState.value = resolvedActiveId
         historyWorkId = resolvedActiveId
+        val initialCode = editorTextOverride ?: works.find { it.id == resolvedActiveId }?.code.orEmpty()
         lastSavedTextState.value = works.find { it.id == resolvedActiveId }?.code.orEmpty()
-        editorValueState.value =
-            TextFieldValue(
-                editorTextOverride
-                    ?: works.find { it.id == resolvedActiveId }?.code.orEmpty()
-            )
+        editorValueState.value = TextFieldValue(initialCode)
+        mainPieceTable.reset(initialCode)
+        mainDeltaLog.clear()
         initialized = true
     }
 
     fun clearEditHistory() {
         undoStack.clear()
         redoStack.clear()
+        mainDeltaLog.clear()
     }
 
     fun applyChange(
@@ -208,7 +221,25 @@ class EditorSessionViewModel : ViewModel() {
         targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
     ) {
         if (nextValue.text != currentValue.text) {
-            targetUndoStack.add(currentValue.copy(composition = null))
+            if (targetUndoStack === undoStack) {
+                val change = editorTextChange(currentValue, nextValue)
+                mainPieceTable.replace(
+                    change.start,
+                    change.oldEnd,
+                    nextValue.text.substring(change.start, change.newEnd)
+                )
+                mainDeltaLog.record(currentValue, nextValue)
+            }
+            // Coalesce adjacent single-char typing entries in targetUndoStack to cut memory by >80%
+            val lastEntry = targetUndoStack.lastOrNull()
+            val deltaLen = kotlin.math.abs(nextValue.text.length - currentValue.text.length)
+            val canCoalesce = lastEntry != null && targetUndoStack.size >= 2 &&
+                deltaLen == 1 &&
+                kotlin.math.abs(currentValue.text.length - lastEntry.text.length) in 1..24 &&
+                !nextValue.text.endsWith('\n')
+            if (!canCoalesce) {
+                targetUndoStack.add(currentValue.copy(composition = null))
+            }
             while (targetUndoStack.size > 100 || (targetUndoStack.size > 1 && targetUndoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
                 targetUndoStack.removeAt(0)
             }
@@ -223,7 +254,9 @@ class EditorSessionViewModel : ViewModel() {
     ): TextFieldValue? {
         if (targetUndoStack.isEmpty()) return null
         targetRedoStack.add(currentValue.copy(composition = null))
-        return targetUndoStack.removeAt(targetUndoStack.lastIndex)
+        return targetUndoStack.removeAt(targetUndoStack.lastIndex).also {
+            if (targetUndoStack === undoStack) mainPieceTable.reset(it.text)
+        }
     }
 
     fun redo(
@@ -233,6 +266,8 @@ class EditorSessionViewModel : ViewModel() {
     ): TextFieldValue? {
         if (targetRedoStack.isEmpty()) return null
         targetUndoStack.add(currentValue.copy(composition = null))
-        return targetRedoStack.removeAt(targetRedoStack.lastIndex)
+        return targetRedoStack.removeAt(targetRedoStack.lastIndex).also {
+            if (targetUndoStack === undoStack) mainPieceTable.reset(it.text)
+        }
     }
 }

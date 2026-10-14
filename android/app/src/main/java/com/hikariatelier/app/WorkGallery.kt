@@ -335,7 +335,7 @@ internal fun WorkGallerySearch(
     }
     TextField(value = state.query, onValueChange = { state.query = it }, singleLine = true,
         modifier = modifier.focusRequester(focusRequester),
-        placeholder = { Text(text("作品名で検索"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        placeholder = { Text(text("作品名・タグ・コードで検索"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = {
             focusManager.clearFocus(force = true)
@@ -456,16 +456,22 @@ private fun WorkGalleryContent(
     }
 
     val galleryContext = androidx.compose.ui.platform.LocalContext.current
+    val workDatabase = remember(galleryContext) { WorkDatabase(galleryContext.applicationContext) }
+    val ftsMatchedIds by produceState(emptySet<String>(), state.query, works) {
+        val q = state.query.trim()
+        value = if (q.isEmpty()) emptySet() else withContext(Dispatchers.IO) {
+            runCatching { workDatabase.searchWorkIds(q) }.getOrDefault(emptySet())
+        }
+    }
     val recentRevision = RecentWorks.revision
-    val visibleWorks = remember(works, sort, state.query, state.selectedTag, state.selectedFolder, recentRevision) {
+    val visibleWorks = remember(works, sort, state.query, state.selectedTag, state.selectedFolder, recentRevision, ftsMatchedIds) {
         val trimmed = state.query.trim()
         val scoped = works.filter(state::inFolder)
         val byTag = if (state.selectedTag != null) {
             scoped.filter { work -> work.tags.any { it.equals(state.selectedTag, ignoreCase = true) } }
         } else scoped
         val filtered = if (trimmed.isEmpty()) byTag else byTag.filter { work ->
-            work.title.contains(trimmed, ignoreCase = true) ||
-            work.tags.any { it.contains(trimmed.removePrefix("#"), ignoreCase = true) }
+            matchesGalleryQuery(work, trimmed, ftsMatchedIds)
         }
         val baseComparator: Comparator<Work> = if (sort == "名前順") {
             Comparator { a, b -> a.title.lowercase().compareTo(b.title.lowercase()) }
@@ -941,3 +947,19 @@ private fun workGalleryDetails(work: Work): String = buildList {
     if (work.p5SoundEnabled) add("SOUND")
     if (work.libraries.containsKey("matter-js")) add("PHYSICS")
 }.joinToString(" · ")
+
+internal fun matchesGalleryQuery(work: Work, trimmedQuery: String, ftsMatchedIds: Set<String> = emptySet()): Boolean {
+    if (trimmedQuery.isEmpty()) return true
+    if (work.id in ftsMatchedIds) return true
+    if (work.title.contains(trimmedQuery, ignoreCase = true)) return true
+    val cleanTagQuery = trimmedQuery.removePrefix("#")
+    if (work.tags.any { it.contains(cleanTagQuery, ignoreCase = true) }) return true
+    if (work.bodyLoaded) {
+        if (work.code.contains(trimmedQuery, ignoreCase = true)) return true
+        if (work.files.any { (name, content) ->
+                name.contains(trimmedQuery, ignoreCase = true) || content.contains(trimmedQuery, ignoreCase = true)
+            }
+        ) return true
+    }
+    return false
+}

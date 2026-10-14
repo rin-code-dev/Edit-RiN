@@ -2,13 +2,12 @@ package com.hikariatelier.app
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,6 +41,7 @@ internal fun visibleConsoleEntries(entries: List<ConsoleEntry>, errorsOnly: Bool
 
 internal class ConsoleViewModel(private val operationScope: CoroutineScope? = null) : ViewModel() {
     val entries = mutableStateListOf<ConsoleEntry>()
+    private val queueLock = Any()
     private var sequence = 0L
     private val pending = ArrayDeque<ConsoleEntry>()
     private var flushJob: Job? = null
@@ -55,10 +55,14 @@ internal class ConsoleViewModel(private val operationScope: CoroutineScope? = nu
         get() = entries.count { it.level == ConsoleLevel.ERROR }
 
     fun clear() {
-        flushJob?.cancel()
-        flushJob = null
-        pending.clear()
-        entries.clear()
+        synchronized(queueLock) {
+            flushJob?.cancel()
+            flushJob = null
+            pending.clear()
+        }
+        Snapshot.withMutableSnapshot {
+            entries.clear()
+        }
     }
 
     fun append(
@@ -72,54 +76,73 @@ internal class ConsoleViewModel(private val operationScope: CoroutineScope? = nu
         if (normalized.isBlank()) return
 
         val normalizedLine = line?.takeIf { it > 0 }
-        val previous = pending.lastOrNull()
+        val shouldFlushNow: Boolean
 
-        if (
-            previous?.level == level &&
-            previous.message == normalized &&
-            previous.line == normalizedLine &&
-            previous.file == file &&
-            previous.workId == workId
-        ) {
-            pending.removeLast()
-            pending.addLast(previous.copy(count = (previous.count.toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()))
-        } else {
-            sequence += 1L
-            pending.addLast(
-            ConsoleEntry(
-                id = sequence,
-                level = level,
-                message = normalized,
-                line = normalizedLine,
-                file = file,
-                workId = workId
-            )
-        )
-        }
-        while (pending.size > 200) pending.removeFirst()
-        if (level == ConsoleLevel.ERROR) {
-            flushJob?.cancel()
-            flushJob = null
-            flush()
-        } else if (flushJob == null) {
-            flushJob = (operationScope ?: viewModelScope).launch {
-                delay(100)
-                flush()
-                flushJob = null
+        synchronized(queueLock) {
+            val previous = pending.lastOrNull()
+            if (
+                previous?.level == level &&
+                previous.message == normalized &&
+                previous.line == normalizedLine &&
+                previous.file == file &&
+                previous.workId == workId
+            ) {
+                pending.removeLast()
+                pending.addLast(previous.copy(count = (previous.count.toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()))
+            } else {
+                sequence += 1L
+                pending.addLast(
+                    ConsoleEntry(
+                        id = sequence,
+                        level = level,
+                        message = normalized,
+                        line = normalizedLine,
+                        file = file,
+                        workId = workId
+                    )
+                )
             }
+            while (pending.size > 200) pending.removeFirst()
+
+            if (level == ConsoleLevel.ERROR) {
+                flushJob?.cancel()
+                flushJob = null
+                shouldFlushNow = true
+            } else {
+                shouldFlushNow = false
+                if (flushJob == null) {
+                    flushJob = (operationScope ?: viewModelScope).launch {
+                        delay(100)
+                        flush()
+                    }
+                }
+            }
+        }
+
+        if (shouldFlushNow) {
+            flush()
         }
     }
 
     private fun flush() {
+        val batch = synchronized(queueLock) {
+            flushJob = null
+            if (pending.isEmpty()) return
+            val drained = pending.toList()
+            pending.clear()
+            drained
+        }
         Snapshot.withMutableSnapshot {
-            while (pending.isNotEmpty()) {
-                val next = pending.removeFirst()
+            for (next in batch) {
                 val previous = entries.lastOrNull()
                 if (previous != null && previous.level == next.level && previous.message == next.message &&
                     previous.line == next.line && previous.file == next.file && previous.workId == next.workId) {
                     entries[entries.lastIndex] = previous.copy(
-                        count = (previous.count.toLong() + next.count).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-                } else entries.add(next)
+                        count = (previous.count.toLong() + next.count).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    )
+                } else {
+                    entries.add(next)
+                }
             }
             while (entries.size > 200) entries.removeAt(0)
         }

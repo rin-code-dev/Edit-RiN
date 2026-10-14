@@ -18,9 +18,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /** Raise this only when the tour is redesigned and should be shown again to everyone. */
-internal const val ONBOARDING_VERSION = 1
+internal const val ONBOARDING_VERSION = 2
 
-internal const val ONBOARDING_STEP_COUNT = 6
+internal const val ONBOARDING_STEP_COUNT = 8
 
 internal data class OnboardingStep(val title: String, val body: String)
 
@@ -39,6 +39,18 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
             t("コードを編集したら、「実行」を押してプレビューに変更を反映しましょう。",
                 "Edit the code and press Run to see your changes in the preview.",
                 "编辑代码后，点击“运行”即可把更改应用到预览。")
+        ),
+        OnboardingStep(
+            t("記号と数値の調整", "Symbols and scrubbing", "符号输入与数值微调"),
+            t("キーボード上のバーで記号を素早く入力できます。また、コード内の数値をドラッグして直感的に変更できます。",
+                "Quickly enter symbols with the bar above the keyboard. You can also drag numbers in your code to adjust them on the fly.",
+                "通过键盘上方的辅助栏快速输入符号。还可以通过拖动代码中的数值实时调整。")
+        ),
+        OnboardingStep(
+            t("PiP小窓プレビュー", "PiP floating preview", "画中画悬浮预览"),
+            t("縦画面でコードを広く書きながら、小窓で作品の動きを確認できます。4隅へのドラッグ移動やサイズ変更・半透明にも対応しています。",
+                "Keep an eye on your artwork in a floating window while editing code full-height. Drag to snap to corners, toggle opacity, or switch sizes.",
+                "竖屏全高编写代码时，可通过悬浮小窗查看作品动态。支持四角吸附拖拽、半透明和多档尺寸切换。")
         ),
         OnboardingStep(
             t("パラメータで調整", "Tune with parameters", "实时参数调整"),
@@ -68,12 +80,15 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
 }
 
 /**
- * True when the first-run tour is due. Uses the same gate as the release notes prompt so the tour
- * is never shown over a load failure, a pending draft recovery or the folder selection prompt.
+ * True when the first-run tour is due. Shown before release notes and folder selection prompts,
+ * but never over an ongoing load failure or a pending draft recovery.
  */
 internal fun onboardingDue(
-    storedVersion: Int, loadFailed: Boolean, hasPendingDraft: Boolean, hasStorageFolder: Boolean
-): Boolean = storedVersion < ONBOARDING_VERSION && !loadFailed && !hasPendingDraft && hasStorageFolder
+    storedVersion: Int,
+    loadFailed: Boolean = false,
+    hasPendingDraft: Boolean = false,
+    hasStorageFolder: Boolean = true
+): Boolean = storedVersion < ONBOARDING_VERSION && !loadFailed && !hasPendingDraft
 
 /**
  * Full-screen first-run tour. Every interaction lives in the mock screens of [OnboardingMocks];
@@ -86,6 +101,7 @@ internal fun OnboardingTour(
     onFinish: () -> Unit,
     onSkip: () -> Unit,
     onOpenDetailedGuide: () -> Unit,
+    allowSkip: Boolean = true,
     animate: Boolean = true
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
@@ -93,10 +109,16 @@ internal fun OnboardingTour(
     var step by rememberSaveable { mutableIntStateOf(0) }
     val last = step == steps.lastIndex
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    BackHandler { if (step > 0) step-- else onSkip() }
+    BackHandler {
+        if (step > 0) {
+            step--
+        } else if (allowSkip) {
+            onSkip()
+        }
+    }
 
     val header: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(steps.size) { index ->
                     Box(
@@ -106,8 +128,10 @@ internal fun OnboardingTour(
                     )
                 }
             }
-            TextButton(onClick = onSkip, modifier = Modifier.testTag("onboarding-skip")) {
-                Text(t("スキップ", "Skip", "跳过"))
+            if (allowSkip) {
+                TextButton(onClick = onSkip, modifier = Modifier.testTag("onboarding-skip")) {
+                    Text(t("スキップ", "Skip", "跳过"))
+                }
             }
         }
     }

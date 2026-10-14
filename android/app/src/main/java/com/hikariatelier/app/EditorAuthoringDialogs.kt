@@ -185,8 +185,7 @@ internal fun EditorAuthoringDialogs(
     val tourDue = onboardingDue(
         settingsViewModel.onboardingVersion,
         loadFailed = workManagementViewModel.loadFailure != null,
-        hasPendingDraft = workManagementViewModel.pendingDraft != null,
-        hasStorageFolder = workManagementViewModel.selectedFolderUri != null
+        hasPendingDraft = workManagementViewModel.pendingDraft != null
     )
     if (tourDue || settingsViewModel.onboardingReplay) {
         Dialog(
@@ -202,7 +201,8 @@ internal fun EditorAuthoringDialogs(
                 onOpenDetailedGuide = {
                     settingsViewModel.completeOnboarding()
                     onUserGuideChange(true)
-                }
+                },
+                allowSkip = settingsViewModel.onboardingReplay
             )
         }
     }
