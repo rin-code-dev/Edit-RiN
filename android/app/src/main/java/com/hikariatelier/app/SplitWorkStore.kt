@@ -247,8 +247,10 @@ internal class SplitWorkStore(
                 conflict = true
                 return WorkSaveResult.Conflict
             }
-            // v3 optimization: Only hydrate deferred works whose metadata/body actually changed,
-            // keeping untouched deferred works O(1) without reading all files on disk.
+            // A lazy startup has not established that every inactive document is healthy.
+            // Verify it once before retiring the last complete backup generation. A failed
+            // verification keeps the expected index and all backup files intact for retry.
+            previous?.deferred?.toList()?.forEach { checkNotNull(loadWork(it)) }
             val oldBackup = runCatching { documents.read(BACKUP_INDEX)?.let(::decodeIndex) }.getOrNull()
             val oldEntries = previous?.index?.entries.orEmpty().associateBy { it.id }
             val persisted = works.map { work ->
