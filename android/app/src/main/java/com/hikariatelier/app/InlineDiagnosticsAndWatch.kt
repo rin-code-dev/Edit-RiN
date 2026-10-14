@@ -3,13 +3,16 @@ package com.hikariatelier.app
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
@@ -94,7 +97,7 @@ internal fun migratePreloadToAsyncSetup(sourceCode: String): String {
 }
 
 /**
- * Inline diagnostic card with one-tap Quick Fix actions and jump-to-line support.
+ * Inline diagnostic card with flat vector Quick Fix buttons (`ic_quick_fix.xml`) and jump-to-line support.
  */
 @Composable
 internal fun InlineDiagnosticBanner(
@@ -121,20 +124,21 @@ internal fun InlineDiagnosticBanner(
         buildEditorQuickFixes(latestError.message, editingValue.text, p5Version, textTranslator)
     }
 
-    Surface(
-        onClick = {
-            if (errorLine != null) onJumpToSource(errorFile, errorLine)
-            else expanded = !expanded
-        },
+    val bannerShape = RoundedCornerShape(12.dp)
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = colors.errorContainer,
-        contentColor = colors.onErrorContainer,
-        border = BorderStroke(1.dp, colors.error.copy(alpha = 0.45f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .clip(bannerShape)
+            .background(colors.errorContainer.copy(alpha = 0.85f))
+            .border(1.dp, colors.error.copy(alpha = 0.45f), bannerShape)
+            .clickable {
+                if (errorLine != null) onJumpToSource(errorFile, errorLine)
+                else expanded = !expanded
+            }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painter = painterResource(R.drawable.ic_error_jump),
@@ -149,6 +153,7 @@ internal fun InlineDiagnosticBanner(
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelMedium,
                     fontFamily = codeFontFamily,
+                    color = colors.onErrorContainer,
                     maxLines = if (expanded) 6 else 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -157,27 +162,40 @@ internal fun InlineDiagnosticBanner(
                     Text(
                         textTranslator("行へ移動", emptyArray()),
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = colors.onErrorContainer
                     )
                 }
-                IconButton(
-                    onClick = { expanded = !expanded },
-                    modifier = Modifier.size(24.dp)
+                Spacer(Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { expanded = !expanded },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(if (expanded) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
+                    Icon(
+                        painter = painterResource(R.drawable.ic_chevron_down),
+                        contentDescription = null,
+                        tint = colors.onErrorContainer,
+                        modifier = Modifier
+                            .size(13.dp)
+                            .graphicsLayer { rotationZ = if (expanded) 180f else 0f }
+                    )
                 }
             }
 
             AnimatedVisibility(visible = expanded || hint != null || quickFixes.isNotEmpty()) {
                 Column(
-                    modifier = Modifier.padding(top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.padding(top = 5.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     if (hint != null) {
                         Text(
                             text = textTranslator(hint, emptyArray()),
                             style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            color = colors.onErrorContainer
                         )
                     }
                     if (quickFixes.isNotEmpty()) {
@@ -187,33 +205,48 @@ internal fun InlineDiagnosticBanner(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             quickFixes.forEach { fix ->
-                                AssistChip(
-                                    onClick = {
-                                        if (fix.transformedCode != null) {
-                                            onApplyQuickFixCode(
-                                                TextFieldValue(
-                                                    fix.transformedCode,
-                                                    TextRange(
-                                                        editingValue.selection.start.coerceAtMost(fix.transformedCode.length)
+                                val chipShape = RoundedCornerShape(8.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .clip(chipShape)
+                                        .background(colors.surface.copy(alpha = 0.92f))
+                                        .border(1.dp, colors.primary.copy(alpha = 0.65f), chipShape)
+                                        .clickable {
+                                            if (fix.transformedCode != null) {
+                                                onApplyQuickFixCode(
+                                                    TextFieldValue(
+                                                        fix.transformedCode,
+                                                        TextRange(
+                                                            editingValue.selection.start.coerceAtMost(fix.transformedCode.length)
+                                                        )
                                                     )
                                                 )
-                                            )
-                                        } else if (fix.switchP5Version != null) {
-                                            onSwitchRuntimeVersion?.invoke(fix.switchP5Version)
+                                            } else if (fix.switchP5Version != null) {
+                                                onSwitchRuntimeVersion?.invoke(fix.switchP5Version)
+                                            }
                                         }
-                                    },
-                                    label = {
-                                        Text(
-                                            text = "⚡ ${fix.label}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold
+                                        .padding(horizontal = 9.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_quick_fix),
+                                            contentDescription = null,
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(13.dp)
                                         )
-                                    },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = colors.surface.copy(alpha = 0.9f),
-                                        labelColor = colors.primary
-                                    )
-                                )
+                                        Text(
+                                            text = fix.label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.primary
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -222,17 +255,22 @@ internal fun InlineDiagnosticBanner(
                             Text(
                                 text = latestError.message,
                                 fontFamily = codeFontFamily,
-                                style = MaterialTheme.typography.bodySmall
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onErrorContainer
                             )
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End
                         ) {
-                            TextButton(
-                                onClick = { onCopyError(latestError.copyText()) },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                modifier = Modifier.height(26.dp)
+                            val copyShape = RoundedCornerShape(7.dp)
+                            Box(
+                                modifier = Modifier
+                                    .height(24.dp)
+                                    .clip(copyShape)
+                                    .clickable { onCopyError(latestError.copyText()) }
+                                    .padding(horizontal = 8.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     textTranslator("エラーをコピー", emptyArray()),
@@ -278,21 +316,22 @@ internal fun LiveWatchOverlayColumn(
                     val lineTopPx = textLayout.getLineTop(visualLine) - scrollValue
                     if (lineTopPx >= -24f && lineTopPx <= viewportHeightPx + 24f) {
                         val topDp = with(density) { lineTopPx.toDp() } + 16.dp
-                        Surface(
+                        val badgeShape = RoundedCornerShape(6.dp)
+                        Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(top = topDp.coerceAtLeast(0.dp), end = 12.dp),
-                            shape = RoundedCornerShape(6.dp),
-                            color = colors.secondaryContainer.copy(alpha = 0.9f),
-                            contentColor = colors.onSecondaryContainer,
-                            border = BorderStroke(0.5.dp, colors.secondary.copy(alpha = 0.45f))
+                                .padding(top = topDp.coerceAtLeast(0.dp), end = 12.dp)
+                                .clip(badgeShape)
+                                .background(colors.surface.copy(alpha = 0.92f))
+                                .border(1.dp, colors.primary.copy(alpha = 0.45f), badgeShape)
+                                .padding(horizontal = 6.dp, vertical = 1.dp)
                         ) {
                             Text(
                                 text = "⇒ $formattedValue",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                                 fontFamily = codeFontFamily,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
+                                color = colors.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )

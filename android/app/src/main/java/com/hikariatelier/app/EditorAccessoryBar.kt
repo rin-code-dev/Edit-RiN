@@ -15,7 +15,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -133,11 +132,10 @@ private val QUICK_SWATCH_HEXES = listOf(
 )
 
 /**
- * Enhanced EditorAccessoryBar (v3):
- * - 2-Axis Velocity Scrubber: horizontal drag changes value; vertical drag switches gear (×10 / ×1 / ×0.1 / ×0.01)
- *   with haptic feedback and triggers [onLiveScrub] for immediate 60fps canvas updates.
- * - Inline Color Quick Swatch Bar: when the cursor is on a color literal, presents an inline quick palette
- *   above the accessory bar so users can tweak colors live without a modal dialog blocking the canvas.
+ * Enhanced EditorAccessoryBar (v3.3):
+ * - All keys use `.clip(RoundedCornerShape(8.dp))` BEFORE `.clickable` so touch ripples strictly match
+ *   the flat rectangular key design.
+ * - 2-Axis Velocity Scrubber and Inline Color Quick Swatch Bar share the exact same flat border aesthetic.
  */
 @Composable
 internal fun EditorAccessoryBar(
@@ -165,6 +163,7 @@ internal fun EditorAccessoryBar(
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
     val keyHeight = if (compactAccessoryKeys) 30.dp else 34.dp
     val iconSize = if (compactAccessoryKeys) 16.dp else 18.dp
+    val keyShape = RoundedCornerShape(8.dp)
     val haptic = LocalHapticFeedback.current
 
     @Composable
@@ -172,25 +171,25 @@ internal fun EditorAccessoryBar(
         @DrawableRes iconRes: Int,
         description: String,
         enabled: Boolean = true,
+        active: Boolean = false,
         onClick: () -> Unit
     ) {
-        Surface(
-            onClick = onClick,
-            enabled = enabled,
+        Box(
             modifier = Modifier
                 .size(width = if (compactAccessoryKeys) 32.dp else 36.dp, height = keyHeight)
+                .clip(keyShape)
+                .background(if (active) colors.primary.copy(alpha = 0.14f) else Color.Transparent)
+                .then(if (active) Modifier.border(1.dp, colors.primary.copy(alpha = 0.7f), keyShape) else Modifier)
+                .clickable(enabled = enabled, onClick = onClick)
                 .semantics { contentDescription = description },
-            shape = RoundedCornerShape(8.dp),
-            color = Color.Transparent,
-            contentColor = colors.onSurface.copy(alpha = if (enabled) 0.88f else 0.32f)
+            contentAlignment = Alignment.Center
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize)
-                )
-            }
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = if (active) colors.primary else colors.onSurface.copy(alpha = if (enabled) 0.88f else 0.32f),
+                modifier = Modifier.size(iconSize)
+            )
         }
     }
 
@@ -202,26 +201,23 @@ internal fun EditorAccessoryBar(
         enabled: Boolean = true,
         onClick: () -> Unit
     ) {
-        Surface(
-            onClick = onClick,
-            enabled = enabled,
+        Box(
             modifier = Modifier
                 .width((if (compactAccessoryKeys) (width - 4).coerceAtLeast(28) else width).dp)
                 .height(keyHeight)
+                .clip(keyShape)
+                .clickable(enabled = enabled, onClick = onClick)
                 .semantics { contentDescription = description },
-            shape = RoundedCornerShape(8.dp),
-            color = Color.Transparent,
-            contentColor = colors.onSurface.copy(alpha = if (enabled) 0.9f else 0.32f)
+            contentAlignment = Alignment.Center
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = label,
-                    fontFamily = codeFontFamily,
-                    fontSize = if (compactAccessoryKeys) 12.sp else 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = label,
+                fontFamily = codeFontFamily,
+                fontSize = if (compactAccessoryKeys) 12.sp else 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface.copy(alpha = if (enabled) 0.9f else 0.32f),
+                maxLines = 1
+            )
         }
     }
 
@@ -271,7 +267,7 @@ internal fun EditorAccessoryBar(
     var showInlineColorStrip by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        // Inline Color Quick Popover Strip (Non-modal live color manipulation)
+        // Inline Color Quick Popover Strip (Flat rounded-rect swatches)
         AnimatedVisibility(
             visible = detectedColorTarget != null && showInlineColorStrip,
             enter = fadeIn(tween(100)) + expandVertically(tween(120)),
@@ -281,8 +277,8 @@ internal fun EditorAccessoryBar(
             if (target != null) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = colors.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, colors.outlineVariant)
+                    color = colors.surface,
+                    border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
                 ) {
                     Row(
                         modifier = Modifier
@@ -292,26 +288,35 @@ internal fun EditorAccessoryBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        val swatchShape = RoundedCornerShape(6.dp)
                         QUICK_SWATCH_HEXES.forEach { hex ->
                             val swatch = parseHexColor(hex) ?: Color.White
                             Box(
                                 modifier = Modifier
                                     .size(22.dp)
-                                    .clip(CircleShape)
+                                    .clip(swatchShape)
                                     .background(swatch)
-                                    .border(1.dp, colors.outlineVariant, CircleShape)
+                                    .border(1.dp, colors.outlineVariant, swatchShape)
                                     .clickable {
                                         onApplyEdit(replaceColorTarget(editingValue, target, swatch))
                                         currentOnLiveScrub?.invoke()
                                     }
                             )
                         }
-                        TextButton(
-                            onClick = { onOpenColorPicker(target, target.color) },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                            modifier = Modifier.height(24.dp)
+                        Box(
+                            modifier = Modifier
+                                .height(24.dp)
+                                .clip(swatchShape)
+                                .border(1.dp, colors.outlineVariant, swatchShape)
+                                .clickable { onOpenColorPicker(target, target.color) }
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(uiText("詳細"), style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = uiText("詳細"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -334,7 +339,7 @@ internal fun EditorAccessoryBar(
                     .padding(horizontal = 6.dp, vertical = if (compactAccessoryKeys) 3.dp else 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left Pinned Zone: Undo, Redo, Inline Color Swatch, and 2-Axis Live Number Scrubber
+                // Left Pinned Zone: Undo, Redo, Flat Color Swatch, and 2-Axis Live Number Scrubber
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -343,56 +348,64 @@ internal fun EditorAccessoryBar(
                     FlatIconKey(R.drawable.ic_redo, uiText("やり直す"), enabled = redoAvailable, onClick = onRedo)
 
                     val swatchColor = detectedColorTarget?.color ?: lastColorPickerColor
-                    Surface(
-                        onClick = {
-                            if (detectedColorTarget != null) {
-                                showInlineColorStrip = !showInlineColorStrip
-                            } else {
-                                onOpenColorPicker(null, swatchColor)
-                            }
-                        },
+                    val colorActive = detectedColorTarget != null
+                    Box(
                         modifier = Modifier
                             .size(width = if (compactAccessoryKeys) 32.dp else 36.dp, height = keyHeight)
-                            .semantics {
-                                contentDescription = uiText(if (detectedColorTarget != null) "カラーを編集" else "カラーピッカー")
-                            },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (detectedColorTarget != null) colors.surfaceVariant.copy(alpha = 0.55f) else Color.Transparent
-                    ) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Box(
-                                modifier = Modifier
-                                    .size(if (detectedColorTarget != null) 14.dp else 11.dp)
-                                    .clip(CircleShape)
-                                    .background(swatchColor)
-                                    .border(
-                                        width = if (detectedColorTarget != null) 1.5.dp else 1.dp,
-                                        color = if (detectedColorTarget != null) colors.primary else colors.outlineVariant,
-                                        shape = CircleShape
-                                    )
+                            .clip(keyShape)
+                            .background(if (colorActive) colors.primary.copy(alpha = 0.12f) else Color.Transparent)
+                            .then(
+                                if (colorActive) Modifier.border(1.dp, colors.primary.copy(alpha = 0.7f), keyShape)
+                                else Modifier
                             )
-                        }
+                            .clickable {
+                                if (detectedColorTarget != null) {
+                                    showInlineColorStrip = !showInlineColorStrip
+                                } else {
+                                    onOpenColorPicker(null, swatchColor)
+                                }
+                            }
+                            .semantics {
+                                contentDescription = uiText(if (colorActive) "カラーを編集" else "カラーピッカー")
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val innerSwatchShape = RoundedCornerShape(4.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(if (colorActive) 14.dp else 12.dp)
+                                .clip(innerSwatchShape)
+                                .background(swatchColor)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (colorActive) colors.primary else colors.outlineVariant,
+                                    shape = innerSwatchShape
+                                )
+                        )
                     }
 
                     if (detectedNumberTarget != null) {
-                        Surface(
-                            onClick = {
-                                val nextVal = detectedNumberTarget.value + detectedNumberTarget.step
-                                val formatted = formatScrubbedNumber(nextVal, detectedNumberTarget.decimals)
-                                val r = detectedNumberTarget.range
-                                if (r.first >= 0 && r.last < editingValue.text.length) {
-                                    onApplyEdit(
-                                        TextFieldValue(
-                                            editingValue.text.replaceRange(r.first, r.last + 1, formatted),
-                                            TextRange(r.first + formatted.length)
-                                        )
-                                    )
-                                    currentOnLiveScrub?.invoke()
-                                }
-                            },
+                        Box(
                             modifier = Modifier
                                 .widthIn(min = if (compactAccessoryKeys) 56.dp else 64.dp)
                                 .height(keyHeight)
+                                .clip(keyShape)
+                                .background(colors.primary.copy(alpha = 0.14f))
+                                .border(1.dp, colors.primary.copy(alpha = 0.75f), keyShape)
+                                .clickable {
+                                    val nextVal = detectedNumberTarget.value + detectedNumberTarget.step
+                                    val formatted = formatScrubbedNumber(nextVal, detectedNumberTarget.decimals)
+                                    val r = detectedNumberTarget.range
+                                    if (r.first >= 0 && r.last < editingValue.text.length) {
+                                        onApplyEdit(
+                                            TextFieldValue(
+                                                editingValue.text.replaceRange(r.first, r.last + 1, formatted),
+                                                TextRange(r.first + formatted.length)
+                                            )
+                                        )
+                                        currentOnLiveScrub?.invoke()
+                                    }
+                                }
                                 .semantics {
                                     contentDescription = uiText("左右にドラッグして数値を調整")
                                 }
@@ -423,7 +436,7 @@ internal fun EditorAccessoryBar(
                                             val range = activeRange ?: return@detectDragGestures
                                             change.consume()
                                             accumulatedDx += dragAmount.x
-                                            accumulatedDy -= dragAmount.y // Up = coarser (×10), Down = finer (×0.1)
+                                            accumulatedDy -= dragAmount.y
                                             val nextGear = (accumulatedDy / gearStepPx).toInt().coerceIn(-2, 2)
                                             if (nextGear != gearExponent) {
                                                 gearExponent = nextGear
@@ -467,19 +480,18 @@ internal fun EditorAccessoryBar(
                                             activeGearLabel = null
                                         }
                                     )
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.primary.copy(alpha = 0.12f),
-                            contentColor = colors.primary
+                                }
+                                .padding(horizontal = 6.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_scrub),
                                     contentDescription = null,
+                                    tint = colors.primary,
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Text(
@@ -487,6 +499,7 @@ internal fun EditorAccessoryBar(
                                     fontFamily = codeFontFamily,
                                     fontSize = if (compactAccessoryKeys) 11.sp else 12.sp,
                                     fontWeight = FontWeight.SemiBold,
+                                    color = colors.primary,
                                     maxLines = 1
                                 )
                             }
@@ -553,6 +566,20 @@ internal fun EditorAccessoryBar(
     }
 }
 
+private fun formatColorReplacement(target: EditorColorTarget, color: Color): String {
+    val argb = color.toArgb()
+    val r = (argb shr 16) and 0xFF
+    val g = (argb shr 8) and 0xFF
+    val b = argb and 0xFF
+    val raw = target.rawText.trim()
+    return when {
+        raw.startsWith("color(", ignoreCase = true) -> "color($r, $g, $b)"
+        raw.startsWith("rgb(", ignoreCase = true) -> "rgb($r, $g, $b)"
+        raw.startsWith("'") -> String.format(Locale.ROOT, "'#%02X%02X%02X'", r, g, b)
+        raw.startsWith("\"") -> String.format(Locale.ROOT, "\"#%02X%02X%02X\"", r, g, b)
+        else -> String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
+    }
+}
 
 @Composable
 internal fun CompletionBar(
@@ -588,45 +615,60 @@ internal fun CompletionBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (undeclaredParam != null) {
-                    AssistChip(
-                        onClick = {
-                            val existing = workParameters(mapOf("sketch.js" to editingText))
-                            val declaration = defaultDeclarationForParamName(undeclaredParam, existing)
-                            if (declaration != null) {
-                                onApplyCompletion(prependDeclarations(editingValue, declaration))
+                    val chipShape = RoundedCornerShape(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(chipShape)
+                            .background(colors.primary.copy(alpha = 0.14f))
+                            .border(1.dp, colors.primary.copy(alpha = 0.7f), chipShape)
+                            .clickable {
+                                val existing = workParameters(mapOf("sketch.js" to editingText))
+                                val declaration = defaultDeclarationForParamName(undeclaredParam, existing)
+                                if (declaration != null) {
+                                    onApplyCompletion(prependDeclarations(editingValue, declaration))
+                                }
                             }
-                        },
-                        label = {
-                            Text(
-                                textTranslator("＋ @rin %s を宣言", arrayOf(undeclaredParam)),
-                                fontFamily = codeFontFamily,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    )
+                            .padding(horizontal = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            textTranslator("＋ @rin %s を宣言", arrayOf(undeclaredParam)),
+                            fontFamily = codeFontFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.primary
+                        )
+                    }
                 }
                 suggestions.forEach { suggestion ->
-                    SuggestionChip(
-                        onClick = {
-                            val end = editingValue.selection.start
-                            val start = (end - completionPrefix(editingValue).length).coerceAtLeast(0)
-                            onApplyCompletion(
-                                TextFieldValue(
-                                    editingText.replaceRange(start, end, suggestion.name),
-                                    TextRange(start + suggestion.name.length)
+                    val chipShape = RoundedCornerShape(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(chipShape)
+                            .border(1.dp, colors.outlineVariant.copy(alpha = 0.75f), chipShape)
+                            .clickable {
+                                val end = editingValue.selection.start
+                                val start = (end - completionPrefix(editingValue).length).coerceAtLeast(0)
+                                onApplyCompletion(
+                                    TextFieldValue(
+                                        editingText.replaceRange(start, end, suggestion.name),
+                                        TextRange(start + suggestion.name.length)
+                                    )
                                 )
-                            )
-                        },
-                        label = {
-                            Text(
-                                suggestion.file?.let { "${suggestion.name} · $it" }
-                                    ?: completionHelp(suggestion.name) { s -> textTranslator(s, emptyArray()) },
-                                fontFamily = codeFontFamily,
-                                fontSize = 12.sp
-                            )
-                        }
-                    )
+                            }
+                            .padding(horizontal = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            suggestion.file?.let { "${suggestion.name} · $it" }
+                                ?: completionHelp(suggestion.name) { s -> textTranslator(s, emptyArray()) },
+                            fontFamily = codeFontFamily,
+                            fontSize = 12.sp,
+                            color = colors.onSurface
+                        )
+                    }
                 }
             }
         }

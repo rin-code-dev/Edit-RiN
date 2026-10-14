@@ -1,8 +1,11 @@
 package com.hikariatelier.app
 
+import android.view.inputmethod.EditorInfo
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
@@ -13,7 +16,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -23,7 +28,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +44,29 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+
+/**
+ * Forces Android IMEs (Gboard, Samsung Keyboard, Simeji, etc.) to NEVER enter the full-screen
+ * white "Extract UI" box in landscape orientation by injecting [EditorInfo.IME_FLAG_NO_EXTRACT_UI]
+ * and [EditorInfo.IME_FLAG_NO_FULLSCREEN] into every text input connection inside [content].
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun DisableExtractUiInputWrapper(content: @Composable () -> Unit) {
+    InterceptPlatformTextInput(
+        interceptor = { request, nextHandler ->
+            val modifiedRequest = PlatformTextInputMethodRequest { outAttrs ->
+                val connection = request.createInputConnection(outAttrs)
+                outAttrs.imeOptions = outAttrs.imeOptions or
+                    EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+                    EditorInfo.IME_FLAG_NO_FULLSCREEN
+                connection
+            }
+            nextHandler.startInputMethod(modifiedRequest)
+        },
+        content = content
+    )
+}
 
 private val PRELOAD_DECLARATION_REGEX = Regex("""\bfunction\s+preload\s*\(""")
 private val P5_ASYNC_LOADER_REGEX = Regex("""\b(loadImage|loadSound|loadFont|loadJSON|loadTable|loadStrings|loadBytes|loadXML|loadModel|loadShader)\s*\(""")
@@ -111,7 +141,7 @@ internal fun EditorArea(
     }
     val effectiveFontSize = pinchFontSize ?: editorFontSize
 
-    // Auto-Run debounced Hot-Swap trigger when enabled in EditorSessionViewModel
+    // Auto-Run debounced trigger when enabled in EditorSessionViewModel
     AutoRunHotSwapEffect(
         enabled = sessionViewModel.autoRunEnabled,
         editingText = editingText,
@@ -283,328 +313,364 @@ internal fun EditorArea(
             defaultElevation = 0.dp
         )
     ) {
-        Column(Modifier.fillMaxSize()) {
-            if (activeWork?.isSample == true) Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    textTranslator("サンプル・閲覧専用", emptyArray()),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = onCopySample, enabled = !sessionViewModel.assetBusy) {
-                    Text(textTranslator("コピーして編集", emptyArray()))
-                }
-            }
-            val projectFiles = listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted()
-            val hasMultipleFiles = projectFiles.size > 1
-            if (hasMultipleFiles) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
+        DisableExtractUiInputWrapper {
+            Column(Modifier.fillMaxSize()) {
+                if (activeWork?.isSample == true) Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        FileTabs(
-                            projectFiles,
-                            selectedEditorFile,
-                            dirtyFiles = dirtyFiles,
-                            unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
-                            enabled = !sessionViewModel.editorInputLocked
-                        ) {
-                            if (selectedEditorFile != it) {
-                                focusManager.clearFocus(force = true)
-                                onFocusChange(false)
-                                onSelectEditorFile(it)
-                            }
-                        }
-                    }
-                    if (!readOnly && onOpenProjectFiles != null) {
-                        IconButton(
-                            onClick = onOpenProjectFiles,
-                            enabled = !sessionViewModel.editorInputLocked,
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_add),
-                                contentDescription = textTranslator("ファイルを追加", emptyArray()),
-                                modifier = Modifier.size(16.dp),
-                                tint = colors.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-            inlineSearch()
-            if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
-                Text(
-                    textTranslator("前回の実行時に発生したエラーです", emptyArray()),
-                    Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.tertiary
-                )
-            }
-            val latestError = if (showErrorBanner && errorsCurrent) {
-                consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
-            } else null
-            if (latestError != null) {
-                InlineDiagnosticBanner(
-                    latestError = latestError,
-                    editingFile = editingFile,
-                    editingValue = editingValue,
-                    p5Version = activeWork?.p5Version,
-                    codeFontFamily = codeFontFamily,
-                    colors = colors,
-                    textTranslator = textTranslator,
-                    onJumpToSource = onJumpToSource,
-                    onApplyQuickFixCode = { fixedValue ->
-                        onApplyEditorChange(fixedValue)
-                        onRunChanges()
-                    },
-                    onSwitchRuntimeVersion = onSwitchRuntimeVersion,
-                    onCopyError = { copyToClipboard(it) }
-                )
-            }
-            BoxWithConstraints(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
-                val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
-                val localDensity = LocalDensity.current
-                val gutterMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-                val singleDigitAndFoldWidth = remember(gutterMeasurer, codeFontFamily, effectiveFontSize, localDensity) {
-                    val style = TextStyle(
-                        fontFamily = codeFontFamily,
-                        fontSize = effectiveFontSize.sp,
-                        fontWeight = FontWeight.Bold
+                    Text(
+                        textTranslator("サンプル・閲覧専用", emptyArray()),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.weight(1f)
                     )
-                    val maxDigit = ('0'..'9').maxOf { digit ->
-                        gutterMeasurer.measure(AnnotatedString(digit.toString()), style = style, softWrap = false).size.width
-                    }
-                    val foldArrow = gutterMeasurer.measure(AnnotatedString("▾"), style = style, softWrap = false).size.width
-                    maxDigit to foldArrow
-                }
-                val gutterPixels = (if (hasFolds) singleDigitAndFoldWidth.second else 0) +
-                    (if (showLineNumbers) singleDigitAndFoldWidth.first * lineNumberDigits else 0)
-                val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
-                val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
-                val viewportHeightPx = with(localDensity) { maxHeight.toPx() }
-
-                LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
-                    val target = navigationTarget ?: return@LaunchedEffect
-                    val layout = editorTextLayout ?: return@LaunchedEffect
-                    if (target.file != editingFile || layout.layoutInput.text.text != displayText) return@LaunchedEffect
-                    val offset = target.sourceOffset(editingText) ?: return@LaunchedEffect
-                    val containing = foldRegions.filter { it.open in collapsedFolds && offset > it.open && offset < it.close }
-                    if (containing.isNotEmpty()) {
-                        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(
-                            editingText,
-                            collapsedFolds - containing.map { it.open }.toSet(),
-                            foldRegions
-                        )
-                        return@LaunchedEffect
-                    }
-                    if (navigationRequestsFocus) editorFocusRequester.requestFocus()
-                    editorScrollState.scrollTo(layout.getLineTop(layout.getLineForOffset(projection.originalToTransformed(offset))).toInt())
-                    if (!editorWordWrap) {
-                        val cursor = layout.getCursorRect(projection.originalToTransformed(offset))
-                        val left = editorHorizontalScrollState.value
-                        if (cursor.right > left + viewportWidth) {
-                            editorHorizontalScrollState.scrollTo((cursor.right - viewportWidth).toInt().coerceAtLeast(0))
-                        } else if (cursor.left < left) {
-                            editorHorizontalScrollState.scrollTo(cursor.left.toInt().coerceAtLeast(0))
-                        }
-                    }
-                    onClearNavigationTarget()
-                }
-                val containerMaxHeight = maxHeight
-                val contentMinHeight = (containerMaxHeight - 32.dp).coerceAtLeast(0.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(editorScrollState)
-                        .padding(vertical = 16.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    if (showLineNumbers || hasFolds) {
-                        EditorGutter(
-                            documentKey = editingKey,
-                            layout = editorTextLayout,
-                            displayText = displayText,
-                            projection = projection,
-                            starts = logicalLineStarts,
-                            folds = foldsByLine,
-                            collapsed = collapsedFolds,
-                            errors = editorErrorLines,
-                            numbers = showLineNumbers,
-                            digits = lineNumberDigits,
-                            width = gutterWidth,
-                            minimumHeight = contentMinHeight,
-                            viewportHeight = viewportHeightPx,
-                            scroll = editorScrollState,
-                            style = TextStyle(
-                                fontFamily = codeFontFamily,
-                                fontSize = effectiveFontSize.sp,
-                                lineHeight = (effectiveFontSize * 1.55f).sp,
-                                color = colors.onSurfaceVariant.copy(alpha = 0.38f)
-                            ),
-                            errorColor = colors.error,
-                            dividerColor = Color.Transparent,
-                            activeLine = activeLineNumber,
-                            activeColor = colors.primary,
-                            onFold = currentToggleFold,
-                            onError = { errorTooltipLine = it },
-                            foldDescription = { closed, line ->
-                                textTranslator(if (closed) "%s行目を展開" else "%s行目を折りたたむ", arrayOf(line))
-                            }
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .then(
-                                if (!editorWordWrap) Modifier.horizontalScroll(editorHorizontalScrollState)
-                                else Modifier
-                            )
-                    ) {
-                        BasicTextField(
-                            value = editingValue,
-                            readOnly = readOnly,
-                            onValueChange = { next ->
-                                dispatchEditorValueChange(editingValue, next, readOnly, onUpdateEditingValue) {
-                                    if (editingValue.selection.collapsed &&
-                                        deletesFoldedCode(editingText, it.text, projection.hidden)) {
-                                        sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
-                                    } else onApplyEditorChange(
-                                        if (autoIndent && (isJavaScriptProjectFile(editingFile) ||
-                                                projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) &&
-                                            editingValue.composition == null && it.composition == null) {
-                                            applyAutomaticIndent(editingValue, it)
-                                        } else {
-                                            it
-                                        }
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .then(
-                                    if (editorWordWrap) Modifier.fillMaxWidth()
-                                    else Modifier.wrapContentWidth()
-                                )
-                                .heightIn(min = contentMinHeight)
-                                .padding(
-                                    start = if (showLineNumbers || hasFolds) 8.dp else 14.dp,
-                                    end = 16.dp,
-                                    bottom = 28.dp
-                                )
-                                .focusRequester(editorFocusRequester)
-                                .onFocusChanged {
-                                    onFocusChange(it.isFocused)
-                                },
-                            textStyle = TextStyle(
-                                fontFeatureSettings = fontFeatures,
-                                fontFamily = codeFontFamily,
-                                fontSize = effectiveFontSize.sp,
-                                lineHeight = (effectiveFontSize * 1.55f).sp,
-                                color = colors.onSurface
-                            ),
-                            visualTransformation = foldedHighlighter,
-                            onTextLayout = { if (!it.hasSameEditorLines(editorTextLayout)) editorTextLayout = it },
-                            cursorBrush = SolidColor(colors.primary)
-                        )
+                    TextButton(onClick = onCopySample, enabled = !sessionViewModel.assetBusy) {
+                        Text(textTranslator("コピーして編集", emptyArray()))
                     }
                 }
-
-                // Live Watch Overlay Badges (`// ?` or `rinWatch`)
-                LiveWatchOverlayColumn(
-                    watchValues = watchValues,
-                    logicalLineStarts = logicalLineStarts,
-                    projection = projection,
-                    textLayout = editorTextLayout,
-                    scrollValue = editorScrollState.value,
-                    viewportHeightPx = viewportHeightPx,
-                    codeFontFamily = codeFontFamily,
-                    colors = colors
-                )
-
-                // Bottom-Right Floating Status, Auto-Run Toggle & Run Changes Pill
-                val showRunAction = !readOnly && previewHasChanges
-                val statsText = "${editingText.length}c · ${logicalLineStarts.size}L"
-                if (showRunAction || editorFocused || sessionViewModel.autoRunEnabled) {
+                val projectFiles = listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted()
+                val hasMultipleFiles = projectFiles.size > 1
+                if (hasMultipleFiles) {
                     Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 10.dp, bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (!readOnly) {
-                            Surface(
-                                onClick = { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled },
-                                shape = RoundedCornerShape(999.dp),
-                                color = if (sessionViewModel.autoRunEnabled) colors.primaryContainer else colors.surface.copy(alpha = 0.85f),
-                                contentColor = if (sessionViewModel.autoRunEnabled) colors.onPrimaryContainer else colors.onSurfaceVariant,
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (sessionViewModel.autoRunEnabled) colors.primary.copy(alpha = 0.6f)
-                                    else colors.outlineVariant.copy(alpha = 0.5f)
-                                )
+                        Box(modifier = Modifier.weight(1f)) {
+                            FileTabs(
+                                projectFiles,
+                                selectedEditorFile,
+                                dirtyFiles = dirtyFiles,
+                                unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
+                                enabled = !sessionViewModel.editorInputLocked
                             ) {
-                                Text(
-                                    text = if (sessionViewModel.autoRunEnabled) "⚡AUTO" else "⚡",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    fontFamily = codeFontFamily,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                if (selectedEditorFile != it) {
+                                    focusManager.clearFocus(force = true)
+                                    onFocusChange(false)
+                                    onSelectEditorFile(it)
+                                }
+                            }
+                        }
+                        if (!readOnly && onOpenProjectFiles != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !sessionViewModel.editorInputLocked) { onOpenProjectFiles() }
+                                    .semantics { contentDescription = textTranslator("ファイルを追加", emptyArray()) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_add),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.onSurfaceVariant
                                 )
                             }
                         }
+                    }
+                }
+                inlineSearch()
+                if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
+                    Text(
+                        textTranslator("前回の実行時に発生したエラーです", emptyArray()),
+                        Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.tertiary
+                    )
+                }
+                val latestError = if (showErrorBanner && errorsCurrent) {
+                    consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
+                } else null
+                if (latestError != null) {
+                    InlineDiagnosticBanner(
+                        latestError = latestError,
+                        editingFile = editingFile,
+                        editingValue = editingValue,
+                        p5Version = activeWork?.p5Version,
+                        codeFontFamily = codeFontFamily,
+                        colors = colors,
+                        textTranslator = textTranslator,
+                        onJumpToSource = onJumpToSource,
+                        onApplyQuickFixCode = { fixedValue ->
+                            onApplyEditorChange(fixedValue)
+                            onRunChanges()
+                        },
+                        onSwitchRuntimeVersion = onSwitchRuntimeVersion,
+                        onCopyError = { copyToClipboard(it) }
+                    )
+                }
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
+                    val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
+                    val localDensity = LocalDensity.current
+                    val gutterMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+                    val singleDigitAndFoldWidth = remember(gutterMeasurer, codeFontFamily, effectiveFontSize, localDensity) {
+                        val style = TextStyle(
+                            fontFamily = codeFontFamily,
+                            fontSize = effectiveFontSize.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val maxDigit = ('0'..'9').maxOf { digit ->
+                            gutterMeasurer.measure(AnnotatedString(digit.toString()), style = style, softWrap = false).size.width
+                        }
+                        val foldArrow = gutterMeasurer.measure(AnnotatedString("▾"), style = style, softWrap = false).size.width
+                        maxDigit to foldArrow
+                    }
+                    val gutterPixels = (if (hasFolds) singleDigitAndFoldWidth.second else 0) +
+                        (if (showLineNumbers) singleDigitAndFoldWidth.first * lineNumberDigits else 0)
+                    val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
+                    val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
+                    val viewportHeightPx = with(localDensity) { maxHeight.toPx() }
 
-                        Surface(
-                            onClick = { if (showRunAction) onRunChanges() },
-                            enabled = showRunAction,
-                            modifier = Modifier.semantics {
-                                if (showRunAction) contentDescription = textTranslator("変更を実行", emptyArray())
-                            },
-                            shape = RoundedCornerShape(999.dp),
-                            color = if (showRunAction) colors.tertiaryContainer else colors.surface.copy(alpha = 0.85f),
-                            contentColor = if (showRunAction) colors.onTertiaryContainer else colors.onSurfaceVariant.copy(alpha = 0.65f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (showRunAction) colors.tertiary.copy(alpha = 0.5f) else colors.outlineVariant.copy(alpha = 0.5f)
-                            ),
-                            tonalElevation = 0.dp
+                    LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
+                        val target = navigationTarget ?: return@LaunchedEffect
+                        val layout = editorTextLayout ?: return@LaunchedEffect
+                        if (target.file != editingFile || layout.layoutInput.text.text != displayText) return@LaunchedEffect
+                        val offset = target.sourceOffset(editingText) ?: return@LaunchedEffect
+                        val containing = foldRegions.filter { it.open in collapsedFolds && offset > it.open && offset < it.close }
+                        if (containing.isNotEmpty()) {
+                            sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(
+                                editingText,
+                                collapsedFolds - containing.map { it.open }.toSet(),
+                                foldRegions
+                            )
+                            return@LaunchedEffect
+                        }
+                        if (navigationRequestsFocus) editorFocusRequester.requestFocus()
+                        editorScrollState.scrollTo(layout.getLineTop(layout.getLineForOffset(projection.originalToTransformed(offset))).toInt())
+                        if (!editorWordWrap) {
+                            val cursor = layout.getCursorRect(projection.originalToTransformed(offset))
+                            val left = editorHorizontalScrollState.value
+                            if (cursor.right > left + viewportWidth) {
+                                editorHorizontalScrollState.scrollTo((cursor.right - viewportWidth).toInt().coerceAtLeast(0))
+                            } else if (cursor.left < left) {
+                                editorHorizontalScrollState.scrollTo(cursor.left.toInt().coerceAtLeast(0))
+                            }
+                        }
+                        onClearNavigationTarget()
+                    }
+                    val containerMaxHeight = maxHeight
+                    val contentMinHeight = (containerMaxHeight - 32.dp).coerceAtLeast(0.dp)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(editorScrollState)
+                            .padding(vertical = 16.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        if (showLineNumbers || hasFolds) {
+                            EditorGutter(
+                                documentKey = editingKey,
+                                layout = editorTextLayout,
+                                displayText = displayText,
+                                projection = projection,
+                                starts = logicalLineStarts,
+                                folds = foldsByLine,
+                                collapsed = collapsedFolds,
+                                errors = editorErrorLines,
+                                numbers = showLineNumbers,
+                                digits = lineNumberDigits,
+                                width = gutterWidth,
+                                minimumHeight = contentMinHeight,
+                                viewportHeight = viewportHeightPx,
+                                scroll = editorScrollState,
+                                style = TextStyle(
+                                    fontFamily = codeFontFamily,
+                                    fontSize = effectiveFontSize.sp,
+                                    lineHeight = (effectiveFontSize * 1.55f).sp,
+                                    color = colors.onSurfaceVariant.copy(alpha = 0.38f)
+                                ),
+                                errorColor = colors.error,
+                                dividerColor = Color.Transparent,
+                                activeLine = activeLineNumber,
+                                activeColor = colors.primary,
+                                onFold = currentToggleFold,
+                                onError = { errorTooltipLine = it },
+                                foldDescription = { closed, line ->
+                                    textTranslator(if (closed) "%s行目を展開" else "%s行目を折りたたむ", arrayOf(line))
+                                }
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                    if (!editorWordWrap) Modifier.horizontalScroll(editorHorizontalScrollState)
+                                    else Modifier
+                                )
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            BasicTextField(
+                                value = editingValue,
+                                readOnly = readOnly,
+                                onValueChange = { next ->
+                                    dispatchEditorValueChange(editingValue, next, readOnly, onUpdateEditingValue) {
+                                        if (editingValue.selection.collapsed &&
+                                            deletesFoldedCode(editingText, it.text, projection.hidden)) {
+                                            sessionViewModel.codeFoldStates[editingKey] = CodeFoldState(editingText, emptySet())
+                                        } else onApplyEditorChange(
+                                            if (autoIndent && (isJavaScriptProjectFile(editingFile) ||
+                                                    projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER) &&
+                                                editingValue.composition == null && it.composition == null) {
+                                                applyAutomaticIndent(editingValue, it)
+                                            } else {
+                                                it
+                                            }
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .then(
+                                        if (editorWordWrap) Modifier.fillMaxWidth()
+                                        else Modifier.wrapContentWidth()
+                                    )
+                                    .heightIn(min = contentMinHeight)
+                                    .padding(
+                                        start = if (showLineNumbers || hasFolds) 8.dp else 14.dp,
+                                        end = 16.dp,
+                                        bottom = 28.dp
+                                    )
+                                    .focusRequester(editorFocusRequester)
+                                    .onFocusChanged {
+                                        onFocusChange(it.isFocused)
+                                    },
+                                textStyle = TextStyle(
+                                    fontFeatureSettings = fontFeatures,
+                                    fontFamily = codeFontFamily,
+                                    fontSize = effectiveFontSize.sp,
+                                    lineHeight = (effectiveFontSize * 1.55f).sp,
+                                    color = colors.onSurface
+                                ),
+                                visualTransformation = foldedHighlighter,
+                                onTextLayout = { if (!it.hasSameEditorLines(editorTextLayout)) editorTextLayout = it },
+                                cursorBrush = SolidColor(colors.primary)
+                            )
+                        }
+                    }
+
+                    // Live Watch Overlay Badges (`// ?` or `rinWatch`)
+                    LiveWatchOverlayColumn(
+                        watchValues = watchValues,
+                        logicalLineStarts = logicalLineStarts,
+                        projection = projection,
+                        textLayout = editorTextLayout,
+                        scrollValue = editorScrollState.value,
+                        viewportHeightPx = viewportHeightPx,
+                        codeFontFamily = codeFontFamily,
+                        colors = colors
+                    )
+
+                    // Bottom-Right Flat Status, Auto-Run & Run Changes Bar (Unified RoundedCornerShape(10.dp))
+                    val showRunAction = !readOnly && previewHasChanges
+                    val statsText = "${editingText.length}c · ${logicalLineStarts.size}L"
+                    if (showRunAction || editorFocused || sessionViewModel.autoRunEnabled) {
+                        val itemShape = RoundedCornerShape(10.dp)
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 10.dp, bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!readOnly) {
+                                val autoActive = sessionViewModel.autoRunEnabled
+                                Box(
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .clip(itemShape)
+                                        .background(
+                                            if (autoActive) colors.primary.copy(alpha = 0.14f)
+                                            else colors.surface.copy(alpha = 0.90f)
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (autoActive) colors.primary else colors.outlineVariant.copy(alpha = 0.7f),
+                                            shape = itemShape
+                                        )
+                                        .clickable { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled }
+                                        .padding(horizontal = 8.dp)
+                                        .semantics { contentDescription = textTranslator("自動実行を切り替え", emptyArray()) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_auto_run),
+                                            contentDescription = null,
+                                            tint = if (autoActive) colors.primary else colors.onSurfaceVariant,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        if (autoActive) {
+                                            Text(
+                                                text = "AUTO",
+                                                fontFamily = codeFontFamily,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .clip(itemShape)
+                                    .background(
+                                        if (showRunAction) colors.tertiary.copy(alpha = 0.14f)
+                                        else colors.surface.copy(alpha = 0.90f)
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (showRunAction) colors.tertiary else colors.outlineVariant.copy(alpha = 0.7f),
+                                        shape = itemShape
+                                    )
+                                    .then(
+                                        if (showRunAction) Modifier.clickable { onRunChanges() } else Modifier
+                                    )
+                                    .padding(horizontal = 9.dp)
+                                    .semantics {
+                                        if (showRunAction) contentDescription = textTranslator("変更を実行", emptyArray())
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                if (showRunAction) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_play),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Text(
-                                        text = textTranslator("変更を実行", emptyArray()),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "· $statsText",
-                                        fontFamily = codeFontFamily,
-                                        fontSize = 10.sp,
-                                        color = colors.onTertiaryContainer.copy(alpha = 0.75f)
-                                    )
-                                } else {
-                                    Text(
-                                        text = statsText,
-                                        fontFamily = codeFontFamily,
-                                        fontSize = 10.sp
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    if (showRunAction) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_play),
+                                            contentDescription = null,
+                                            tint = colors.tertiary,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = textTranslator("変更を実行", emptyArray()),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.tertiary
+                                        )
+                                        Text(
+                                            text = "· $statsText",
+                                            fontFamily = codeFontFamily,
+                                            fontSize = 10.sp,
+                                            color = colors.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = statsText,
+                                            fontFamily = codeFontFamily,
+                                            fontSize = 10.sp,
+                                            color = colors.onSurfaceVariant.copy(alpha = 0.75f)
+                                        )
+                                    }
                                 }
                             }
                         }

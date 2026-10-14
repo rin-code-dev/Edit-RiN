@@ -1,11 +1,13 @@
 package com.hikariatelier.app
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -23,7 +25,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,10 +109,10 @@ internal fun AutoRunHotSwapEffect(
     }
 }
 
-internal enum class PipSizePreset(val baseDp: Int) {
-    SMALL(124),
-    MEDIUM(168),
-    LARGE(224)
+internal enum class PipSizePreset(val baseDp: Int, val shortLabel: String) {
+    SMALL(138, "S"),
+    MEDIUM(178, "M"),
+    LARGE(228, "L")
 }
 
 internal enum class PipCorner {
@@ -117,11 +123,70 @@ internal enum class PipCorner {
 }
 
 /**
- * Stabilized Floating Picture-in-Picture (PiP) preview window (v3.2):
- * - Uses 4-corner anchor snapping ([PipCorner]) instead of raw pixel coordinates so keyboard IME
- *   animations and size preset changes never cause position drift or jumping.
- * - Separates Drag Mode (default: whole PiP card is smoothly draggable without WebView stealing touches)
- *   and Canvas Touch Mode (`👆` button: allows interacting with p5 sketch inside PiP without losing editor focus).
+ * Flat rounded-rectangle icon button designed specifically for Edit:RiN's PiP & Editor chrome:
+ * - Clips to [RoundedCornerShape] BEFORE [clickable] so the touch ripple strictly matches the
+ *   button's flat rectangular geometry instead of bleeding out as a circle.
+ * - Uses a 1dp border + subtle translucent tint when active rather than heavy opaque blobs.
+ */
+@Composable
+private fun PipFlatIconButton(
+    @DrawableRes iconRes: Int,
+    description: String,
+    colors: ColorScheme,
+    active: Boolean = false,
+    accentColor: Color = colors.primary,
+    badgeText: String? = null,
+    height: Dp = 24.dp,
+    minWidth: Dp = 26.dp,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(7.dp)
+    val bgColor = if (active) accentColor.copy(alpha = 0.15f) else Color.Transparent
+    val borderColor = if (active) accentColor.copy(alpha = 0.8f) else Color.Transparent
+    val tintColor = if (active) accentColor else colors.onSurfaceVariant
+
+    Box(
+        modifier = Modifier
+            .height(height)
+            .widthIn(min = minWidth)
+            .clip(shape)
+            .background(bgColor)
+            .then(if (active) Modifier.border(1.dp, borderColor, shape) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (badgeText != null) 5.dp else 4.dp)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = tintColor,
+                modifier = Modifier.size(14.dp)
+            )
+            if (badgeText != null) {
+                Text(
+                    text = badgeText,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = tintColor,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Stabilized Floating Picture-in-Picture (PiP) preview window (v3.3):
+ * - Opens in SMALL (`S`) size by default.
+ * - Guarantees a minimum card width of `138.dp` even on tall portrait ratios (`9:16` / `device`)
+ *   so the 4 header buttons (Run/Auto, Opacity, Size S/M/L, Minimize) are NEVER clipped or hidden.
+ * - Uses 4-corner anchor snapping ([PipCorner]) + full-window drag support.
+ * - Uses crisp flat vector icons and shape-clipped touch ripples matching Edit:RiN's flat aesthetic.
  */
 @Composable
 internal fun FloatingPipPreviewHost(
@@ -139,16 +204,25 @@ internal fun FloatingPipPreviewHost(
 ) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
-    var sizePreset by rememberSaveable { mutableStateOf(PipSizePreset.MEDIUM) }
+    fun uiText(source: String, vararg args: Any?): String = textTranslator(source, args)
+
+    // Default initial size is SMALL (S) per user preference
+    var sizePreset by rememberSaveable { mutableStateOf(PipSizePreset.SMALL) }
     var translucent by rememberSaveable { mutableStateOf(false) }
     var minimized by rememberSaveable { mutableStateOf(false) }
-    var interactiveCanvas by rememberSaveable { mutableStateOf(false) }
     var snapCorner by rememberSaveable { mutableStateOf(PipCorner.TOP_END) }
 
     val safeRatio = aspectRatio.coerceIn(0.45f, 2.2f)
     val baseSize = sizePreset.baseDp.dp
-    val targetWidth = if (minimized) 116.dp else if (safeRatio >= 1f) baseSize else (baseSize.value * safeRatio).dp
-    val targetHeight = if (minimized) 32.dp else (if (safeRatio >= 1f) (baseSize.value / safeRatio).dp else baseSize) + 28.dp
+    val headerHeight = 32.dp
+    val minHeaderWidth = 138.dp
+
+    val rawCanvasWidth = if (safeRatio >= 1f) baseSize else (baseSize.value * safeRatio).dp
+    val rawCanvasHeight = if (safeRatio >= 1f) (baseSize.value / safeRatio).dp else baseSize
+
+    // Guarantee minimum width of 138.dp so the 4 buttons never clip in S size or 9:16 aspect ratio
+    val targetWidth = if (minimized) 138.dp else maxOf(minHeaderWidth, rawCanvasWidth)
+    val targetHeight = if (minimized) headerHeight else rawCanvasHeight + headerHeight
 
     val animatedWidth by animateDpAsState(
         targetValue = targetWidth,
@@ -161,7 +235,7 @@ internal fun FloatingPipPreviewHost(
         label = "pipHeight"
     )
     val alpha by animateFloatAsState(
-        targetValue = if (translucent) 0.50f else 0.98f,
+        targetValue = if (translucent) 0.48f else 0.98f,
         label = "pipAlpha"
     )
 
@@ -246,6 +320,7 @@ internal fun FloatingPipPreviewHost(
             )
         }
 
+        val outerShape = RoundedCornerShape(12.dp)
         Box(
             modifier = Modifier
                 .offset {
@@ -255,133 +330,92 @@ internal fun FloatingPipPreviewHost(
                     )
                 }
                 .size(animatedWidth, animatedHeight)
-                .shadow(elevation = 6.dp, shape = RoundedCornerShape(14.dp), clip = false)
+                .shadow(elevation = 4.dp, shape = outerShape, clip = false)
                 .graphicsLayer { this.alpha = alpha }
-                .clip(RoundedCornerShape(14.dp))
-                .background(colors.surfaceContainerHigh)
-                .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp))
+                .clip(outerShape)
+                .background(colors.surface)
+                .border(1.dp, colors.outlineVariant, outerShape)
         ) {
             Column(Modifier.fillMaxSize()) {
-                // Draggable Header Bar
+                // Flat Header Bar with 4 Unified Vector Buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
-                        .background(colors.surfaceContainerHighest.copy(alpha = 0.95f))
+                        .height(headerHeight)
+                        .background(colors.surface)
                         .then(dragGestureModifier)
-                        .padding(horizontal = 6.dp),
+                        .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Surface(
-                        onClick = {
-                            if (previewHasChanges && !autoRunEnabled) onRunNow()
-                            else onToggleAutoRun()
+                    // Button 1: Run Now (when pending changes & auto-run off) or Toggle Auto-Run
+                    val showRunPending = previewHasChanges && !autoRunEnabled
+                    PipFlatIconButton(
+                        iconRes = if (showRunPending) R.drawable.ic_play else R.drawable.ic_auto_run,
+                        description = uiText(
+                            if (showRunPending) "変更を実行" else "自動実行を切り替え"
+                        ),
+                        colors = colors,
+                        active = autoRunEnabled || showRunPending,
+                        accentColor = if (showRunPending) colors.tertiary else colors.primary,
+                        badgeText = when {
+                            minimized -> "PiP"
+                            showRunPending -> "RUN"
+                            autoRunEnabled -> "AUTO"
+                            else -> null
                         },
-                        shape = RoundedCornerShape(999.dp),
-                        color = when {
-                            autoRunEnabled -> colors.primaryContainer
-                            previewHasChanges -> colors.tertiaryContainer
-                            else -> Color.Transparent
+                        onClick = {
+                            if (showRunPending) onRunNow() else onToggleAutoRun()
                         }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Text(
-                                text = if (autoRunEnabled) "⚡LIVE" else if (previewHasChanges) "▶ RUN" else "PiP",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = when {
-                                    autoRunEnabled -> colors.onPrimaryContainer
-                                    previewHasChanges -> colors.onTertiaryContainer
-                                    else -> colors.onSurfaceVariant
-                                }
-                            )
-                        }
-                    }
+                    )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         if (!minimized) {
-                            // Touch Pass-Through vs Drag Shield Toggle
-                            Surface(
-                                onClick = { interactiveCanvas = !interactiveCanvas },
-                                shape = CircleShape,
-                                color = if (interactiveCanvas) colors.primaryContainer else Color.Transparent,
-                                modifier = Modifier.size(22.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = if (interactiveCanvas) "👆" else "✥",
-                                        fontSize = 10.sp,
-                                        color = if (interactiveCanvas) colors.onPrimaryContainer else colors.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            // Opacity toggle
-                            Surface(
-                                onClick = { translucent = !translucent },
-                                shape = CircleShape,
-                                color = Color.Transparent,
-                                modifier = Modifier.size(22.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = if (translucent) "◐" else "●",
-                                        fontSize = 11.sp,
-                                        color = colors.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            // Size cycle button
-                            Surface(
+                            // Button 2: Opacity / Ghost Toggle
+                            PipFlatIconButton(
+                                iconRes = R.drawable.ic_pip_opacity,
+                                description = uiText("半透明表示を切り替え"),
+                                colors = colors,
+                                active = translucent,
+                                onClick = { translucent = !translucent }
+                            )
+
+                            // Button 3: Size Cycle (S -> M -> L)
+                            PipFlatIconButton(
+                                iconRes = R.drawable.ic_pip_resize,
+                                description = uiText("小窓サイズを変更"),
+                                colors = colors,
+                                active = false,
+                                badgeText = sizePreset.shortLabel,
                                 onClick = {
                                     sizePreset = when (sizePreset) {
                                         PipSizePreset.SMALL -> PipSizePreset.MEDIUM
                                         PipSizePreset.MEDIUM -> PipSizePreset.LARGE
                                         PipSizePreset.LARGE -> PipSizePreset.SMALL
                                     }
-                                },
-                                shape = CircleShape,
-                                color = Color.Transparent,
-                                modifier = Modifier.size(22.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = when (sizePreset) {
-                                            PipSizePreset.SMALL -> "S"
-                                            PipSizePreset.MEDIUM -> "M"
-                                            PipSizePreset.LARGE -> "L"
-                                        },
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.onSurfaceVariant
-                                    )
                                 }
-                            }
+                            )
                         }
-                        // Minimize / Restore toggle
-                        Surface(
-                            onClick = { minimized = !minimized },
-                            shape = CircleShape,
-                            color = Color.Transparent,
-                            modifier = Modifier.size(22.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = if (minimized) "▢" else "−",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.onSurfaceVariant
-                                )
-                            }
-                        }
+
+                        // Button 4: Minimize / Expand
+                        PipFlatIconButton(
+                            iconRes = if (minimized) R.drawable.ic_pip_expand else R.drawable.ic_pip_minimize,
+                            description = uiText(if (minimized) "小窓を展開" else "小窓を最小化"),
+                            colors = colors,
+                            active = minimized,
+                            onClick = { minimized = !minimized }
+                        )
                     }
+                }
+
+                if (!minimized) {
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = colors.outlineVariant.copy(alpha = 0.6f)
+                    )
                 }
 
                 Box(
@@ -392,12 +426,13 @@ internal fun FloatingPipPreviewHost(
                     contentAlignment = Alignment.Center
                 ) {
                     // Keep the WebView mounted even when minimized (clipped to 0dp height)
-                    // so minimizing/restoring PiP never detaches or pauses the WebView!
-                    previewContent(Modifier.fillMaxSize())
+                    // so minimizing/restoring PiP never detaches or pauses the WebView
+                    previewContent(
+                        Modifier.size(rawCanvasWidth, rawCanvasHeight)
+                    )
 
-                    // When not in interactive canvas touch mode, place a transparent drag shield
-                    // over the canvas so dragging anywhere on the PiP window moves it smoothly.
-                    if (!interactiveCanvas && !minimized) {
+                    // Transparent drag shield over the canvas so dragging anywhere on the PiP window moves it smoothly
+                    if (!minimized) {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
