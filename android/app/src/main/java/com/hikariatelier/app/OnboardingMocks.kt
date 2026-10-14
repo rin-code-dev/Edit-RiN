@@ -217,6 +217,13 @@ private fun MockEditorTools(language: String, animate: Boolean) {
         )
     }
 
+    val colorHex = when (inkIndex) {
+        0 -> "#D67856"
+        1 -> "#3F6F8F"
+        2 -> "#4F7D5C"
+        else -> "#E5A93B"
+    }
+
     MockFrame {
         MockCanvas(diameter / 220f, swatchColors[inkIndex])
 
@@ -226,7 +233,7 @@ private fun MockEditorTools(language: String, animate: Boolean) {
         ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 Text(
-                    "function draw() {\n  background('#F2EFE7');",
+                    "function draw() {\n  background('#F2EFE7');\n  fill('$colorHex');",
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -443,59 +450,81 @@ private fun MockPipPreview(language: String, animate: Boolean) {
                                 modifier = Modifier.weight(1f)
                             )
 
-                            IconButton(
-                                onClick = {
-                                    translucent = !translucent
-                                    note = if (translucent) {
-                                        t("小窓を半透明にしました（コードが透けます）", "Window set to translucent", "小窗已设为半透明（代码透视）")
-                                    } else {
-                                        t("小窓を不透明に戻しました", "Window set to opaque", "小窗已恢复不透明")
-                                    }
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    painterResource(R.drawable.ic_pip_opacity),
-                                    contentDescription = t("半透明切替", "Toggle opacity", "半透明切换"),
-                                    tint = if (translucent) colors.primary else colors.onSurfaceVariant,
-                                    modifier = Modifier.size(13.dp)
-                                )
+                            if (!minimized) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (translucent) colors.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                        .then(if (translucent) Modifier.border(1.dp, colors.primary.copy(alpha = 0.8f), RoundedCornerShape(6.dp)) else Modifier)
+                                        .clickable {
+                                            translucent = !translucent
+                                            note = if (translucent) {
+                                                t("小窓を半透明にしました（コードが透けます）", "Window set to translucent", "小窗已设为半透明（代码透视）")
+                                            } else {
+                                                t("小窓を不透明に戻しました", "Window set to opaque", "小窗已恢复不透明")
+                                            }
+                                        }
+                                        .semantics { contentDescription = t("半透明切替", "Toggle opacity", "半透明切换") },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_pip_opacity),
+                                        contentDescription = null,
+                                        tint = if (translucent) colors.primary else colors.onSurfaceVariant,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+
+                                Spacer(Modifier.width(2.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            sizePreset = when (sizePreset) {
+                                                PipSizePreset.SMALL -> PipSizePreset.MEDIUM
+                                                PipSizePreset.MEDIUM -> PipSizePreset.LARGE
+                                                PipSizePreset.LARGE -> PipSizePreset.SMALL
+                                            }
+                                            note = t("サイズを変更: ${sizePreset.shortLabel}", "Resized to ${sizePreset.shortLabel}", "尺寸切换为: ${sizePreset.shortLabel}")
+                                        }
+                                        .semantics { contentDescription = t("サイズ切替", "Toggle size", "尺寸切换") },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        sizePreset.shortLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary
+                                    )
+                                }
+
+                                Spacer(Modifier.width(2.dp))
                             }
 
-                            IconButton(
-                                onClick = {
-                                    sizePreset = when (sizePreset) {
-                                        PipSizePreset.SMALL -> PipSizePreset.MEDIUM
-                                        PipSizePreset.MEDIUM -> PipSizePreset.LARGE
-                                        PipSizePreset.LARGE -> PipSizePreset.SMALL
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (minimized) colors.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                    .then(if (minimized) Modifier.border(1.dp, colors.primary.copy(alpha = 0.8f), RoundedCornerShape(6.dp)) else Modifier)
+                                    .clickable {
+                                        minimized = !minimized
+                                        note = if (minimized) {
+                                            t("小窓を最小化しました", "Window minimized", "小窗已最小化")
+                                        } else {
+                                            t("小窓を展開しました", "Window expanded", "小窗已展开")
+                                        }
                                     }
-                                    note = t("サイズを変更: ${sizePreset.shortLabel}", "Resized to ${sizePreset.shortLabel}", "尺寸切换为: ${sizePreset.shortLabel}")
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Text(
-                                    sizePreset.shortLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.primary
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    minimized = !minimized
-                                    note = if (minimized) {
-                                        t("小窓を最小化しました", "Window minimized", "小窗已最小化")
-                                    } else {
-                                        t("小窓を展開しました", "Window expanded", "小窗已展开")
-                                    }
-                                },
-                                modifier = Modifier.size(24.dp)
+                                    .semantics { contentDescription = t("最小化切替", "Toggle minimize", "最小化切换") },
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     painterResource(if (minimized) R.drawable.ic_pip_expand else R.drawable.ic_pip_minimize),
-                                    contentDescription = t("最小化切替", "Toggle minimize", "最小化切换"),
-                                    tint = colors.onSurfaceVariant,
+                                    contentDescription = null,
+                                    tint = if (minimized) colors.primary else colors.onSurfaceVariant,
                                     modifier = Modifier.size(13.dp)
                                 )
                             }
@@ -506,7 +535,16 @@ private fun MockPipPreview(language: String, animate: Boolean) {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f)
-                                    .background(MockPaper),
+                                    .background(MockPaper)
+                                    .clickable {
+                                        corner = when (corner) {
+                                            PipCorner.TOP_END -> PipCorner.BOTTOM_END
+                                            PipCorner.BOTTOM_END -> PipCorner.BOTTOM_START
+                                            PipCorner.BOTTOM_START -> PipCorner.TOP_START
+                                            PipCorner.TOP_START -> PipCorner.TOP_END
+                                        }
+                                        note = t("小窓をタップして移動しました", "Tapped PiP window to move", "点击小窗完成移动")
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Canvas(Modifier.fillMaxSize()) {

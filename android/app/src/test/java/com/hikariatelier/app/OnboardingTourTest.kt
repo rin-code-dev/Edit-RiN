@@ -124,6 +124,24 @@ class OnboardingTourUiTest {
         compose.onNodeWithTag("onboarding-skip").assertExists()
     }
 
+    @Test fun forcedTourDisallowsSkipAndHidesBackButtonOnStepZero() {
+        var finished = 0
+        var skipped = 0
+        compose.setContent {
+            MaterialTheme { OnboardingTour("ja", { finished++ }, { skipped++ }, {}, allowSkip = false, animate = false) }
+        }
+        compose.onNodeWithTag("onboarding-skip").assertDoesNotExist()
+        compose.onNodeWithTag("onboarding-back").assertDoesNotExist()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        compose.onNodeWithTag("onboarding-back").assertExists()
+        compose.onNodeWithTag("onboarding-back").performClick()
+        compose.onNodeWithTag("onboarding-back").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(0, finished)
+            assertEquals(0, skipped)
+        }
+    }
+
     @Test fun detailedGuideLinkOnlyAppearsOnTheLastStep() {
         var opened = 0
         compose.setContent {
@@ -139,7 +157,7 @@ class OnboardingTourUiTest {
         compose.setContent {
             MaterialTheme { OnboardingTour("en", {}, {}, {}, animate = false) }
         }
-        // Each mock screen is built from the language alone: touch the first control on every step.
+        // Each mock screen is built from the language alone: touch controls on every step.
         // Step 0: Gallery
         compose.onNodeWithText("Palette").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
@@ -148,9 +166,16 @@ class OnboardingTourUiTest {
         compose.onNodeWithTag("onboarding-next").performClick()
         // Step 2: Editor Tools (Symbols and scrubbing)
         compose.onNodeWithText("{ }").performClick()
+        compose.onNodeWithContentDescription("Color 3").performClick()
+        compose.onNodeWithText("80").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
         // Step 3: PiP Floating Preview
         compose.onNodeWithText("Top-R").performClick()
+        compose.onNodeWithText("Btm-L").performClick()
+        compose.onNodeWithText("M").performClick()
+        compose.onNodeWithText("Opacity").performClick()
+        compose.onNodeWithContentDescription("Toggle minimize").performClick()
+        compose.onNodeWithContentDescription("Toggle minimize").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
         // Step 4: Parameters
         compose.onNodeWithContentDescription("Color 2").performClick()
@@ -163,5 +188,9 @@ class OnboardingTourUiTest {
         // Step 6: Capture and Share
         compose.onNodeWithContentDescription("Export image").performClick()
         compose.onNodeWithText("Share").assertIsEnabled()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 7: Make it yours (Final step)
+        compose.onNodeWithText("Start Creating").assertExists()
+        compose.onNodeWithTag("onboarding-guide").assertExists()
     }
 }
