@@ -1374,7 +1374,7 @@ window.addEventListener('beforeunload', () => {
 })();
 
 // ============================================================================
-// Edit:RiN v3.0 — Zero-Reload Hot-Swap Engine, WebMessagePort & Live Watch API
+// Edit:RiN v3.1 — WebMessagePort Sensor/Watch Channel & Pass-Through Thumbnail
 // ============================================================================
 (() => {
   let activePort = null;
@@ -1427,82 +1427,10 @@ window.addEventListener('beforeunload', () => {
       copy.height = Math.max(1, Math.round(source.height * scale));
       const ctx = copy.getContext('2d');
       ctx.drawImage(source, 0, 0, copy.width, copy.height);
-      let dataUrl = copy.toDataURL('image/webp', 0.84);
-      if (!dataUrl.startsWith('data:image/webp')) {
-        dataUrl = copy.toDataURL('image/png');
-      }
+      const dataUrl = copy.toDataURL('image/png');
       const base64 = dataUrl.split(',')[1] || '';
       if (base64) window.Android?.onPassThroughThumbnailReady?.(targetToken, base64);
     } catch (_) {}
-  };
-
-  window.__editRinHotSwapSketch = rawPayload => {
-    try {
-      const payload = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload;
-      if (!payload || payload.type !== 'HOT_SWAP') return false;
-      const nextToken = payload.token || window.__editRinRunToken;
-      try {
-        Object.defineProperty(window, '__editRinRunToken', { value: nextToken, configurable: true });
-      } catch (_) {}
-
-      window.__editKiroRuntimeHasError = false;
-      watchLastSentAt.clear();
-
-      // Update parameters & shaders in place
-      if (payload.parameters) {
-        try {
-          const parsedParams = JSON.parse(payload.parameters);
-          window.rinParams = Object.assign(Object.create(null), parsedParams);
-        } catch (_) {}
-      }
-      if (payload.shaders) {
-        try {
-          const parsedShaders = JSON.parse(payload.shaders);
-          window.rinShaders = Object.assign(Object.create(null), parsedShaders);
-        } catch (_) {}
-      }
-
-      // Remove existing global p5 instance and old canvases without reloading HTML/libraries
-      if (window.p5?.instance) {
-        try { window.p5.instance.remove(); } catch (_) {}
-        window.p5.instance = null;
-      }
-      document.querySelectorAll('canvas.p5Canvas, main > canvas').forEach(el => {
-        try { el.remove(); } catch (_) {}
-      });
-      document.getElementById('user-sketch')?.remove();
-
-      // Clear previous global p5 lifecycle callbacks before evaluating new sketch
-      const lifecycleCallbacks = [
-        'preload', 'setup', 'draw', 'windowResized',
-        'mousePressed', 'mouseReleased', 'mouseMoved', 'mouseDragged', 'mouseClicked', 'doubleClicked', 'mouseWheel',
-        'touchStarted', 'touchMoved', 'touchEnded',
-        'keyPressed', 'keyReleased', 'keyTyped',
-        'deviceMoved', 'deviceTurned', 'deviceShaken'
-      ];
-      for (const fnName of lifecycleCallbacks) {
-        try { delete window[fnName]; } catch (_) { window[fnName] = undefined; }
-      }
-
-      const script = document.createElement('script');
-      script.id = 'user-sketch';
-      script.textContent = `${payload.code}\n//# sourceURL=sketch.js?run=${nextToken}`;
-      document.head.appendChild(script);
-
-      if (window.p5 && (typeof window.setup === 'function' || typeof window.draw === 'function')) {
-        new window.p5();
-      }
-      window.Android?.onPreviewReady?.(nextToken);
-      requestAnimationFrame(() => {
-        if (!window.__editKiroRuntimeHasError) {
-          window.Android?.onPreviewVisualReady?.(nextToken);
-        }
-      });
-      return true;
-    } catch (error) {
-      window.__editKiroReportError?.(error?.message || String(error));
-      return false;
-    }
   };
 
   window.addEventListener('message', event => {
@@ -1515,8 +1443,6 @@ window.addEventListener('beforeunload', () => {
           if (nums.length >= 9) {
             window.__editRinUpdateSensors?.(...nums);
           }
-        } else if (text.startsWith('{')) {
-          window.__editRinHotSwapSketch(text);
         }
       };
     }

@@ -35,19 +35,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-private data class RuntimeShellSignature(
-    val p5Version: String,
-    val soundEnabled: Boolean,
-    val libraries: String,
-    val documentPath: String?,
-    val projectConfig: String
-)
-
 /**
- * PreviewController (v3):
- * - Zero-Reload Hot-Swap execution when runtime libraries/version match the active shell.
- * - Dedicated WebMessagePort channel for low-overhead sensor, parameter, and live watch streaming.
- * - Non-destructive pass-through thumbnail capture on visual readiness.
+ * PreviewController (v3.1 — Fixed for p5.js 2.x Global Mode & Loading State):
+ * - Uses clean document navigation (`loadUrl`) backed by in-memory `AssetWebClient` byte caching
+ *   so p5.js 2.x async `remove()` never deletes `window.createCanvas` and `runToken` is 100% consistent.
+ * - Guarantees `isLoading = false` even on devices where `postVisualStateCallback` is dropped by WebView.
+ * - Uses `WebMessagePort` for low-overhead 60fps sensor and live watch (`// ?`) streaming.
  */
 internal class PreviewController(
     private val activity: ComponentActivity,
@@ -74,12 +67,12 @@ internal class PreviewController(
     private var runStartedAt = 0L
     private var prepared = false
     private var preparationJob: Job? = null
+    private var loadingFallbackJob: Job? = null
     private var passThroughThumbJob: Job? = null
     var webView: WebView? = null
         private set
     private var controlPort: WebMessagePort? = null
-    private var loadedShellSignature: RuntimeShellSignature? = null
-    private var shellReadyForHotSwap = false
+    private var portToken: String? = null
     var isError by mutableStateOf(false)
     private var pausedState by mutableStateOf(false)
     private var activityActive = true
@@ -97,8 +90,8 @@ internal class PreviewController(
     private val sensors = PreviewSensors(activity) { alpha, beta, gamma, ax, ay, az, gx, gy, gz ->
         if (!disposed && !isPaused && session.isCurrent(session.assets.token)) {
             val port = controlPort
-            if (port != null && shellReadyForHotSwap) {
-                port.postMessage(WebMessage("S:$alpha,$beta,$gamma,$ax,$ay,$az,$gx,$gy,$gz"))
+            if (port != null && portToken == session.assets.token) {
+                runCatching { port.postMessage(WebMessage("S:$alpha,$beta,$gamma,$ax,$ay,$az,$gx,$gy,$gz")) }
             } else {
                 val owner = JSONObject.quote(session.assets.token)
                 val script = "if(window.__editRinRunToken === $owner) " +
@@ -147,6 +140,7 @@ internal class PreviewController(
     private fun append(level: ConsoleLevel, message: String, line: Int? = null, file: String? = null) {
         models.console.append(level, message, line, file, session.workId)
         if (level == ConsoleLevel.ERROR) {
+            loadingFallbackJob?.cancel()
             isLoading = false
             loadingThumbnail = null
             isError = true
@@ -178,28 +172,6 @@ internal class PreviewController(
         )
     }
 
-    private fun canHotSwap(preparedRun: PreparedPreviewRun): Boolean {
-        val view = webView ?: return false
-        if (!shellReadyForHotSwap || view.url.isNullOrBlank()) return false
-        val nextSig = RuntimeShellSignature(
-            p5Version = preparedRun.p5Version,
-            soundEnabled = preparedRun.soundEnabled,
-            libraries = preparedRun.libraries,
-            documentPath = preparedRun.assets.documentPath,
-            projectConfig = preparedRun.projectConfig
-        )
-        if (loadedShellSignature != nextSig) return false
-        if (preparedRun.assets.documentPath != null) return false
-        val cfg = runCatching { JSONObject(preparedRun.projectConfig) }.getOrNull()
-        if (cfg?.optBoolean("documentMode") == true ||
-            cfg?.optBoolean("moduleMode") == true ||
-            (cfg?.optJSONArray("classicScripts")?.length() ?: 0) > 0
-        ) {
-            return false
-        }
-        return true
-    }
-
     fun runSketch(
         source: String = models.session.editorValueState.value.text,
         supportingFiles: Map<String, String> = currentWork()?.files.orEmpty(),
@@ -219,7 +191,11 @@ internal class PreviewController(
         screenshotBusy = false
         captureForShareCard = false
         preparationJob?.cancel()
+        loadingFallbackJob?.cancel()
         passThroughThumbJob?.cancel()
+        runCatching { controlPort?.close() }
+        controlPort = null
+        portToken = null
         watchValues.clear()
         val work = currentWork()
         sensors.setEnabled(false)
@@ -233,12 +209,7 @@ internal class PreviewController(
             work?.let { models.works.parameterValues(it) }.orEmpty()
         )
         session.request(input.token)
-        val hotSwapCandidate = shellReadyForHotSwap && webView != null && awaitTransition == null
-        if (!hotSwapCandidate) {
-            beginLoading(input.workId, input.token)
-        } else {
-            runStartedAt = SystemClock.elapsedRealtime()
-        }
+        beginLoading(input.workId, input.token)
         isPaused = false
         isError = false
         models.console.clear()
@@ -246,9 +217,7 @@ internal class PreviewController(
             try {
                 val (preparedRun, usesSensors) = performance.measurements.measure(PerformanceOperation.PREVIEW_PREPARE) {
                     withContext(Dispatchers.Default) {
-                        val basePrepared = preparePreviewRun(input)
-                        val instrumentedCode = instrumentInlineWatchComments(basePrepared.sketchCode)
-                        basePrepared.copy(sketchCode = instrumentedCode) to (
+                        preparePreviewRun(input) to (
                             SENSOR_KEYWORDS_REGEX.containsMatchIn(input.source) ||
                                 input.files.values.any { SENSOR_KEYWORDS_REGEX.containsMatchIn(it) }
                             )
@@ -263,33 +232,7 @@ internal class PreviewController(
                 if (disposed || !session.isRequested(input.token)) return@launch
                 sensors.setEnabled(usesSensors)
                 updateSensorPlayback()
-
-                if (canHotSwap(preparedRun)) {
-                    val payload = JSONObject()
-                        .put("type", "HOT_SWAP")
-                        .put("token", preparedRun.assets.token)
-                        .put("code", preparedRun.sketchCode)
-                        .put("parameters", preparedRun.parameters)
-                        .put("shaders", preparedRun.shaders)
-                        .toString()
-                    val port = controlPort
-                    if (port != null) {
-                        port.postMessage(WebMessage(payload))
-                    } else {
-                        evaluate("window.__editRinHotSwapSketch?.(${JSONObject.quote(payload)})")
-                    }
-                } else {
-                    shellReadyForHotSwap = false
-                    loadedShellSignature = RuntimeShellSignature(
-                        p5Version = preparedRun.p5Version,
-                        soundEnabled = preparedRun.soundEnabled,
-                        libraries = preparedRun.libraries,
-                        documentPath = preparedRun.assets.documentPath,
-                        projectConfig = preparedRun.projectConfig
-                    )
-                    if (!isLoading) beginLoading(input.workId, input.token)
-                    webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
-                }
+                webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -300,7 +243,7 @@ internal class PreviewController(
         }
     }
 
-    private fun setupWebMessagePort(view: WebView) {
+    private fun setupWebMessagePort(view: WebView, token: String) {
         runCatching {
             controlPort?.close()
             val channel = view.createWebMessageChannel()
@@ -310,7 +253,6 @@ internal class PreviewController(
                 override fun onMessage(port: WebMessagePort?, message: WebMessage?) {
                     val data = message?.data ?: return
                     if (data.startsWith("W:")) {
-                        // Format: W:<token>:<line>:<text>
                         val parts = data.split(':', limit = 4)
                         if (parts.size == 4 && session.isCurrent(parts[1])) {
                             val line = parts[2].toIntOrNull() ?: return
@@ -320,16 +262,23 @@ internal class PreviewController(
                 }
             })
             controlPort = nativePort
+            portToken = token
             view.postWebMessage(WebMessage("INIT_PORT", arrayOf(jsPort)), Uri.parse(PREVIEW_ORIGIN))
         }
     }
 
+    private fun markVisualReadyAndClearLoading(token: String) {
+        if (disposed || !session.isCurrent(token) || isError) return
+        loadingFallbackJob?.cancel()
+        isLoading = false
+        schedulePassThroughThumbnailCapture(token)
+    }
+
     private fun schedulePassThroughThumbnailCapture(token: String) {
-        val workId = session.workId ?: return
-        val inputSnapshot = runInput?.takeIf { it.token == token } ?: return
+        if (session.workId == null || runInput?.token != token) return
         passThroughThumbJob?.cancel()
         passThroughThumbJob = activity.lifecycleScope.launch {
-            delay(260L)
+            delay(280L)
             if (disposed || isError || !session.isCurrent(token)) return@launch
             evaluate("window.__editRinCapturePassThroughThumbnail?.(${JSONObject.quote(token)})")
         }
@@ -392,7 +341,7 @@ internal class PreviewController(
                                 else -> ConsoleLevel.LOG
                             }
                             val sourceId = it.sourceId().orEmpty()
-                            val token = previewTokenFromSource(sourceId) ?: session.assets.token.takeIf { session.isCurrent(it) } ?: return@let
+                            val token = previewTokenFromSource(sourceId) ?: return@let
                             val location = if (sourceId.contains("sketch.js?run=") && session.sourceFiles.isNotEmpty()) {
                                 previewSourceLocation(session.sourceFiles, it.lineNumber())
                             } else previewProjectSourceLocation(session.assets, sourceId, it.lineNumber())
@@ -410,8 +359,7 @@ internal class PreviewController(
                         if (webView !== view) return@onMain
                         webView = null
                         controlPort = null
-                        shellReadyForHotSwap = false
-                        loadedShellSignature = null
+                        portToken = null
                         transfer.abort()
                         screenshotTransfer.abort()
                         abortFileTransfer()
@@ -469,9 +417,11 @@ internal class PreviewController(
         images.close()
         sensors.destroy()
         preparationJob?.cancel()
+        loadingFallbackJob?.cancel()
         passThroughThumbJob?.cancel()
         runCatching { controlPort?.close() }
         controlPort = null
+        portToken = null
         session.invalidate()
         captureForShareCard = false
         transfer.abort()
@@ -501,13 +451,19 @@ internal class PreviewController(
         @JavascriptInterface
         fun onPreviewReady(token: String) {
             onMain(token) {
-                webView?.let { setupWebMessagePort(it) }
-                shellReadyForHotSwap = true
+                webView?.let { setupWebMessagePort(it, token) }
                 if (!isError && isLoading) {
                     performance.measurements.record(
                         PerformanceOperation.PREVIEW_READY,
                         (SystemClock.elapsedRealtime() - runStartedAt) * 1_000_000
                     )
+                    // Safety fallback: if a sketch has no draw() loop or WebView drops VisualStateCallback,
+                    // guarantee that the loading spinner clears within 350ms of setup completion.
+                    loadingFallbackJob?.cancel()
+                    loadingFallbackJob = activity.lifecycleScope.launch {
+                        delay(350L)
+                        markVisualReadyAndClearLoading(token)
+                    }
                 }
             }
         }
@@ -515,16 +471,21 @@ internal class PreviewController(
         @JavascriptInterface
         fun onPreviewVisualReady(token: String) {
             onMain(token) {
-                shellReadyForHotSwap = true
                 val host = webView ?: return@onMain
-                host.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
-                    override fun onComplete(requestId: Long) {
-                        if (!disposed && webView === host && session.isCurrent(token) && !isError) {
-                            isLoading = false
-                            schedulePassThroughThumbnailCapture(token)
+                // Primary: clear on next committed WebView frame
+                runCatching {
+                    host.postVisualStateCallback(0L, object : WebView.VisualStateCallback() {
+                        override fun onComplete(requestId: Long) {
+                            markVisualReadyAndClearLoading(token)
                         }
-                    }
-                })
+                    })
+                }
+                // Fallback: guarantee spinner clears within 120ms even if WebView compositor skips callback
+                loadingFallbackJob?.cancel()
+                loadingFallbackJob = activity.lifecycleScope.launch {
+                    delay(120L)
+                    markVisualReadyAndClearLoading(token)
+                }
             }
         }
 
@@ -559,7 +520,12 @@ internal class PreviewController(
             }
         }
 
-        @JavascriptInterface fun getSketchCode(token: String): String = session.snapshotFor(token)?.sketchCode.orEmpty()
+        @JavascriptInterface
+        fun getSketchCode(token: String): String {
+            val raw = session.snapshotFor(token)?.sketchCode.orEmpty()
+            return instrumentInlineWatchComments(raw)
+        }
+
         @JavascriptInterface fun getP5Version(token: String): String = session.snapshotFor(token)?.p5Version.orEmpty()
         @JavascriptInterface fun isP5SoundEnabled(token: String): Boolean = session.snapshotFor(token)?.soundEnabled == true
         @JavascriptInterface fun getWorkLibraries(token: String): String = session.snapshotFor(token)?.libraries ?: "{}"
