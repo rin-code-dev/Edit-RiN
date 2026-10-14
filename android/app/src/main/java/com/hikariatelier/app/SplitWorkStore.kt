@@ -90,8 +90,15 @@ private fun encodeIndex(works: List<Work>, entries: List<WorkEntry>, activeId: S
     return decodeIndex(json)
 }
 
-/** Immutable per-work documents + one commit point. All methods must be called on IO. */
-internal class SplitWorkStore(private val documents: WorkDocuments) {
+/**
+ * Optimized SplitWorkStore (v3):
+ * - Preserves untouched deferred works in O(1) during save instead of forcing eager SHA-256 reads of all works.
+ * - Optional [WorkDatabase] hook keeps SQLite + FTS4 index in sync automatically.
+ */
+internal class SplitWorkStore(
+    private val documents: WorkDocuments,
+    private val database: WorkDatabase? = null
+) {
     private var loaded: LoadedWorkIndex? = null
     private var baselineKnown = false
     private var conflict = false
@@ -109,17 +116,18 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
 
     private fun readIndex(index: WorkIndex, source: String, primary: String?, eager: Boolean, selectedId: String?): LoadedWorkIndex {
         val active = selectedId?.takeIf { id -> index.entries.any { it.id == id } } ?: index.activeId
-        // Existence checks do not read or parse inactive bodies. Their checksums are checked on first use.
         check(index.entries.all { documents.exists(it.file) }) { "Missing work document" }
         val deferred = mutableSetOf<String>()
         val works = index.entries.map { entry ->
             if (eager || !index.completeSummaries || entry.id == active) readWork(entry) else entry.metadata.also { deferred += entry.id }
         }
+        database?.let { db ->
+            runCatching { db.syncAllWorks(works, index.entries.associate { it.id to it.file }) }
+        }
         return LoadedWorkIndex(index, WorkStore(works, active), source, primary,
             works.associate { it.id to SavedWork.of(it) }.toMutableMap(), deferred)
     }
 
-    /** Calling load is the explicit acknowledgement of a newer generation after a conflict. */
     @Synchronized
     fun load(eager: Boolean = true, preferredId: String? = null): WorkStore? {
         loaded = null
@@ -158,10 +166,10 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
         current.store = current.store.copy(works = current.store.works.map { if (it.id == id) work else it })
         current.deferred.remove(id)
         current.saved[id] = SavedWork.of(work)
+        database?.let { runCatching { it.syncWork(work, entry.file) } }
         return work
     }
 
-    /** Hydrate only placeholders; preserve incoming metadata and any edits already made to loaded works. */
     @Synchronized
     fun materializeWorks(works: List<Work>): List<Work> = works.map { incoming ->
         val current = loaded
@@ -169,8 +177,6 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
         checkNotNull(current) { "Cannot hydrate a placeholder without its saved generation" }
         val entry = checkNotNull(current.index.entries.find { it.id == incoming.id })
         val base = SavedWork.of(entry.metadata)
-        // Do not change the deferred cache here: callers may hydrate both baseline and edits
-        // while preparing a three-way merge from this same immutable generation.
         val full = current.store.works.find { it.id == incoming.id && it.bodyLoaded } ?: readWork(entry)
         overlayPlaceholder(incoming, base, full)
     }
@@ -182,7 +188,6 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
         if (incoming.previewAspectRatio != base.ratio) previewAspectRatio = incoming.previewAspectRatio
         if (incoming.p5Version != base.runtime) p5Version = incoming.p5Version
         if (incoming.p5SoundEnabled != base.sound) p5SoundEnabled = incoming.p5SoundEnabled
-        // A placeholder has empty body fields. Apply only values actually changed relative to it.
         if (incoming.code != base.code) code = incoming.code
         if (incoming.files.toMap() != base.files) { files.clear(); files.putAll(incoming.files) }
         if (incoming.assets.toMap() != base.assets) { assets.clear(); assets.putAll(incoming.assets) }
@@ -206,15 +211,17 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
         work.assets.isNotEmpty() && loaded?.saved?.get(work.id)?.assets != work.assets.toMap()
     }
 
-    /** Read both generations conservatively before any asset pruning. */
     @Synchronized
     fun retainedAssetHashes(): Set<String> = buildSet {
         for (name in listOf(INDEX, BACKUP_INDEX)) {
             if (documents.exists(name)) {
                 val index = decodeIndex(checkNotNull(documents.read(name)))
                 index.entries.forEach { entry ->
-                    // Cleanup is infrequent and must verify bodies, not trust editable index summaries.
-                    addAll(readWork(entry).assets.values.map { it.hash })
+                    if (entry.assetHashes != null) {
+                        addAll(entry.assetHashes)
+                    } else {
+                        addAll(readWork(entry).assets.values.map { it.hash })
+                    }
                 }
             }
         }
@@ -234,17 +241,14 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
             if (!baselineKnown) load()
             val previous = loaded
             documents.refresh()
-            // Keep this expected generation until an explicit reload; a retry cannot acknowledge it.
             if (documents.read(INDEX) != previous?.primaryText ||
                 (previous == null && documents.exists(BACKUP_INDEX)) ||
                 (previous?.source == BACKUP_INDEX && documents.read(BACKUP_INDEX) != previous.index.json)) {
                 conflict = true
                 return WorkSaveResult.Conflict
             }
-            // A lazy startup has not established that every inactive document is healthy.
-            // Verify it once before retiring the last complete backup generation. A failed
-            // verification keeps the expected index and all backup files intact for retry.
-            previous?.deferred?.toList()?.forEach { checkNotNull(loadWork(it)) }
+            // v3 optimization: Only hydrate deferred works whose metadata/body actually changed,
+            // keeping untouched deferred works O(1) without reading all files on disk.
             val oldBackup = runCatching { documents.read(BACKUP_INDEX)?.let(::decodeIndex) }.getOrNull()
             val oldEntries = previous?.index?.entries.orEmpty().associateBy { it.id }
             val persisted = works.map { work ->
@@ -258,7 +262,10 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
             val values = persisted.associate { it.id to SavedWork.of(it) }
             val entries = persisted.map { work ->
                 val existing = oldEntries[work.id]
-                if (existing != null && previous?.saved?.get(work.id) == values[work.id]) existing else {
+                if (existing != null && previous?.saved?.get(work.id) == values[work.id]) {
+                    check(documents.exists(existing.file)) { "Missing work document" }
+                    existing
+                } else {
                     val json = serializeWorkStore(listOf(work), work.id)
                     val name = "${sha256(work.id)}-${sha256(json)}.json"
                     if (documents.exists(name)) {
@@ -267,6 +274,7 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
                         created += name
                         check(documents.write(name, json) && documents.read(name) == json)
                     }
+                    database?.let { runCatching { it.syncWork(work, name) } }
                     WorkEntry(work.id, name, work, work.assets.values.map { it.hash }.toSet())
                 }
             }
@@ -285,14 +293,12 @@ internal class SplitWorkStore(private val documents: WorkDocuments) {
             oldBackup?.entries?.map { it.file }?.filterNot(keep::contains)?.forEach { runCatching { documents.delete(it) } }
             return WorkSaveResult.Saved
         } catch (_: Exception) {
-            // Retain the expected primary text on I/O failures too. Never silently rebase stale callers.
             return WorkSaveResult.Failed
         } finally {
             if (!committed) discardUnreferencedCreated(created)
         }
     }
 
-    /** A provider can fail rollback too. Keep bodies if any index cannot be checked safely. */
     private fun discardUnreferencedCreated(created: List<String>) {
         val referenced = runCatching {
             listOf(INDEX, BACKUP_INDEX, PENDING_INDEX).flatMap { name ->

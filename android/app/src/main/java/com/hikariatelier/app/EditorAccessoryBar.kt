@@ -10,38 +10,24 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.Icon
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -140,6 +126,19 @@ internal fun defaultDeclarationForParamName(name: String, existing: List<WorkPar
     }
 }
 
+private val QUICK_SWATCH_HEXES = listOf(
+    "#FF5252", "#FF9800", "#FFEB3B", "#4CAF50",
+    "#00BCD4", "#448AFF", "#B388FF", "#F8BBD0",
+    "#FFFFFF", "#121318"
+)
+
+/**
+ * Enhanced EditorAccessoryBar (v3):
+ * - 2-Axis Velocity Scrubber: horizontal drag changes value; vertical drag switches gear (×10 / ×1 / ×0.1 / ×0.01)
+ *   with haptic feedback and triggers [onLiveScrub] for immediate 60fps canvas updates.
+ * - Inline Color Quick Swatch Bar: when the cursor is on a color literal, presents an inline quick palette
+ *   above the accessory bar so users can tweak colors live without a modal dialog blocking the canvas.
+ */
 @Composable
 internal fun EditorAccessoryBar(
     editingValue: TextFieldValue,
@@ -160,11 +159,13 @@ internal fun EditorAccessoryBar(
     showAccessoryNavigation: Boolean,
     showAccessorySymbols: Boolean,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLiveScrub: (() -> Unit)? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
     val keyHeight = if (compactAccessoryKeys) 30.dp else 34.dp
     val iconSize = if (compactAccessoryKeys) 16.dp else 18.dp
+    val haptic = LocalHapticFeedback.current
 
     @Composable
     fun FlatIconKey(
@@ -254,7 +255,10 @@ internal fun EditorAccessoryBar(
 
     val currentEditingValue by rememberUpdatedState(editingValue)
     val currentOnApplyEdit by rememberUpdatedState(onApplyEdit)
-    val scrubStepPx = with(LocalDensity.current) { 8.dp.toPx().coerceAtLeast(4f) }
+    val currentOnLiveScrub by rememberUpdatedState(onLiveScrub)
+    val density = LocalDensity.current
+    val scrubStepPx = with(density) { 8.dp.toPx().coerceAtLeast(4f) }
+    val gearStepPx = with(density) { 26.dp.toPx().coerceAtLeast(14f) }
 
     val detectedColorTarget = remember(editingValue.text, editingValue.selection) {
         findColorAtSelection(editingValue.text, editingValue.selection)
@@ -263,200 +267,313 @@ internal fun EditorAccessoryBar(
         if (detectedColorTarget != null) null else findNumberAtSelection(editingValue.text, editingValue.selection)
     }
 
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, colors.outlineVariant.copy(alpha = 0.75f), RoundedCornerShape(12.dp)),
-        shape = RoundedCornerShape(12.dp),
-        color = colors.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = if (compactAccessoryKeys) 3.dp else 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+    var activeGearLabel by remember { mutableStateOf<String?>(null) }
+    var showInlineColorStrip by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Inline Color Quick Popover Strip (Non-modal live color manipulation)
+        AnimatedVisibility(
+            visible = detectedColorTarget != null && showInlineColorStrip,
+            enter = fadeIn(tween(100)) + expandVertically(tween(120)),
+            exit = fadeOut(tween(80)) + shrinkVertically(tween(100))
         ) {
-            // Left Pinned Zone: Undo, Redo, Minimal Color Dot, and Live Number Scrub
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FlatIconKey(R.drawable.ic_undo, uiText("元に戻す"), enabled = undoAvailable, onClick = onUndo)
-                FlatIconKey(R.drawable.ic_redo, uiText("やり直す"), enabled = redoAvailable, onClick = onRedo)
-
-                val swatchColor = detectedColorTarget?.color ?: lastColorPickerColor
+            val target = detectedColorTarget
+            if (target != null) {
                 Surface(
-                    onClick = { onOpenColorPicker(detectedColorTarget, swatchColor) },
-                    modifier = Modifier
-                        .size(width = if (compactAccessoryKeys) 32.dp else 36.dp, height = keyHeight)
-                        .semantics {
-                            contentDescription = uiText(if (detectedColorTarget != null) "カラーを編集" else "カラーピッカー")
-                        },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (detectedColorTarget != null) colors.surfaceVariant.copy(alpha = 0.55f) else Color.Transparent
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, colors.outlineVariant)
                 ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Box(
-                            modifier = Modifier
-                                .size(if (detectedColorTarget != null) 14.dp else 11.dp)
-                                .clip(CircleShape)
-                                .background(swatchColor)
-                                .border(
-                                    width = if (detectedColorTarget != null) 1.5.dp else 1.dp,
-                                    color = if (detectedColorTarget != null) colors.primary else colors.outlineVariant,
-                                    shape = CircleShape
-                                )
-                        )
-                    }
-                }
-
-                if (detectedNumberTarget != null) {
-                    Surface(
-                        onClick = {
-                            val nextVal = detectedNumberTarget.value + detectedNumberTarget.step
-                            val formatted = formatScrubbedNumber(nextVal, detectedNumberTarget.decimals)
-                            val r = detectedNumberTarget.range
-                            if (r.first >= 0 && r.last < editingValue.text.length) {
-                                onApplyEdit(
-                                    TextFieldValue(
-                                        editingValue.text.replaceRange(r.first, r.last + 1, formatted),
-                                        TextRange(r.first + formatted.length)
-                                    )
-                                )
-                            }
-                        },
+                    Row(
                         modifier = Modifier
-                            .widthIn(min = if (compactAccessoryKeys) 52.dp else 60.dp)
-                            .height(keyHeight)
-                            .semantics {
-                                contentDescription = uiText("左右にドラッグして数値を調整")
-                            }
-                            .pointerInput(scrubStepPx) {
-                                var activeRange: IntRange? = null
-                                var startNumber = 0.0
-                                var step = 1.0
-                                var decimals = 0
-                                var accumulatedDx = 0f
-                                detectHorizontalDragGestures(
-                                    onDragStart = {
-                                        val target = findNumberAtSelection(
-                                            currentEditingValue.text,
-                                            currentEditingValue.selection
-                                        )
-                                        activeRange = target?.range
-                                        startNumber = target?.value ?: 0.0
-                                        step = target?.step ?: 1.0
-                                        decimals = target?.decimals ?: 0
-                                        accumulatedDx = 0f
-                                    },
-                                    onHorizontalDrag = { change, dragAmount ->
-                                        val range = activeRange ?: return@detectHorizontalDragGestures
-                                        change.consume()
-                                        accumulatedDx += dragAmount
-                                        val deltaSteps = (accumulatedDx / scrubStepPx).toInt()
-                                        val nextVal = startNumber + deltaSteps * step
-                                        val formatted = formatScrubbedNumber(nextVal, decimals)
-                                        val latestText = currentEditingValue.text
-                                        if (range.first >= 0 && range.last < latestText.length) {
-                                            val currentSlice = latestText.substring(range.first, range.last + 1)
-                                            if (currentSlice != formatted) {
-                                                val updatedText = latestText.replaceRange(range.first, range.last + 1, formatted)
-                                                val newEndExclusive = range.first + formatted.length
-                                                activeRange = range.first until newEndExclusive
-                                                currentOnApplyEdit(
-                                                    TextFieldValue(updatedText, TextRange(newEndExclusive))
-                                                )
-                                            }
-                                        }
-                                    },
-                                    onDragEnd = { activeRange = null },
-                                    onDragCancel = { activeRange = null }
-                                )
-                            },
-                        shape = RoundedCornerShape(8.dp),
-                        color = colors.primary.copy(alpha = 0.1f),
-                        contentColor = colors.primary
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        QUICK_SWATCH_HEXES.forEach { hex ->
+                            val swatch = parseHexColor(hex) ?: Color.White
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(swatch)
+                                    .border(1.dp, colors.outlineVariant, CircleShape)
+                                    .clickable {
+                                        val r = target.range
+                                        if (r.first >= 0 && r.last < editingValue.text.length) {
+                                            val replacement = formatColorReplacement(target, swatch)
+                                            onApplyEdit(
+                                                TextFieldValue(
+                                                    editingValue.text.replaceRange(r.first, r.last + 1, replacement),
+                                                    TextRange(r.first + replacement.length)
+                                                )
+                                            )
+                                            currentOnLiveScrub?.invoke()
+                                        }
+                                    }
+                            )
+                        }
+                        TextButton(
+                            onClick = { onOpenColorPicker(target, target.color) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.height(24.dp)
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_scrub),
-                                contentDescription = null,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = detectedNumberTarget.rawText,
-                                fontFamily = codeFontFamily,
-                                fontSize = if (compactAccessoryKeys) 11.sp else 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
+                            Text(uiText("詳細"), style = MaterialTheme.typography.labelSmall)
                         }
-                    }
-                }
-            }
-
-            KeyDivider()
-
-            // Right Scrollable Zone: Tools, Navigation, and Symbols
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FlatIconKey(R.drawable.ic_search, uiText("検索と置換"), onClick = onSearch)
-                FlatIconKey(R.drawable.ic_snippet, uiText("スニペット"), onClick = onSnippets)
-                FlatIconKey(R.drawable.ic_help, uiText("p5.jsリファレンス"), onClick = onReference)
-                FlatIconKey(R.drawable.ic_format, uiText("コードを整形"), onClick = onFormat)
-
-                if (showAccessoryNavigation) {
-                    KeyDivider()
-                    FlatIconKey(R.drawable.ic_indent, uiText("インデント")) {
-                        onApplyEdit(changeLineIndent(editingValue, true))
-                    }
-                    FlatIconKey(R.drawable.ic_outdent, uiText("インデントを戻す")) {
-                        onApplyEdit(changeLineIndent(editingValue, false))
-                    }
-                    FlatTextKey("←", uiText("左へ移動"), onClick = moveLeft)
-                    FlatTextKey("↑", uiText("上へ移動")) {
-                        onApplyEdit(moveCursorVertically(editingValue, -1))
-                    }
-                    FlatTextKey("↓", uiText("下へ移動")) {
-                        onApplyEdit(moveCursorVertically(editingValue, 1))
-                    }
-                    FlatTextKey("→", uiText("右へ移動"), onClick = moveRight)
-                }
-
-                if (showAccessorySymbols) {
-                    KeyDivider()
-                    listOf(
-                        Triple("{}", "{", "}"), Triple("()", "(", ")"),
-                        Triple("[]", "[", "]"), Triple("\"\"", "\"", "\""),
-                        Triple("''", "'", "'")
-                    ).forEach { (label, opening, closing) ->
-                        FlatTextKey(label, uiText("%s を入力", label)) {
-                            onApplyEdit(insertAtSelection(editingValue, opening, closing))
-                        }
-                    }
-                    listOf(";", "=", ",", ".").forEach { symbol ->
-                        FlatTextKey(symbol, uiText("%s を入力", symbol), width = 30) {
-                            onApplyEdit(insertAtSelection(editingValue, symbol))
-                        }
-                    }
-                    FlatIconKey(R.drawable.ic_comment, uiText("コメントを入力")) {
-                        onApplyEdit(insertAtSelection(editingValue, "// "))
                     }
                 }
             }
         }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, colors.outlineVariant.copy(alpha = 0.75f), RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            color = colors.surface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = if (compactAccessoryKeys) 3.dp else 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Pinned Zone: Undo, Redo, Inline Color Swatch, and 2-Axis Live Number Scrubber
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FlatIconKey(R.drawable.ic_undo, uiText("元に戻す"), enabled = undoAvailable, onClick = onUndo)
+                    FlatIconKey(R.drawable.ic_redo, uiText("やり直す"), enabled = redoAvailable, onClick = onRedo)
+
+                    val swatchColor = detectedColorTarget?.color ?: lastColorPickerColor
+                    Surface(
+                        onClick = {
+                            if (detectedColorTarget != null) {
+                                showInlineColorStrip = !showInlineColorStrip
+                            } else {
+                                onOpenColorPicker(null, swatchColor)
+                            }
+                        },
+                        modifier = Modifier
+                            .size(width = if (compactAccessoryKeys) 32.dp else 36.dp, height = keyHeight)
+                            .semantics {
+                                contentDescription = uiText(if (detectedColorTarget != null) "カラーを編集" else "カラーピッカー")
+                            },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (detectedColorTarget != null) colors.surfaceVariant.copy(alpha = 0.55f) else Color.Transparent
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .size(if (detectedColorTarget != null) 14.dp else 11.dp)
+                                    .clip(CircleShape)
+                                    .background(swatchColor)
+                                    .border(
+                                        width = if (detectedColorTarget != null) 1.5.dp else 1.dp,
+                                        color = if (detectedColorTarget != null) colors.primary else colors.outlineVariant,
+                                        shape = CircleShape
+                                    )
+                            )
+                        }
+                    }
+
+                    if (detectedNumberTarget != null) {
+                        Surface(
+                            onClick = {
+                                val nextVal = detectedNumberTarget.value + detectedNumberTarget.step
+                                val formatted = formatScrubbedNumber(nextVal, detectedNumberTarget.decimals)
+                                val r = detectedNumberTarget.range
+                                if (r.first >= 0 && r.last < editingValue.text.length) {
+                                    onApplyEdit(
+                                        TextFieldValue(
+                                            editingValue.text.replaceRange(r.first, r.last + 1, formatted),
+                                            TextRange(r.first + formatted.length)
+                                        )
+                                    )
+                                    currentOnLiveScrub?.invoke()
+                                }
+                            },
+                            modifier = Modifier
+                                .widthIn(min = if (compactAccessoryKeys) 56.dp else 64.dp)
+                                .height(keyHeight)
+                                .semantics {
+                                    contentDescription = uiText("左右にドラッグして数値を調整")
+                                }
+                                .pointerInput(scrubStepPx, gearStepPx) {
+                                    var activeRange: IntRange? = null
+                                    var currentVal = 0.0
+                                    var baseStep = 1.0
+                                    var baseDecimals = 0
+                                    var gearExponent = 0
+                                    var accumulatedDx = 0f
+                                    var accumulatedDy = 0f
+                                    detectDragGestures(
+                                        onDragStart = {
+                                            val target = findNumberAtSelection(
+                                                currentEditingValue.text,
+                                                currentEditingValue.selection
+                                            )
+                                            activeRange = target?.range
+                                            currentVal = target?.value ?: 0.0
+                                            baseStep = target?.step ?: 1.0
+                                            baseDecimals = target?.decimals ?: 0
+                                            gearExponent = 0
+                                            accumulatedDx = 0f
+                                            accumulatedDy = 0f
+                                            activeGearLabel = "×1"
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            val range = activeRange ?: return@detectDragGestures
+                                            change.consume()
+                                            accumulatedDx += dragAmount.x
+                                            accumulatedDy -= dragAmount.y // Up = coarser (×10), Down = finer (×0.1)
+                                            val nextGear = (accumulatedDy / gearStepPx).toInt().coerceIn(-2, 2)
+                                            if (nextGear != gearExponent) {
+                                                gearExponent = nextGear
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                activeGearLabel = when (gearExponent) {
+                                                    2 -> "×100"
+                                                    1 -> "×10"
+                                                    0 -> "×1"
+                                                    -1 -> "×0.1"
+                                                    else -> "×0.01"
+                                                }
+                                            }
+                                            val deltaSteps = (accumulatedDx / scrubStepPx).toInt()
+                                            if (deltaSteps != 0) {
+                                                accumulatedDx -= deltaSteps * scrubStepPx
+                                                val effectiveStep = baseStep * 10.0.pow(gearExponent.toDouble())
+                                                val effectiveDecimals = (baseDecimals - gearExponent).coerceIn(0, 4)
+                                                currentVal += deltaSteps * effectiveStep
+                                                val formatted = formatScrubbedNumber(currentVal, effectiveDecimals)
+                                                val latestText = currentEditingValue.text
+                                                if (range.first >= 0 && range.last < latestText.length) {
+                                                    val currentSlice = latestText.substring(range.first, range.last + 1)
+                                                    if (currentSlice != formatted) {
+                                                        val updatedText = latestText.replaceRange(range.first, range.last + 1, formatted)
+                                                        val newEndExclusive = range.first + formatted.length
+                                                        activeRange = range.first until newEndExclusive
+                                                        currentOnApplyEdit(
+                                                            TextFieldValue(updatedText, TextRange(newEndExclusive))
+                                                        )
+                                                        currentOnLiveScrub?.invoke()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            activeRange = null
+                                            activeGearLabel = null
+                                        },
+                                        onDragCancel = {
+                                            activeRange = null
+                                            activeGearLabel = null
+                                        }
+                                    )
+                                },
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.primary.copy(alpha = 0.12f),
+                            contentColor = colors.primary
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_scrub),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = detectedNumberTarget.rawText + (activeGearLabel?.let { " ($it)" } ?: ""),
+                                    fontFamily = codeFontFamily,
+                                    fontSize = if (compactAccessoryKeys) 11.sp else 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                KeyDivider()
+
+                // Right Scrollable Zone: Tools, Navigation, and Symbols
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FlatIconKey(R.drawable.ic_search, uiText("検索と置換"), onClick = onSearch)
+                    FlatIconKey(R.drawable.ic_snippet, uiText("スニペット"), onClick = onSnippets)
+                    FlatIconKey(R.drawable.ic_help, uiText("p5.jsリファレンス"), onClick = onReference)
+                    FlatIconKey(R.drawable.ic_format, uiText("コードを整形"), onClick = onFormat)
+
+                    if (showAccessoryNavigation) {
+                        KeyDivider()
+                        FlatIconKey(R.drawable.ic_indent, uiText("インデント")) {
+                            onApplyEdit(changeLineIndent(editingValue, true))
+                        }
+                        FlatIconKey(R.drawable.ic_outdent, uiText("インデントを戻す")) {
+                            onApplyEdit(changeLineIndent(editingValue, false))
+                        }
+                        FlatTextKey("←", uiText("左へ移動"), onClick = moveLeft)
+                        FlatTextKey("↑", uiText("上へ移動")) {
+                            onApplyEdit(moveCursorVertically(editingValue, -1))
+                        }
+                        FlatTextKey("↓", uiText("下へ移動")) {
+                            onApplyEdit(moveCursorVertically(editingValue, 1))
+                        }
+                        FlatTextKey("→", uiText("右へ移動"), onClick = moveRight)
+                    }
+
+                    if (showAccessorySymbols) {
+                        KeyDivider()
+                        listOf(
+                            Triple("{}", "{", "}"), Triple("()", "(", ")"),
+                            Triple("[]", "[", "]"), Triple("\"\"", "\"", "\""),
+                            Triple("''", "'", "'")
+                        ).forEach { (label, opening, closing) ->
+                            FlatTextKey(label, uiText("%s を入力", label)) {
+                                onApplyEdit(insertAtSelection(editingValue, opening, closing))
+                            }
+                        }
+                        listOf(";", "=", ",", ".").forEach { symbol ->
+                            FlatTextKey(symbol, uiText("%s を入力", symbol), width = 30) {
+                                onApplyEdit(insertAtSelection(editingValue, symbol))
+                            }
+                        }
+                        FlatIconKey(R.drawable.ic_comment, uiText("コメントを入力")) {
+                            onApplyEdit(insertAtSelection(editingValue, "// "))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatColorReplacement(target: EditorColorTarget, color: Color): String {
+    val argb = color.toArgb()
+    val r = (argb shr 16) and 0xFF
+    val g = (argb shr 8) and 0xFF
+    val b = argb and 0xFF
+    val raw = target.rawText.trim()
+    return when {
+        raw.startsWith("color(", ignoreCase = true) -> "color($r, $g, $b)"
+        raw.startsWith("rgb(", ignoreCase = true) -> "rgb($r, $g, $b)"
+        raw.startsWith("'") -> String.format(Locale.ROOT, "'#%02X%02X%02X'", r, g, b)
+        raw.startsWith("\"") -> String.format(Locale.ROOT, "\"#%02X%02X%02X\"", r, g, b)
+        else -> String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
     }
 }
 

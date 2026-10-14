@@ -7,7 +7,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -35,7 +34,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -100,7 +98,9 @@ internal fun EditorArea(
     onEditorFontSizeChange: (Float) -> Unit = {},
     showErrorBanner: Boolean = true,
     onJumpToSource: (String, Int) -> Unit = { _, _ -> },
-    onOpenProjectFiles: (() -> Unit)? = null
+    onOpenProjectFiles: (() -> Unit)? = null,
+    watchValues: Map<Int, String> = emptyMap(),
+    onSwitchRuntimeVersion: ((String) -> Unit)? = null
 ) {
     val copyToClipboard = rememberClipboardCopy()
     val currentFontSize = rememberUpdatedState(editorFontSize)
@@ -110,6 +110,15 @@ internal fun EditorArea(
         pinchFontSize = null
     }
     val effectiveFontSize = pinchFontSize ?: editorFontSize
+
+    // Auto-Run debounced Hot-Swap trigger when enabled in EditorSessionViewModel
+    AutoRunHotSwapEffect(
+        enabled = sessionViewModel.autoRunEnabled,
+        editingText = editingText,
+        previewHasChanges = previewHasChanges,
+        readOnly = readOnly,
+        onRunChanges = onRunChanges
+    )
 
     val darkEditorTheme = colors.surface.luminance() < 0.5f
     val dirtyFiles by remember(activeWorkId, activeWork?.code, activeWork?.files, sessionViewModel) {
@@ -126,7 +135,6 @@ internal fun EditorArea(
     LaunchedEffect(readOnly) { if (readOnly) focusManager.clearFocus(force = true) }
 
     var errorTooltipLine by remember(editingKey, errorsCurrent) { mutableStateOf<Int?>(null) }
-    var errorBannerExpanded by remember(activeWorkId, errorsCurrent) { mutableStateOf(false) }
     val editorErrorLines by remember(editingFile, activeWorkId, errorsCurrent, consoleEntries) {
         derivedStateOf {
             if (!errorsCurrent) emptySet() else consoleEntries.asSequence()
@@ -340,90 +348,22 @@ internal fun EditorArea(
                 consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
             } else null
             if (latestError != null) {
-                val errorFile = latestError.file ?: editingFile
-                val errorLine = latestError.line
-                val hintKey = remember(latestError.message, editingText, activeWork?.p5Version) {
-                    p5ErrorDiagnosticHint(latestError.message, editingText, activeWork?.p5Version)
-                }
-                Surface(
-                    onClick = {
-                        if (errorLine != null) onJumpToSource(errorFile, errorLine)
-                        else errorBannerExpanded = !errorBannerExpanded
+                InlineDiagnosticBanner(
+                    latestError = latestError,
+                    editingFile = editingFile,
+                    editingValue = editingValue,
+                    p5Version = activeWork?.p5Version,
+                    codeFontFamily = codeFontFamily,
+                    colors = colors,
+                    textTranslator = textTranslator,
+                    onJumpToSource = onJumpToSource,
+                    onApplyQuickFixCode = { fixedValue ->
+                        onApplyEditorChange(fixedValue)
+                        onRunChanges()
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    color = colors.errorContainer,
-                    contentColor = colors.onErrorContainer
-                ) {
-                    Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = (if (errorLine != null) "${errorFile}:$errorLine  " else "") +
-                                    latestError.message.lineSequence().firstOrNull().orEmpty(),
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = if (errorBannerExpanded) 6 else 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (errorLine != null) {
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    textTranslator("移動", emptyArray()),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            IconButton(
-                                onClick = { errorBannerExpanded = !errorBannerExpanded },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Text(
-                                    text = if (errorBannerExpanded) "▴" else "▾",
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
-                        AnimatedVisibility(visible = errorBannerExpanded || hintKey != null) {
-                            Column(
-                                modifier = Modifier.padding(top = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                if (errorBannerExpanded && latestError.message.lines().size > 1) {
-                                    Text(
-                                        text = latestError.message,
-                                        fontFamily = codeFontFamily,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                if (hintKey != null) {
-                                    Text(
-                                        text = textTranslator(hintKey, emptyArray()),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                                if (errorBannerExpanded) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End
-                                    ) {
-                                        TextButton(
-                                            onClick = { copyToClipboard(latestError.copyText()) },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                            modifier = Modifier.height(28.dp)
-                                        ) {
-                                            Text(
-                                                textTranslator("エラーをコピー", emptyArray()),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = colors.onErrorContainer
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                    onSwitchRuntimeVersion = onSwitchRuntimeVersion,
+                    onCopyError = { copyToClipboard(it) }
+                )
             }
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize()
@@ -448,6 +388,8 @@ internal fun EditorArea(
                     (if (showLineNumbers) singleDigitAndFoldWidth.first * lineNumberDigits else 0)
                 val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
                 val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
+                val viewportHeightPx = with(localDensity) { maxHeight.toPx() }
+
                 LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                     val target = navigationTarget ?: return@LaunchedEffect
                     val layout = editorTextLayout ?: return@LaunchedEffect
@@ -499,7 +441,7 @@ internal fun EditorArea(
                             digits = lineNumberDigits,
                             width = gutterWidth,
                             minimumHeight = contentMinHeight,
-                            viewportHeight = with(localDensity) { containerMaxHeight.toPx() },
+                            viewportHeight = viewportHeightPx,
                             scroll = editorScrollState,
                             style = TextStyle(
                                 fontFamily = codeFontFamily,
@@ -575,56 +517,95 @@ internal fun EditorArea(
                     }
                 }
 
-                // Bottom-Right Minimal Floating Status & Run Changes Pill (Zero layout shift)
+                // Live Watch Overlay Badges (`// ?` or `rinWatch`)
+                LiveWatchOverlayColumn(
+                    watchValues = watchValues,
+                    logicalLineStarts = logicalLineStarts,
+                    projection = projection,
+                    textLayout = editorTextLayout,
+                    scrollValue = editorScrollState.value,
+                    viewportHeightPx = viewportHeightPx,
+                    codeFontFamily = codeFontFamily,
+                    colors = colors
+                )
+
+                // Bottom-Right Floating Status, Auto-Run Toggle & Run Changes Pill
                 val showRunAction = !readOnly && previewHasChanges
                 val statsText = "${editingText.length}c · ${logicalLineStarts.size}L"
-                if (showRunAction || editorFocused) {
-                    Surface(
-                        onClick = { if (showRunAction) onRunChanges() },
-                        enabled = showRunAction,
+                if (showRunAction || editorFocused || sessionViewModel.autoRunEnabled) {
+                    Row(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(end = 10.dp, bottom = 8.dp)
-                            .semantics {
-                                if (showRunAction) contentDescription = textTranslator("変更を実行", emptyArray())
-                            },
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (showRunAction) colors.tertiaryContainer else colors.surface.copy(alpha = 0.85f),
-                        contentColor = if (showRunAction) colors.onTertiaryContainer else colors.onSurfaceVariant.copy(alpha = 0.65f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (showRunAction) colors.tertiary.copy(alpha = 0.5f) else colors.outlineVariant.copy(alpha = 0.5f)
-                        ),
-                        tonalElevation = 0.dp
+                            .padding(end = 10.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            if (showRunAction) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_play),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp)
+                        if (!readOnly) {
+                            Surface(
+                                onClick = { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled },
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (sessionViewModel.autoRunEnabled) colors.primaryContainer else colors.surface.copy(alpha = 0.85f),
+                                contentColor = if (sessionViewModel.autoRunEnabled) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (sessionViewModel.autoRunEnabled) colors.primary.copy(alpha = 0.6f)
+                                    else colors.outlineVariant.copy(alpha = 0.5f)
                                 )
+                            ) {
                                 Text(
-                                    text = textTranslator("変更を実行", emptyArray()),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "· $statsText",
+                                    text = if (sessionViewModel.autoRunEnabled) "⚡AUTO" else "⚡",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     fontFamily = codeFontFamily,
                                     fontSize = 10.sp,
-                                    color = colors.onTertiaryContainer.copy(alpha = 0.75f)
+                                    fontWeight = FontWeight.Bold
                                 )
-                            } else {
-                                Text(
-                                    text = statsText,
-                                    fontFamily = codeFontFamily,
-                                    fontSize = 10.sp
-                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = { if (showRunAction) onRunChanges() },
+                            enabled = showRunAction,
+                            modifier = Modifier.semantics {
+                                if (showRunAction) contentDescription = textTranslator("変更を実行", emptyArray())
+                            },
+                            shape = RoundedCornerShape(999.dp),
+                            color = if (showRunAction) colors.tertiaryContainer else colors.surface.copy(alpha = 0.85f),
+                            contentColor = if (showRunAction) colors.onTertiaryContainer else colors.onSurfaceVariant.copy(alpha = 0.65f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (showRunAction) colors.tertiary.copy(alpha = 0.5f) else colors.outlineVariant.copy(alpha = 0.5f)
+                            ),
+                            tonalElevation = 0.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                if (showRunAction) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_play),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = textTranslator("変更を実行", emptyArray()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "· $statsText",
+                                        fontFamily = codeFontFamily,
+                                        fontSize = 10.sp,
+                                        color = colors.onTertiaryContainer.copy(alpha = 0.75f)
+                                    )
+                                } else {
+                                    Text(
+                                        text = statsText,
+                                        fontFamily = codeFontFamily,
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
                         }
                     }

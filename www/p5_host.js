@@ -1,4 +1,3 @@
-
 (() => {
   // Keep the URL identity even if a newer run replaces the native snapshot.
   const runToken = window.location?.pathname?.match(/^\/project\/([^/]+)\//)?.[1] || '';
@@ -1373,4 +1372,153 @@ window.addEventListener('beforeunload', () => {
   artworkFrames.clear();
 }, { once: true });
 })();
-  
+
+// ============================================================================
+// Edit:RiN v3.0 — Zero-Reload Hot-Swap Engine, WebMessagePort & Live Watch API
+// ============================================================================
+(() => {
+  let activePort = null;
+  const watchLastSentAt = new Map();
+
+  function formatWatchValue(val) {
+    if (val === null) return 'null';
+    if (val === undefined) return 'undefined';
+    if (typeof val === 'number') return Number.isInteger(val) ? String(val) : val.toFixed(3).replace(/\.?0+$/, '');
+    if (typeof val === 'boolean' || typeof val === 'string') return String(val).slice(0, 36);
+    if (Array.isArray(val)) return '[' + val.slice(0, 4).map(formatWatchValue).join(', ') + (val.length > 4 ? ', …' : '') + ']';
+    if (typeof val === 'object') {
+      if ('x' in val && 'y' in val) {
+        const zPart = 'z' in val ? `, ${formatWatchValue(val.z)}` : '';
+        return `(${formatWatchValue(val.x)}, ${formatWatchValue(val.y)}${zPart})`;
+      }
+      try { return JSON.stringify(val).slice(0, 36); } catch (_) { return '[Object]'; }
+    }
+    return String(val).slice(0, 36);
+  }
+
+  window.rinWatch = (lineOrLabel, labelOrVal, maybeVal) => {
+    const hasLine = typeof lineOrLabel === 'number';
+    const line = hasLine ? lineOrLabel : 1;
+    const label = hasLine ? String(labelOrVal || '') : String(lineOrLabel || '');
+    const value = hasLine ? maybeVal : labelOrVal;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const prev = watchLastSentAt.get(line) || 0;
+    if (now - prev >= 90) {
+      watchLastSentAt.set(line, now);
+      const formatted = (label ? `${label} = ` : '') + formatWatchValue(value);
+      const token = window.__editRinRunToken || '';
+      if (activePort) {
+        try { activePort.postMessage(`W:${token}:${line}:${formatted}`); } catch (_) {}
+      } else {
+        try { window.Android?.onWatchValue?.(token, line, formatted); } catch (_) {}
+      }
+    }
+    return value;
+  };
+
+  window.__editRinCapturePassThroughThumbnail = token => {
+    try {
+      const targetToken = token || window.__editRinRunToken || '';
+      const source = document.querySelector('canvas.p5Canvas') || document.querySelector('canvas');
+      if (!source || !source.width || !source.height) return;
+      const scale = Math.min(1, 480 / Math.max(source.width, source.height));
+      const copy = document.createElement('canvas');
+      copy.width = Math.max(1, Math.round(source.width * scale));
+      copy.height = Math.max(1, Math.round(source.height * scale));
+      const ctx = copy.getContext('2d');
+      ctx.drawImage(source, 0, 0, copy.width, copy.height);
+      let dataUrl = copy.toDataURL('image/webp', 0.84);
+      if (!dataUrl.startsWith('data:image/webp')) {
+        dataUrl = copy.toDataURL('image/png');
+      }
+      const base64 = dataUrl.split(',')[1] || '';
+      if (base64) window.Android?.onPassThroughThumbnailReady?.(targetToken, base64);
+    } catch (_) {}
+  };
+
+  window.__editRinHotSwapSketch = rawPayload => {
+    try {
+      const payload = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload;
+      if (!payload || payload.type !== 'HOT_SWAP') return false;
+      const nextToken = payload.token || window.__editRinRunToken;
+      try {
+        Object.defineProperty(window, '__editRinRunToken', { value: nextToken, configurable: true });
+      } catch (_) {}
+
+      window.__editKiroRuntimeHasError = false;
+      watchLastSentAt.clear();
+
+      // Update parameters & shaders in place
+      if (payload.parameters) {
+        try {
+          const parsedParams = JSON.parse(payload.parameters);
+          window.rinParams = Object.assign(Object.create(null), parsedParams);
+        } catch (_) {}
+      }
+      if (payload.shaders) {
+        try {
+          const parsedShaders = JSON.parse(payload.shaders);
+          window.rinShaders = Object.assign(Object.create(null), parsedShaders);
+        } catch (_) {}
+      }
+
+      // Remove existing global p5 instance and old canvases without reloading HTML/libraries
+      if (window.p5?.instance) {
+        try { window.p5.instance.remove(); } catch (_) {}
+        window.p5.instance = null;
+      }
+      document.querySelectorAll('canvas.p5Canvas, main > canvas').forEach(el => {
+        try { el.remove(); } catch (_) {}
+      });
+      document.getElementById('user-sketch')?.remove();
+
+      // Clear previous global p5 lifecycle callbacks before evaluating new sketch
+      const lifecycleCallbacks = [
+        'preload', 'setup', 'draw', 'windowResized',
+        'mousePressed', 'mouseReleased', 'mouseMoved', 'mouseDragged', 'mouseClicked', 'doubleClicked', 'mouseWheel',
+        'touchStarted', 'touchMoved', 'touchEnded',
+        'keyPressed', 'keyReleased', 'keyTyped',
+        'deviceMoved', 'deviceTurned', 'deviceShaken'
+      ];
+      for (const fnName of lifecycleCallbacks) {
+        try { delete window[fnName]; } catch (_) { window[fnName] = undefined; }
+      }
+
+      const script = document.createElement('script');
+      script.id = 'user-sketch';
+      script.textContent = `${payload.code}\n//# sourceURL=sketch.js?run=${nextToken}`;
+      document.head.appendChild(script);
+
+      if (window.p5 && (typeof window.setup === 'function' || typeof window.draw === 'function')) {
+        new window.p5();
+      }
+      window.Android?.onPreviewReady?.(nextToken);
+      requestAnimationFrame(() => {
+        if (!window.__editKiroRuntimeHasError) {
+          window.Android?.onPreviewVisualReady?.(nextToken);
+        }
+      });
+      return true;
+    } catch (error) {
+      window.__editKiroReportError?.(error?.message || String(error));
+      return false;
+    }
+  };
+
+  window.addEventListener('message', event => {
+    if (event.data === 'INIT_PORT' && event.ports?.[0]) {
+      activePort = event.ports[0];
+      activePort.onmessage = msgEvent => {
+        const text = String(msgEvent.data || '');
+        if (text.startsWith('S:')) {
+          const nums = text.slice(2).split(',').map(Number);
+          if (nums.length >= 9) {
+            window.__editRinUpdateSensors?.(...nums);
+          }
+        } else if (text.startsWith('{')) {
+          window.__editRinHotSwapSketch(text);
+        }
+      };
+    }
+  });
+})();
