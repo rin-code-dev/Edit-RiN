@@ -1,5 +1,6 @@
 package com.hikariatelier.app
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -9,31 +10,23 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.Icon
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -43,7 +36,107 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.util.Locale
+import kotlin.math.pow
 
+internal data class EditorNumberTarget(
+    val range: IntRange,
+    val rawText: String,
+    val value: Double,
+    val decimals: Int,
+    val step: Double
+)
+
+private val NUMBER_LITERAL_REGEX = Regex("""-?\d+(?:\.\d+)?""")
+
+internal fun findNumberAtSelection(text: String, selection: TextRange): EditorNumberTarget? {
+    if (text.isEmpty()) return null
+    val cursor = selection.min.coerceIn(0, text.length)
+    val lineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+    val lineEnd = text.indexOf('\n', cursor).let { if (it < 0) text.length else it }
+    if (!selection.collapsed && selection.max > lineEnd) return null
+    val line = text.substring(lineStart, lineEnd)
+    val commentIdx = line.indexOf("//")
+    if (commentIdx >= 0 && cursor - lineStart > commentIdx) return null
+
+    for (match in NUMBER_LITERAL_REGEX.findAll(line)) {
+        val absStart = lineStart + match.range.first
+        val absEndExclusive = lineStart + match.range.last + 1
+        val touchesSelection = if (selection.collapsed) {
+            cursor in absStart..absEndExclusive
+        } else {
+            selection.min >= absStart && selection.max <= absEndExclusive
+        }
+        if (!touchesSelection) continue
+        val prevChar = text.getOrNull(absStart - 1)
+        val nextChar = text.getOrNull(absEndExclusive)
+        if (prevChar != null && (prevChar.isLetterOrDigit() || prevChar == '_' || prevChar == '$' || prevChar == '#' || prevChar == '.')) continue
+        if (nextChar != null && (nextChar.isLetterOrDigit() || nextChar == '_' || nextChar == '$' || nextChar == '.')) continue
+
+        val raw = match.value
+        val parsed = raw.toDoubleOrNull() ?: continue
+        if (!parsed.isFinite()) continue
+        val dotIndex = raw.indexOf('.')
+        val decimals = if (dotIndex >= 0) (raw.length - dotIndex - 1).coerceIn(0, 6) else 0
+        val step = if (decimals > 0) 10.0.pow(-decimals.toDouble()) else 1.0
+        return EditorNumberTarget(absStart until absEndExclusive, raw, parsed, decimals, step)
+    }
+    return null
+}
+
+internal fun formatScrubbedNumber(value: Double, decimals: Int): String {
+    if (!value.isFinite()) return "0"
+    val bd = BigDecimal.valueOf(value).setScale(decimals.coerceIn(0, 6), RoundingMode.HALF_UP)
+    val normalized = if (bd.compareTo(BigDecimal.ZERO) == 0) BigDecimal.ZERO.setScale(decimals.coerceIn(0, 6)) else bd
+    return normalized.toPlainString()
+}
+
+private val RIN_PARAMS_USAGE_REGEX = Regex("""\brinParams\.([A-Za-z][A-Za-z0-9_]*)$""")
+
+internal fun findUndeclaredRinParamAtCursor(text: String, selection: TextRange): String? {
+    if (!selection.collapsed) return null
+    val cursor = selection.start.coerceIn(0, text.length)
+    val lineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+    val prefix = text.substring(lineStart, cursor)
+    val match = RIN_PARAMS_USAGE_REGEX.find(prefix) ?: return null
+    val name = match.groupValues[1]
+    val nextChar = text.getOrNull(cursor)
+    if (nextChar != null && (nextChar.isLetterOrDigit() || nextChar == '_' || nextChar == '$')) return null
+    val existing = workParameters(mapOf("sketch.js" to text))
+    if (existing.size >= 16 || existing.any { it.name == name }) return null
+    return name
+}
+
+internal fun defaultDeclarationForParamName(name: String, existing: List<WorkParameter>): String? {
+    val lower = name.lowercase(Locale.ROOT)
+    val existingNames = existing.map { it.name }.toSet()
+    val label = name.replaceFirstChar { it.uppercase() }.take(40)
+    return when {
+        lower.contains("color") || lower.contains("ink") || lower.contains("bg") || lower.contains("tint") ->
+            parameterDeclaration(ParameterKind.COLOR, name, label, "#BA90E2", "0", "1", "0.1", existingNames, existing.size)
+        lower.startsWith("is") || lower.startsWith("has") || lower.startsWith("show") || lower.startsWith("use") || lower.startsWith("enable") ->
+            parameterDeclaration(ParameterKind.BOOLEAN, name, label, "true", "0", "1", "0.1", existingNames, existing.size)
+        lower.contains("speed") || lower.contains("scale") || lower.contains("rate") || lower.contains("alpha") ->
+            parameterDeclaration(ParameterKind.NUMBER, name, label, "1", "0", "5", "0.1", existingNames, existing.size)
+        else ->
+            parameterDeclaration(ParameterKind.NUMBER, name, label, "50", "0", "200", "1", existingNames, existing.size)
+    }
+}
+
+private val QUICK_SWATCH_HEXES = listOf(
+    "#FF5252", "#FF9800", "#FFEB3B", "#4CAF50",
+    "#00BCD4", "#448AFF", "#B388FF", "#F8BBD0",
+    "#FFFFFF", "#121318"
+)
+
+/**
+ * Enhanced EditorAccessoryBar (v3.3):
+ * - All keys use `.clip(RoundedCornerShape(8.dp))` BEFORE `.clickable` so touch ripples strictly match
+ *   the flat rectangular key design.
+ * - 2-Axis Velocity Scrubber and Inline Color Quick Swatch Bar share the exact same flat border aesthetic.
+ */
 @Composable
 internal fun EditorAccessoryBar(
     editingValue: TextFieldValue,
@@ -64,70 +157,67 @@ internal fun EditorAccessoryBar(
     showAccessoryNavigation: Boolean,
     showAccessorySymbols: Boolean,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLiveScrub: (() -> Unit)? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
+    val keyHeight = if (compactAccessoryKeys) 30.dp else 34.dp
+    val iconSize = if (compactAccessoryKeys) 16.dp else 18.dp
+    val keyShape = RoundedCornerShape(8.dp)
+    val haptic = LocalHapticFeedback.current
 
     @Composable
-    fun AccessoryKey(
+    fun FlatIconKey(
+        @DrawableRes iconRes: Int,
+        description: String,
+        enabled: Boolean = true,
+        active: Boolean = false,
+        onClick: () -> Unit
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = if (compactAccessoryKeys) 32.dp else 36.dp, height = keyHeight)
+                .clip(keyShape)
+                .background(if (active) colors.primary.copy(alpha = 0.14f) else Color.Transparent)
+                .then(if (active) Modifier.border(1.dp, colors.primary.copy(alpha = 0.7f), keyShape) else Modifier)
+                .clickable(enabled = enabled, onClick = onClick)
+                .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = if (active) colors.primary else colors.onSurface.copy(alpha = if (enabled) 0.88f else 0.32f),
+                modifier = Modifier.size(iconSize)
+            )
+        }
+    }
+
+    @Composable
+    fun FlatTextKey(
         label: String,
         description: String,
-        width: Int = 40,
-        command: Boolean = false,
+        width: Int = 34,
         enabled: Boolean = true,
         onClick: () -> Unit
     ) {
-        Surface(
-            onClick = onClick,
-            enabled = enabled,
+        Box(
             modifier = Modifier
-                .width(
-                    (if (compactAccessoryKeys) {
-                        (width - 6).coerceAtLeast(34)
-                    } else {
-                        width
-                    }).dp
-                )
-                .height(if (compactAccessoryKeys) 32.dp else 38.dp)
-                .semantics {
-                    contentDescription = description
-                },
-            shape = RoundedCornerShape(8.dp),
-            color = if (command) {
-                colors.secondaryContainer
-            } else {
-                colors.surface
-            },
-            contentColor = if (command) {
-                colors.onSecondaryContainer.copy(
-                    alpha = if (enabled) 1f else 0.38f
-                )
-            } else {
-                colors.onSurface.copy(
-                    alpha = if (enabled) 1f else 0.38f
-                )
-            },
-            border = BorderStroke(
-                1.dp,
-                if (command) colors.secondary.copy(alpha = 0.42f)
-                else colors.outlineVariant
-            ),
-            shadowElevation = 1.dp
+                .width((if (compactAccessoryKeys) (width - 4).coerceAtLeast(28) else width).dp)
+                .height(keyHeight)
+                .clip(keyShape)
+                .clickable(enabled = enabled, onClick = onClick)
+                .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = label,
-                    fontFamily = codeFontFamily,
-                    fontSize = if (compactAccessoryKeys) {
-                        if (label.length > 3) 10.sp else 12.sp
-                    } else if (label.length > 3) 11.sp else 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = label,
+                fontFamily = codeFontFamily,
+                fontSize = if (compactAccessoryKeys) 12.sp else 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface.copy(alpha = if (enabled) 0.9f else 0.32f),
+                maxLines = 1
+            )
         }
     }
 
@@ -135,10 +225,10 @@ internal fun EditorAccessoryBar(
     fun KeyDivider() {
         Box(
             modifier = Modifier
-                .padding(horizontal = 2.dp)
+                .padding(horizontal = 3.dp)
                 .width(1.dp)
-                .height(26.dp)
-                .background(colors.outlineVariant)
+                .height(18.dp)
+                .background(colors.outlineVariant.copy(alpha = 0.65f))
         )
     }
 
@@ -159,151 +249,317 @@ internal fun EditorAccessoryBar(
         onApplyEdit(editingValue.copy(selection = TextRange(target)))
     }
 
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
-        color = colors.surfaceContainerHigh,
-        tonalElevation = 3.dp,
-        shadowElevation = 2.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(
-                    horizontal = 8.dp,
-                    vertical = if (compactAccessoryKeys) 5.dp else 7.dp
-                ),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically
+    val currentEditingValue by rememberUpdatedState(editingValue)
+    val currentOnApplyEdit by rememberUpdatedState(onApplyEdit)
+    val currentOnLiveScrub by rememberUpdatedState(onLiveScrub)
+    val density = LocalDensity.current
+    val scrubStepPx = with(density) { 8.dp.toPx().coerceAtLeast(4f) }
+    val gearStepPx = with(density) { 26.dp.toPx().coerceAtLeast(14f) }
+
+    val detectedColorTarget = remember(editingValue.text, editingValue.selection) {
+        findColorAtSelection(editingValue.text, editingValue.selection)
+    }
+    val detectedNumberTarget = remember(editingValue.text, editingValue.selection, detectedColorTarget) {
+        if (detectedColorTarget != null) null else findNumberAtSelection(editingValue.text, editingValue.selection)
+    }
+
+    var activeGearLabel by remember { mutableStateOf<String?>(null) }
+    var showInlineColorStrip by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Inline Color Quick Popover Strip (Flat rounded-rect swatches)
+        AnimatedVisibility(
+            visible = detectedColorTarget != null && showInlineColorStrip,
+            enter = fadeIn(tween(100)) + expandVertically(tween(120)),
+            exit = fadeOut(tween(80)) + shrinkVertically(tween(100))
         ) {
-            Surface(
-                modifier = Modifier.size(if (compactAccessoryKeys) 32.dp else 38.dp),
-                shape = RoundedCornerShape(9.dp),
-                color = colors.primaryContainer,
-                contentColor = colors.onPrimaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_keyboard_symbols),
-                        contentDescription = uiText("編集キー"),
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
-            }
-
-            KeyDivider()
-            AccessoryKey("↶", uiText("元に戻す"), command = true, enabled = undoAvailable) {
-                onUndo()
-            }
-            AccessoryKey("↷", uiText("やり直す"), command = true, enabled = redoAvailable) {
-                onRedo()
-            }
-            AccessoryKey("⌕", uiText("検索と置換"), command = true) {
-                onSearch()
-            }
-            AccessoryKey("{…}", uiText("スニペット"), command = true) { onSnippets() }
-            AccessoryKey("?", uiText("p5.jsリファレンス"), command = true) { onReference() }
-            AccessoryKey("≡", uiText("コードを整形"), command = true) {
-                onFormat()
-            }
-
-            val detectedColorTarget = remember(editingValue.text, editingValue.selection) {
-                findColorAtSelection(editingValue.text, editingValue.selection)
-            }
-
-            Surface(
-                onClick = {
-                    onOpenColorPicker(
-                        detectedColorTarget,
-                        detectedColorTarget?.color ?: lastColorPickerColor
-                    )
-                },
-                modifier = Modifier
-                    .width(
-                        (if (compactAccessoryKeys) {
-                            (40 - 6).coerceAtLeast(34)
-                        } else {
-                            40
-                        }).dp
-                    )
-                    .height(if (compactAccessoryKeys) 32.dp else 38.dp)
-                    .semantics {
-                        contentDescription = uiText(if (detectedColorTarget != null) "カラーを編集" else "カラーピッカー")
-                    },
-                shape = RoundedCornerShape(8.dp),
-                color = detectedColorTarget?.color ?: colors.surface,
-                contentColor = if (detectedColorTarget != null) {
-                    if (detectedColorTarget.color.luminance() > 0.5f) Color.Black else Color.White
-                } else colors.onSurface,
-                border = BorderStroke(
-                    1.dp,
-                    if (detectedColorTarget != null) Color.White.copy(alpha = 0.85f) else colors.outlineVariant
-                ),
-                shadowElevation = 1.dp
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+            val target = detectedColorTarget
+            if (target != null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.surface,
+                    border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
                 ) {
-                    if (detectedColorTarget == null) {
-                        Text(
-                            text = "🎨",
-                            fontSize = if (compactAccessoryKeys) 12.sp else 14.sp
-                        )
-                    } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val swatchShape = RoundedCornerShape(6.dp)
+                        QUICK_SWATCH_HEXES.forEach { hex ->
+                            val swatch = parseHexColor(hex) ?: Color.White
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(swatchShape)
+                                    .background(swatch)
+                                    .border(1.dp, colors.outlineVariant, swatchShape)
+                                    .clickable {
+                                        onApplyEdit(replaceColorTarget(editingValue, target, swatch))
+                                        currentOnLiveScrub?.invoke()
+                                    }
+                            )
+                        }
                         Box(
                             modifier = Modifier
-                                .size(if (compactAccessoryKeys) 14.dp else 16.dp)
-                                .clip(CircleShape)
+                                .height(24.dp)
+                                .clip(swatchShape)
+                                .border(1.dp, colors.outlineVariant, swatchShape)
+                                .clickable { onOpenColorPicker(target, target.color) }
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = uiText("詳細"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, colors.outlineVariant.copy(alpha = 0.75f), RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            color = colors.surface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = if (compactAccessoryKeys) 3.dp else 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Pinned Zone: Undo, Redo, Flat Color Swatch, and 2-Axis Live Number Scrubber
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FlatIconKey(R.drawable.ic_undo, uiText("元に戻す"), enabled = undoAvailable, onClick = onUndo)
+                    FlatIconKey(R.drawable.ic_redo, uiText("やり直す"), enabled = redoAvailable, onClick = onRedo)
+
+                    val swatchColor = detectedColorTarget?.color ?: lastColorPickerColor
+                    val colorActive = detectedColorTarget != null
+                    Box(
+                        modifier = Modifier
+                            .size(width = if (compactAccessoryKeys) 32.dp else 36.dp, height = keyHeight)
+                            .clip(keyShape)
+                            .background(if (colorActive) colors.primary.copy(alpha = 0.12f) else Color.Transparent)
+                            .then(
+                                if (colorActive) Modifier.border(1.dp, colors.primary.copy(alpha = 0.7f), keyShape)
+                                else Modifier
+                            )
+                            .clickable {
+                                if (detectedColorTarget != null) {
+                                    showInlineColorStrip = !showInlineColorStrip
+                                } else {
+                                    onOpenColorPicker(null, swatchColor)
+                                }
+                            }
+                            .semantics {
+                                contentDescription = uiText(if (colorActive) "カラーを編集" else "カラーピッカー")
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val innerSwatchShape = RoundedCornerShape(4.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(if (colorActive) 14.dp else 12.dp)
+                                .clip(innerSwatchShape)
+                                .background(swatchColor)
                                 .border(
-                                    1.dp,
-                                    if (detectedColorTarget.color.luminance() > 0.5f) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.75f),
-                                    CircleShape
+                                    width = 1.dp,
+                                    color = if (colorActive) colors.primary else colors.outlineVariant,
+                                    shape = innerSwatchShape
                                 )
                         )
                     }
-                }
-            }
 
-            if (showAccessoryNavigation) {
-                KeyDivider()
-                AccessoryKey("TAB", uiText("インデント"), 54, true) {
-                    onApplyEdit(changeLineIndent(editingValue, true))
-                }
-                AccessoryKey("⇤", uiText("インデントを戻す"), command = true) {
-                    onApplyEdit(changeLineIndent(editingValue, false))
-                }
-                AccessoryKey("←", uiText("左へ移動"), onClick = moveLeft)
-                AccessoryKey("↑", uiText("上へ移動")) {
-                    onApplyEdit(moveCursorVertically(editingValue, -1))
-                }
-                AccessoryKey("↓", uiText("下へ移動")) {
-                    onApplyEdit(moveCursorVertically(editingValue, 1))
-                }
-                AccessoryKey("→", uiText("右へ移動"), onClick = moveRight)
-            }
-
-            if (showAccessorySymbols) {
-                KeyDivider()
-                listOf(
-                    Triple("{}", "{", "}"), Triple("()", "(", ")"),
-                    Triple("[]", "[", "]"), Triple("\"\"", "\"", "\""),
-                    Triple("''", "'", "'")
-                ).forEach { (label, opening, closing) ->
-                    AccessoryKey(label, uiText("%s を入力", label)) {
-                        onApplyEdit(insertAtSelection(editingValue, opening, closing))
+                    if (detectedNumberTarget != null) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(min = if (compactAccessoryKeys) 56.dp else 64.dp)
+                                .height(keyHeight)
+                                .clip(keyShape)
+                                .background(colors.primary.copy(alpha = 0.14f))
+                                .border(1.dp, colors.primary.copy(alpha = 0.75f), keyShape)
+                                .clickable {
+                                    val nextVal = detectedNumberTarget.value + detectedNumberTarget.step
+                                    val formatted = formatScrubbedNumber(nextVal, detectedNumberTarget.decimals)
+                                    val r = detectedNumberTarget.range
+                                    if (r.first >= 0 && r.last < editingValue.text.length) {
+                                        onApplyEdit(
+                                            TextFieldValue(
+                                                editingValue.text.replaceRange(r.first, r.last + 1, formatted),
+                                                TextRange(r.first + formatted.length)
+                                            )
+                                        )
+                                        currentOnLiveScrub?.invoke()
+                                    }
+                                }
+                                .semantics {
+                                    contentDescription = uiText("左右にドラッグして数値を調整")
+                                }
+                                .pointerInput(scrubStepPx, gearStepPx) {
+                                    var activeRange: IntRange? = null
+                                    var currentVal = 0.0
+                                    var baseStep = 1.0
+                                    var baseDecimals = 0
+                                    var gearExponent = 0
+                                    var accumulatedDx = 0f
+                                    var accumulatedDy = 0f
+                                    detectDragGestures(
+                                        onDragStart = {
+                                            val target = findNumberAtSelection(
+                                                currentEditingValue.text,
+                                                currentEditingValue.selection
+                                            )
+                                            activeRange = target?.range
+                                            currentVal = target?.value ?: 0.0
+                                            baseStep = target?.step ?: 1.0
+                                            baseDecimals = target?.decimals ?: 0
+                                            gearExponent = 0
+                                            accumulatedDx = 0f
+                                            accumulatedDy = 0f
+                                            activeGearLabel = "×1"
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            val range = activeRange ?: return@detectDragGestures
+                                            change.consume()
+                                            accumulatedDx += dragAmount.x
+                                            accumulatedDy -= dragAmount.y
+                                            val nextGear = (accumulatedDy / gearStepPx).toInt().coerceIn(-2, 2)
+                                            if (nextGear != gearExponent) {
+                                                gearExponent = nextGear
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                activeGearLabel = when (gearExponent) {
+                                                    2 -> "×100"
+                                                    1 -> "×10"
+                                                    0 -> "×1"
+                                                    -1 -> "×0.1"
+                                                    else -> "×0.01"
+                                                }
+                                            }
+                                            val deltaSteps = (accumulatedDx / scrubStepPx).toInt()
+                                            if (deltaSteps != 0) {
+                                                accumulatedDx -= deltaSteps * scrubStepPx
+                                                val effectiveStep = baseStep * 10.0.pow(gearExponent.toDouble())
+                                                val effectiveDecimals = (baseDecimals - gearExponent).coerceIn(0, 4)
+                                                currentVal += deltaSteps * effectiveStep
+                                                val formatted = formatScrubbedNumber(currentVal, effectiveDecimals)
+                                                val latestText = currentEditingValue.text
+                                                if (range.first >= 0 && range.last < latestText.length) {
+                                                    val currentSlice = latestText.substring(range.first, range.last + 1)
+                                                    if (currentSlice != formatted) {
+                                                        val updatedText = latestText.replaceRange(range.first, range.last + 1, formatted)
+                                                        val newEndExclusive = range.first + formatted.length
+                                                        activeRange = range.first until newEndExclusive
+                                                        currentOnApplyEdit(
+                                                            TextFieldValue(updatedText, TextRange(newEndExclusive))
+                                                        )
+                                                        currentOnLiveScrub?.invoke()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            activeRange = null
+                                            activeGearLabel = null
+                                        },
+                                        onDragCancel = {
+                                            activeRange = null
+                                            activeGearLabel = null
+                                        }
+                                    )
+                                }
+                                .padding(horizontal = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_scrub),
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = detectedNumberTarget.rawText + (activeGearLabel?.let { " ($it)" } ?: ""),
+                                    fontFamily = codeFontFamily,
+                                    fontSize = if (compactAccessoryKeys) 11.sp else 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.primary,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
-                listOf(";", "=", ",", ".").forEach { symbol ->
-                    AccessoryKey(symbol, uiText("%s を入力", symbol)) {
-                        onApplyEdit(insertAtSelection(editingValue, symbol))
+
+                KeyDivider()
+
+                // Right Scrollable Zone: Tools, Navigation, and Symbols
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FlatIconKey(R.drawable.ic_search, uiText("検索と置換"), onClick = onSearch)
+                    FlatIconKey(R.drawable.ic_snippet, uiText("スニペット"), onClick = onSnippets)
+                    FlatIconKey(R.drawable.ic_help, uiText("p5.jsリファレンス"), onClick = onReference)
+                    FlatIconKey(R.drawable.ic_format, uiText("コードを整形"), onClick = onFormat)
+
+                    if (showAccessoryNavigation) {
+                        KeyDivider()
+                        FlatIconKey(R.drawable.ic_indent, uiText("インデント")) {
+                            onApplyEdit(changeLineIndent(editingValue, true))
+                        }
+                        FlatIconKey(R.drawable.ic_outdent, uiText("インデントを戻す")) {
+                            onApplyEdit(changeLineIndent(editingValue, false))
+                        }
+                        FlatTextKey("←", uiText("左へ移動"), onClick = moveLeft)
+                        FlatTextKey("↑", uiText("上へ移動")) {
+                            onApplyEdit(moveCursorVertically(editingValue, -1))
+                        }
+                        FlatTextKey("↓", uiText("下へ移動")) {
+                            onApplyEdit(moveCursorVertically(editingValue, 1))
+                        }
+                        FlatTextKey("→", uiText("右へ移動"), onClick = moveRight)
                     }
-                }
-                AccessoryKey("//", uiText("コメントを入力"), 44) {
-                    onApplyEdit(insertAtSelection(editingValue, "// "))
+
+                    if (showAccessorySymbols) {
+                        KeyDivider()
+                        listOf(
+                            Triple("{}", "{", "}"), Triple("()", "(", ")"),
+                            Triple("[]", "[", "]"), Triple("\"\"", "\"", "\""),
+                            Triple("''", "'", "'")
+                        ).forEach { (label, opening, closing) ->
+                            FlatTextKey(label, uiText("%s を入力", label)) {
+                                onApplyEdit(insertAtSelection(editingValue, opening, closing))
+                            }
+                        }
+                        listOf(";", "=", ",", ".").forEach { symbol ->
+                            FlatTextKey(symbol, uiText("%s を入力", symbol), width = 30) {
+                                onApplyEdit(insertAtSelection(editingValue, symbol))
+                            }
+                        }
+                        FlatIconKey(R.drawable.ic_comment, uiText("コメントを入力")) {
+                            onApplyEdit(insertAtSelection(editingValue, "// "))
+                        }
+                    }
                 }
             }
         }
@@ -322,16 +578,20 @@ internal fun CompletionBar(
     onApplyCompletion: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val undeclaredParam = remember(editingText, editingValue.selection) {
+        findUndeclaredRinParamAtCursor(editingText, editingValue.selection)
+    }
+
     AnimatedVisibility(
-        visible = visible && suggestions.isNotEmpty(),
+        visible = visible && (suggestions.isNotEmpty() || undeclaredParam != null),
         modifier = modifier,
         enter = fadeIn(tween(100)) + expandVertically(tween(130)),
         exit = fadeOut(tween(80)) + shrinkVertically(tween(110))
     ) {
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = colors.surfaceContainer,
-            border = BorderStroke(1.dp, colors.outlineVariant)
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
         ) {
             Row(
                 modifier = Modifier
@@ -339,27 +599,61 @@ internal fun CompletionBar(
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                if (undeclaredParam != null) {
+                    val chipShape = RoundedCornerShape(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(chipShape)
+                            .background(colors.primary.copy(alpha = 0.14f))
+                            .border(1.dp, colors.primary.copy(alpha = 0.7f), chipShape)
+                            .clickable {
+                                val existing = workParameters(mapOf("sketch.js" to editingText))
+                                val declaration = defaultDeclarationForParamName(undeclaredParam, existing)
+                                if (declaration != null) {
+                                    onApplyCompletion(prependDeclarations(editingValue, declaration))
+                                }
+                            }
+                            .padding(horizontal = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            textTranslator("＋ @rin %s を宣言", arrayOf(undeclaredParam)),
+                            fontFamily = codeFontFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.primary
+                        )
+                    }
+                }
                 suggestions.forEach { suggestion ->
-                    SuggestionChip(
-                        onClick = {
-                            val end = editingValue.selection.start
-                            val start = (end - completionPrefix(editingValue).length).coerceAtLeast(0)
-                            onApplyCompletion(
-                                TextFieldValue(
-                                    editingText.replaceRange(start, end, suggestion.name),
-                                    TextRange(start + suggestion.name.length)
+                    val chipShape = RoundedCornerShape(8.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(chipShape)
+                            .border(1.dp, colors.outlineVariant.copy(alpha = 0.75f), chipShape)
+                            .clickable {
+                                val end = editingValue.selection.start
+                                val start = (end - completionPrefix(editingValue).length).coerceAtLeast(0)
+                                onApplyCompletion(
+                                    TextFieldValue(
+                                        editingText.replaceRange(start, end, suggestion.name),
+                                        TextRange(start + suggestion.name.length)
+                                    )
                                 )
-                            )
-                        },
-                        label = {
-                            Text(
-                                suggestion.file?.let { "${suggestion.name} · $it" }
-                                    ?: completionHelp(suggestion.name) { s -> textTranslator(s, emptyArray()) },
-                                fontFamily = codeFontFamily,
-                                fontSize = 12.sp
-                            )
-                        }
-                    )
+                            }
+                            .padding(horizontal = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            suggestion.file?.let { "${suggestion.name} · $it" }
+                                ?: completionHelp(suggestion.name) { s -> textTranslator(s, emptyArray()) },
+                            fontFamily = codeFontFamily,
+                            fontSize = 12.sp,
+                            color = colors.onSurface
+                        )
+                    }
                 }
             }
         }

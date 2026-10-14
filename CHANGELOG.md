@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.0.0 — 2026-10-15
+
+### English
+
+- Added zero-reload hot-swap preview using WebMessagePort, reflecting code changes to the running canvas in real time without white-screen reloads or audio stutter.
+- Added floating PiP (Picture-in-Picture) preview in portrait mode: canvas docks to screen corners during editing with S/M/L presets, smooth corner snapping, customizable translucency, and session-persistent layout state.
+- Added live parameter auto-run option that automatically updates sketches when typing pauses.
+- Introduced 2-axis numeric scrubbing (horizontal drag adjusts value, vertical drag scales step increment) and inline color swatch palette for instant hex color tweaking.
+- Added dedicated symbol accessory bar on mobile keyboard with quick-insert for common coding punctuation, brackets, operators, and indentation tools.
+- Integrated a Piece Table text buffer and viewport virtualization into the code editor, sustaining fluid 120fps editing and responsive syntax highlighting across large sketches.
+- Expanded the interactive onboarding tour to 8 steps with dedicated interactive previews for editor helper tools and PiP preview mode.
+- Streamlined fresh install and update flows into an orderly sequence: Onboarding Tour, followed by What's New highlights, followed by workspace folder selection.
+- Enforced complete tour completion on initial runs and major updates while keeping instant skipping available when replaying from Settings.
+
+### 日本語
+
+- WebMessagePortを活用した「ゼロ・リロード（Hot-Swap）プレビュー」を導入しました。画面の白フラッシュや音切れを発生させることなく、コードの変更内容をリアルタイムに実行中のキャンバスへ反映します。
+- 縦画面の入力時に作品が画面の四隅にスナップする「フローティングPiP（小窓）プレビュー」を追加しました。S/M/Lの3段階サイズ切替、4隅ドラッグスナップ、透過度調整、最小化に対応し、配置やサイズの状態はセッション内で安全に記憶されます。
+- 文字入力停止時に自動でプレビューを更新する「Auto-Run」機能を追加しました。
+- 2軸ベロシティ・スクラブ（左右ドラッグで数値増減、上下ドラッグで桁倍率変更）と、コード内のカラーコードをタップして直接色を選べるインラインカラーパレットを追加しました。
+- キーボード上部に記号入力バーを追加し、波括弧やセミコロン、比較演算子、インデント調整をワンタップで素早く入力できるようにしました。
+- エディター内部にPiece Tableテキストバッファと表示領域のみを描画する仮想化レンダラーを採用し、数千行の大規模スケッチでも120fpsの滑らかなスクロールと入力応答性を実現しました。
+- 対話型入門ツアーを全8ステップに拡充し、エディター便利機能（記号バー・スクラブ・カラー）とPiP小窓プレビューの模擬操作ガイドを追加しました。
+- 新規インストールおよびアップデート時の案内順序を「入門ツアー → 更新内容 → フォルダー選択」の順に整理し、重複表示なくスムーズに案内されるように直列化しました。
+- 強制表示時のツアーではスキップを不可（設定画面からのリプレイ時のみスキップ可能）とし、主要な機能の理解をサポートします。
+
+
 ## 2.5.0 — 2026-10-13
 
 ### English

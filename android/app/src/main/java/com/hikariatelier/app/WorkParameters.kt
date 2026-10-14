@@ -128,3 +128,69 @@ internal fun applyParameterDefaults(source: String, values: Map<String, String>)
     }
     return if (changed.isEmpty()) null else lines.joinToString("\n") to changed
 }
+
+private val RIN_DECLARATION_LINE_REGEX = Regex("""^\s*//\s*@rin\s+(?:number|color|boolean|choice)\s+([A-Za-z][A-Za-z0-9_]*)\b""")
+
+internal fun findParameterDeclarationLine(
+    sources: Map<String, String>,
+    parameterName: String
+): Pair<String, Int>? {
+    val orderedFiles = buildList {
+        if ("sketch.js" in sources) add("sketch.js")
+        addAll(sources.keys.filter { it != "sketch.js" }.sorted())
+    }
+    for (file in orderedFiles) {
+        val code = sources[file] ?: continue
+        code.lineSequence().forEachIndexed { index, line ->
+            val match = RIN_DECLARATION_LINE_REGEX.find(line)
+            if (match != null && match.groupValues[1] == parameterName) {
+                return file to (index + 1)
+            }
+        }
+    }
+    return null
+}
+
+internal fun randomizeWorkParameters(
+    parameters: List<WorkParameter>,
+    currentValues: Map<String, String>,
+    lockedNames: Set<String>,
+    random: kotlin.random.Random = kotlin.random.Random.Default
+): Map<String, String> {
+    val updated = currentValues.toMutableMap()
+    for (param in parameters) {
+        if (param.name in lockedNames) continue
+        when (param) {
+            is WorkParameter.Color -> {
+                val r = random.nextInt(32, 240)
+                val g = random.nextInt(32, 240)
+                val b = random.nextInt(32, 240)
+                updated[param.name] = String.format(java.util.Locale.ROOT, "#%02X%02X%02X", r, g, b)
+            }
+            is WorkParameter.Boolean -> {
+                updated[param.name] = random.nextBoolean().toString()
+            }
+            is WorkParameter.Choice -> {
+                if (param.options.isNotEmpty()) {
+                    updated[param.name] = param.options[random.nextInt(param.options.size)]
+                }
+            }
+            is WorkParameter.Number -> {
+                val min = param.min.toDouble()
+                val max = param.max.toDouble()
+                val range = (max - min).coerceAtLeast(0.0)
+                val step = param.step.toDouble().takeIf { it > 0.0 && it.isFinite() } ?: 1.0
+                val stepsCount = if (range > 0.0) (range / step).toInt() else 0
+                val rawValue = if (stepsCount > 0) {
+                    (min + random.nextInt(0, stepsCount + 1) * step).coerceIn(min, max)
+                } else {
+                    min + random.nextDouble() * range
+                }
+                val stepText = param.step.toString()
+                val decimals = if ('.' in stepText) stepText.substringAfter('.').trimEnd('0').length.coerceIn(0, 4) else 0
+                updated[param.name] = formatScrubbedNumber(rawValue, decimals)
+            }
+        }
+    }
+    return updated
+}

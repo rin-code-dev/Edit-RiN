@@ -11,6 +11,43 @@ internal data class CodeFoldState(
     val regions: List<CodeFold>? = null
 )
 
+/** Shared lexical scanner helpers used across code folding and literal path analysis. */
+internal fun skipJsLineComment(source: String, start: Int): Int =
+    source.indexOf('\n', start + 2).let { if (it < 0) source.length else it }
+
+internal fun skipJsBlockComment(source: String, start: Int, closing: String = "*/"): Int =
+    source.indexOf(closing, start + 2).let { if (it < 0) source.length else it + closing.length }
+
+internal fun skipJsQuotedLiteral(source: String, start: Int, stopAtNewline: Boolean = false): Int {
+    val quote = source[start]
+    var index = start + 1
+    while (index < source.length) {
+        when (val c = source[index]) {
+            '\\' -> index = (index + 2).coerceAtMost(source.length)
+            quote -> return index + 1
+            '\n', '\r' -> if (stopAtNewline) return index + 1 else index++
+            else -> index++
+        }
+    }
+    return source.length
+}
+
+internal fun skipJsRegexLiteral(source: String, start: Int): Int {
+    var index = start + 1
+    var characterClass = false
+    while (index < source.length) {
+        when (source[index]) {
+            '\\' -> index = (index + 2).coerceAtMost(source.length)
+            '[' -> { characterClass = true; index++ }
+            ']' -> { characterClass = false; index++ }
+            '/' -> if (!characterClass) return index + 1 else index++
+            '\n', '\r' -> return index
+            else -> index++
+        }
+    }
+    return index
+}
+
 /** Braces in comments, strings, templates and regular expressions are not block delimiters. */
 internal fun codeFolds(source: String): List<CodeFold> = FoldScanner(source).scan()
 
@@ -46,15 +83,6 @@ private class FoldScanner(private val source: String) {
         return folds.sortedBy { it.open }
     }
 
-    private fun quoted(quote: Char) {
-        index++
-        while (index < source.length) {
-            val c = source[index++]
-            if (c == '\\') index = (index + 1).coerceAtMost(source.length)
-            else if (c == quote || c == '\n' || c == '\r') return
-        }
-    }
-
     private fun template(depth: Int) {
         index++
         while (index < source.length) {
@@ -66,20 +94,6 @@ private class FoldScanner(private val source: String) {
                     index++
                     code(true, depth + 1)
                 }
-            }
-        }
-    }
-
-    private fun regex() {
-        index++
-        var characterClass = false
-        while (index < source.length) {
-            when (source[index++]) {
-                '\\' -> index = (index + 1).coerceAtMost(source.length)
-                '[' -> characterClass = true
-                ']' -> characterClass = false
-                '/' -> if (!characterClass) return
-                '\n', '\r' -> return
             }
         }
     }
@@ -99,17 +113,11 @@ private class FoldScanner(private val source: String) {
             val next = source.getOrNull(index + 1)
             when {
                 c.isWhitespace() -> index++
-                c == '/' && next == '/' -> {
-                    index += 2
-                    while (index < source.length && source[index] != '\n') index++
-                }
-                c == '/' && next == '*' -> {
-                    val end = source.indexOf("*/", index + 2)
-                    index = if (end < 0) source.length else end + 2
-                }
-                c == '\'' || c == '"' -> { quoted(c); expectsExpression = false }
+                c == '/' && next == '/' -> index = skipJsLineComment(source, index)
+                c == '/' && next == '*' -> index = skipJsBlockComment(source, index)
+                c == '\'' || c == '"' -> { index = skipJsQuotedLiteral(source, index, stopAtNewline = true); expectsExpression = false }
                 c == '`' -> { template(depth); expectsExpression = false }
-                c == '/' && expectsExpression -> { regex(); expectsExpression = false }
+                c == '/' && expectsExpression -> { index = skipJsRegexLiteral(source, index); expectsExpression = false }
                 c.isLetter() || c == '_' || c == '$' -> {
                     val start = index++
                     while (index < source.length && (source[index].isLetterOrDigit() || source[index] in "_$")) index++
@@ -163,7 +171,6 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         }
     }
     private val marker = " … "
-    // Prefix sums keep cursor and gutter mapping logarithmic in the number of folds.
     private val removedThrough = IntArray(hidden.size)
     private val displayStarts = IntArray(hidden.size)
     init {
@@ -180,10 +187,13 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         return preceding >= 0 && offset < hidden[preceding].close
     }
     private var cachedInput: AnnotatedString? = null
+    private var cachedInputHash: Int = 0
     private var cachedResult: TransformedText? = null
     fun transform(text: AnnotatedString): TransformedText {
         if (text.text != source || hidden.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
-        if (text == cachedInput) return cachedResult!!
+        if (text === cachedInput) return cachedResult!!
+        val inputHash = text.hashCode()
+        if (inputHash == cachedInputHash && text == cachedInput) return cachedResult!!
         val output = AnnotatedString.Builder()
         var from = 0
         for (fold in hidden) {
@@ -194,6 +204,7 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
         output.append(text.subSequence(from, text.length))
         return TransformedText(output.toAnnotatedString(), this).also {
             cachedInput = text
+            cachedInputHash = inputHash
             cachedResult = it
         }
     }

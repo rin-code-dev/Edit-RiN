@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
@@ -36,9 +37,11 @@ internal fun EditorGutter(
     documentKey: String, layout: TextLayoutResult?, displayText: String, projection: FoldProjection,
     starts: List<Int>, folds: Map<Int, CodeFold>, collapsed: Set<Int>, errors: Set<Int>,
     numbers: Boolean, digits: Int, width: Dp, minimumHeight: Dp, viewportHeight: Float,
-    scroll: ScrollState, style: TextStyle, errorColor: androidx.compose.ui.graphics.Color,
-    dividerColor: androidx.compose.ui.graphics.Color, onFold: (CodeFold) -> Unit, onError: (Int) -> Unit,
-    foldDescription: (Boolean, Int) -> String
+    scroll: ScrollState, style: TextStyle, errorColor: Color,
+    dividerColor: Color, onFold: (CodeFold) -> Unit, onError: (Int) -> Unit,
+    foldDescription: (Boolean, Int) -> String,
+    activeLine: Int = -1,
+    activeColor: Color = Color.Unspecified
 ) {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 256)
@@ -53,10 +56,18 @@ internal fun EditorGutter(
                 projection.transformedToOriginal(textLayout.getLineStart(visual)), starts, folds, collapsed, numbers, digits) }
         }
     }
-    val measured = remember(rows, style, errors, errorColor, measurer) {
-        rows.map { row -> row to measurer.measure(AnnotatedString(row.label), style =
-            if (row.logicalLine in errors) style.copy(color = errorColor, fontWeight = FontWeight.Bold) else style,
-            softWrap = false) }
+    val measured = remember(rows, style, errors, errorColor, measurer, activeLine, activeColor) {
+        rows.map { row ->
+            val rowStyle = when {
+                row.logicalLine in errors -> style.copy(color = errorColor, fontWeight = FontWeight.Bold)
+                row.logicalLine == activeLine -> style.copy(
+                    color = if (activeColor != Color.Unspecified) activeColor else style.color,
+                    fontWeight = FontWeight.Bold
+                )
+                else -> style.copy(color = style.color.copy(alpha = 0.35f))
+            }
+            row to measurer.measure(AnnotatedString(row.label), style = rowStyle, softWrap = false)
+        }
     }
     val currentTap by rememberUpdatedState<(Offset) -> Unit> { position ->
         val textLayout = currentLayout
@@ -84,7 +95,9 @@ internal fun EditorGutter(
             CustomAccessibilityAction(foldDescription(fold.open in collapsed, row.logicalLine)) { onFold(fold); true }
         } }
     }) {
-        drawLine(dividerColor, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
+        if (dividerColor != Color.Transparent && dividerColor.alpha > 0f) {
+            drawLine(dividerColor, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx())
+        }
         val textLayout = currentLayout ?: return@Canvas
         measured.forEach { (row, label) ->
             drawText(label, topLeft = Offset(size.width - 5.dp.toPx() - label.size.width,

@@ -19,7 +19,8 @@ internal fun LiveParameterSheet(
     work: Work?, editorText: String, sessionViewModel: EditorSessionViewModel,
     workManagementViewModel: WorkManagementViewModel, preview: PreviewController,
     layout: ParameterSheetLayout, textTranslator: (String, Array<out Any?>) -> String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onJumpToParameter: ((String) -> Unit)? = null
 ) {
     var showAddParameter by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -95,7 +96,23 @@ internal fun LiveParameterSheet(
         onCommit = scheduleSave,
         onDismiss = flushSaveAndDismiss,
         textTranslator = { s, args -> uiText(s, *args) },
-        windowSetup = { KeepLandscapeDialogImmersive() }
+        windowSetup = { KeepLandscapeDialogImmersive() },
+        onJumpToParameter = onJumpToParameter,
+        onCompareHold = { holding ->
+            val targetMap = if (holding) {
+                declarations.associate { it.name to it.defaultValue }
+            } else {
+                workManagementViewModel.parameterValues(parameterWork)
+            }
+            declarations.forEach { param ->
+                val rawVal = if (holding) param.defaultValue else parameterValue(param, targetMap[param.name])
+                val jsonValue = when (param) {
+                    is WorkParameter.Number, is WorkParameter.Boolean -> rawVal
+                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(rawVal)
+                }
+                preview.evaluate("window.__editRinSetParameter?.(${JSONObject.quote(param.name)},$jsonValue)")
+            }
+        }
     )
     if (showAddParameter) {
         AddParameterDialog(declarations, text = { uiText(it) },
@@ -113,6 +130,7 @@ internal fun LiveParameterPanel(
     preview: PreviewController,
     textTranslator: (String, Array<out Any?>) -> String,
     onDismiss: () -> Unit,
+    onJumpToParameter: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showAddParameter by rememberSaveable { mutableStateOf(false) }
@@ -183,7 +201,23 @@ internal fun LiveParameterPanel(
         onCommit = scheduleSave,
         onDismiss = flushSaveAndDismiss,
         text = { s -> uiText(s) },
-        modifier = modifier
+        onJumpToParameter = onJumpToParameter,
+        modifier = modifier,
+        onCompareHold = { holding ->
+            val targetMap = if (holding) {
+                declarations.associate { it.name to it.defaultValue }
+            } else {
+                workManagementViewModel.parameterValues(parameterWork)
+            }
+            declarations.forEach { param ->
+                val rawVal = if (holding) param.defaultValue else parameterValue(param, targetMap[param.name])
+                val jsonValue = when (param) {
+                    is WorkParameter.Number, is WorkParameter.Boolean -> rawVal
+                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(rawVal)
+                }
+                preview.evaluate("window.__editRinSetParameter?.(${JSONObject.quote(param.name)},$jsonValue)")
+            }
+        }
     )
 
     if (showAddParameter) {

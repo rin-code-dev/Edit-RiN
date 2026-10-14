@@ -18,13 +18,26 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 class OnboardingTourTest {
-    @Test fun everyLanguageHasTheSameSixCompleteSteps() {
+    @Test fun everyLanguageHasTheSameEightCompleteSteps() {
+        assertEquals(8, ONBOARDING_STEP_COUNT)
         for (language in listOf("ja", "en", "zh")) {
             val steps = onboardingSteps(language)
-            assertEquals(ONBOARDING_STEP_COUNT, steps.size)
+            assertEquals(8, steps.size)
             assertTrue(steps.all { it.title.isNotBlank() && it.body.isNotBlank() })
             assertEquals(steps.size, steps.map { it.title }.distinct().size)
         }
+        val jaSteps = onboardingSteps("ja")
+        assertEquals("記号と数値の調整", jaSteps[2].title)
+        assertEquals("PiP小窓プレビュー", jaSteps[3].title)
+
+        val enSteps = onboardingSteps("en")
+        assertEquals("Symbols and scrubbing", enSteps[2].title)
+        assertEquals("PiP floating preview", enSteps[3].title)
+
+        val zhSteps = onboardingSteps("zh")
+        assertEquals("符号输入与数值微调", zhSteps[2].title)
+        assertEquals("画中画悬浮预览", zhSteps[3].title)
+
         // Unsupported languages use the English source text, like the user guide.
         assertEquals(onboardingSteps("en"), onboardingSteps("unsupported"))
         assertNotEquals(onboardingSteps("en"), onboardingSteps("ja"))
@@ -36,7 +49,8 @@ class OnboardingTourTest {
         assertFalse(onboardingDue(ONBOARDING_VERSION, loadFailed = false, hasPendingDraft = false, hasStorageFolder = true))
         assertFalse(onboardingDue(0, loadFailed = true, hasPendingDraft = false, hasStorageFolder = true))
         assertFalse(onboardingDue(0, loadFailed = false, hasPendingDraft = true, hasStorageFolder = true))
-        assertFalse(onboardingDue(0, loadFailed = false, hasPendingDraft = false, hasStorageFolder = false))
+        // The first-run tour now runs before folder selection prompt
+        assertTrue(onboardingDue(0, loadFailed = false, hasPendingDraft = false, hasStorageFolder = false))
         // Raising ONBOARDING_VERSION later makes users with an older completed version due again.
         assertTrue(onboardingDue(ONBOARDING_VERSION - 1, loadFailed = false, hasPendingDraft = false, hasStorageFolder = true))
     }
@@ -96,6 +110,38 @@ class OnboardingTourUiTest {
         }
     }
 
+    @Test fun skipButtonHiddenWhenAllowSkipIsFalse() {
+        compose.setContent {
+            MaterialTheme { OnboardingTour("en", {}, {}, {}, allowSkip = false, animate = false) }
+        }
+        compose.onNodeWithTag("onboarding-skip").assertDoesNotExist()
+    }
+
+    @Test fun skipButtonShownWhenAllowSkipIsTrue() {
+        compose.setContent {
+            MaterialTheme { OnboardingTour("en", {}, {}, {}, allowSkip = true, animate = false) }
+        }
+        compose.onNodeWithTag("onboarding-skip").assertExists()
+    }
+
+    @Test fun forcedTourDisallowsSkipAndHidesBackButtonOnStepZero() {
+        var finished = 0
+        var skipped = 0
+        compose.setContent {
+            MaterialTheme { OnboardingTour("ja", { finished++ }, { skipped++ }, {}, allowSkip = false, animate = false) }
+        }
+        compose.onNodeWithTag("onboarding-skip").assertDoesNotExist()
+        compose.onNodeWithTag("onboarding-back").assertDoesNotExist()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        compose.onNodeWithTag("onboarding-back").assertExists()
+        compose.onNodeWithTag("onboarding-back").performClick()
+        compose.onNodeWithTag("onboarding-back").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(0, finished)
+            assertEquals(0, skipped)
+        }
+    }
+
     @Test fun detailedGuideLinkOnlyAppearsOnTheLastStep() {
         var opened = 0
         compose.setContent {
@@ -111,18 +157,40 @@ class OnboardingTourUiTest {
         compose.setContent {
             MaterialTheme { OnboardingTour("en", {}, {}, {}, animate = false) }
         }
-        // Each mock screen is built from the language alone: touch the first control on every step.
+        // Each mock screen is built from the language alone: touch controls on every step.
+        // Step 0: Gallery
         compose.onNodeWithText("Palette").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 1: Run
         compose.onNodeWithText("Run").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 2: Editor Tools (Symbols and scrubbing)
+        compose.onNodeWithText("{ }").performClick()
+        compose.onNodeWithContentDescription("Color 3").performClick()
+        compose.onNodeWithText("80").performClick()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 3: PiP Floating Preview
+        compose.onNodeWithText("Top-R").performClick()
+        compose.onNodeWithText("Btm-L").performClick()
+        compose.onNodeWithText("M").performClick()
+        compose.onNodeWithText("Opacity").performClick()
+        compose.onNodeWithContentDescription("Toggle minimize").performClick()
+        compose.onNodeWithContentDescription("Toggle minimize").performClick()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 4: Parameters
         compose.onNodeWithContentDescription("Color 2").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 5: Pause and History
         compose.onNodeWithContentDescription("Pause").performClick()
         compose.onNodeWithContentDescription("History").performClick()
         compose.onNodeWithText("Create snapshot").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 6: Capture and Share
         compose.onNodeWithContentDescription("Export image").performClick()
         compose.onNodeWithText("Share").assertIsEnabled()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 7: Make it yours (Final step)
+        compose.onNodeWithText("Start Creating").assertExists()
+        compose.onNodeWithTag("onboarding-guide").assertExists()
     }
 }

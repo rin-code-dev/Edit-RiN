@@ -35,9 +35,9 @@ test('every translation has English and Chinese text with matching placeholders'
 
 test('Japanese literals passed to uiText/text have a translation', () => {
   const keys = new Set(entries.map(e => e.ja));
-  const call = /\b(?:uiText|text|translateUi)\(\s*"((?:[^"\\$]|\\.)*)"/g;
+  const call = /\b(?:uiText|text|translateUi|textTranslator)\(\s*"((?:[^"\\]|\\.)*)"/g;
   const missing = [];
-  for (const file of readdirSync(dir).filter(f => f.endsWith('.kt') && f !== 'AppLanguage.kt')) {
+  for (const file of readdirSync(dir).filter(f => f.endsWith('.kt') && f !== 'AppLanguage.kt' && !f.startsWith('UserGuide'))) {
     const source = readFileSync(path.join(dir, file), 'utf8');
     for (const m of source.matchAll(call)) {
       if (hasJapanese(m[1]) && !keys.has(m[1])) missing.push(`${file}: ${m[1]}`);

@@ -39,6 +39,49 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "3.0.0",
+        versionCode = 35,
+        titleEn = "What's New in v3.0.0",
+        titleJa = "v3.0.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_play,
+                titleEn = "Zero-Reload Hot-Swap Preview",
+                titleJa = "ゼロ・リロード (Hot-Swap) プレビュー",
+                descEn = "Seamless code updates without white-screen reloads or audio stutter. WebMessagePort delivers updates directly to the running canvas in real time.",
+                descJa = "画面の白フラッシュや音切れなく、コード変更を瞬時にプレビューへ反映。WebMessagePortによる超高速Hot-Swapを実現しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_fullscreen,
+                titleEn = "Floating PiP Preview & State Persistence",
+                titleJa = "フローティングPiP小窓プレビュー & 状態保持",
+                descEn = "Floating thumbnail preview docks to corners during typing in portrait mode with S/M/L presets. Corner snaps, transparency, and sizes persist seamlessly across your session.",
+                descJa = "縦画面の文字入力時、作品が四隅にスナップする小窓（PiP）として浮遊表示。サイズ・四隅位置・透過・最小化の状態はセッション内で安全に記憶されます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_scrub,
+                titleEn = "2-Axis Scrub, Color Palette & Quick Symbols",
+                titleJa = "2軸スクラブ、インラインカラー & 記号入力バー",
+                descEn = "Drag horizontally to scrub numbers, vertically to change scale. Tap color literals to pick from an inline palette, and quickly insert coding symbols from the accessory bar.",
+                descJa = "左右ドラッグで数値増減、上下ドラッグで桁倍率変更。カラーコードをタップするとインラインパレットが開き、記号入力バーから素早くシンボルを入力できます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Piece Table Buffer & Virtualized Editor",
+                titleJa = "高速テキストバッファ & 仮想化エディター",
+                descEn = "Fluid 120fps editing backed by a Piece Table text buffer and viewport virtualization, keeping large sketches responsive with instant syntax highlighting.",
+                descJa = "Piece Tableバッファと可視行のみを描画する仮想化レンダラーにより、数千行の大規模コードでも120fpsの滑らかな操作感を維持します。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_help,
+                titleEn = "Expanded 8-Step Tour & Streamlined Setup",
+                titleJa = "入門ツアーの拡張（全8ステップ）& 初回案内の整理",
+                descEn = "Interactive onboarding now covers editor tools and PiP preview. Fresh setups follow a clean, sequential flow from tour, to release highlights, to folder selection.",
+                descJa = "対話型の入門ツアーにエディター便利機能とPiP小窓プレビューを追加（全8ステップ）。新規起動時の案内も「ツアー → 更新内容 → フォルダー選択」の順に整えました。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "2.5.0",
         versionCode = 34,
         titleEn = "What's New in v2.5.0",

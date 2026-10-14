@@ -8,12 +8,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+
+internal const val LOG_TAG = "EditRiN"
+
+/** Centralized clipboard helper so deprecation suppression is not duplicated across UI files. */
+@Composable
+internal fun rememberClipboardCopy(): (String) -> Unit {
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+    return remember(clipboard) {
+        { content: String -> clipboard.setText(AnnotatedString(content)) }
+    }
+}
 
 /** A bounded settings panel; actions remain reachable when content needs scrolling. */
 @OptIn(ExperimentalLayoutApi::class)

@@ -143,24 +143,14 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
 
 
 
-    if (selectedFolderUri == null && workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null) {
-        FolderSelectionPromptDialog(
-            colors = colors,
-            onChooseFolder = { folderLauncher.launch(null) },
-            textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive() }
-        )
-    }
-
-    // The first-run tour (EditorAuthoringDialogs) comes first; release notes follow once it is done.
+    // Strict first-run sequence: 1. Tour (EditorAuthoringDialogs) -> 2. Release Notes -> 3. Folder Selection
     val tourPending = onboardingDue(
         settingsViewModel.onboardingVersion,
         loadFailed = workManagementViewModel.loadFailure != null,
-        hasPendingDraft = workManagementViewModel.pendingDraft != null,
-        hasStorageFolder = selectedFolderUri != null
+        hasPendingDraft = workManagementViewModel.pendingDraft != null
     ) || settingsViewModel.onboardingReplay
     val showReleaseNotesPrompt = !tourPending && settingsViewModel.releaseNotesPromptVersion < BuildConfig.VERSION_CODE &&
-        workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null && selectedFolderUri != null
+        workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null
 
     if (showReleaseNotesPrompt) {
         val deviceLanguage = ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en"
@@ -169,6 +159,21 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
             onDismiss = {
                 settingsViewModel.dismissReleaseNotesPrompt(BuildConfig.VERSION_CODE)
             },
+            windowSetup = { KeepLandscapeDialogImmersive() }
+        )
+    }
+
+    val showFolderSelectionPrompt = selectedFolderUri == null &&
+        !tourPending &&
+        !showReleaseNotesPrompt &&
+        workManagementViewModel.loadFailure == null &&
+        workManagementViewModel.pendingDraft == null
+
+    if (showFolderSelectionPrompt) {
+        FolderSelectionPromptDialog(
+            colors = colors,
+            onChooseFolder = { folderLauncher.launch(null) },
+            textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }
         )
     }
