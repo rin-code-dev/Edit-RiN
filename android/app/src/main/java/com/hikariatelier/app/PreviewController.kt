@@ -300,11 +300,30 @@ internal class PreviewController(
 
     private val recording get() = models.recording
 
+    @SuppressLint("ClickableViewAccessibility")
+    fun bindTouchBehavior(view: WebView, clearEditorFocus: () -> Unit, clearFocusOnTouch: Boolean) {
+        view.setOnTouchListener { v, event ->
+            if (clearFocusOnTouch && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                clearEditorFocus()
+                v.requestFocus()
+            }
+            false
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
-    fun createHost(context: Context, clearEditorFocus: () -> Unit): PreviewWebViewHost {
+    fun createHost(
+        context: Context,
+        clearEditorFocus: () -> Unit,
+        clearFocusOnTouch: Boolean = true
+    ): PreviewWebViewHost {
         check(!disposed) { "Preview has been disposed" }
         val preview = webView?.also {
             (it.parent as? ViewGroup)?.removeView(it)
+            it.scaleX = 1f
+            it.scaleY = 1f
+            it.translationX = 0f
+            it.translationY = 0f
             it.onResume()
             it.post { if (!disposed) it.onResume() }
         } ?: WebView(context).also { view ->
@@ -380,13 +399,7 @@ internal class PreviewController(
                 view.loadUrl(previewUrl(session.assets))
             } else if (preparationJob?.isActive != true) runSketch()
         }
-        preview.setOnTouchListener { view, event ->
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                clearEditorFocus()
-                view.requestFocus()
-            }
-            false
-        }
+        bindTouchBehavior(preview, clearEditorFocus, clearFocusOnTouch)
         return PreviewWebViewHost(context, preview)
     }
 

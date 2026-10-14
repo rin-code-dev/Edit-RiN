@@ -564,7 +564,7 @@ internal fun EditorScreen(
     }
     var keyboardWasVisible by remember { mutableStateOf(false) }
     LaunchedEffect(keyboardVisible) {
-        if (keyboardWasVisible && !keyboardVisible && hideEditingPreview && !isLandscape) {
+        if (keyboardWasVisible && !keyboardVisible && !isLandscape) {
             focusManager.clearFocus(force = true)
         }
         keyboardWasVisible = keyboardVisible
@@ -945,12 +945,23 @@ internal fun EditorScreen(
         workGalleryState.changeFolder(if (activeWork?.isSample == true) SAMPLE_FOLDER else activeWork?.folderName?.takeIf { it.isNotEmpty() })
         workGalleryState.jumpToWork(activeWorkId)
     }
+    val workDatabase = remember(applicationContext) { WorkDatabase(applicationContext) }
+    LaunchedEffect(works, activeWorkId) {
+        withContext(Dispatchers.IO) {
+            runCatching { workDatabase.syncAllWorks(works) }
+        }
+    }
+
     fun toggleAllGallerySelection() {
         if (assetBusy) return
-        val allIds = works.filter { !it.isSample && workGalleryState.inFolder(it) &&
-            (workGalleryState.selectedTag == null || it.tags.any { tag -> tag.equals(workGalleryState.selectedTag, true) }) &&
-            (workGalleryState.query.isBlank() || it.title.contains(workGalleryState.query.trim(), true) ||
-                it.tags.any { tag -> tag.contains(workGalleryState.query.trim().removePrefix("#"), true) }) }.map { it.id }.toSet()
+        val trimmedQuery = workGalleryState.query.trim()
+        val ftsMatchedIds = if (trimmedQuery.isEmpty()) emptySet()
+        else runCatching { workDatabase.searchWorkIds(trimmedQuery) }.getOrDefault(emptySet())
+        val allIds = works.filter {
+            !it.isSample && workGalleryState.inFolder(it) &&
+                (workGalleryState.selectedTag == null || it.tags.any { tag -> tag.equals(workGalleryState.selectedTag, true) }) &&
+                matchesGalleryQuery(it, trimmedQuery, ftsMatchedIds)
+        }.map { it.id }.toSet()
         workGalleryState.selectedIds = if (workGalleryState.selectedIds == allIds) emptySet() else allIds
     }
 
@@ -1395,6 +1406,28 @@ internal fun EditorScreen(
     }
 
     @Composable
+    fun PipPreviewArea(
+        modifier: Modifier
+    ) {
+        if (showExpandedPreview) {
+            Box(modifier = modifier)
+        } else {
+            PreviewSurface(
+                preview = preview,
+                isError = isError,
+                fullscreen = true,
+                logicalSize = normalPreviewSize.takeIf { it.width > 0 && it.height > 0 },
+                modifier = modifier,
+                galleryProgress = 0f,
+                galleryMorphActive = false,
+                chromeLifted = true,
+                clearFocusOnTouch = false,
+                onClearEditorFocus = {}
+            ) {}
+        }
+    }
+
+    @Composable
     fun ControlBar() {
         Row(
             modifier = Modifier
@@ -1507,7 +1540,12 @@ internal fun EditorScreen(
             showAccessoryNavigation = showAccessoryNavigation,
             showAccessorySymbols = showAccessorySymbols,
             textTranslator = { s, args -> uiText(s, *args) },
-            modifier = modifier
+            modifier = modifier,
+            onLiveScrub = {
+                if (!sessionViewModel.autoRunEnabled) {
+                    sessionViewModel.autoRunEnabled = true
+                }
+            }
         )
     }
 
@@ -1607,6 +1645,14 @@ internal fun EditorScreen(
             readOnly = sessionViewModel.editorInputLocked || galleryPresent || sessionViewModel.sampleReadOnly,
             onCopySample = { workManagementViewModel.requestSampleCopy() },
             onOpenProjectFiles = { editUserWork { showProjectFilesDialog = true } },
+            watchValues = preview.watchValues,
+            onSwitchRuntimeVersion = { nextVersion ->
+                editUserWork {
+                    activeWork?.let { current ->
+                        workManagementViewModel.saveRuntime(nextVersion, current.p5SoundEnabled, current.libraries)
+                    }
+                }
+            },
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
             modifier = modifier
@@ -1694,7 +1740,10 @@ internal fun EditorScreen(
                     showParameterPanel = USE_INLINE_PARAMETER_PANEL && isLandscape && showParameterSheet,
                     isSample = sessionViewModel.sampleReadOnly || activeWork?.isSample == true,
                     galleryVisible = galleryPresent,
-                    galleryProgress = galleryProgress
+                    galleryProgress = galleryProgress,
+                    pipModeWhenEditing = compactPreview && !showExpandedPreview,
+                    autoRunEnabled = sessionViewModel.autoRunEnabled,
+                    previewHasChanges = previewHasChanges && !preview.isLoading
                 ),
                 actions = EditorWorkspaceActions(
                     onSplitChanged = { landscapePreviewFraction = it },
@@ -1702,12 +1751,15 @@ internal fun EditorScreen(
                     onPortraitDraggingChanged = { portraitRatioDragging = it },
                     onDraftPreviewRatio = { updateActiveWorkPreviewRatio(it, persist = false) },
                     onCommitPreviewRatio = { workManagementViewModel.commitPreviewRatio() },
-                    onSavePreviewRatio = { updateActiveWorkPreviewRatio(it) }
+                    onSavePreviewRatio = { updateActiveWorkPreviewRatio(it) },
+                    onToggleAutoRun = { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled },
+                    onRunNow = { runSketch() }
                 ),
                 slots = EditorWorkspaceSlots(
                     workBar = { WorkBar() }, landscapeBar = { LandscapeUnifiedBar() },
                     controlBar = { ControlBar() }, console = { ConsolePanel(it) },
                     previewActions = { PreviewActionsTray(it) }, editor = { EditorArea(it) },
+                    pipPreview = { PipPreviewArea(it) },
                     parameterPanel = { modifier ->
                         LiveParameterPanel(
                             work = activeWork,
@@ -1880,6 +1932,25 @@ internal fun EditorScreen(
         changeAssets = ::changeAssets,
         textTranslator = { s, args -> uiText(s, *args) }
     )
+
+    if (sessionViewModel.showInspectorSheet) {
+        ProjectInspectorSheet(
+            work = activeWork,
+            autoRunEnabled = sessionViewModel.autoRunEnabled,
+            onToggleAutoRun = { sessionViewModel.autoRunEnabled = it },
+            onOpenProjectFilesDialog = { editUserWork { showProjectFilesDialog = true } },
+            onOpenAssetManagerDialog = { editUserWork { focusManager.clearFocus(force = true); showAssets = true } },
+            onOpenRuntimeDialog = { editUserWork { showRuntimeDialog = true } },
+            onOpenAspectRatioDialog = { editUserWork { showAspectRatioDialog = true } },
+            onOpenSnapshotSheet = { editUserWork { showSnapshotSheet = true } },
+            onOpenHistoryDialog = { editUserWork { showHistoryDialog = true } },
+            onOpenTagsDialog = { editUserWork { workManagementViewModel.editingTagsWorkId = activeWork?.id } },
+            onSelectAspectRatio = { ratio -> updateActiveWorkPreviewRatio(ratio) },
+            onDismiss = { sessionViewModel.showInspectorSheet = false },
+            codeFontFamily = codeFontFamily,
+            textTranslator = { s, args -> uiText(s, *args) }
+        )
+    }
 
     SearchReplaceDialog(
         viewModel = searchReplaceViewModel,

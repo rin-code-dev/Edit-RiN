@@ -36,8 +36,8 @@ internal data class EditorWorkspaceState(
     val showResizeHandles: Boolean,
     val showConsole: Boolean,
     val showEditorAccessoryBar: Boolean,
-    val compactPreview: Boolean,
-    val hideEditingPreview: Boolean,
+    val compactPreview: Boolean = false,
+    val hideEditingPreview: Boolean = true,
     val themeMode: AppThemeMode,
     val workPreviewRatio: Float,
     val animatedLandscapePreviewFraction: Float,
@@ -80,6 +80,7 @@ internal data class EditorWorkspaceSlots(
     val completions: @Composable (Modifier) -> Unit,
     val accessory: @Composable (Modifier) -> Unit,
     val preview: @Composable (Modifier) -> Unit,
+    val pipPreview: (@Composable (Modifier) -> Unit)? = null,
     val parameterPanel: @Composable (Modifier) -> Unit = {},
     val gallery: @Composable (Modifier) -> Unit = {},
     val galleryPreview: @Composable (Modifier) -> Unit = {},
@@ -121,30 +122,20 @@ internal fun EditorWorkspaceLayout(
             (if (hasVisibleCompletions) 48.dp else 0.dp)
         val availableForEditing = (maxHeight - chromeHeight).coerceAtLeast(0.dp)
 
-        // Activate floating PiP preview in portrait when keyboard is open and hideEditingPreview is false
-        val useFloatingPipInPortrait = !state.isLandscape &&
-            state.pipModeWhenEditing &&
-            !state.hideEditingPreview &&
-            state.keyboardVisible &&
+        // In portrait mode, editing ("そのまま" & "縮小" removed -> "隠す" only by default)
+        // always hides the top preview viewport and shows the floating PiP window when enabled.
+        val isPortraitEditing = !state.isLandscape &&
+            (state.editorFocused || state.keyboardVisible) &&
             !state.galleryVisible
 
-        val useWideEditingPreview = (state.editorFocused && state.compactPreview) ||
-            (state.keyboardVisible && !state.hideEditingPreview && !useFloatingPipInPortrait)
+        val useFloatingPipInPortrait = isPortraitEditing && state.pipModeWhenEditing
 
-        val previewHeightLimit = if (useFloatingPipInPortrait) {
-            0.dp
-        } else if (state.keyboardVisible) {
-            availableForEditing * 0.35f
-        } else if (state.editorFocused && state.compactPreview) {
-            availableForEditing * 0.5f
-        } else {
-            availableForEditing * 0.65f
-        }
+        val previewHeightLimit = availableForEditing * 0.65f
         var portraitPreviewHeightLimit by remember(state.isLandscape, density) {
             mutableStateOf(previewHeightLimit)
         }
         SideEffect {
-            if (!state.isLandscape && !state.galleryVisible) {
+            if (!state.isLandscape && !state.galleryVisible && !isPortraitEditing) {
                 portraitPreviewHeightLimit = previewHeightLimit
             }
         }
@@ -344,14 +335,19 @@ internal fun EditorWorkspaceLayout(
                             .focusProperties { if (galleryPresent) canFocus = false }
                             .onPreviewKeyEvent { galleryPresent }
                     ) {
-                        if (!useFloatingPipInPortrait) {
-                            PortraitPreviewViewport(
-                                availableWidth = availablePreviewWidth.dp,
-                                heightLimit = if (state.galleryVisible) portraitPreviewHeightLimit else previewHeightLimit,
-                                ratio = state.workPreviewRatio,
-                                hidden = state.hideEditingPreview && (state.editorFocused || state.keyboardVisible),
-                                compact = useWideEditingPreview
-                            ) { previewModifier -> slots.preview(previewModifier) }
+                        // Top portrait preview is always hidden when editing (compact & keep removed)
+                        PortraitPreviewViewport(
+                            availableWidth = availablePreviewWidth.dp,
+                            heightLimit = if (state.galleryVisible) portraitPreviewHeightLimit else previewHeightLimit,
+                            ratio = state.workPreviewRatio,
+                            hidden = isPortraitEditing,
+                            compact = false
+                        ) { previewModifier ->
+                            if (!useFloatingPipInPortrait) {
+                                slots.preview(previewModifier)
+                            } else {
+                                Box(previewModifier)
+                            }
                         }
 
                         Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
@@ -549,21 +545,25 @@ internal fun EditorWorkspaceLayout(
                         }
                     }
 
-                    // Floating PiP Preview Window when editing with keyboard in portrait
+                    // Floating PiP Preview Window when the top preview is hidden during portrait editing
                     if (useFloatingPipInPortrait) {
+                        val bottomReserved = (if (state.showEditorAccessoryBar && !state.isSample) 54.dp else 12.dp) +
+                            (if (hasVisibleCompletions) 44.dp else 0.dp)
                         FloatingPipPreviewHost(
                             aspectRatio = state.workPreviewRatio,
                             containerWidthDp = containerMaxWidthDp,
-                            containerHeightDp = (containerMaxHeightDp - 64f).coerceAtLeast(160f),
+                            containerHeightDp = (containerMaxHeightDp - bottomReserved.value).coerceAtLeast(160f),
                             autoRunEnabled = state.autoRunEnabled,
                             onToggleAutoRun = actions.onToggleAutoRun,
                             previewHasChanges = state.previewHasChanges,
                             onRunNow = actions.onRunNow,
                             colors = colors,
                             textTranslator = textTranslator,
-                            modifier = Modifier.padding(top = 6.dp, start = 8.dp, end = 8.dp)
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 6.dp, start = 8.dp, end = 8.dp, bottom = bottomReserved)
                         ) { pipPreviewModifier ->
-                            slots.preview(pipPreviewModifier)
+                            (slots.pipPreview ?: slots.preview)(pipPreviewModifier)
                         }
                     }
 
