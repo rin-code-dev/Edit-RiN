@@ -301,17 +301,8 @@ internal fun EditorAccessoryBar(
                                     .background(swatch)
                                     .border(1.dp, colors.outlineVariant, CircleShape)
                                     .clickable {
-                                        val r = target.range
-                                        if (r.first >= 0 && r.last < editingValue.text.length) {
-                                            val replacement = formatColorReplacement(target, swatch)
-                                            onApplyEdit(
-                                                TextFieldValue(
-                                                    editingValue.text.replaceRange(r.first, r.last + 1, replacement),
-                                                    TextRange(r.first + replacement.length)
-                                                )
-                                            )
-                                            currentOnLiveScrub?.invoke()
-                                        }
+                                        onApplyEdit(replaceColorTarget(editingValue, target, swatch))
+                                        currentOnLiveScrub?.invoke()
                                     }
                             )
                         }
@@ -562,20 +553,6 @@ internal fun EditorAccessoryBar(
     }
 }
 
-private fun formatColorReplacement(target: EditorColorTarget, color: Color): String {
-    val argb = color.toArgb()
-    val r = (argb shr 16) and 0xFF
-    val g = (argb shr 8) and 0xFF
-    val b = argb and 0xFF
-    val raw = target.rawText.trim()
-    return when {
-        raw.startsWith("color(", ignoreCase = true) -> "color($r, $g, $b)"
-        raw.startsWith("rgb(", ignoreCase = true) -> "rgb($r, $g, $b)"
-        raw.startsWith("'") -> String.format(Locale.ROOT, "'#%02X%02X%02X'", r, g, b)
-        raw.startsWith("\"") -> String.format(Locale.ROOT, "\"#%02X%02X%02X\"", r, g, b)
-        else -> String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
-    }
-}
 
 @Composable
 internal fun CompletionBar(
