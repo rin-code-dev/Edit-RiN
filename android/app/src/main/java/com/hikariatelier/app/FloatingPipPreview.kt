@@ -109,13 +109,13 @@ internal fun AutoRunHotSwapEffect(
     }
 }
 
-internal enum class PipSizePreset(val baseDp: Int, val shortLabel: String) {
+enum class PipSizePreset(val baseDp: Int, val shortLabel: String) {
     SMALL(138, "S"),
     MEDIUM(178, "M"),
     LARGE(228, "L")
 }
 
-internal enum class PipCorner {
+enum class PipCorner {
     TOP_END,
     TOP_START,
     BOTTOM_END,

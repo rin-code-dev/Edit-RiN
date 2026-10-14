@@ -82,13 +82,13 @@ class EditorSessionViewModel : ViewModel() {
     /** Piece Table buffer and delta operation log for low-allocation editing. */
     internal val mainPieceTable = PieceTableBuffer()
     internal val mainDeltaLog = EditOperationLog()
-    var autoRunEnabled by mutableStateOf(false)
-    var pipModeEnabled by mutableStateOf(true)
-    var showInspectorSheet by mutableStateOf(false)
-    var pipSizePreset by mutableStateOf(PipSizePreset.SMALL)
-    var pipTranslucent by mutableStateOf(false)
-    var pipMinimized by mutableStateOf(false)
-    var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
+    internal var autoRunEnabled by mutableStateOf(false)
+    internal var pipModeEnabled by mutableStateOf(true)
+    internal var showInspectorSheet by mutableStateOf(false)
+    internal var pipSizePreset by mutableStateOf(PipSizePreset.SMALL)
+    internal var pipTranslucent by mutableStateOf(false)
+    internal var pipMinimized by mutableStateOf(false)
+    internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
 
     /** Navigation keeps history only while its saved source still matches the work. */
     internal fun activateWorkEditor(workId: String, code: String, resume: Boolean, retainedIds: Set<String>) {
