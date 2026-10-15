@@ -209,7 +209,7 @@ internal fun formattedJavaScriptOffset(source: String, formatted: String, offset
 
 /**
  * Minifies JavaScript code for #つぶやきProcessing.
- * 1. Safely removes single-line (//) and multi-line (/* * /) comments.
+ * 1. Safely removes single-line and multi-line comments.
  * 2. Compresses indentation, line breaks, and unnecessary spaces around symbols.
  * 3. Preserves string literals ("...", '...', `...`) and regexes verbatim.
  * 4. Inserts semicolons between statements across lines when required to keep code functional.

@@ -95,7 +95,7 @@ class EditorSessionViewModel : ViewModel() {
 
     private var liveParameterDragInitial: TextFieldValue? = null
 
-    fun applyLiveParameterToEditor(parameter: WorkParameter, newValue: String) {
+    internal fun applyLiveParameterToEditor(parameter: WorkParameter, newValue: String) {
         if (liveParameterDragInitial == null) {
             liveParameterDragInitial = editorValueState.value
         }
@@ -108,7 +108,7 @@ class EditorSessionViewModel : ViewModel() {
         }
     }
 
-    fun commitLiveParameterChange() {
+    internal fun commitLiveParameterChange() {
         val initial = liveParameterDragInitial ?: return
         liveParameterDragInitial = null
         val current = editorValueState.value
