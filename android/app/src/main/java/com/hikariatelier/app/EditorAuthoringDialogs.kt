@@ -2,6 +2,8 @@ package com.hikariatelier.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -247,153 +249,232 @@ internal fun TweetMinifyShareSheet(
 ) {
     fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
     val context = androidx.compose.ui.platform.LocalContext.current
-    val minifiedCode = remember(editorText) { minifyJavaScriptForTweet(editorText) }
+    val colors = MaterialTheme.colorScheme
+
+    var embedHashtagInCall by remember { mutableStateOf(true) }
+    var preferNewlines by remember { mutableStateOf(true) }
+
+    val golfOptions = remember(embedHashtagInCall, preferNewlines) {
+        TweetGolfOptions(
+            embedHashtagInCall = embedHashtagInCall,
+            preferNewlines = preferNewlines,
+            aggressiveGolf = true
+        )
+    }
+
+    val minifiedCode = remember(editorText, golfOptions) {
+        minifyJavaScriptForTweet(editorText, golfOptions)
+    }
+
     val originalCount = editorText.length
     val minifiedCount = minifiedCode.length
-    val reducedCount = originalCount - minifiedCount
+    val savedCount = (originalCount - minifiedCount).coerceAtLeast(0)
+    val savedPercent = if (originalCount > 0) ((savedCount * 100f) / originalCount).toInt() else 0
     val isOver = minifiedCount > targetLimit
-    val colors = MaterialTheme.colorScheme
+    val statusColor = if (isOver) colors.error else Color(0xFF10B981)
+    val progressFraction = (minifiedCount.toFloat() / targetLimit.toFloat()).coerceIn(0f, 1f)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.surface,
-        tonalElevation = 6.dp,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        tonalElevation = 4.dp,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Top Row: Big Counter + 140/280 Toggle (Never wraps)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = uiText("#つぶやきProcessing Minify & シェア"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilterChip(
-                        selected = targetLimit == 140,
-                        onClick = { onTargetLimitChange(140) },
-                        label = { Text(uiText("140字"), style = MaterialTheme.typography.labelSmall) }
-                    )
-                    FilterChip(
-                        selected = targetLimit == 280,
-                        onClick = { onTargetLimitChange(280) },
-                        label = { Text(uiText("280字"), style = MaterialTheme.typography.labelSmall) }
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (isOver) colors.errorContainer else Color(0xFF2E7D32).copy(alpha = 0.15f)
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = if (isOver) {
-                            uiText("%s字超過 (%s / %s 字)", minifiedCount - targetLimit, minifiedCount, targetLimit)
-                        } else {
-                            uiText("制限内 (%s / %s 字)", minifiedCount, targetLimit)
-                        },
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "$minifiedCount",
+                        fontFamily = codeFontFamily,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = statusColor,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = "/ $targetLimit",
+                        fontFamily = codeFontFamily,
+                        fontSize = 13.sp,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = "(-$savedPercent%)",
+                        fontFamily = codeFontFamily,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isOver) colors.onErrorContainer else Color(0xFF2E7D32),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        color = colors.primary,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = uiText("元コード: %s字", originalCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    Text(
-                        text = uiText("削減: -%s字", reducedCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.primary
-                    )
+                // Fixed single-line 140 / 280 switch
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                        .border(1.dp, colors.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    listOf(140, 280).forEach { limit ->
+                        val selected = targetLimit == limit
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (selected) colors.primary else Color.Transparent)
+                                .clickable { onTargetLimitChange(limit) }
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$limit",
+                                fontFamily = codeFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
                 }
             }
 
+            // Thin Progress Bar + Compact Mode Pills
+            LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = statusColor,
+                trackColor = colors.outlineVariant.copy(alpha = 0.3f)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val pillShape = RoundedCornerShape(8.dp)
+                listOf(
+                    (embedHashtagInCall to "noStroke`#...`") to { embedHashtagInCall = !embedHashtagInCall },
+                    (preferNewlines to "改行優先") to { preferNewlines = !preferNewlines }
+                ).forEach { (pair, onClick) ->
+                    val (active, label) = pair
+                    Box(
+                        modifier = Modifier
+                            .height(26.dp)
+                            .clip(pillShape)
+                            .background(if (active) colors.primary.copy(alpha = 0.14f) else colors.surfaceVariant.copy(alpha = 0.4f))
+                            .border(
+                                1.dp,
+                                if (active) colors.primary.copy(alpha = 0.6f) else colors.outlineVariant.copy(alpha = 0.5f),
+                                pillShape
+                            )
+                            .clickable { onClick() }
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontFamily = codeFontFamily,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (active) colors.primary else colors.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+
+            // Code Output Box
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 100.dp, max = 220.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surfaceVariant.copy(alpha = 0.5f))
-                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(12.dp))
+                    .heightIn(min = 120.dp, max = 220.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.surfaceVariant.copy(alpha = 0.4f))
+                    .border(1.dp, colors.outlineVariant.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
                     .padding(12.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
                     text = minifiedCode,
                     fontFamily = codeFontFamily,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.5.sp,
                     color = colors.onSurface
                 )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Actions: Share (Primary) + Apply / Preview (Secondary Row)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
                     onClick = {
-                        val shareText = "$minifiedCode\n\n#つぶやきProcessing #EditRiN"
-                        val clip = android.content.ClipData.newPlainText("p5.js sketch", shareText)
+                        val clip = android.content.ClipData.newPlainText("p5.js tweet sketch", minifiedCode)
                         (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
                             ?.setPrimaryClip(clip)
-                        android.widget.Toast.makeText(context, uiText("クリップボードにコピーしました"), android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(context, uiText("コピーしました"), android.widget.Toast.LENGTH_SHORT).show()
 
                         val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                            putExtra(android.content.Intent.EXTRA_TEXT, minifiedCode)
                         }
-                        context.startActivity(android.content.Intent.createChooser(sendIntent, uiText("つぶやきProcessingを共有")))
+                        context.startActivity(android.content.Intent.createChooser(sendIntent, uiText("共有")))
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1.2f),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    Icon(painter = painterResource(R.drawable.ic_share_card), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(uiText("コピーして共有"), fontWeight = FontWeight.Bold)
+                    Icon(painter = painterResource(R.drawable.ic_share_card), contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(uiText("コピー & 共有"), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                OutlinedButton(
+                    onClick = {
+                        onApplyToEditor(minifiedCode)
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(0.9f),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = {
-                            onApplyToEditor(minifiedCode)
-                            android.widget.Toast.makeText(context, uiText("エディター本文を圧縮コードで上書きしました"), android.widget.Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(uiText("エディター本文を上書き"), style = MaterialTheme.typography.labelMedium)
-                    }
+                    Text(uiText("本文に反映"), fontSize = 12.sp, maxLines = 1, softWrap = false)
+                }
 
-                    OutlinedButton(
-                        onClick = {
-                            onVerifyInPreview(minifiedCode)
-                            android.widget.Toast.makeText(context, uiText("プレビューを実行しました"), android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(uiText("プレビューで確認"), style = MaterialTheme.typography.labelMedium)
-                    }
+                OutlinedButton(
+                    onClick = {
+                        onVerifyInPreview(minifiedCode)
+                    },
+                    modifier = Modifier.weight(0.75f),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    Text(uiText("試す"), fontSize = 12.sp, maxLines = 1, softWrap = false)
                 }
             }
         }

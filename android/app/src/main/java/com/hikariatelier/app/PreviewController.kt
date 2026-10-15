@@ -317,15 +317,48 @@ internal class PreviewController(
         }
     }
 
-    fun hotSwapAsset(filename: String, mime: String, base64: String): Boolean {
+    fun hotSwapAsset(
+        filename: String,
+        asset: ProjectAsset? = null,
+        mime: String = "",
+        dataOrUrl: String = ""
+    ): Boolean {
         val port = controlPort ?: return false
+        val token = runInput?.token ?: session.assets.token
+        val normalized = filename.removePrefix("assets/")
+
+        val resolvedAsset = asset ?: currentWork()?.assets?.get(normalized) ?: currentWork()?.assets?.get("assets/$normalized")
+        if (resolvedAsset != null) {
+            session.updateAsset(normalized, resolvedAsset)
+        }
+        val virtualContent = currentWork()?.files?.get(normalized) ?: currentWork()?.files?.get("assets/$normalized")
+        if (virtualContent != null) {
+            session.updateVirtualFile(normalized, virtualContent)
+        }
+
+        val isUrl = dataOrUrl.startsWith("http://") || dataOrUrl.startsWith("https://") ||
+            dataOrUrl.startsWith("blob:") || mime == "url"
+        val payload = if (isUrl) {
+            "A:$normalized:url:$dataOrUrl"
+        } else if (dataOrUrl.isBlank()) {
+            val url = "${projectFileUrl(token, normalized)}?_rin_t=${SystemClock.elapsedRealtime()}"
+            "A:$normalized:url:$url"
+        } else {
+            "A:$normalized:$mime:$dataOrUrl"
+        }
         return try {
-            port.postMessage(WebMessage("A:$filename:$mime:$base64"))
+            port.postMessage(WebMessage(payload))
             true
         } catch (_: Exception) {
             false
         }
     }
+
+    fun hotSwapAssetStream(filename: String, asset: ProjectAsset? = null): Boolean =
+        hotSwapAsset(filename, asset, "url", "")
+
+    fun hotSwapAssetUrl(filename: String, url: String, asset: ProjectAsset? = null): Boolean =
+        hotSwapAsset(filename, asset, "url", url)
 
     private fun markVisualReadyAndClearLoading(token: String) {
         if (disposed || !session.isCurrent(token) || isError) return

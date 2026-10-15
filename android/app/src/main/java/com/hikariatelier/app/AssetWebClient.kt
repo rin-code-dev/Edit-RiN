@@ -132,7 +132,8 @@ internal class AssetWebClient(
                     )
                 }
                 else -> {
-                    val virtualBytes = if (relative.startsWith("assets/")) state.virtualFileBytes(relative.removePrefix("assets/")) else null
+                    val virtualBytes = state.virtualFileBytes(relative)
+                        ?: (if (relative.startsWith("assets/")) state.virtualFileBytes(relative.removePrefix("assets/")) else state.virtualFileBytes("assets/$relative"))
                     if (virtualBytes != null) {
                         val mime = projectTextMimeType(relative)
                         return WebResourceResponse(
@@ -145,8 +146,11 @@ internal class AssetWebClient(
                         )
                     }
                     val name = if (relative in state.assets) relative else relative.removePrefix("assets/")
-                    if (!validAssetName(name)) return missing()
-                    val asset = state.assets[name] ?: return missing()
+                    val asset = state.assets[relative]
+                        ?: state.assets[relative.removePrefix("assets/")]
+                        ?: state.assets["assets/$relative"]
+                        ?: return missing()
+                    if (!validAssetName(name) && !validAssetName(relative)) return missing()
                     if (!storage.contains(asset)) return missing()
                     val rangeHeader = request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value
                     val range = assetByteRange(rangeHeader, asset.size)

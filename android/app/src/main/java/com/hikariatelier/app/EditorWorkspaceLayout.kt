@@ -60,7 +60,8 @@ internal data class EditorWorkspaceState(
     val pipSizePreset: PipSizePreset = PipSizePreset.SMALL,
     val pipTranslucent: Boolean = false,
     val pipMinimized: Boolean = false,
-    val pipSnapCorner: PipCorner = PipCorner.TOP_END
+    val pipSnapCorner: PipCorner = PipCorner.TOP_END,
+    val pipAutoGhosted: Boolean = false
 )
 
 internal data class EditorWorkspaceActions(
@@ -575,6 +576,7 @@ internal fun EditorWorkspaceLayout(
                             onMinimizedChange = actions.onPipMinimizedChanged,
                             snapCorner = state.pipSnapCorner,
                             onSnapCornerChange = actions.onPipSnapCornerChanged,
+                            isGhosted = state.pipAutoGhosted,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = 6.dp, start = 8.dp, end = 8.dp, bottom = bottomReserved)

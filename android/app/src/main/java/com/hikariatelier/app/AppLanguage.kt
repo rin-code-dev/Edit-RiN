@@ -11,8 +11,9 @@ internal fun translateUi(source: String, language: String): String {
     return if (language == "zh") entry.second else entry.first
 }
 
-internal val uiTranslations = mapOf(
-    "#つぶやきProcessingモード" to ("#つぶやきProcessing mode" to "#つぶやきProcessing 模式"),
+internal val uiTranslations: Map<String, Pair<String, String>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    mapOf(
+        "#つぶやきProcessingモード" to ("#つぶやきProcessing mode" to "#つぶやきProcessing 模式"),
     "文字数カウントゲージを表示" to ("Show character count gauge" to "显示字数统计栏"),
     "文字数カウントゲージを非表示" to ("Hide character count gauge" to "隐藏字数统计栏"),
     "Minify & シェア" to ("Minify & Share" to "压缩并分享"),
@@ -21,12 +22,18 @@ internal val uiTranslations = mapOf(
     "280字" to ("280 chars" to "280字"),
     "字" to ("chars" to "字"),
     "字超過" to ("chars over" to "字超限"),
+    "残り %s 字" to ("%s chars remaining" to "剩余 %s 字"),
+    "コードを短縮してSNSへ共有" to ("Minify code and share to SNS" to "压缩代码并分享至社交平台"),
     "元コード: %s字" to ("Original: %s chars" to "原代码：%s字"),
     "圧縮後: %s字" to ("Minified: %s chars" to "压缩后：%s字"),
     "削減: -%s字" to ("Reduced: -%s chars" to "缩减：-%s字"),
     "制限内 (%s / %s 字)" to ("Within limit (%s / %s chars)" to "符合限制 (%s / %s 字)"),
     "%s字超過 (%s / %s 字)" to ("%s chars over limit (%s / %s chars)" to "超出 %s 字 (%s / %s 字)"),
     "コピーして共有" to ("Copy and share" to "复制并分享"),
+    "コピー & 共有" to ("Copy & Share" to "复制并分享"),
+    "コピーしました" to ("Copied" to "已复制"),
+    "本文に反映" to ("Apply to Editor" to "应用至编辑器"),
+    "試す" to ("Test" to "测试"),
     "エディター本文を上書き" to ("Overwrite editor" to "覆盖编辑器代码"),
     "プレビューで確認" to ("Verify in preview" to "在预览中确认"),
     "クリップボードにコピーしました" to ("Copied to clipboard" to "已复制到剪贴板"),
@@ -952,5 +959,18 @@ internal val uiTranslations = mapOf(
     "押している間、初期値と比較" to ("Hold to compare with defaults" to "按住以对比默认值"),
     "比較" to ("Compare" to "对比"),
     "ログをコピーしました" to ("Log copied to clipboard" to "已复制日志"),
-    "長押しでコピー" to ("Long-press to copy" to "长按复制")
-)
+    "長押しでコピー" to ("Long-press to copy" to "长按复制"),
+    "Golf & 共有" to ("Golf & Share" to "Golf与分享"),
+    "p5.js コードを極限まで短縮・最適化" to ("Minify and optimize p5.js code to the limit" to "极限缩短与优化 p5.js 代码"),
+    "#タグ先頭付与" to ("Add #tags header" to "开头添加标签"),
+    "W=(w=200)*2 圧縮" to ("W=(w=200)*2 folding" to "W=(w=200)*2 压缩"),
+    "変数1文字化" to ("1-char variables" to "单字符变量"),
+    "改行区切り(;省略)" to ("Newline delimited (omit ;)" to "换行分隔（省略分号）"),
+    "短縮コードをコピーしました" to ("Golfed code copied to clipboard" to "已复制短缩代码"),
+    "コピーしてX(Twitter)等で共有" to ("Copy & share to X (Twitter)" to "复制并分享到 X (Twitter)"),
+    "エディターに短縮コードを適用しました" to ("Applied golfed code to editor" to "已将短缩代码应用到编辑器"),
+    "エディターへ反映" to ("Apply to editor" to "应用到编辑器"),
+    "短縮コードでプレビューを実行しました" to ("Ran preview with golfed code" to "已使用短缩代码运行预览"),
+    "プレビュー検証" to ("Verify in preview" to "在预览中验证")
+    )
+}

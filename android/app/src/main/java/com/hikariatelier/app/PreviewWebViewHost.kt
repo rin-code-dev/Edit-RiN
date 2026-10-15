@@ -1,11 +1,17 @@
 package com.hikariatelier.app
 
 import android.content.Context
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 
 /** Native child transforms keep Android touch dispatch and the displayed viewport aligned. */
 internal class PreviewWebViewHost(context: Context, val preview: WebView) : ViewGroup(context) {
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (!isEnabled) return false
+        return super.dispatchTouchEvent(ev)
+    }
+
     private var logicalWidth: Int? = null
     private var logicalHeight: Int? = null
 

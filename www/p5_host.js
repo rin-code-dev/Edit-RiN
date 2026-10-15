@@ -1336,6 +1336,14 @@ function removeInstance() {
   canvasSizeObservers.get(canvas)?.disconnect(); canvasSizeObservers.delete(canvas);
   instances.delete(this); scheduleFit(true); maybeReady(); maybeVisualReady();
 }
+const trackedAssets = window.__editRinTrackedAssets = window.__editRinTrackedAssets || {
+  images: new Set(),
+  sounds: new Set(),
+  fonts: new Set(),
+  json: [],
+  strings: []
+};
+
 const hookedConstructors = new WeakSet();
 function attachP5(constructor) {
   if (typeof constructor !== 'function' || !constructor.prototype || hookedConstructors.has(constructor)) return;
@@ -1380,6 +1388,59 @@ function attachP5(constructor) {
     if (webgpu && result?.catch) return result.catch(error => { throw new Error(`WEBGPUを初期化できませんでした: ${error.message}`); });
     return result;
   };
+  const origLoadImage = constructor.prototype.loadImage;
+  if (typeof origLoadImage === 'function') {
+    constructor.prototype.loadImage = function (path, ...args) {
+      const img = origLoadImage.call(this, path, ...args);
+      if (img && typeof path === 'string') {
+        img._rinSourcePath = path;
+        trackedAssets.images.add(img);
+      }
+      return img;
+    };
+  }
+  const origLoadSound = constructor.prototype.loadSound;
+  if (typeof origLoadSound === 'function') {
+    constructor.prototype.loadSound = function (path, ...args) {
+      const sound = origLoadSound.call(this, path, ...args);
+      if (sound && typeof path === 'string') {
+        sound._rinSourcePath = path;
+        trackedAssets.sounds.add(sound);
+      }
+      return sound;
+    };
+  }
+  const origLoadFont = constructor.prototype.loadFont;
+  if (typeof origLoadFont === 'function') {
+    constructor.prototype.loadFont = function (path, ...args) {
+      const font = origLoadFont.call(this, path, ...args);
+      if (font && typeof path === 'string') {
+        font._rinSourcePath = path;
+        trackedAssets.fonts.add(font);
+      }
+      return font;
+    };
+  }
+  const origLoadJSON = constructor.prototype.loadJSON;
+  if (typeof origLoadJSON === 'function') {
+    constructor.prototype.loadJSON = function (path, ...args) {
+      const json = origLoadJSON.call(this, path, ...args);
+      if (json && typeof path === 'string') {
+        trackedAssets.json.push({ path, obj: json });
+      }
+      return json;
+    };
+  }
+  const origLoadStrings = constructor.prototype.loadStrings;
+  if (typeof origLoadStrings === 'function') {
+    constructor.prototype.loadStrings = function (path, ...args) {
+      const strings = origLoadStrings.call(this, path, ...args);
+      if (strings && typeof path === 'string') {
+        trackedAssets.strings.push({ path, arr: strings });
+      }
+      return strings;
+    };
+  }
 }
 let loadedP5 = window.p5;
 attachP5(loadedP5);
@@ -1419,6 +1480,11 @@ window.addEventListener('load', () => {
 
   function disposeSketch() {
     window.__editRinClearWatch?.();
+    trackedAssets.images.clear();
+    trackedAssets.sounds.clear();
+    trackedAssets.fonts.clear();
+    trackedAssets.json.length = 0;
+    trackedAssets.strings.length = 0;
     try { window.noLoop?.(); } catch (_) {}
     for (const [instance] of instances) {
       try { (scope(instance) || window).noLoop?.(); } catch (_) {}
@@ -1487,6 +1553,20 @@ window.addEventListener('load', () => {
   }
 
   window.rinDispose = disposeSketch;
+
+  window.__editRinTriggerRedraw = () => {
+    for (const [instance, state] of instances) {
+      if (state.ready) {
+        const api = scope(instance) || window;
+        if (typeof api.isLooping === 'function' && !api.isLooping()) {
+          api.redraw?.();
+        }
+      }
+    }
+    if (typeof window.redraw === 'function') {
+      try { window.redraw(); } catch (_) {}
+    }
+  };
 
   window.addEventListener('beforeunload', () => {
     document.getElementById('boot')?.remove();
@@ -1615,14 +1695,7 @@ window.addEventListener('load', () => {
   window.__editRinHotSwapCode = function(newCode) {
     try {
       (0, eval)(newCode);
-      for (const [instance, state] of instances) {
-        if (state.ready) {
-          const api = scope(instance) || window;
-          if (typeof api.isLooping === 'function' && !api.isLooping()) {
-            api.redraw?.();
-          }
-        }
-      }
+      window.__editRinTriggerRedraw?.();
       return true;
     } catch (e) {
       console.error(e);
@@ -1630,27 +1703,192 @@ window.addEventListener('load', () => {
     }
   };
 
-  window.__editRinHotSwapAsset = function(filename, mime, base64Data) {
+  window.__editRinHotSwapAsset = function(filename, mime, payload) {
     try {
-      const dataUri = 'data:' + mime + ';base64,' + base64Data;
-      const imgs = document.querySelectorAll('img');
+      const isUrl = mime === 'url' || (typeof payload === 'string' && (payload.startsWith('http://') || payload.startsWith('https://') || payload.startsWith('blob:')));
+      const resourceUrl = isUrl ? payload : ('data:' + mime + ';base64,' + payload);
+      const cleanName = filename.replace(/^assets\//, '');
+      const matchName = name => typeof name === 'string' && (name.includes(cleanName) || name.includes(filename) || cleanName.includes(name));
+
+      const trackedAssets = window.__editRinTrackedAssets || {
+        images: new Set(),
+        sounds: new Set(),
+        fonts: new Set(),
+        json: [],
+        strings: []
+      };
+
+      // 1. Update <img> elements in DOM
+      const imgs = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('img') : [];
       imgs.forEach(img => {
-        if (img.src && (img.src.includes(filename) || img.getAttribute('src')?.includes(filename))) {
-          img.src = dataUri;
+        const src = img.src || img.getAttribute?.('src') || '';
+        if (matchName(src)) {
+          img.src = resourceUrl;
         }
       });
+
+      // 2. Update <audio> and <video> elements in DOM
+      const mediaList = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('audio, video') : [];
+      mediaList.forEach(el => {
+        const src = el.src || el.getAttribute?.('src') || '';
+        if (matchName(src)) {
+          const prevTime = el.currentTime;
+          const wasPlaying = !el.paused;
+          el.src = resourceUrl;
+          el.load?.();
+          el.currentTime = prevTime;
+          if (wasPlaying) {
+            el.play?.().catch(() => {});
+          }
+        }
+      });
+
+      // Helper to update a p5.Image
+      function updateP5Image(val) {
+        if (!val || !val.canvas || !val.drawingContext) return;
+        const tempImg = new Image();
+        tempImg.crossOrigin = 'anonymous';
+        tempImg.onload = () => {
+          const w = tempImg.naturalWidth || tempImg.width;
+          const h = tempImg.naturalHeight || tempImg.height;
+          if (w > 0 && h > 0 && (val.width !== w || val.height !== h)) {
+            val.width = w;
+            val.height = h;
+            if (val.canvas) {
+              val.canvas.width = w;
+              val.canvas.height = h;
+            }
+          }
+          val.drawingContext.clearRect?.(0, 0, val.width, val.height);
+          val.drawingContext.drawImage?.(tempImg, 0, 0);
+          val.updatePixels?.();
+          val.modified = true;
+          val._modified = true;
+          window.__editRinTriggerRedraw?.();
+        };
+        tempImg.src = resourceUrl;
+      }
+
+      // 3. Update tracked p5 images
+      for (const img of trackedAssets.images) {
+        if (matchName(img._rinSourcePath || img._url || img.src)) {
+          updateP5Image(img);
+        }
+      }
+
+      // 4. Update tracked p5 sounds
+      for (const sound of trackedAssets.sounds) {
+        if (matchName(sound._rinSourcePath || sound.url || sound._url)) {
+          try {
+            sound.url = resourceUrl;
+            sound.load?.();
+          } catch (_) {}
+        }
+      }
+
+      // 5. Update tracked fonts
+      for (const font of trackedAssets.fonts) {
+        if (matchName(font._rinSourcePath)) {
+          if (window.opentype && typeof window.opentype.load === 'function') {
+            window.opentype.load(resourceUrl, (err, loadedFont) => {
+              if (!err && loadedFont) {
+                font.font = loadedFont;
+                window.__editRinTriggerRedraw?.();
+              }
+            });
+          }
+        }
+      }
+      // Also update CSS FontFace for font files
+      const fontExt = cleanName.substring(cleanName.lastIndexOf('.') + 1).toLowerCase();
+      if (['ttf', 'otf', 'woff', 'woff2'].includes(fontExt) && typeof FontFace !== 'undefined') {
+        const familyName = cleanName.substring(0, cleanName.lastIndexOf('.'));
+        try {
+          const face = new FontFace(familyName, `url(${resourceUrl})`);
+          face.load().then(loaded => {
+            document.fonts?.add(loaded);
+            window.__editRinTriggerRedraw?.();
+          }).catch(() => {});
+        } catch (_) {}
+      }
+
+      // 6. Update tracked JSON
+      for (const item of trackedAssets.json) {
+        if (matchName(item.path)) {
+          if (typeof fetch === 'function') {
+            fetch(resourceUrl)
+              .then(res => res.json())
+              .then(newData => {
+                if (item.obj && typeof item.obj === 'object') {
+                  for (const k of Object.keys(item.obj)) delete item.obj[k];
+                  Object.assign(item.obj, newData);
+                  window.__editRinTriggerRedraw?.();
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      // 7. Update tracked Strings / text
+      for (const item of trackedAssets.strings) {
+        if (matchName(item.path)) {
+          if (typeof fetch === 'function') {
+            fetch(resourceUrl)
+              .then(res => res.text())
+              .then(text => {
+                if (Array.isArray(item.arr)) {
+                  item.arr.length = 0;
+                  item.arr.push(...text.split(/\r\n|\r|\n/));
+                  window.__editRinTriggerRedraw?.();
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      // 8. Scan window properties for untracked global variables (e.g. let img, sound)
       for (const key of Object.keys(window)) {
         try {
           const val = window[key];
-          if (val && typeof val === 'object') {
-            if (val.canvas && val.drawingContext && val.loadPixels) {
-              if (val._url && val._url.includes(filename)) {
-                val.canvas.src = dataUri;
+          if (!val || typeof val !== 'object') continue;
+
+          // p5.Image (has canvas, drawingContext, and loadPixels)
+          if (val.canvas && val.drawingContext && typeof val.loadPixels === 'function') {
+            if (matchName(val._rinSourcePath || val._url || val.src)) {
+              updateP5Image(val);
+            }
+          }
+
+          // p5.SoundFile (has .url or .buffer and .play)
+          if (typeof val.load === 'function' && typeof val.play === 'function') {
+            if (matchName(val._rinSourcePath || val.url || val._url)) {
+              try {
+                val.url = resourceUrl;
+                val.load?.();
+              } catch (_) {}
+            }
+          }
+
+          // p5.Font (has .font or .parent)
+          if (val.font && typeof val.font === 'object') {
+            if (matchName(val._rinSourcePath)) {
+              if (window.opentype && typeof window.opentype.load === 'function') {
+                window.opentype.load(resourceUrl, (err, loadedFont) => {
+                  if (!err && loadedFont) {
+                    val.font = loadedFont;
+                    window.__editRinTriggerRedraw?.();
+                  }
+                });
               }
             }
           }
         } catch (_) {}
       }
+
+      // Force redraw on paused sketches
+      window.__editRinTriggerRedraw?.();
       return true;
     } catch (e) {
       console.error(e);
@@ -1678,8 +1916,8 @@ window.addEventListener('load', () => {
             if (colon2 > colon1) {
               const filename = text.slice(2, colon1);
               const mime = text.slice(colon1 + 1, colon2);
-              const b64 = text.slice(colon2 + 1);
-              window.__editRinHotSwapAsset?.(filename, mime, b64);
+              const payload = text.slice(colon2 + 1);
+              window.__editRinHotSwapAsset?.(filename, mime, payload);
             }
           }
         }

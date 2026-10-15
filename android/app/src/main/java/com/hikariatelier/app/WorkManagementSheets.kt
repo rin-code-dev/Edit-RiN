@@ -325,6 +325,7 @@ internal fun WorkActionsMenu(
     onOpenRuntime: () -> Unit,
     tweetModeEnabled: Boolean = false,
     onToggleTweetMode: () -> Unit = {},
+    onOpenMinify: () -> Unit = {},
     textTranslator: (String, Array<out Any?>) -> String,
     windowSetup: @Composable () -> Unit = {}
 ) {
@@ -393,6 +394,16 @@ internal fun WorkActionsMenu(
             onClick = {
                 viewModel.workActionsMenuExpanded = false
                 onToggleTweetMode()
+            }
+        )
+        ActionRow(
+            iconRes = R.drawable.ic_format,
+            title = uiText("Minify & シェア"),
+            subtitle = uiText("コードを短縮してSNSへ共有"),
+            colors = colors,
+            onClick = {
+                viewModel.workActionsMenuExpanded = false
+                onOpenMinify()
             }
         )
         Spacer(Modifier.height(12.dp))

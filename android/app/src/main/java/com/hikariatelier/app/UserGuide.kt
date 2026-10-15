@@ -40,7 +40,7 @@ internal data class GuideSection(
 )
 
 /** English is the source text for the in-app user guide. */
-internal val userGuideSections = listOf(
+internal val userGuideSections by lazy { listOf(
     GuideSection(
         title = "Try a sample",
         summary = "Start with a finished artwork and explore how it responds.",
@@ -138,7 +138,7 @@ internal val userGuideSections = listOf(
             "An external storage folder changes where works are saved. Cloud synchronization requires a separate tool that synchronizes that folder; the app does not upload works to cloud storage automatically."
         )
     )
-)
+) }
 
 private const val GUIDE_LIST = -2
 private const val GUIDE_PRACTICE = -1

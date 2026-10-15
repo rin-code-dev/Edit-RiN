@@ -89,6 +89,7 @@ class EditorSessionViewModel : ViewModel() {
     internal var pipTranslucent by mutableStateOf(false)
     internal var pipMinimized by mutableStateOf(false)
     internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
+    internal var pipAutoGhosted by mutableStateOf(false)
     internal var tweetModeEnabled by mutableStateOf(false)
     internal var tweetTargetLimit by mutableIntStateOf(140)
     internal var showMinifySheet by mutableStateOf(false)

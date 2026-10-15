@@ -1126,6 +1126,7 @@ internal fun EditorScreen(
             onOpenRuntime = { editUserWork { showRuntimeDialog = true } },
             tweetModeEnabled = sessionViewModel.tweetModeEnabled,
             onToggleTweetMode = { sessionViewModel.tweetModeEnabled = !sessionViewModel.tweetModeEnabled },
+            onOpenMinify = { sessionViewModel.showMinifySheet = true },
             textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }
         )
@@ -1752,7 +1753,8 @@ internal fun EditorScreen(
                     pipSizePreset = sessionViewModel.pipSizePreset,
                     pipTranslucent = sessionViewModel.pipTranslucent,
                     pipMinimized = sessionViewModel.pipMinimized,
-                    pipSnapCorner = sessionViewModel.pipSnapCorner
+                    pipSnapCorner = sessionViewModel.pipSnapCorner,
+                    pipAutoGhosted = sessionViewModel.pipAutoGhosted
                 ),
                 actions = EditorWorkspaceActions(
                     onSplitChanged = { landscapePreviewFraction = it },
