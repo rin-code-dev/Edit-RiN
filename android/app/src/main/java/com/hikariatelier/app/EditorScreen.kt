@@ -1124,6 +1124,8 @@ internal fun EditorScreen(
             onOpenProjectFiles = { editUserWork { showProjectFilesDialog = true } },
             onOpenAssets = { editUserWork { focusManager.clearFocus(force = true); showAssets = true } },
             onOpenRuntime = { editUserWork { showRuntimeDialog = true } },
+            tweetModeEnabled = sessionViewModel.tweetModeEnabled,
+            onToggleTweetMode = { sessionViewModel.tweetModeEnabled = !sessionViewModel.tweetModeEnabled },
             textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }
         )

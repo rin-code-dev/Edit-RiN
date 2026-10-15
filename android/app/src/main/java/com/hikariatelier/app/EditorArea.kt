@@ -315,6 +315,17 @@ internal fun EditorArea(
     ) {
         DisableExtractUiInputWrapper {
             Column(Modifier.fillMaxSize()) {
+                if (sessionViewModel.tweetModeEnabled) {
+                    TweetModeStatusBar(
+                        sourceText = editingText,
+                        targetLimit = sessionViewModel.tweetTargetLimit,
+                        onTargetLimitChange = { sessionViewModel.tweetTargetLimit = it },
+                        onOpenMinifySheet = { sessionViewModel.showMinifySheet = true },
+                        onClose = { sessionViewModel.tweetModeEnabled = false },
+                        colors = colors,
+                        textTranslator = textTranslator
+                    )
+                }
                 if (activeWork?.isSample == true) Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -714,6 +725,128 @@ internal fun EditorArea(
                         Text(textTranslator("エラーをコピー", emptyArray()))
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun TweetModeStatusBar(
+    sourceText: String,
+    targetLimit: Int,
+    onTargetLimitChange: (Int) -> Unit,
+    onOpenMinifySheet: () -> Unit,
+    onClose: () -> Unit,
+    colors: ColorScheme,
+    textTranslator: (String, Array<out Any?>) -> String,
+    modifier: Modifier = Modifier
+) {
+    fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
+    val charCount = sourceText.length
+    val isWarning = charCount > targetLimit - 10 && charCount <= targetLimit
+    val isOver = charCount > targetLimit
+
+    val progressColor = when {
+        isOver -> colors.error
+        isWarning -> Color(0xFFE6A100)
+        else -> colors.primary
+    }
+
+    val progressFraction = (charCount.toFloat() / targetLimit.toFloat()).coerceIn(0f, 1f)
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = colors.surfaceVariant.copy(alpha = 0.45f),
+        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "#つぶやきProcessing",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.primary
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.primaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.clickable {
+                            onTargetLimitChange(if (targetLimit == 140) 280 else 140)
+                        }
+                    ) {
+                        Text(
+                            text = if (targetLimit == 140) uiText("140字") else uiText("280字"),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = if (isOver) {
+                            "${charCount} / ${targetLimit} ${uiText("字")} (${charCount - targetLimit}${uiText("字超過")})"
+                        } else {
+                            "${charCount} / ${targetLimit} ${uiText("字")}"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isOver || isWarning) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isOver) colors.error else if (isWarning) Color(0xFFE6A100) else colors.onSurface
+                    )
+
+                    FilledTonalButton(
+                        onClick = onOpenMinifySheet,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_format),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = uiText("Minify & シェア"),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close),
+                            contentDescription = null,
+                            tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                color = progressColor,
+                trackColor = colors.outlineVariant.copy(alpha = 0.4f)
             )
         }
     }

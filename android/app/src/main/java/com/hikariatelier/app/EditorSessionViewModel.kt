@@ -89,6 +89,41 @@ class EditorSessionViewModel : ViewModel() {
     internal var pipTranslucent by mutableStateOf(false)
     internal var pipMinimized by mutableStateOf(false)
     internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
+    internal var tweetModeEnabled by mutableStateOf(false)
+    internal var tweetTargetLimit by mutableIntStateOf(140)
+    internal var showMinifySheet by mutableStateOf(false)
+
+    private var liveParameterDragInitial: TextFieldValue? = null
+
+    fun applyLiveParameterToEditor(parameter: WorkParameter, newValue: String) {
+        if (liveParameterDragInitial == null) {
+            liveParameterDragInitial = editorValueState.value
+        }
+        val current = editorValueState.value
+        val updatedText = updateParameterInSource(current.text, parameter, newValue) ?: return
+        if (updatedText != current.text) {
+            val updatedValue = current.copy(text = updatedText)
+            editorValueState.value = updatedValue
+            mainPieceTable.reset(updatedText)
+        }
+    }
+
+    fun commitLiveParameterChange() {
+        val initial = liveParameterDragInitial ?: return
+        liveParameterDragInitial = null
+        val current = editorValueState.value
+        if (initial.text != current.text) {
+            val prevCount = mainDeltaLog.undoCommandsCount
+            mainDeltaLog.record(initial, current)
+            if (mainDeltaLog.undoCommandsCount > prevCount || undoStack.isEmpty()) {
+                undoStack.add(TextFieldValue("", initial.selection))
+            }
+            while (undoStack.size > 2000) {
+                undoStack.removeAt(0)
+            }
+            redoStack.clear()
+        }
+    }
 
     /** Navigation keeps history only while its saved source still matches the work. */
     internal fun activateWorkEditor(workId: String, code: String, resume: Boolean, retainedIds: Set<String>) {
@@ -209,6 +244,7 @@ class EditorSessionViewModel : ViewModel() {
     }
 
     fun clearEditHistory() {
+        liveParameterDragInitial = null
         undoStack.clear()
         redoStack.clear()
         mainDeltaLog.clear()

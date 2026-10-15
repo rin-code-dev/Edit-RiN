@@ -1,17 +1,25 @@
 package com.hikariatelier.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.os.ConfigurationCompat
@@ -204,6 +212,190 @@ internal fun EditorAuthoringDialogs(
                 },
                 allowSkip = settingsViewModel.onboardingReplay
             )
+        }
+    }
+
+    if (sessionViewModel.showMinifySheet) {
+        TweetMinifyShareSheet(
+            editorText = editingValue.text,
+            targetLimit = sessionViewModel.tweetTargetLimit,
+            codeFontFamily = codeFontFamily,
+            onTargetLimitChange = { sessionViewModel.tweetTargetLimit = it },
+            onApplyToEditor = { minified ->
+                applyEditorChange(TextFieldValue(minified))
+            },
+            onVerifyInPreview = { minified ->
+                preview.runSketch(source = minified)
+            },
+            onDismiss = { sessionViewModel.showMinifySheet = false },
+            textTranslator = { s, args -> uiText(s, *args) }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TweetMinifyShareSheet(
+    editorText: String,
+    targetLimit: Int,
+    codeFontFamily: FontFamily,
+    onTargetLimitChange: (Int) -> Unit,
+    onApplyToEditor: (String) -> Unit,
+    onVerifyInPreview: (String) -> Unit,
+    onDismiss: () -> Unit,
+    textTranslator: (String, Array<out Any?>) -> String
+) {
+    fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val minifiedCode = remember(editorText) { minifyJavaScriptForTweet(editorText) }
+    val originalCount = editorText.length
+    val minifiedCount = minifiedCode.length
+    val reducedCount = originalCount - minifiedCount
+    val isOver = minifiedCount > targetLimit
+    val colors = MaterialTheme.colorScheme
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        tonalElevation = 6.dp,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = uiText("#つぶやきProcessing Minify & シェア"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(
+                        selected = targetLimit == 140,
+                        onClick = { onTargetLimitChange(140) },
+                        label = { Text(uiText("140字"), style = MaterialTheme.typography.labelSmall) }
+                    )
+                    FilterChip(
+                        selected = targetLimit == 280,
+                        onClick = { onTargetLimitChange(280) },
+                        label = { Text(uiText("280字"), style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isOver) colors.errorContainer else Color(0xFF2E7D32).copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = if (isOver) {
+                            uiText("%s字超過 (%s / %s 字)", minifiedCount - targetLimit, minifiedCount, targetLimit)
+                        } else {
+                            uiText("制限内 (%s / %s 字)", minifiedCount, targetLimit)
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isOver) colors.onErrorContainer else Color(0xFF2E7D32),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = uiText("元コード: %s字", originalCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant
+                    )
+                    Text(
+                        text = uiText("削減: -%s字", reducedCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.primary
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp, max = 220.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = minifiedCode,
+                    fontFamily = codeFontFamily,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = colors.onSurface
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val shareText = "$minifiedCode\n\n#つぶやきProcessing #EditRiN"
+                        val clip = android.content.ClipData.newPlainText("p5.js sketch", shareText)
+                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                            ?.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, uiText("クリップボードにコピーしました"), android.widget.Toast.LENGTH_SHORT).show()
+
+                        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(sendIntent, uiText("つぶやきProcessingを共有")))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(painter = painterResource(R.drawable.ic_share_card), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(uiText("コピーして共有"), fontWeight = FontWeight.Bold)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            onApplyToEditor(minifiedCode)
+                            android.widget.Toast.makeText(context, uiText("エディター本文を圧縮コードで上書きしました"), android.widget.Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(uiText("エディター本文を上書き"), style = MaterialTheme.typography.labelMedium)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            onVerifyInPreview(minifiedCode)
+                            android.widget.Toast.makeText(context, uiText("プレビューを実行しました"), android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(uiText("プレビューで確認"), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
         }
     }
 }

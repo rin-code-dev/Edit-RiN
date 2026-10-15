@@ -206,3 +206,170 @@ internal fun formattedJavaScriptOffset(source: String, formatted: String, offset
     val newIndent = newLine.takeWhile { it == ' ' || it == '\t' }.length
     return newStart + (cursor - sourceStart + newIndent - oldIndent).coerceIn(0, newLine.length)
 }
+
+/**
+ * Minifies JavaScript code for #つぶやきProcessing.
+ * 1. Safely removes single-line (//) and multi-line (/* * /) comments.
+ * 2. Compresses indentation, line breaks, and unnecessary spaces around symbols.
+ * 3. Preserves string literals ("...", '...', `...`) and regexes verbatim.
+ * 4. Inserts semicolons between statements across lines when required to keep code functional.
+ */
+internal fun minifyJavaScriptForTweet(source: String): String {
+    val out = StringBuilder(source.length)
+    var i = 0
+    val len = source.length
+    var lastChar: Char? = null
+    var lastToken = ""
+
+    fun isWordChar(c: Char) = c.isLetterOrDigit() || c == '_' || c == '$'
+
+    while (i < len) {
+        val c = source[i]
+        val next = source.getOrNull(i + 1)
+
+        // 1. Line comment
+        if (c == '/' && next == '/') {
+            i += 2
+            while (i < len && source[i] != '\n' && source[i] != '\r') {
+                i++
+            }
+            continue
+        }
+
+        // 2. Block comment
+        if (c == '/' && next == '*') {
+            i += 2
+            val end = source.indexOf("*/", i)
+            if (end >= 0) {
+                i = end + 2
+            } else {
+                i = len
+            }
+            continue
+        }
+
+        // 3. String literals ('...' or "...")
+        if (c == '\'' || c == '"') {
+            val quote = c
+            val start = i
+            i++
+            while (i < len) {
+                val sc = source[i]
+                if (sc == '\\') {
+                    i += 2
+                } else if (sc == quote) {
+                    i++
+                    break
+                } else {
+                    i++
+                }
+            }
+            val strLiteral = source.substring(start, i.coerceAtMost(len))
+            out.append(strLiteral)
+            lastChar = strLiteral.lastOrNull()
+            lastToken = "literal"
+            continue
+        }
+
+        // 4. Template literals (`...`)
+        if (c == '`') {
+            val start = i
+            i++
+            while (i < len) {
+                val tc = source[i]
+                if (tc == '\\') {
+                    i += 2
+                } else if (tc == '`') {
+                    i++
+                    break
+                } else {
+                    i++
+                }
+            }
+            val tplLiteral = source.substring(start, i.coerceAtMost(len))
+            out.append(tplLiteral)
+            lastChar = tplLiteral.lastOrNull()
+            lastToken = "literal"
+            continue
+        }
+
+        // 5. Regex literal
+        if (c == '/' && isRegexStart(lastChar, lastToken)) {
+            val end = javaScriptRegexLiteralEnd(source, i)
+            if (end != null) {
+                val regexLiteral = source.substring(i, end)
+                out.append(regexLiteral)
+                i = end
+                lastChar = 'v'
+                lastToken = "literal"
+                continue
+            }
+        }
+
+        // 6. Whitespace and Newlines
+        if (c.isWhitespace()) {
+            var seenNewline = false
+            while (i < len && source[i].isWhitespace()) {
+                if (source[i] == '\n' || source[i] == '\r') seenNewline = true
+                i++
+            }
+            if (i >= len) break
+
+            val nextChar = source[i]
+
+            if (seenNewline) {
+                val prev = lastChar
+                if (prev != null && prev != ';' && prev != '{' && prev != '}' && prev != '(' && prev != '[' &&
+                    prev != ',' && prev != ':' && prev != '?' && prev != '=' && prev != '+' && prev != '-' &&
+                    prev != '*' && prev != '/' && prev != '&' && prev != '|' && prev != '^' && prev != '!' &&
+                    nextChar != ';' && nextChar != '}' && nextChar != ')' && nextChar != ']' && nextChar != ',' &&
+                    nextChar != '.' && nextChar != ':' && nextChar != '?'
+                ) {
+                    out.append(';')
+                    lastChar = ';'
+                    lastToken = ";"
+                } else if (prev != null && isWordChar(prev) && isWordChar(nextChar)) {
+                    out.append(' ')
+                    lastChar = ' '
+                }
+            } else {
+                val prev = lastChar
+                if (prev != null && isWordChar(prev) && isWordChar(nextChar)) {
+                    out.append(' ')
+                    lastChar = ' '
+                } else if ((prev == '+' && nextChar == '+') || (prev == '-' && nextChar == '-')) {
+                    out.append(' ')
+                    lastChar = ' '
+                }
+            }
+            continue
+        }
+
+        // 7. Words (identifiers, keywords, numbers)
+        if (isWordChar(c)) {
+            val start = i
+            while (i < len && isWordChar(source[i])) {
+                i++
+            }
+            val word = source.substring(start, i)
+            if (lastChar != null && isWordChar(lastChar)) {
+                out.append(' ')
+            }
+            out.append(word)
+            lastChar = word.last()
+            lastToken = word
+            continue
+        }
+
+        // 8. Other operators and punctuation
+        if ((lastChar == '+' && c == '+') || (lastChar == '-' && c == '-')) {
+            out.append(' ')
+        }
+        out.append(c)
+        lastChar = c
+        lastToken = c.toString()
+        i++
+    }
+
+    return out.toString().trim()
+}

@@ -78,4 +78,52 @@ class EditorTransformsTest {
         assertEquals(formatted.indexOf("rect") + 4, formattedJavaScriptOffset(source, formatted, cursor))
         assertEquals(0, formattedJavaScriptOffset(source, formatted, 0))
     }
+
+    @Test
+    fun minifiesJavaScriptForTweetModeCorrectly() {
+        val source = """
+            // p5.js tweet sketch
+            function setup() {
+                createCanvas(400, 400); // 400x400
+            }
+
+            /* Draw loop */
+            function draw() {
+                background(220);
+                circle(mouseX, mouseY, 50);
+            }
+        """.trimIndent()
+
+        val minified = minifyJavaScriptForTweet(source)
+        assertEquals("function setup(){createCanvas(400,400)}function draw(){background(220);circle(mouseX,mouseY,50)}", minified)
+    }
+
+    @Test
+    fun preservesStringLiteralsAndTemplateLiteralsInMinify() {
+        val source = """
+            let greeting = "Hello,   world! // not a comment";
+            let msg = 'Single   quote /* also not comment */';
+            let tpl = `Multi
+  line
+    template`;
+        """.trimIndent()
+
+        val minified = minifyJavaScriptForTweet(source)
+        assertEquals(
+            "let greeting=\"Hello,   world! // not a comment\";let msg='Single   quote /* also not comment */';let tpl=`Multi\n  line\n    template`;",
+            minified
+        )
+    }
+
+    @Test
+    fun separatesNewlineStatementsWithoutSemicolon() {
+        val source = """
+            let a = 1
+            let b = 2
+            a + +b
+        """.trimIndent()
+
+        val minified = minifyJavaScriptForTweet(source)
+        assertEquals("let a=1;let b=2;a+ +b", minified)
+    }
 }
