@@ -207,7 +207,9 @@ internal class WorkPreviewWarmup(
                     }
                 }
                 if (jobs.all { it == null }) {
-                    renderers.forEachIndexed { index, renderer -> renderer?.close(); renderers[index] = null }
+                    if (!interaction.galleryOpen || interaction.busy) {
+                        renderers.forEachIndexed { index, renderer -> renderer?.close(); renderers[index] = null }
+                    }
                     if (!queue.hasPending || interaction.busy) { memoryCheck?.cancel(); memoryCheck = null }
                 }
             }
@@ -270,12 +272,17 @@ private class ThumbnailRenderer(private val activity: ComponentActivity, storage
             }
         } finally {
             ready = null
-            if (!destroyed) { view.stopLoading(); view.loadUrl("about:blank") }
+            if (!destroyed) {
+                runCatching { view.evaluateJavascript("window.rinDispose?.()", null) }
+                view.stopLoading()
+                view.loadUrl("about:blank")
+            }
         }
     }
     fun close() {
         parent.removeView(host)
         if (!destroyed) {
+            runCatching { view.evaluateJavascript("window.rinDispose?.()", null) }
             host.removeView(view); view.stopLoading(); view.removeJavascriptInterface("Android"); view.destroy()
             destroyed = true
         }

@@ -184,6 +184,7 @@ internal class PreviewController(
             Toast.makeText(activity, text("録画を停止してから再実行してください"), Toast.LENGTH_SHORT).show()
             return
         }
+        runCatching { webView?.evaluateJavascript("window.rinDispose?.()", null) }
         transfer.abort()
         screenshotTransfer.abort()
         abortFileTransfer()
@@ -252,11 +253,25 @@ internal class PreviewController(
             nativePort.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
                 override fun onMessage(port: WebMessagePort?, message: WebMessage?) {
                     val data = message?.data ?: return
-                    if (data.startsWith("W:")) {
+                    if (data.startsWith("WB:")) {
+                        val colonIndex = data.indexOf(':', 3)
+                        if (colonIndex > 3) {
+                            val token = data.substring(3, colonIndex)
+                            val json = data.substring(colonIndex + 1)
+                            if (session.isCurrent(token)) {
+                                applyWatchBatchJson(json, token)
+                            }
+                        }
+                    } else if (data.startsWith("W:")) {
                         val parts = data.split(':', limit = 4)
                         if (parts.size == 4 && session.isCurrent(parts[1])) {
+                            val token = parts[1]
                             val line = parts[2].toIntOrNull() ?: return
-                            watchValues[line] = parts[3]
+                            activity.runOnUiThread {
+                                if (!disposed && session.isCurrent(token)) {
+                                    watchValues[line] = parts[3]
+                                }
+                            }
                         }
                     }
                 }
@@ -264,6 +279,51 @@ internal class PreviewController(
             controlPort = nativePort
             portToken = token
             view.postWebMessage(WebMessage("INIT_PORT", arrayOf(jsPort)), Uri.parse(PREVIEW_ORIGIN))
+        }
+    }
+
+    private fun applyWatchBatchJson(json: String, token: String? = null) {
+        if (disposed) return
+        runCatching {
+            val obj = JSONObject(json)
+            val batch = buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val line = key.toIntOrNull()
+                    if (line != null && line > 0) {
+                        put(line, obj.getString(key))
+                    }
+                }
+            }
+            if (batch.isNotEmpty()) {
+                activity.runOnUiThread {
+                    if (!disposed && (token == null || session.isCurrent(token))) {
+                        watchValues.putAll(batch)
+                    }
+                }
+            }
+        }
+    }
+
+    fun hotSwapCode(code: String): Boolean {
+        val port = controlPort ?: return false
+        return try {
+            val instrumented = instrumentInlineWatchComments(code)
+            port.postMessage(WebMessage("H:$instrumented"))
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun hotSwapAsset(filename: String, mime: String, base64: String): Boolean {
+        val port = controlPort ?: return false
+        return try {
+            port.postMessage(WebMessage("A:$filename:$mime:$base64"))
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -423,6 +483,12 @@ internal class PreviewController(
         }
     }
 
+    fun stopSketch() {
+        runCatching { webView?.evaluateJavascript("window.rinDispose?.()", null) }
+        sensors.stop()
+        isPaused = true
+    }
+
     fun close() {
         if (disposed) return
         disposed = true
@@ -445,6 +511,7 @@ internal class PreviewController(
         downloadToast?.cancel()
         recording.onPreviewDestroyed()
         webView?.let {
+            runCatching { it.evaluateJavascript("window.rinDispose?.()", null) }
             it.stopLoading()
             it.removeJavascriptInterface("Android")
             it.loadUrl("about:blank")
@@ -522,6 +589,13 @@ internal class PreviewController(
         fun onWatchValue(token: String, line: Int, textValue: String) {
             onMain(token) {
                 if (line > 0) watchValues[line] = textValue
+            }
+        }
+
+        @JavascriptInterface
+        fun onWatchBatch(token: String, json: String) {
+            if (session.isCurrent(token)) {
+                applyWatchBatchJson(json, token)
             }
         }
 

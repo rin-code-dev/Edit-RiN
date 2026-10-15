@@ -30,7 +30,8 @@ internal fun AssetManagerDialog(
     onClose: () -> Unit,
     onPreview: (String, ProjectAsset) -> Unit,
     onInsert: (String, ProjectAsset) -> Unit,
-    referenceSources: Map<String, String> = emptyMap()
+    referenceSources: Map<String, String> = emptyMap(),
+    onDeleteMultiple: ((Set<String>) -> Unit)? = null
 ) {
     val copyToClipboard = rememberClipboardCopy()
     val context = LocalContext.current
@@ -38,9 +39,21 @@ internal fun AssetManagerDialog(
     var renaming by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
+    var confirmDeleteUnused by remember { mutableStateOf(false) }
     var selectedReferences by remember { mutableStateOf<Set<AssetRenameCandidate>>(emptySet()) }
     var renameCandidates by remember { mutableStateOf<List<AssetRenameCandidate>?>(null) }
     var renamePending by remember { mutableStateOf(false) }
+
+    val unusedAssets = remember(assets, referenceSources) {
+        if (referenceSources.isEmpty()) emptySet<String>()
+        else {
+            val sources = referenceSources.values
+            assets.keys.filter { name ->
+                val query = "assets/$name"
+                sources.none { code -> code.contains(query) }
+            }.toSet()
+        }
+    }
 
     LaunchedEffect(assets, renamePending, renaming, newName) {
         if (renamePending && renaming !in assets && newName in assets) {
@@ -68,11 +81,44 @@ internal fun AssetManagerDialog(
                         color = colors.onSurfaceVariant
                     )
                 }
+                if (unusedAssets.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${text("未使用素材")}: ${unusedAssets.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.onSurfaceVariant
+                        )
+                        TextButton(
+                            enabled = !busy,
+                            onClick = { confirmDeleteUnused = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.error
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = text("未使用素材を一括削除"),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.error
+                            )
+                        }
+                    }
+                }
                 LazyColumn(
                     Modifier.heightIn(max = 360.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(assets.toSortedMap().entries.toList(), key = { it.key }, contentType = { "asset_item" }) { (name, asset) ->
+                        val isAudio = asset.mime.startsWith("audio/") || name.substringAfterLast('.', "").lowercase() in setOf("mp3", "wav", "ogg", "m4a", "aac", "flac")
+                        val isUnused = name in unusedAssets
                         Surface(
                             onClick = { if (!busy) onPreview(name, asset) },
                             enabled = !busy,
@@ -89,13 +135,45 @@ internal fun AssetManagerDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(
-                                            text = name,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            if (isAudio) {
+                                                Surface(
+                                                    color = colors.secondaryContainer,
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = text("音声"),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = colors.onSecondaryContainer,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                            if (isUnused) {
+                                                Surface(
+                                                    color = colors.errorContainer.copy(alpha = 0.8f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = text("未使用"),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = colors.onErrorContainer,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Text(
                                             text = "assets/$name · ${android.text.format.Formatter.formatShortFileSize(context, asset.size)}",
                                             fontFamily = FontFamily.Monospace,
@@ -299,6 +377,31 @@ internal fun AssetManagerDialog(
             },
             confirmButton = { TextButton(onClick = { onDelete(name); deleting = null }) { Text(text("削除")) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(text("閉じる")) } }
+        )
+    }
+    if (confirmDeleteUnused) {
+        EditSettingsDialog(
+            onDismissRequest = { confirmDeleteUnused = false },
+            title = { Text(text("未使用素材を一括削除")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(unusedAssets.sorted().joinToString(", "))
+                    Text(text("削除してもコードは変更されません。"), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDeleteUnused = false
+                        if (onDeleteMultiple != null) {
+                            onDeleteMultiple(unusedAssets)
+                        } else {
+                            unusedAssets.forEach { onDelete(it) }
+                        }
+                    }
+                ) { Text(text("削除")) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteUnused = false }) { Text(text("閉じる")) } }
         )
     }
 }

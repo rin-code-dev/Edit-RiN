@@ -80,6 +80,7 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     var showLineNumbers by setting({ it.showLineNumbers }, { old, value -> old.copy(showLineNumbers = value) })
     var showEditorAccessoryBar by setting({ it.showEditorAccessoryBar }, { old, value -> old.copy(showEditorAccessoryBar = value) })
     var codeCompletion by setting({ it.codeCompletion }, { old, value -> old.copy(codeCompletion = value) })
+    var inlineWatchEnabled by setting({ it.inlineWatchEnabled }, { old, value -> old.copy(inlineWatchEnabled = value) })
     var showAccessoryNavigation by setting({ it.showAccessoryNavigation }, { old, value -> old.copy(showAccessoryNavigation = value) })
     var showAccessorySymbols by setting({ it.showAccessorySymbols }, { old, value -> old.copy(showAccessorySymbols = value) })
     var compactAccessoryKeys by setting({ it.compactAccessoryKeys }, { old, value -> old.copy(compactAccessoryKeys = value) })

@@ -59,6 +59,7 @@ internal class WorkManagementViewModel(
         private set
     var pendingDraft by mutableStateOf<Pair<DraftSnapshot, Map<String, String>>?>(null)
         private set
+    fun searchWorkIds(query: String): Set<String> = persistence.searchWorkIds(query)
     private val deferredWorkIds = mutableSetOf<String>()
     private var needsInitialSave = false
     private var conflictPending = false

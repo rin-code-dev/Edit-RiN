@@ -3,6 +3,7 @@ package com.hikariatelier.app
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -50,7 +51,7 @@ internal fun ConsolePanel(
     var followLatest by rememberSaveable { mutableStateOf(true) }
     var followingScroll by remember { mutableStateOf(false) }
     val dragging by listState.interactionSource.collectIsDraggedAsState()
-    val entries = visibleConsoleEntries(viewModel.entries, viewModel.errorsOnly)
+    val entries = visibleConsoleEntries(viewModel.entries, viewModel.filter)
 
     LaunchedEffect(dragging) {
         if (dragging) followLatest = false
@@ -60,7 +61,7 @@ internal fun ConsolePanel(
             if (browsing) followLatest = false
         }
     }
-    LaunchedEffect(entries.lastOrNull()?.id, entries.lastOrNull()?.count, viewModel.errorsOnly, followLatest) {
+    LaunchedEffect(entries.lastOrNull()?.id, entries.lastOrNull()?.count, viewModel.filter, followLatest) {
         if (followLatest && !dragging && entries.isNotEmpty()) {
             followingScroll = true
             try { listState.scrollToItem(entries.lastIndex) }
@@ -145,23 +146,50 @@ internal fun ConsolePanel(
                             )
                         }
 
-                        val errorCount = viewModel.errorCount
-                        if (errorCount > 0 || viewModel.errorsOnly) {
-                            Spacer(Modifier.width(4.dp))
-                            TextButton(
-                                modifier = Modifier.height(28.dp).semantics {
-                                    contentDescription = uiText(if (viewModel.errorsOnly) "すべてのログを表示" else "エラーだけ表示")
-                                    selected = viewModel.errorsOnly
-                                },
-                                contentPadding = PaddingValues(horizontal = 6.dp),
-                                colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
-                                onClick = { viewModel.errorsOnly = !viewModel.errorsOnly; followLatest = true }
-                            ) {
-                                Text(
-                                    "$errorCount ERR" + if (viewModel.errorsOnly) " ✓" else "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = codeFontFamily
-                                )
+                        Spacer(Modifier.width(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf(
+                                ConsoleFilter.ALL to "ALL",
+                                ConsoleFilter.LOG to "LOG",
+                                ConsoleFilter.WARN to "WARN",
+                                ConsoleFilter.ERROR to "ERR"
+                            ).forEach { (f, label) ->
+                                val isSelected = viewModel.filter == f
+                                val filterColor = when (f) {
+                                    ConsoleFilter.ERROR -> colors.error
+                                    ConsoleFilter.WARN -> colors.tertiary
+                                    ConsoleFilter.LOG -> colors.primary
+                                    ConsoleFilter.ALL -> colors.onSurface
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) filterColor.copy(alpha = 0.2f) else colors.surfaceContainerLow)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) filterColor else colors.outlineVariant.copy(alpha = 0.5f),
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                        .clickable {
+                                            viewModel.filter = f
+                                            followLatest = true
+                                        }
+                                        .padding(horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (f == ConsoleFilter.ERROR && viewModel.errorCount > 0) "${viewModel.errorCount} $label" else label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontFamily = codeFontFamily,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) filterColor else colors.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
 

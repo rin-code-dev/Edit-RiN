@@ -567,6 +567,7 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
     onScreenshot: () -> Unit,
     onShareCard: () -> Unit = {},
     onOpenParameters: () -> Unit,
+    onOpenInspector: (() -> Unit)? = null,
     onToggleRecording: () -> Unit,
     onCancelCountdown: () -> Unit,
     onToggleFullscreen: () -> Unit,
@@ -607,6 +608,15 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                 colors = colors,
                 onClick = onOpenParameters
             )
+
+            if (onOpenInspector != null) {
+                PreviewOverlayButton(
+                    iconRes = R.drawable.ic_code,
+                    description = uiText("プロジェクト診断"),
+                    colors = colors,
+                    onClick = onOpenInspector
+                )
+            }
 
             PreviewOverlayButton(
                 iconRes = if (isRecordingOrCountingDown) {

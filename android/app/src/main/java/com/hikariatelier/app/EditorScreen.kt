@@ -737,6 +737,8 @@ internal fun EditorScreen(
                 }
             } else null
             runSketch(awaitTransition = awaitClose)
+        } else if (event.rerun) {
+            preview.stopSketch()
         }
     }
     LaunchedEffect(workManagementViewModel) {
@@ -1344,6 +1346,7 @@ internal fun EditorScreen(
                     onScreenshot = ::showScreenshotOptions,
                     onShareCard = ::sharePreviewCard,
                     onOpenParameters = ::openPreviewParameters,
+                    onOpenInspector = { sessionViewModel.showInspectorSheet = true },
                     onToggleRecording = ::togglePreviewRecording,
                     onCancelCountdown = { cancelRecordingCountdown() },
                     onToggleFullscreen = {
@@ -1645,7 +1648,7 @@ internal fun EditorScreen(
             readOnly = sessionViewModel.editorInputLocked || galleryPresent || sessionViewModel.sampleReadOnly,
             onCopySample = { workManagementViewModel.requestSampleCopy() },
             onOpenProjectFiles = { editUserWork { showProjectFilesDialog = true } },
-            watchValues = preview.watchValues,
+            watchValues = if (settingsViewModel.inlineWatchEnabled) preview.watchValues else emptyMap(),
             onSwitchRuntimeVersion = { nextVersion ->
                 editUserWork {
                     activeWork?.let { current ->
