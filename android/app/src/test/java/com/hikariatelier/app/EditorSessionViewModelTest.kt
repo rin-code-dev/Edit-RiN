@@ -69,4 +69,35 @@ class EditorSessionViewModelTest {
         assertEquals("draft", session.fileDrafts["two/helper.js"])
     }
 
+    @Test fun liveParameterSyncUpdatesEditorAndCoalescesIntoSingleUndoStep() {
+        val initialCode = "let speed = 2.5; // @slider(0.1, 10.0, 0.1)"
+        val session = EditorSessionViewModel()
+        val work = Work("work1", "Title", initialCode)
+        session.initialize(listOf(work), "work1")
+
+        val param = workParameters(mapOf("sketch.js" to initialCode)).single() as WorkParameter.Number
+
+        // Simulate slider dragging through multiple intermediate values
+        session.applyLiveParameterToEditor(param, "2.6")
+        assertEquals("let speed = 2.6; // @slider(0.1, 10.0, 0.1)", session.editorValueState.value.text)
+        session.applyLiveParameterToEditor(param, "3.0")
+        assertEquals("let speed = 3.0; // @slider(0.1, 10.0, 0.1)", session.editorValueState.value.text)
+        session.applyLiveParameterToEditor(param, "4.2")
+        assertEquals("let speed = 4.2; // @slider(0.1, 10.0, 0.1)", session.editorValueState.value.text)
+
+        // Before commit, no undo steps should have accumulated
+        assertTrue(session.undoStack.isEmpty())
+
+        // Finger lifted -> onCommit
+        session.commitLiveParameterChange()
+        assertEquals(1, session.undoStack.size)
+
+        // Single Undo restores the original value before drag started!
+        val restored = session.undo(session.editorValueState.value)!!
+        assertEquals(initialCode, restored.text)
+
+        // Redo restores the committed value
+        val reapplied = session.redo(session.editorValueState.value)!!
+        assertEquals("let speed = 4.2; // @slider(0.1, 10.0, 0.1)", reapplied.text)
+    }
 }

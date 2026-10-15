@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.InterceptPlatformTextInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.res.painterResource
@@ -315,6 +316,18 @@ internal fun EditorArea(
     ) {
         DisableExtractUiInputWrapper {
             Column(Modifier.fillMaxSize()) {
+                if (sessionViewModel.tweetModeEnabled) {
+                    TweetModeStatusBar(
+                        sourceText = editingText,
+                        targetLimit = sessionViewModel.tweetTargetLimit,
+                        codeFontFamily = codeFontFamily,
+                        onTargetLimitChange = { sessionViewModel.tweetTargetLimit = it },
+                        onOpenMinifySheet = { sessionViewModel.showMinifySheet = true },
+                        onClose = { sessionViewModel.tweetModeEnabled = false },
+                        colors = colors,
+                        textTranslator = textTranslator
+                    )
+                }
                 if (activeWork?.isSample == true) Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -451,8 +464,119 @@ internal fun EditorArea(
                         }
                         onClearNavigationTarget()
                     }
+                    val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    val useFloatingPip = !isLandscape && sessionViewModel.pipModeEnabled
+                    val isPipAtBottom = sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_START ||
+                        sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_END
+
+                    val pipSafeRatio = previewAspectRatioValue(activeWork?.previewAspectRatio ?: "1:1").coerceIn(0.45f, 2.2f)
+                    val pipBaseSize = sessionViewModel.pipSizePreset.baseDp
+                    val pipCanvasHeightDp = if (pipSafeRatio >= 1f) (pipBaseSize / pipSafeRatio) else pipBaseSize.toFloat()
+                    val pipCardHeightDp = if (sessionViewModel.pipMinimized) 32.dp else (pipCanvasHeightDp.dp + 32.dp)
+
+                    val pipBottomPadding = if (useFloatingPip && isPipAtBottom) {
+                        pipCardHeightDp + 16.dp
+                    } else 0.dp
+
+                    DisposableEffect(useFloatingPip) {
+                        onDispose {
+                            sessionViewModel.pipAutoGhosted = false
+                        }
+                    }
+
+                    // Synchronous auto-ghost evaluation: reactive to scroll, cursor, focus, and watch value changes
+                    val isOverlapping = remember(
+                        useFloatingPip,
+                        sessionViewModel.pipSnapCorner,
+                        sessionViewModel.pipSizePreset,
+                        sessionViewModel.pipMinimized,
+                        editorScrollState.value,
+                        editorHorizontalScrollState.value,
+                        editingValue.selection,
+                        editorFocused,
+                        watchValues.toMap(),
+                        editorTextLayout,
+                        maxWidth,
+                        maxHeight
+                    ) {
+                        if (!useFloatingPip) return@remember false
+
+                        val containerWidthPx = with(localDensity) { maxWidth.toPx() }
+                        val containerHeightPx = with(localDensity) { maxHeight.toPx() }
+                        val pipCanvasWidthDp = if (pipSafeRatio >= 1f) pipBaseSize.dp else (pipBaseSize * pipSafeRatio).dp
+                        val pipWidthDp = if (sessionViewModel.pipMinimized) 138.dp else maxOf(138.dp, pipCanvasWidthDp)
+                        val pipWidthPx = with(localDensity) { pipWidthDp.toPx() }
+                        val pipHeightPx = with(localDensity) { pipCardHeightDp.toPx() }
+                        val marginPx = with(localDensity) { 8.dp.toPx() }
+
+                        val pipLeft = when (sessionViewModel.pipSnapCorner) {
+                            PipCorner.TOP_START, PipCorner.BOTTOM_START -> marginPx
+                            PipCorner.TOP_END, PipCorner.BOTTOM_END -> (containerWidthPx - pipWidthPx - marginPx).coerceAtLeast(0f)
+                        }
+                        val pipTop = when (sessionViewModel.pipSnapCorner) {
+                            PipCorner.TOP_START, PipCorner.TOP_END -> marginPx
+                            PipCorner.BOTTOM_START, PipCorner.BOTTOM_END -> (containerHeightPx - pipHeightPx - marginPx).coerceAtLeast(0f)
+                        }
+                        val pipRight = pipLeft + pipWidthPx
+                        val pipBottom = pipTop + pipHeightPx
+
+                        var overlapping = false
+                        val layout = editorTextLayout
+
+                        // Check watch badges overlap (badges are on the right edge)
+                        val isRightEdgePip = sessionViewModel.pipSnapCorner == PipCorner.TOP_END ||
+                            sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_END
+                        if (isRightEdgePip && watchValues.isNotEmpty() && layout != null) {
+                            val badgePad = with(localDensity) { 16.dp.toPx() }
+                            val badgeH = with(localDensity) { 24.dp.toPx() }
+                            for ((lineNum, _) in watchValues) {
+                                val lineIdx = lineNum - 1
+                                val origOffset = logicalLineStarts.getOrNull(lineIdx) ?: continue
+                                if (projection.isHidden(origOffset)) continue
+                                val transOffset = projection.originalToTransformed(origOffset)
+                                    .coerceIn(0, layout.layoutInput.text.length)
+                                val visualLine = layout.getLineForOffset(transOffset)
+                                val badgeTop = layout.getLineTop(visualLine) - editorScrollState.value + badgePad
+                                val badgeBottom = badgeTop + badgeH
+                                if (badgeBottom >= pipTop && badgeTop <= pipBottom) {
+                                    overlapping = true
+                                    break
+                                }
+                            }
+                        }
+
+                        // Check cursor overlap with text padding factored in
+                        if (!overlapping && layout != null && editorFocused) {
+                            val pad = with(localDensity) { 16.dp.toPx() }
+                            val textStartPad = with(localDensity) { (if (showLineNumbers || hasFolds) 8.dp else 14.dp).toPx() }
+                            val gutterPx = with(localDensity) { gutterWidth.toPx() } + textStartPad
+                            val cursorW = with(localDensity) { 24.dp.toPx() }
+                            val cursorOffset = projection.originalToTransformed(editingValue.selection.end.coerceIn(0, editingText.length))
+                                .coerceIn(0, layout.layoutInput.text.length)
+                            val cursorVisualLine = layout.getLineForOffset(cursorOffset)
+                            val cursorLineTop = layout.getLineTop(cursorVisualLine) - editorScrollState.value + pad
+                            val cursorLineBottom = layout.getLineBottom(cursorVisualLine) - editorScrollState.value + pad
+                            val cursorLeft = gutterPx + layout.getHorizontalPosition(cursorOffset, true) - editorHorizontalScrollState.value
+                            val cursorRight = cursorLeft + cursorW
+
+                            val vOverlap = cursorLineBottom >= pipTop && cursorLineTop <= pipBottom
+                            val hOverlap = cursorRight >= pipLeft && cursorLeft <= pipRight
+                            if (vOverlap && hOverlap) {
+                                overlapping = true
+                            }
+                        }
+
+                        overlapping
+                    }
+
+                    SideEffect {
+                        if (sessionViewModel.pipAutoGhosted != isOverlapping) {
+                            sessionViewModel.pipAutoGhosted = isOverlapping
+                        }
+                    }
+
                     val containerMaxHeight = maxHeight
-                    val contentMinHeight = (containerMaxHeight - 32.dp).coerceAtLeast(0.dp)
+                    val contentMinHeight = (containerMaxHeight - 32.dp + pipBottomPadding).coerceAtLeast(0.dp)
 
                     Row(
                         modifier = Modifier
@@ -531,7 +655,7 @@ internal fun EditorArea(
                                     .padding(
                                         start = if (showLineNumbers || hasFolds) 8.dp else 14.dp,
                                         end = 16.dp,
-                                        bottom = 28.dp
+                                        bottom = 28.dp + pipBottomPadding
                                     )
                                     .focusRequester(editorFocusRequester)
                                     .onFocusChanged {
@@ -714,6 +838,159 @@ internal fun EditorArea(
                         Text(textTranslator("エラーをコピー", emptyArray()))
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun TweetModeStatusBar(
+    sourceText: String,
+    targetLimit: Int,
+    codeFontFamily: FontFamily,
+    onTargetLimitChange: (Int) -> Unit,
+    onOpenMinifySheet: () -> Unit,
+    onClose: () -> Unit,
+    colors: ColorScheme,
+    textTranslator: (String, Array<out Any?>) -> String,
+    modifier: Modifier = Modifier
+) {
+    fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
+
+    val golfedCount by remember(sourceText) {
+        derivedStateOf { minifyJavaScriptForTweet(sourceText).length }
+    }
+
+    val isOver = golfedCount > targetLimit
+    val isWarning = !isOver && golfedCount > targetLimit - 15
+    val delta = targetLimit - golfedCount
+
+    val accentColor = when {
+        isOver -> colors.error
+        isWarning -> Color(0xFFF59E0B)
+        else -> Color(0xFF10B981)
+    }
+
+    val progressFraction = (golfedCount.toFloat() / targetLimit.toFloat()).coerceIn(0f, 1f)
+    val pillShape = RoundedCornerShape(8.dp)
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(colors.surfaceVariant.copy(alpha = 0.25f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Left: Ring + Counter Pill (Tap to toggle 140 / 280)
+            Row(
+                modifier = Modifier
+                    .clip(pillShape)
+                    .clickable { onTargetLimitChange(if (targetLimit == 140) 280 else 140) }
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(15.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = { 1f },
+                        modifier = Modifier.fillMaxSize(),
+                        color = colors.outlineVariant.copy(alpha = 0.35f),
+                        strokeWidth = 2.dp
+                    )
+                    CircularProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier.fillMaxSize(),
+                        color = accentColor,
+                        strokeWidth = 2.dp
+                    )
+                }
+
+                Text(
+                    text = "$golfedCount/$targetLimit",
+                    fontFamily = codeFontFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isOver) colors.error else colors.onSurface,
+                    maxLines = 1,
+                    softWrap = false
+                )
+
+                Text(
+                    text = if (delta >= 0) "(-$delta)" else "(+${-delta})",
+                    fontFamily = codeFontFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accentColor,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+
+            // Right: Compact "Golf" Action + Close Icon
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(pillShape)
+                        .background(colors.primary.copy(alpha = 0.14f))
+                        .border(1.dp, colors.primary.copy(alpha = 0.65f), pillShape)
+                        .clickable { onOpenMinifySheet() }
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Golf",
+                        fontFamily = codeFontFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.primary,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onClose() }
+                        .semantics { contentDescription = uiText("閉じる") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close),
+                        contentDescription = null,
+                        tint = colors.onSurfaceVariant.copy(alpha = 0.75f),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+
+        // 1.5dp bottom progress hairline
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.5.dp)
+                .background(colors.outlineVariant.copy(alpha = 0.22f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progressFraction)
+                    .background(accentColor)
             )
         }
     }

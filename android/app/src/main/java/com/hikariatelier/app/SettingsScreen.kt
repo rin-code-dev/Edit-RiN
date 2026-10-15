@@ -741,6 +741,13 @@ internal fun SettingsScreen(
                 )
                 SettingsDivider()
                 SettingSwitchRow(
+                    title = uiText("インライン変数ウォッチ"),
+                    description = uiText("// ? の行の値をエディター上にリアルタイム表示します"),
+                    checked = state.inlineWatchEnabled,
+                    onCheckedChange = { value -> onSettingsChange { copy(inlineWatchEnabled = value) } }
+                )
+                SettingsDivider()
+                SettingSwitchRow(
                     title = uiText("編集キー"),
                     description = uiText("編集中にTAB、カーソル移動、記号ボタンを表示します"),
                     checked = state.showEditorAccessoryBar,

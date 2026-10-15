@@ -32,13 +32,14 @@ internal fun VirtualizedCodeViewport(
     activeLineBackground: Color,
     errorLines: Set<Int>,
     errorLineBackground: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    extraBottomPaddingDp: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 512)
     val lexer = remember(darkTheme) { IncrementalLineLexer(darkTheme) }
     val lineHeightPx = with(density) { textStyle.lineHeight.toPx().coerceAtLeast(18.dp.toPx()) }
-    val totalHeightDp = with(density) { (lines.size * lineHeightPx + 32.dp.toPx()).toDp() }
+    val totalHeightDp = with(density) { (lines.size * lineHeightPx + 32.dp.toPx() + extraBottomPaddingDp.toPx()).toDp() }
 
     val visibleRange by remember(lines.size, scrollState.value, viewportHeightPx, lineHeightPx) {
         derivedStateOf {

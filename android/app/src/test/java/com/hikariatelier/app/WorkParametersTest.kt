@@ -124,4 +124,78 @@ class WorkParametersTest {
         """.trimIndent()))
         assertEquals(listOf("valid"), parameters.map { it.name })
     }
+
+    @Test fun parsesInlineCommentParametersAndExtractsDefaults() {
+        val code = """
+            let speed = 2.5; // @slider(0.1, 10.0, 0.1)
+            let autoStep = 5.0; // @slider(0.0, 100.0)
+            const count = 64; // @int(1, 256)
+            var baseColor = "#FF3366"; // @color
+            let blend = true; // @toggle
+            let mode = "sin"; // @choice(sin, cos, noise)
+            let customLabel = 1.0; // @slider(0.0, 5.0, 0.5) "Custom Speed"
+        """.trimIndent()
+
+        val parameters = workParameters(mapOf("sketch.js" to code))
+        assertEquals(listOf("speed", "autoStep", "count", "baseColor", "blend", "mode", "customLabel"), parameters.map { it.name })
+
+        val speedParam = parameters[0] as WorkParameter.Number
+        assertEquals("speed", speedParam.name)
+        assertEquals("2.5", speedParam.defaultValue)
+        assertEquals(0.1f, speedParam.min, 0.001f)
+        assertEquals(10.0f, speedParam.max, 0.001f)
+        assertEquals(0.1f, speedParam.step, 0.001f)
+
+        val autoStepParam = parameters[1] as WorkParameter.Number
+        assertEquals(1.0f, autoStepParam.step, 0.001f)
+
+        val countParam = parameters[2] as WorkParameter.Number
+        assertEquals("64", countParam.defaultValue)
+        assertEquals(1f, countParam.min, 0.001f)
+        assertEquals(256f, countParam.max, 0.001f)
+        assertEquals(1f, countParam.step, 0.001f)
+
+        val colorParam = parameters[3] as WorkParameter.Color
+        assertEquals("#FF3366", colorParam.defaultValue)
+
+        val boolParam = parameters[4] as WorkParameter.Boolean
+        assertEquals("true", boolParam.defaultValue)
+
+        val choiceParam = parameters[5] as WorkParameter.Choice
+        assertEquals("sin", choiceParam.defaultValue)
+        assertEquals(listOf("sin", "cos", "noise"), choiceParam.options)
+
+        val customParam = parameters[6] as WorkParameter.Number
+        assertEquals("Custom Speed", customParam.label)
+
+        // Line lookup
+        assertEquals("sketch.js" to 1, findParameterDeclarationLine(mapOf("sketch.js" to code), "speed"))
+        assertEquals("sketch.js" to 4, findParameterDeclarationLine(mapOf("sketch.js" to code), "baseColor"))
+    }
+
+    @Test fun updatesInlineParametersInSourceCode() {
+        val code = """
+            let speed = 2.5; // @slider(0.1, 10.0, 0.1)
+            let baseColor = "#FF3366"; // @color
+            let blend = true; // @toggle
+            let mode = "sin"; // @choice(sin, cos, noise)
+        """.trimIndent()
+
+        val params = workParameters(mapOf("sketch.js" to code))
+        val speedParam = params.find { it.name == "speed" }!!
+        val updated1 = updateParameterInSource(code, speedParam, "4.8")!!
+        assertTrue(updated1.contains("let speed = 4.8; // @slider(0.1, 10.0, 0.1)"))
+
+        val colorParam = params.find { it.name == "baseColor" }!!
+        val updated2 = updateParameterInSource(updated1, colorParam, "#00AABB")!!
+        assertTrue(updated2.contains("let baseColor = \"#00AABB\"; // @color"))
+
+        val blendParam = params.find { it.name == "blend" }!!
+        val updated3 = updateParameterInSource(updated2, blendParam, "false")!!
+        assertTrue(updated3.contains("let blend = false; // @toggle"))
+
+        val modeParam = params.find { it.name == "mode" }!!
+        val updated4 = updateParameterInSource(updated3, modeParam, "noise")!!
+        assertTrue(updated4.contains("let mode = \"noise\"; // @choice(sin, cos, noise)"))
+    }
 }

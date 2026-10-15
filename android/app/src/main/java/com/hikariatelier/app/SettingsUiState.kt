@@ -22,6 +22,7 @@ internal data class SettingsUiState(
     val showLineNumbers: Boolean = true,
     val showEditorAccessoryBar: Boolean = true,
     val codeCompletion: Boolean = true,
+    val inlineWatchEnabled: Boolean = true,
     val showAccessoryNavigation: Boolean = true,
     val showAccessorySymbols: Boolean = true,
     val compactAccessoryKeys: Boolean = true,

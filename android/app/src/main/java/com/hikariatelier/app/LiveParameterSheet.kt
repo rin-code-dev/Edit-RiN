@@ -32,10 +32,12 @@ internal fun LiveParameterSheet(
     } + ("sketch.js" to editorText)
     val declarations = workParameters(sources)
     val scheduleSave = {
+        sessionViewModel.commitLiveParameterChange()
         parameterWork?.let { workManagementViewModel.scheduleParameterSave(it.id) }
         Unit
     }
     val flushSaveAndDismiss = {
+        sessionViewModel.commitLiveParameterChange()
         parameterWork?.let { workManagementViewModel.flushParameterSave(it.id) }
         onDismiss()
     }
@@ -57,6 +59,7 @@ internal fun LiveParameterSheet(
             preview.evaluate(
                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
             )
+            sessionViewModel.applyLiveParameterToEditor(parameter, value)
         },
         onResetParameter = { parameter ->
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
@@ -67,6 +70,7 @@ internal fun LiveParameterSheet(
             preview.evaluate(
                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
             )
+            sessionViewModel.applyLiveParameterToEditor(parameter, parameter.defaultValue)
             scheduleSave()
         },
         onResetAll = {
@@ -79,6 +83,7 @@ internal fun LiveParameterSheet(
                 preview.evaluate(
                     "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
                 )
+                sessionViewModel.applyLiveParameterToEditor(parameter, parameter.defaultValue)
             }
             scheduleSave()
         },
@@ -142,10 +147,12 @@ internal fun LiveParameterPanel(
     } + ("sketch.js" to editorText)
     val declarations = workParameters(sources)
     val scheduleSave = {
+        sessionViewModel.commitLiveParameterChange()
         parameterWork?.let { workManagementViewModel.scheduleParameterSave(it.id) }
         Unit
     }
     val flushSaveAndDismiss = {
+        sessionViewModel.commitLiveParameterChange()
         parameterWork?.let { workManagementViewModel.flushParameterSave(it.id) }
         onDismiss()
     }
@@ -162,6 +169,7 @@ internal fun LiveParameterPanel(
             preview.evaluate(
                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
             )
+            sessionViewModel.applyLiveParameterToEditor(parameter, value)
         },
         onResetParameter = { parameter ->
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
@@ -172,6 +180,7 @@ internal fun LiveParameterPanel(
             preview.evaluate(
                 "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
             )
+            sessionViewModel.applyLiveParameterToEditor(parameter, parameter.defaultValue)
             scheduleSave()
         },
         onResetAll = {
@@ -184,6 +193,7 @@ internal fun LiveParameterPanel(
                 preview.evaluate(
                     "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
                 )
+                sessionViewModel.applyLiveParameterToEditor(parameter, parameter.defaultValue)
             }
             scheduleSave()
         },

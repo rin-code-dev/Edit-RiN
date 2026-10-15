@@ -5,6 +5,29 @@
   let projectConfig = {};
   try { projectConfig = JSON.parse(window.Android?.getProjectConfig?.(runToken) || '{}'); } catch (_) {}
   window.__editRinProjectConfig = projectConfig;
+  const activeAudioContexts = window.__editRinActiveAudioContexts || (window.__editRinActiveAudioContexts = new Set());
+  const hookAudioContext = (name) => {
+    const Orig = window[name];
+    if (typeof Orig === 'function') {
+      try {
+        const Hooked = function(...args) {
+          let ctx;
+          try {
+            ctx = Reflect.construct(Orig, args, new.target || Hooked);
+          } catch (_) {
+            ctx = new Orig(...args);
+          }
+          activeAudioContexts.add(ctx);
+          return ctx;
+        };
+        Hooked.prototype = Orig.prototype;
+        window[name] = Hooked;
+      } catch (_) {}
+    }
+  };
+  hookAudioContext('AudioContext');
+  hookAudioContext('webkitAudioContext');
+
   if (projectConfig.thumbnailOnly) {
     // Thumbnail rendering must never start sound, including sketches that resume audio in setup.
     for (const AudioContextType of new Set([window.AudioContext, window.webkitAudioContext])) {
@@ -90,12 +113,51 @@
   // 1. Prevent Android WebView CORS errors on <video> elements by supplying a transparent poster.
   // WebView tries to load an internal "android-webview-video-poster:" URL if poster is missing.
   const DUMMY_VIDEO_POSTER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  const activeGlContexts = window.__editRinActiveGlContexts || (window.__editRinActiveGlContexts = new Set());
+  const hookCanvasContext = (canvas) => {
+    if (!canvas || typeof canvas.getContext !== 'function') return;
+    const orig = canvas.getContext;
+    canvas.getContext = function(type, ...args) {
+      const ctx = orig.apply(this, [type, ...args]);
+      if (ctx && typeof type === 'string' && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
+        activeGlContexts.add(ctx);
+      }
+      return ctx;
+    };
+  };
+
+  if (typeof HTMLCanvasElement !== 'undefined' && HTMLCanvasElement.prototype?.getContext) {
+    const origGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+      const ctx = origGetContext.apply(this, [type, ...args]);
+      if (ctx && typeof type === 'string' && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
+        activeGlContexts.add(ctx);
+      }
+      return ctx;
+    };
+  }
+  if (typeof OffscreenCanvas !== 'undefined' && OffscreenCanvas.prototype?.getContext) {
+    const origOffscreen = OffscreenCanvas.prototype.getContext;
+    OffscreenCanvas.prototype.getContext = function(type, ...args) {
+      const ctx = origOffscreen.apply(this, [type, ...args]);
+      if (ctx && typeof type === 'string' && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
+        activeGlContexts.add(ctx);
+      }
+      return ctx;
+    };
+  }
+
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
     const origCreateElement = document.createElement.bind(document);
     document.createElement = function (tagName, options) {
       const el = origCreateElement(tagName, options);
-      if (typeof tagName === 'string' && tagName.toLowerCase() === 'video' && typeof el?.setAttribute === 'function') {
-        el.setAttribute('poster', DUMMY_VIDEO_POSTER);
+      if (typeof tagName === 'string') {
+        const lower = tagName.toLowerCase();
+        if (lower === 'video' && typeof el?.setAttribute === 'function') {
+          el.setAttribute('poster', DUMMY_VIDEO_POSTER);
+        } else if (lower === 'canvas') {
+          hookCanvasContext(el);
+        }
       }
       return el;
     };
@@ -1274,6 +1336,14 @@ function removeInstance() {
   canvasSizeObservers.get(canvas)?.disconnect(); canvasSizeObservers.delete(canvas);
   instances.delete(this); scheduleFit(true); maybeReady(); maybeVisualReady();
 }
+const trackedAssets = window.__editRinTrackedAssets = window.__editRinTrackedAssets || {
+  images: new Set(),
+  sounds: new Set(),
+  fonts: new Set(),
+  json: [],
+  strings: []
+};
+
 const hookedConstructors = new WeakSet();
 function attachP5(constructor) {
   if (typeof constructor !== 'function' || !constructor.prototype || hookedConstructors.has(constructor)) return;
@@ -1318,6 +1388,59 @@ function attachP5(constructor) {
     if (webgpu && result?.catch) return result.catch(error => { throw new Error(`WEBGPUを初期化できませんでした: ${error.message}`); });
     return result;
   };
+  const origLoadImage = constructor.prototype.loadImage;
+  if (typeof origLoadImage === 'function') {
+    constructor.prototype.loadImage = function (path, ...args) {
+      const img = origLoadImage.call(this, path, ...args);
+      if (img && typeof path === 'string') {
+        img._rinSourcePath = path;
+        trackedAssets.images.add(img);
+      }
+      return img;
+    };
+  }
+  const origLoadSound = constructor.prototype.loadSound;
+  if (typeof origLoadSound === 'function') {
+    constructor.prototype.loadSound = function (path, ...args) {
+      const sound = origLoadSound.call(this, path, ...args);
+      if (sound && typeof path === 'string') {
+        sound._rinSourcePath = path;
+        trackedAssets.sounds.add(sound);
+      }
+      return sound;
+    };
+  }
+  const origLoadFont = constructor.prototype.loadFont;
+  if (typeof origLoadFont === 'function') {
+    constructor.prototype.loadFont = function (path, ...args) {
+      const font = origLoadFont.call(this, path, ...args);
+      if (font && typeof path === 'string') {
+        font._rinSourcePath = path;
+        trackedAssets.fonts.add(font);
+      }
+      return font;
+    };
+  }
+  const origLoadJSON = constructor.prototype.loadJSON;
+  if (typeof origLoadJSON === 'function') {
+    constructor.prototype.loadJSON = function (path, ...args) {
+      const json = origLoadJSON.call(this, path, ...args);
+      if (json && typeof path === 'string') {
+        trackedAssets.json.push({ path, obj: json });
+      }
+      return json;
+    };
+  }
+  const origLoadStrings = constructor.prototype.loadStrings;
+  if (typeof origLoadStrings === 'function') {
+    constructor.prototype.loadStrings = function (path, ...args) {
+      const strings = origLoadStrings.call(this, path, ...args);
+      if (strings && typeof path === 'string') {
+        trackedAssets.strings.push({ path, arr: strings });
+      }
+      return strings;
+    };
+  }
 }
 let loadedP5 = window.p5;
 attachP5(loadedP5);
@@ -1355,22 +1478,100 @@ window.addEventListener('load', () => {
   });
 });
 
-window.addEventListener('beforeunload', () => {
-  document.getElementById('boot')?.remove();
-  if (recordingSession) {
-    const session = recordingSession;
-    const recorder = session.recorder;
-    notifyAndroid('abortRecordingTransfer', session.transferId);
-    releaseRecording(session);
-    if (recorder && recorder.state !== 'inactive') recorder.stop();
+  function disposeSketch() {
+    window.__editRinClearWatch?.();
+    trackedAssets.images.clear();
+    trackedAssets.sounds.clear();
+    trackedAssets.fonts.clear();
+    trackedAssets.json.length = 0;
+    trackedAssets.strings.length = 0;
+    try { window.noLoop?.(); } catch (_) {}
+    for (const [instance] of instances) {
+      try { (scope(instance) || window).noLoop?.(); } catch (_) {}
+    }
+
+    const glContexts = window.__editRinActiveGlContexts;
+    if (glContexts) {
+      for (const gl of glContexts) {
+        try {
+          const loseExt = gl?.getExtension?.('WEBGL_lose_context');
+          loseExt?.loseContext?.();
+        } catch (_) {}
+      }
+      glContexts.clear();
+    }
+
+    const loseGl = (canvas) => {
+      try {
+        const gl = canvas?.drawingContext?.gl || canvas?.drawingContext ||
+                   canvas?._gl ||
+                   canvas?.getContext?.('webgl2') ||
+                   canvas?.getContext?.('webgl') ||
+                   canvas?.getContext?.('experimental-webgl');
+        if (gl && typeof gl.getExtension === 'function') {
+          const loseExt = gl.getExtension('WEBGL_lose_context');
+          loseExt?.loseContext?.();
+        }
+      } catch (_) {}
+    };
+
+    for (const [instance] of instances) {
+      loseGl(instanceCanvas(instance));
+    }
+    loseGl(compositeCanvas);
+    document.querySelectorAll?.('canvas')?.forEach(loseGl);
+
+    for (const [instance] of instances) {
+      try { instance.remove?.(); } catch (_) {}
+    }
+    try { window.p5?.instance?.remove?.(); } catch (_) {}
+
+    const audioContexts = window.__editRinActiveAudioContexts;
+    if (audioContexts) {
+      for (const ctx of audioContexts) {
+        try { ctx.close?.().catch?.(() => {}); } catch (_) {}
+      }
+      audioContexts.clear();
+    }
+    try { window.getAudioContext?.().close?.().catch?.(() => {}); } catch (_) {}
+    try { window.p5?.soundOut?.audiocontext?.close?.().catch?.(() => {}); } catch (_) {}
+
+    resizeObserver?.disconnect();
+    for (const observer of canvasSizeObservers.values()) observer.disconnect();
+    canvasSizeObservers.clear();
+    cancelHostFrame(resizeFrame); cancelHostFrame(compositeFrame);
+    for (const entry of artworkFrames.values()) if (entry.native) cancelHostFrame(entry.native);
+    artworkFrames.clear();
+
+    if (recordingSession) {
+      const session = recordingSession;
+      const recorder = session.recorder;
+      notifyAndroid('abortRecordingTransfer', session.transferId);
+      releaseRecording(session);
+      if (recorder && recorder.state !== 'inactive') recorder.stop();
+    }
   }
-  resizeObserver?.disconnect();
-  for (const observer of canvasSizeObservers.values()) observer.disconnect();
-  canvasSizeObservers.clear();
-  cancelHostFrame(resizeFrame); cancelHostFrame(compositeFrame);
-  for (const entry of artworkFrames.values()) if (entry.native) cancelHostFrame(entry.native);
-  artworkFrames.clear();
-}, { once: true });
+
+  window.rinDispose = disposeSketch;
+
+  window.__editRinTriggerRedraw = () => {
+    for (const [instance, state] of instances) {
+      if (state.ready) {
+        const api = scope(instance) || window;
+        if (typeof api.isLooping === 'function' && !api.isLooping()) {
+          api.redraw?.();
+        }
+      }
+    }
+    if (typeof window.redraw === 'function') {
+      try { window.redraw(); } catch (_) {}
+    }
+  };
+
+  window.addEventListener('beforeunload', () => {
+    document.getElementById('boot')?.remove();
+    disposeSketch();
+  }, { once: true });
 })();
 
 // ============================================================================
@@ -1378,22 +1579,74 @@ window.addEventListener('beforeunload', () => {
 // ============================================================================
 (() => {
   let activePort = null;
-  const watchLastSentAt = new Map();
+  const pendingWatches = new Map();
+  let watchFlushTimer = null;
 
-  function formatWatchValue(val) {
+  let watchDisposed = false;
+
+  function formatWatchValue(val, depth = 0) {
+    if (depth > 2) return Array.isArray(val) ? '[…]' : (val && typeof val === 'object') ? '{…}' : String(val);
     if (val === null) return 'null';
     if (val === undefined) return 'undefined';
     if (typeof val === 'number') return Number.isInteger(val) ? String(val) : val.toFixed(3).replace(/\.?0+$/, '');
-    if (typeof val === 'boolean' || typeof val === 'string') return String(val).slice(0, 36);
-    if (Array.isArray(val)) return '[' + val.slice(0, 4).map(formatWatchValue).join(', ') + (val.length > 4 ? ', …' : '') + ']';
-    if (typeof val === 'object') {
-      if ('x' in val && 'y' in val) {
-        const zPart = 'z' in val ? `, ${formatWatchValue(val.z)}` : '';
-        return `(${formatWatchValue(val.x)}, ${formatWatchValue(val.y)}${zPart})`;
-      }
-      try { return JSON.stringify(val).slice(0, 36); } catch (_) { return '[Object]'; }
+    if (typeof val === 'boolean' || typeof val === 'string') {
+      const s = String(val);
+      return s.length > 80 ? s.slice(0, 79) + '…' : s;
     }
-    return String(val).slice(0, 36);
+    if (Array.isArray(val)) {
+      try {
+        const arr = '[' + val.slice(0, 6).map(item => formatWatchValue(item, depth + 1)).join(', ') + (val.length > 6 ? ', …' : '') + ']';
+        return arr.length > 80 ? arr.slice(0, 79) + '…' : arr;
+      } catch (_) {
+        return '[Array]';
+      }
+    }
+    if (typeof val === 'object') {
+      try {
+        if ('x' in val && 'y' in val) {
+          const zPart = 'z' in val ? `, ${formatWatchValue(val.z, depth + 1)}` : '';
+          const vec = `(${formatWatchValue(val.x, depth + 1)}, ${formatWatchValue(val.y, depth + 1)}${zPart})`;
+          return vec.length > 80 ? vec.slice(0, 79) + '…' : vec;
+        }
+        const json = JSON.stringify(val);
+        return json.length > 80 ? json.slice(0, 79) + '…' : json;
+      } catch (_) {
+        return '[Object]';
+      }
+    }
+    try {
+      const str = String(val);
+      return str.length > 80 ? str.slice(0, 79) + '…' : str;
+    } catch (_) {
+      return '[Value]';
+    }
+  }
+
+  function flushPendingWatches() {
+    watchFlushTimer = null;
+    if (watchDisposed || pendingWatches.size === 0) return;
+    const token = window.__editRinRunToken || '';
+    const batch = Object.fromEntries(pendingWatches);
+    pendingWatches.clear();
+    const json = JSON.stringify(batch);
+    if (activePort) {
+      try { activePort.postMessage(`WB:${token}:${json}`); } catch (_) {}
+    } else {
+      try {
+        if (typeof window.Android?.onWatchBatch === 'function') {
+          window.Android.onWatchBatch(token, json);
+        } else if (typeof window.Android?.onWatchValue === 'function') {
+          for (const [line, val] of Object.entries(batch)) {
+            window.Android.onWatchValue(token, Number(line), val);
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  function scheduleWatchFlush() {
+    if (watchDisposed || watchFlushTimer !== null) return;
+    watchFlushTimer = setTimeout(flushPendingWatches, 50);
   }
 
   window.rinWatch = (lineOrLabel, labelOrVal, maybeVal) => {
@@ -1401,19 +1654,25 @@ window.addEventListener('beforeunload', () => {
     const line = hasLine ? lineOrLabel : 1;
     const label = hasLine ? String(labelOrVal || '') : String(lineOrLabel || '');
     const value = hasLine ? maybeVal : labelOrVal;
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const prev = watchLastSentAt.get(line) || 0;
-    if (now - prev >= 90) {
-      watchLastSentAt.set(line, now);
-      const formatted = (label ? `${label} = ` : '') + formatWatchValue(value);
-      const token = window.__editRinRunToken || '';
-      if (activePort) {
-        try { activePort.postMessage(`W:${token}:${line}:${formatted}`); } catch (_) {}
-      } else {
-        try { window.Android?.onWatchValue?.(token, line, formatted); } catch (_) {}
-      }
+    if (watchDisposed) return value;
+    let formatted;
+    try {
+      formatted = (label ? `${label} = ` : '') + formatWatchValue(value);
+    } catch (_) {
+      formatted = (label ? `${label} = ` : '') + '[Value]';
     }
+    pendingWatches.set(line, formatted);
+    scheduleWatchFlush();
     return value;
+  };
+
+  window.__editRinClearWatch = () => {
+    watchDisposed = true;
+    if (watchFlushTimer !== null) {
+      clearTimeout(watchFlushTimer);
+      watchFlushTimer = null;
+    }
+    pendingWatches.clear();
   };
 
   window.__editRinCapturePassThroughThumbnail = token => {
@@ -1433,6 +1692,210 @@ window.addEventListener('beforeunload', () => {
     } catch (_) {}
   };
 
+  window.__editRinHotSwapCode = function(newCode) {
+    try {
+      (0, eval)(newCode);
+      window.__editRinTriggerRedraw?.();
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
+
+  window.__editRinHotSwapAsset = function(filename, mime, payload) {
+    try {
+      const isUrl = mime === 'url' || (typeof payload === 'string' && (payload.startsWith('http://') || payload.startsWith('https://') || payload.startsWith('blob:')));
+      const resourceUrl = isUrl ? payload : ('data:' + mime + ';base64,' + payload);
+      const cleanName = filename.replace(/^assets\//, '');
+      const matchName = name => typeof name === 'string' && (name.includes(cleanName) || name.includes(filename) || cleanName.includes(name));
+
+      const trackedAssets = window.__editRinTrackedAssets || {
+        images: new Set(),
+        sounds: new Set(),
+        fonts: new Set(),
+        json: [],
+        strings: []
+      };
+
+      // 1. Update <img> elements in DOM
+      const imgs = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('img') : [];
+      imgs.forEach(img => {
+        const src = img.src || img.getAttribute?.('src') || '';
+        if (matchName(src)) {
+          img.src = resourceUrl;
+        }
+      });
+
+      // 2. Update <audio> and <video> elements in DOM
+      const mediaList = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('audio, video') : [];
+      mediaList.forEach(el => {
+        const src = el.src || el.getAttribute?.('src') || '';
+        if (matchName(src)) {
+          const prevTime = el.currentTime;
+          const wasPlaying = !el.paused;
+          el.src = resourceUrl;
+          el.load?.();
+          el.currentTime = prevTime;
+          if (wasPlaying) {
+            el.play?.().catch(() => {});
+          }
+        }
+      });
+
+      // Helper to update a p5.Image
+      function updateP5Image(val) {
+        if (!val || !val.canvas || !val.drawingContext) return;
+        const tempImg = new Image();
+        tempImg.crossOrigin = 'anonymous';
+        tempImg.onload = () => {
+          const w = tempImg.naturalWidth || tempImg.width;
+          const h = tempImg.naturalHeight || tempImg.height;
+          if (w > 0 && h > 0 && (val.width !== w || val.height !== h)) {
+            val.width = w;
+            val.height = h;
+            if (val.canvas) {
+              val.canvas.width = w;
+              val.canvas.height = h;
+            }
+          }
+          val.drawingContext.clearRect?.(0, 0, val.width, val.height);
+          val.drawingContext.drawImage?.(tempImg, 0, 0);
+          val.updatePixels?.();
+          val.modified = true;
+          val._modified = true;
+          window.__editRinTriggerRedraw?.();
+        };
+        tempImg.src = resourceUrl;
+      }
+
+      // 3. Update tracked p5 images
+      for (const img of trackedAssets.images) {
+        if (matchName(img._rinSourcePath || img._url || img.src)) {
+          updateP5Image(img);
+        }
+      }
+
+      // 4. Update tracked p5 sounds
+      for (const sound of trackedAssets.sounds) {
+        if (matchName(sound._rinSourcePath || sound.url || sound._url)) {
+          try {
+            sound.url = resourceUrl;
+            sound.load?.();
+          } catch (_) {}
+        }
+      }
+
+      // 5. Update tracked fonts
+      for (const font of trackedAssets.fonts) {
+        if (matchName(font._rinSourcePath)) {
+          if (window.opentype && typeof window.opentype.load === 'function') {
+            window.opentype.load(resourceUrl, (err, loadedFont) => {
+              if (!err && loadedFont) {
+                font.font = loadedFont;
+                window.__editRinTriggerRedraw?.();
+              }
+            });
+          }
+        }
+      }
+      // Also update CSS FontFace for font files
+      const fontExt = cleanName.substring(cleanName.lastIndexOf('.') + 1).toLowerCase();
+      if (['ttf', 'otf', 'woff', 'woff2'].includes(fontExt) && typeof FontFace !== 'undefined') {
+        const familyName = cleanName.substring(0, cleanName.lastIndexOf('.'));
+        try {
+          const face = new FontFace(familyName, `url(${resourceUrl})`);
+          face.load().then(loaded => {
+            document.fonts?.add(loaded);
+            window.__editRinTriggerRedraw?.();
+          }).catch(() => {});
+        } catch (_) {}
+      }
+
+      // 6. Update tracked JSON
+      for (const item of trackedAssets.json) {
+        if (matchName(item.path)) {
+          if (typeof fetch === 'function') {
+            fetch(resourceUrl)
+              .then(res => res.json())
+              .then(newData => {
+                if (item.obj && typeof item.obj === 'object') {
+                  for (const k of Object.keys(item.obj)) delete item.obj[k];
+                  Object.assign(item.obj, newData);
+                  window.__editRinTriggerRedraw?.();
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      // 7. Update tracked Strings / text
+      for (const item of trackedAssets.strings) {
+        if (matchName(item.path)) {
+          if (typeof fetch === 'function') {
+            fetch(resourceUrl)
+              .then(res => res.text())
+              .then(text => {
+                if (Array.isArray(item.arr)) {
+                  item.arr.length = 0;
+                  item.arr.push(...text.split(/\r\n|\r|\n/));
+                  window.__editRinTriggerRedraw?.();
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      // 8. Scan window properties for untracked global variables (e.g. let img, sound)
+      for (const key of Object.keys(window)) {
+        try {
+          const val = window[key];
+          if (!val || typeof val !== 'object') continue;
+
+          // p5.Image (has canvas, drawingContext, and loadPixels)
+          if (val.canvas && val.drawingContext && typeof val.loadPixels === 'function') {
+            if (matchName(val._rinSourcePath || val._url || val.src)) {
+              updateP5Image(val);
+            }
+          }
+
+          // p5.SoundFile (has .url or .buffer and .play)
+          if (typeof val.load === 'function' && typeof val.play === 'function') {
+            if (matchName(val._rinSourcePath || val.url || val._url)) {
+              try {
+                val.url = resourceUrl;
+                val.load?.();
+              } catch (_) {}
+            }
+          }
+
+          // p5.Font (has .font or .parent)
+          if (val.font && typeof val.font === 'object') {
+            if (matchName(val._rinSourcePath)) {
+              if (window.opentype && typeof window.opentype.load === 'function') {
+                window.opentype.load(resourceUrl, (err, loadedFont) => {
+                  if (!err && loadedFont) {
+                    val.font = loadedFont;
+                    window.__editRinTriggerRedraw?.();
+                  }
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Force redraw on paused sketches
+      window.__editRinTriggerRedraw?.();
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
+
   window.addEventListener('message', event => {
     if (event.data === 'INIT_PORT' && event.ports?.[0]) {
       activePort = event.ports[0];
@@ -1442,6 +1905,20 @@ window.addEventListener('beforeunload', () => {
           const nums = text.slice(2).split(',').map(Number);
           if (nums.length >= 9) {
             window.__editRinUpdateSensors?.(...nums);
+          }
+        } else if (text.startsWith('H:')) {
+          const code = text.slice(2);
+          window.__editRinHotSwapCode?.(code);
+        } else if (text.startsWith('A:')) {
+          const colon1 = text.indexOf(':', 2);
+          if (colon1 > 2) {
+            const colon2 = text.indexOf(':', colon1 + 1);
+            if (colon2 > colon1) {
+              const filename = text.slice(2, colon1);
+              const mime = text.slice(colon1 + 1, colon2);
+              const payload = text.slice(colon2 + 1);
+              window.__editRinHotSwapAsset?.(filename, mime, payload);
+            }
           }
         }
       };

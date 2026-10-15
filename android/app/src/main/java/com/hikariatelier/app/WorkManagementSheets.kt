@@ -323,6 +323,9 @@ internal fun WorkActionsMenu(
     onOpenProjectFiles: () -> Unit,
     onOpenAssets: () -> Unit,
     onOpenRuntime: () -> Unit,
+    tweetModeEnabled: Boolean = false,
+    onToggleTweetMode: () -> Unit = {},
+    onOpenMinify: () -> Unit = {},
     textTranslator: (String, Array<out Any?>) -> String,
     windowSetup: @Composable () -> Unit = {}
 ) {
@@ -381,6 +384,26 @@ internal fun WorkActionsMenu(
             onClick = {
                 viewModel.workActionsMenuExpanded = false
                 onFormat()
+            }
+        )
+        ActionRow(
+            iconRes = R.drawable.ic_code,
+            title = uiText("#つぶやきProcessingモード"),
+            subtitle = uiText(if (tweetModeEnabled) "文字数カウントゲージを非表示" else "文字数カウントゲージを表示"),
+            colors = colors,
+            onClick = {
+                viewModel.workActionsMenuExpanded = false
+                onToggleTweetMode()
+            }
+        )
+        ActionRow(
+            iconRes = R.drawable.ic_format,
+            title = uiText("Minify & シェア"),
+            subtitle = uiText("コードを短縮してSNSへ共有"),
+            colors = colors,
+            onClick = {
+                viewModel.workActionsMenuExpanded = false
+                onOpenMinify()
             }
         )
         Spacer(Modifier.height(12.dp))

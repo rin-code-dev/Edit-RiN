@@ -88,6 +88,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
         showLineNumbers = preferences.getBoolean("setting_line_numbers", true),
         showEditorAccessoryBar = preferences.getBoolean("setting_editor_accessory_bar", true),
         codeCompletion = preferences.getBoolean("setting_code_completion", true),
+        inlineWatchEnabled = preferences.getBoolean("setting_inline_watch", true),
         showAccessoryNavigation = preferences.getBoolean("setting_accessory_navigation", true),
         showAccessorySymbols = preferences.getBoolean("setting_accessory_symbols", true),
         compactAccessoryKeys = preferences.getBoolean("setting_compact_accessory_keys", true),
@@ -128,6 +129,7 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
             .putBoolean("setting_line_numbers", state.showLineNumbers)
             .putBoolean("setting_editor_accessory_bar", state.showEditorAccessoryBar)
             .putBoolean("setting_code_completion", state.codeCompletion)
+            .putBoolean("setting_inline_watch", state.inlineWatchEnabled)
             .putBoolean("setting_accessory_navigation", state.showAccessoryNavigation)
             .putBoolean("setting_accessory_symbols", state.showAccessorySymbols)
             .putBoolean("setting_compact_accessory_keys", state.compactAccessoryKeys)
@@ -172,6 +174,7 @@ internal fun SettingsUiState.toBackupJson(): String = JSONObject()
     .put("lineNumbers", showLineNumbers)
     .put("accessoryBar", showEditorAccessoryBar)
     .put("codeCompletion", codeCompletion)
+    .put("inlineWatchEnabled", inlineWatchEnabled)
     .put("accessoryNavigation", showAccessoryNavigation)
     .put("accessorySymbols", showAccessorySymbols)
     .put("compactAccessoryKeys", compactAccessoryKeys)
@@ -209,6 +212,7 @@ internal fun SettingsUiState.restoredFromBackup(json: JSONObject): SettingsUiSta
     showLineNumbers = json.optBoolean("lineNumbers", showLineNumbers),
     showEditorAccessoryBar = json.optBoolean("accessoryBar", showEditorAccessoryBar),
     codeCompletion = json.optBoolean("codeCompletion", codeCompletion),
+    inlineWatchEnabled = json.optBoolean("inlineWatchEnabled", inlineWatchEnabled),
     showAccessoryNavigation = json.optBoolean("accessoryNavigation", showAccessoryNavigation),
     showAccessorySymbols = json.optBoolean("accessorySymbols", showAccessorySymbols),
     compactAccessoryKeys = json.optBoolean("compactAccessoryKeys", compactAccessoryKeys),

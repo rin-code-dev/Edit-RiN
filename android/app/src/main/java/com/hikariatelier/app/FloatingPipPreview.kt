@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
+internal val LocalPipGhosted = compositionLocalOf { false }
+
 /**
  * Checks whether the current code has balanced delimiters and closed literals so Auto-Run
  * never triggers a jarring syntax error mid-typing.
@@ -138,6 +140,7 @@ private fun PipFlatIconButton(
     badgeText: String? = null,
     height: Dp = 24.dp,
     minWidth: Dp = 26.dp,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(7.dp)
@@ -152,7 +155,7 @@ private fun PipFlatIconButton(
             .clip(shape)
             .background(bgColor)
             .then(if (active) Modifier.border(1.dp, borderColor, shape) else Modifier)
-            .clickable(onClick = onClick)
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = if (badgeText != null) 5.dp else 4.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
@@ -208,6 +211,7 @@ internal fun FloatingPipPreviewHost(
     onMinimizedChange: (Boolean) -> Unit = {},
     snapCorner: PipCorner = PipCorner.TOP_END,
     onSnapCornerChange: (PipCorner) -> Unit = {},
+    isGhosted: Boolean = false,
     previewContent: @Composable (Modifier) -> Unit
 ) {
     val density = LocalDensity.current
@@ -236,8 +240,14 @@ internal fun FloatingPipPreviewHost(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pipHeight"
     )
+    val targetAlpha = when {
+        isGhosted -> 0.25f
+        translucent -> 0.48f
+        else -> 0.98f
+    }
     val alpha by animateFloatAsState(
-        targetValue = if (translucent) 0.48f else 0.98f,
+        targetValue = targetAlpha,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pipAlpha"
     )
 
@@ -285,7 +295,7 @@ internal fun FloatingPipPreviewHost(
         val currentAnchorX by rememberUpdatedState(anchorX)
         val currentAnchorY by rememberUpdatedState(anchorY)
 
-        val dragGestureModifier = Modifier.pointerInput(Unit) {
+        val dragGestureModifier = if (isGhosted) Modifier else Modifier.pointerInput(Unit) {
             detectDragGestures(
                 onDragStart = {
                     isDragging = true
@@ -332,11 +342,11 @@ internal fun FloatingPipPreviewHost(
                     )
                 }
                 .size(animatedWidth, animatedHeight)
-                .shadow(elevation = 4.dp, shape = outerShape, clip = false)
+                .shadow(elevation = if (isGhosted) 0.dp else 4.dp, shape = outerShape, clip = false)
                 .graphicsLayer { this.alpha = alpha }
                 .clip(outerShape)
                 .background(colors.surface)
-                .border(1.dp, colors.outlineVariant, outerShape)
+                .border(1.dp, if (isGhosted) colors.primary.copy(alpha = 0.35f) else colors.outlineVariant, outerShape)
         ) {
             Column(Modifier.fillMaxSize()) {
                 // Flat Header Bar with 4 Unified Vector Buttons
@@ -366,6 +376,7 @@ internal fun FloatingPipPreviewHost(
                             autoRunEnabled -> "AUTO"
                             else -> null
                         },
+                        enabled = !isGhosted,
                         onClick = {
                             if (showRunPending) onRunNow() else onToggleAutoRun()
                         }
@@ -382,6 +393,7 @@ internal fun FloatingPipPreviewHost(
                                 description = uiText("半透明表示を切り替え"),
                                 colors = colors,
                                 active = translucent,
+                                enabled = !isGhosted,
                                 onClick = { onTranslucentChange(!translucent) }
                             )
 
@@ -392,6 +404,7 @@ internal fun FloatingPipPreviewHost(
                                 colors = colors,
                                 active = false,
                                 badgeText = sizePreset.shortLabel,
+                                enabled = !isGhosted,
                                 onClick = {
                                     val nextPreset = when (sizePreset) {
                                         PipSizePreset.SMALL -> PipSizePreset.MEDIUM
@@ -409,6 +422,7 @@ internal fun FloatingPipPreviewHost(
                             description = uiText(if (minimized) "小窓を展開" else "小窓を最小化"),
                             colors = colors,
                             active = minimized,
+                            enabled = !isGhosted,
                             onClick = { onMinimizedChange(!minimized) }
                         )
                     }
@@ -430,12 +444,14 @@ internal fun FloatingPipPreviewHost(
                 ) {
                     // Keep the WebView mounted even when minimized (clipped to 0dp height)
                     // so minimizing/restoring PiP never detaches or pauses the WebView
-                    previewContent(
-                        Modifier.size(rawCanvasWidth, rawCanvasHeight)
-                    )
+                    CompositionLocalProvider(LocalPipGhosted provides isGhosted) {
+                        previewContent(
+                            Modifier.size(rawCanvasWidth, rawCanvasHeight)
+                        )
+                    }
 
                     // Transparent drag shield over the canvas so dragging anywhere on the PiP window moves it smoothly
-                    if (!minimized) {
+                    if (!minimized && !isGhosted) {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()

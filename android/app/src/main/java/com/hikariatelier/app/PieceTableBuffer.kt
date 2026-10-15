@@ -135,6 +135,16 @@ internal class PieceTableBuffer(initialText: String = "") {
         }
         return sb.toString().also { cachedSnapshot = it }
     }
+
+    fun applyUndoDelta(cmd: EditDeltaCommand): String {
+        replace(cmd.start, cmd.start + cmd.insertedText.length, cmd.deletedText)
+        return toString()
+    }
+
+    fun applyRedoDelta(cmd: EditDeltaCommand): String {
+        replace(cmd.start, cmd.start + cmd.deletedText.length, cmd.insertedText)
+        return toString()
+    }
 }
 
 /**
@@ -191,14 +201,16 @@ internal data class EditDeltaCommand(
 }
 
 internal class EditOperationLog(
-    private val maxCommands: Int = 500,
-    private val maxMemoryBytes: Long = 1_000_000L
+    private val maxCommands: Int = 2000,
+    private val maxMemoryBytes: Long = 5_000_000L
 ) {
     private val undoCommands = ArrayDeque<EditDeltaCommand>()
     private val redoCommands = ArrayDeque<EditDeltaCommand>()
 
     val canUndo: Boolean get() = undoCommands.isNotEmpty()
     val canRedo: Boolean get() = redoCommands.isNotEmpty()
+    val undoCommandsCount: Int get() = undoCommands.size
+    val redoCommandsCount: Int get() = redoCommands.size
 
     fun clear() {
         undoCommands.clear()

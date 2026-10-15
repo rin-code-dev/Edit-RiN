@@ -108,13 +108,21 @@ internal fun PreviewWebView(
     modifier: Modifier = Modifier,
     clearFocusOnTouch: Boolean = true
 ) {
+    val isGhosted = LocalPipGhosted.current
     key(preview.generation) {
         AndroidView(
             factory = { context -> preview.createHost(context, onClearEditorFocus, clearFocusOnTouch) },
             modifier = modifier.fillMaxSize(),
             update = { host ->
+                val interactive = !isGhosted
+                host.isEnabled = interactive
+                host.preview.isEnabled = interactive
                 host.setLogicalSize(logicalSize?.width, logicalSize?.height)
-                preview.bindTouchBehavior(host.preview, onClearEditorFocus, clearFocusOnTouch)
+                if (interactive) {
+                    preview.bindTouchBehavior(host.preview, onClearEditorFocus, clearFocusOnTouch)
+                } else {
+                    host.preview.setOnTouchListener(null)
+                }
             },
             onRelease = { host ->
                 // Only pause if this host still owns the WebView; when re-parented between normal and PiP

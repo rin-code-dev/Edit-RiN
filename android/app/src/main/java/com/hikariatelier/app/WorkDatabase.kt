@@ -133,17 +133,66 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
     fun searchWorkIds(rawQuery: String): Set<String> {
         val cleaned = rawQuery.trim().replace("\"", "")
         if (cleaned.isEmpty()) return emptySet()
-        val ftsQuery = cleaned.split(Regex("\\s+")).filter { it.isNotBlank() }
-            .joinToString(" AND ") { "\"$it*\"" }
+        val tokens = cleaned.split(Regex("\\s+")).filter { it.isNotBlank() }.take(16)
+        if (tokens.isEmpty()) return emptySet()
+
         val matched = linkedSetOf<String>()
-        readableDatabase.rawQuery(
-            "SELECT work_id FROM works_fts WHERE works_fts MATCH ?",
-            arrayOf(ftsQuery)
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                matched.add(cursor.getString(0))
+
+        // 1. FTS4 MATCH query (prefix token search, fast)
+        runCatching {
+            val ftsQuery = tokens.joinToString(" AND ") { "\"$it*\"" }
+            readableDatabase.rawQuery(
+                "SELECT work_id FROM works_fts WHERE works_fts MATCH ?",
+                arrayOf(ftsQuery)
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    matched.add(cursor.getString(0))
+                }
             }
         }
+
+        // 2. LIKE query on works_fts (handles substring matches like "Canvas" in "createCanvas" and CJK characters)
+        runCatching {
+            val whereClauses = tokens.joinToString(" AND ") {
+                "(title LIKE ? ESCAPE '/' OR tags LIKE ? ESCAPE '/' OR code_body LIKE ? ESCAPE '/')"
+            }
+            val args = tokens.flatMap { token ->
+                val escaped = token.replace("/", "//").replace("%", "/%").replace("_", "/_")
+                val pattern = "%$escaped%"
+                listOf(pattern, pattern, pattern)
+            }.toTypedArray()
+
+            readableDatabase.rawQuery(
+                "SELECT work_id FROM works_fts WHERE $whereClauses",
+                args
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    matched.add(cursor.getString(0))
+                }
+            }
+        }
+
+        // 3. LIKE query on works_meta (handles works whose code bodies are not loaded yet into FTS)
+        runCatching {
+            val whereClauses = tokens.joinToString(" AND ") {
+                "(title LIKE ? ESCAPE '/' OR folder_name LIKE ? ESCAPE '/' OR tags_json LIKE ? ESCAPE '/')"
+            }
+            val args = tokens.flatMap { token ->
+                val escaped = token.replace("/", "//").replace("%", "/%").replace("_", "/_")
+                val pattern = "%$escaped%"
+                listOf(pattern, pattern, pattern)
+            }.toTypedArray()
+
+            readableDatabase.rawQuery(
+                "SELECT id FROM works_meta WHERE $whereClauses",
+                args
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    matched.add(cursor.getString(0))
+                }
+            }
+        }
+
         return matched
     }
 }

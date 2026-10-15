@@ -95,6 +95,7 @@ internal fun EditorProjectDialogs(
             },
             onRename = { request -> workManagementViewModel.renameAsset(request) },
             onDelete = { name -> activeWork?.let { changeAssets(it.id, it.assets.toMap() - name) } },
+            onDeleteMultiple = { names -> activeWork?.let { changeAssets(it.id, it.assets.filterKeys { k -> k !in names }) } },
             onClose = { onAssetsChange(false) },
             onPreview = { name, asset -> previewAsset = name to asset },
             onInsert = { name, asset ->

@@ -6,7 +6,7 @@ internal fun localizedUserGuide(language: String): List<GuideSection> = when (la
     else -> userGuideSections
 }
 
-private val japaneseUserGuide = listOf(
+private val japaneseUserGuide by lazy { listOf(
     GuideSection(
         title = "サンプルを試す",
         summary = "完成した作品を動かしながら、コードの仕組みを確かめます。",
@@ -104,9 +104,9 @@ private val japaneseUserGuide = listOf(
             "外部の保存先フォルダーを指定すると、作品の保存場所が変わります。クラウド同期には、そのフォルダーを同期する別のツールが必要です。アプリから自動でクラウドへ送信することはありません。"
         )
     )
-)
+) }
 
-private val chineseUserGuide = listOf(
+private val chineseUserGuide by lazy { listOf(
     GuideSection(
         title = "体验示例",
         summary = "先运行完整作品，再了解代码如何控制画面。",
@@ -204,4 +204,4 @@ private val chineseUserGuide = listOf(
             "指定外部存储文件夹会改变作品保存位置。云同步需要使用同步该文件夹的其他工具，应用不会自动将作品上传到云端。"
         )
     )
-)
+) }
