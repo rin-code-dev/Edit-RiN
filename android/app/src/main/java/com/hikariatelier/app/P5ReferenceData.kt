@@ -11,7 +11,7 @@ internal data class P5ReferenceItem(
     val snippet: String = signature
 )
 
-internal val p5ReferenceCategories = listOf(
+internal val p5ReferenceCategories by lazy { listOf(
     "すべて" to "All",
     "図形" to "Shape",
     "色・線" to "Color & Style",
@@ -21,9 +21,9 @@ internal val p5ReferenceCategories = listOf(
     "環境・キャンバス" to "Environment",
     "テキスト・画像" to "Text & Image",
     "サウンド" to "Sound"
-)
+) }
 
-internal val p5ReferenceItems = listOf(
+internal val p5ReferenceItems by lazy { listOf(
     // --- 図形 (Shape) ---
     P5ReferenceItem(
         name = "circle",
@@ -739,4 +739,4 @@ internal val p5ReferenceItems = listOf(
         example = "const fft = new p5.FFT();\nconst spectrum = fft.analyze();\nconst waveform = fft.waveform();",
         snippet = "const fft = new p5.FFT();\nconst spectrum = fft.analyze();"
     )
-)
+) }

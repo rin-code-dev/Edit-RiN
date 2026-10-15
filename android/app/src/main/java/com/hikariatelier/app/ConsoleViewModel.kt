@@ -36,6 +36,20 @@ internal fun ConsoleEntry.copyText(): String = buildString {
     file?.let { append("  ·  $it"); line?.let { number -> append(":$number") } }
 }
 
+internal enum class ConsoleFilter {
+    ALL,
+    LOG,
+    WARN,
+    ERROR
+}
+
+internal fun visibleConsoleEntries(entries: List<ConsoleEntry>, filter: ConsoleFilter): List<ConsoleEntry> = when (filter) {
+    ConsoleFilter.ALL -> entries
+    ConsoleFilter.LOG -> entries.filter { it.level == ConsoleLevel.LOG }
+    ConsoleFilter.WARN -> entries.filter { it.level == ConsoleLevel.WARNING }
+    ConsoleFilter.ERROR -> entries.filter { it.level == ConsoleLevel.ERROR }
+}
+
 internal fun visibleConsoleEntries(entries: List<ConsoleEntry>, errorsOnly: Boolean): List<ConsoleEntry> =
     if (errorsOnly) entries.filter { it.level == ConsoleLevel.ERROR } else entries
 
@@ -49,7 +63,12 @@ internal class ConsoleViewModel(private val operationScope: CoroutineScope? = nu
     var showConsole by mutableStateOf(false)
     var consoleHeight by mutableFloatStateOf(170f)
     var consoleExpanded by mutableStateOf(false)
-    var errorsOnly by mutableStateOf(false)
+    var filter by mutableStateOf(ConsoleFilter.ALL)
+    var errorsOnly: Boolean
+        get() = filter == ConsoleFilter.ERROR
+        set(value) {
+            filter = if (value) ConsoleFilter.ERROR else ConsoleFilter.ALL
+        }
 
     val errorCount: Int
         get() = entries.count { it.level == ConsoleLevel.ERROR }

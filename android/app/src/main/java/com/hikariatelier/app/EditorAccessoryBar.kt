@@ -559,6 +559,9 @@ internal fun EditorAccessoryBar(
                         FlatIconKey(R.drawable.ic_comment, uiText("コメントを入力")) {
                             onApplyEdit(insertAtSelection(editingValue, "// "))
                         }
+                        FlatTextKey("// ?", uiText("ウォッチコメントを入力"), width = 38) {
+                            onApplyEdit(insertAtSelection(editingValue, " // ?"))
+                        }
                     }
                 }
             }

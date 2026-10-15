@@ -288,6 +288,25 @@ internal class SplitWorkStore(
                 WorkSaveResult.Saved -> Unit
             }
             committed = true
+            database?.let { dbHelper ->
+                val currentIds = persisted.map { it.id }.toSet()
+                val deletedIds = oldEntries.keys.filter { it !in currentIds }
+                if (deletedIds.isNotEmpty()) {
+                    runCatching {
+                        val db = dbHelper.writableDatabase
+                        db.beginTransactionNonExclusive()
+                        try {
+                            for (delId in deletedIds) {
+                                db.delete("works_meta", "id = ?", arrayOf(delId))
+                                db.delete("works_fts", "work_id = ?", arrayOf(delId))
+                            }
+                            db.setTransactionSuccessful()
+                        } finally {
+                            db.endTransaction()
+                        }
+                    }
+                }
+            }
             val stillDeferred = persisted.filterNot { it.bodyLoaded }.map { it.id }.toMutableSet()
             loaded = LoadedWorkIndex(next, WorkStore(persisted, activeId), INDEX, next.json, values.toMutableMap(), stillDeferred)
             recovered = false

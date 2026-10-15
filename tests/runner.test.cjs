@@ -1337,3 +1337,325 @@ test('GPU initialization rejection and asynchronous draw results retain their be
   assert.equal(await sketch._draw(), 'async frame');
   assert.equal(sketch._draw(), drawn);
 });
+
+test('rinWatch batches multiple updates and posts WB message with 80-char safety bounds', async () => {
+  const sentMessages = [];
+  const mockPort = {
+    postMessage(data) {
+      sentMessages.push(data);
+    }
+  };
+  const r = runner('function setup() {}', {}, { setTimeout, clearTimeout });
+  r.context.dispatchEvent({ type: 'message', data: 'INIT_PORT', ports: [mockPort] });
+
+  // Call rinWatch multiple times across lines
+  r.context.rinWatch(10, 'count', 42);
+  r.context.rinWatch(12, 'obj', { longKey: 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' });
+  r.context.rinWatch(10, 'count', 99); // overrides line 10 with latest
+
+  assert.equal(sentMessages.length, 0); // Not sent synchronously
+  await new Promise(resolve => setTimeout(resolve, 80));
+
+  assert.equal(sentMessages.length, 1);
+  const msg = sentMessages[0];
+  assert.ok(msg.startsWith('WB:run-one:'));
+  const payload = JSON.parse(msg.slice('WB:run-one:'.length));
+  assert.equal(payload['10'], 'count = 99');
+  assert.ok(payload['12'].startsWith('obj = {'));
+  assert.ok(payload['12'].length <= 80 + 'obj = '.length);
+});
+
+test('rinDispose removes p5 instances, loses WebGL context, closes AudioContext, and halts loops', async () => {
+  let loseContextCalled = 0;
+  let audioClosed = 0;
+  let p5Removed = 0;
+  let noLoopCalled = 0;
+
+  class MockAudioContext {
+    close() { audioClosed++; return Promise.resolve(); }
+  }
+
+  const r = runner('function setup() {}', {}, {
+    setTimeout, clearTimeout,
+    AudioContext: MockAudioContext
+  });
+
+  const mockGl = {
+    getExtension(name) {
+      if (name === 'WEBGL_lose_context') {
+        return { loseContext() { loseContextCalled++; } };
+      }
+      return null;
+    }
+  };
+
+  const canvas = {
+    drawingContext: mockGl,
+    getContext: () => mockGl
+  };
+  r.context.document.querySelectorAll = () => [canvas];
+
+  new r.context.AudioContext();
+
+  r.context.noLoop = () => { noLoopCalled++; };
+  r.context.p5 = class {
+    constructor() {
+      this._isGlobal = true;
+    }
+    remove() { p5Removed++; }
+  };
+  r.context.p5.instance = new r.context.p5();
+
+  assert.equal(typeof r.context.rinDispose, 'function');
+  r.context.rinDispose();
+
+  assert.ok(noLoopCalled > 0, 'noLoop was called');
+  assert.ok(p5Removed > 0, 'p5.instance.remove was called');
+  assert.equal(loseContextCalled, 1, 'WEBGL_lose_context was called');
+  assert.equal(audioClosed, 1, 'AudioContext.close was called');
+});
+
+test('rinWatch formats cyclic objects and arrays without stack overflow', async () => {
+  const sentMessages = [];
+  const mockPort = {
+    postMessage(data) {
+      sentMessages.push(data);
+    }
+  };
+  const r = runner('function setup() {}', {}, { setTimeout, clearTimeout });
+  r.context.dispatchEvent({ type: 'message', data: 'INIT_PORT', ports: [mockPort] });
+
+  const cyclicArr = [];
+  cyclicArr.push(cyclicArr);
+
+  const cyclicObj = {};
+  cyclicObj.self = cyclicObj;
+
+  assert.doesNotThrow(() => {
+    r.context.rinWatch(1, 'arr', cyclicArr);
+    r.context.rinWatch(2, 'obj', cyclicObj);
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 80));
+
+  assert.equal(sentMessages.length, 1);
+  const payload = JSON.parse(sentMessages[0].slice('WB:run-one:'.length));
+  assert.ok(payload['1'].includes('['));
+  assert.ok(payload['2'].includes('[Object]'));
+});
+
+test('rinWatch falls back to window.Android.onWatchBatch when port is not initialized', async () => {
+  let batchReceived = null;
+  const mockAndroid = {
+    onWatchBatch(token, json) {
+      batchReceived = { token, json: JSON.parse(json) };
+    }
+  };
+  const r = runner('function setup() {}', {}, { setTimeout, clearTimeout, Android: mockAndroid });
+
+  r.context.rinWatch(5, 'speed', 120);
+  await new Promise(resolve => setTimeout(resolve, 80));
+
+  assert.ok(batchReceived !== null);
+  assert.equal(batchReceived.token, 'run-one');
+  assert.equal(batchReceived.json['5'], 'speed = 120');
+});
+
+test('rinDispose clears pending watch flushes and ignores post-dispose watch calls', async () => {
+  const sentMessages = [];
+  const mockPort = {
+    postMessage(data) {
+      sentMessages.push(data);
+    }
+  };
+  const r = runner('function setup() {}', {}, { setTimeout, clearTimeout });
+  r.context.dispatchEvent({ type: 'message', data: 'INIT_PORT', ports: [mockPort] });
+
+  r.context.rinWatch(10, 'val', 123);
+  r.context.rinDispose();
+
+  // rinWatch called after dispose
+  r.context.rinWatch(11, 'val', 456);
+
+  await new Promise(resolve => setTimeout(resolve, 80));
+  assert.equal(sentMessages.length, 0);
+});
+
+test('rinDispose releases WebGL context on unattached canvas created in memory', async () => {
+  let offscreenLoseCount = 0;
+  const mockGl = {
+    getExtension(name) {
+      if (name === 'WEBGL_lose_context') {
+        return { loseContext() { offscreenLoseCount++; } };
+      }
+      return null;
+    }
+  };
+
+  class MockCanvas {
+    getContext(type) {
+      return type === 'webgl' ? mockGl : null;
+    }
+  }
+
+  const r = runner('function setup() {}', {}, {
+    setTimeout, clearTimeout,
+    HTMLCanvasElement: MockCanvas
+  });
+
+  const offscreen = new r.context.HTMLCanvasElement();
+  offscreen.getContext('webgl');
+
+  r.context.rinDispose();
+  assert.equal(offscreenLoseCount, 1);
+});
+
+test('__editRinHotSwapAsset updates img and media elements via URL reference without Base64', async () => {
+  const r = runner('function setup() {}', {}, { setTimeout, clearTimeout });
+
+  // Mock DOM elements
+  const mockImg = { src: 'https://appassets.androidplatform.net/project/run-one/assets/cat.png', getAttribute: (k) => k === 'src' ? 'cat.png' : null };
+  const mockAudio = {
+    src: 'https://appassets.androidplatform.net/project/run-one/sound.mp3',
+    currentTime: 1.5,
+    paused: false,
+    getAttribute: (k) => k === 'src' ? 'sound.mp3' : null,
+    load() {},
+    play() { return Promise.resolve(); }
+  };
+  r.context.document.querySelectorAll = (selector) => {
+    if (selector === 'img') return [mockImg];
+    if (selector === 'audio, video') return [mockAudio];
+    return [];
+  };
+
+  const newUrl = 'https://appassets.androidplatform.net/project/run-one/cat.png?_rin_t=999';
+  const success = r.context.__editRinHotSwapAsset('cat.png', 'url', newUrl);
+  assert.equal(success, true);
+  assert.equal(mockImg.src, newUrl);
+
+  const newAudioUrl = 'https://appassets.androidplatform.net/project/run-one/sound.mp3?_rin_t=1000';
+  const audioSuccess = r.context.__editRinHotSwapAsset('sound.mp3', 'url', newAudioUrl);
+  assert.equal(audioSuccess, true);
+  assert.equal(mockAudio.src, newAudioUrl);
+  assert.equal(mockAudio.currentTime, 1.5);
+});
+
+test('WebMessagePort A: message receives URL reference and updates assets', async () => {
+  const r = runner('function setup() {}', {}, { setTimeout, clearTimeout });
+  const mockImg = { src: 'cat.png', getAttribute: () => 'cat.png' };
+  r.context.document.querySelectorAll = (sel) => sel === 'img' ? [mockImg] : [];
+
+  let portHandler = null;
+  const mockPort = {
+    set onmessage(fn) { portHandler = fn; }
+  };
+  r.context.dispatchEvent({ type: 'message', data: 'INIT_PORT', ports: [mockPort] });
+  assert.ok(portHandler);
+
+  const targetUrl = 'https://appassets.androidplatform.net/project/run-one/cat.png?_rin_t=42';
+  portHandler({ data: `A:cat.png:url:${targetUrl}` });
+
+  assert.equal(mockImg.src, targetUrl);
+});
+
+test('__editRinHotSwapAsset updates p5.Image, loadJSON, loadStrings and p5.SoundFile', async () => {
+  let redrawn = 0;
+  let cleared = 0;
+  let drawnImage = null;
+  const mockP5Image = {
+    _rinSourcePath: 'assets/hero.png',
+    width: 50,
+    height: 50,
+    canvas: { width: 50, height: 50 },
+    drawingContext: {
+      clearRect(x, y, w, h) { cleared++; },
+      drawImage(img, x, y) { drawnImage = img; }
+    },
+    loadPixels() {}
+  };
+
+  let soundLoaded = 0;
+  const mockSound = {
+    _rinSourcePath: 'assets/bgm.mp3',
+    url: 'assets/bgm.mp3',
+    load() { soundLoaded++; },
+    play() {}
+  };
+
+  const mockJsonData = { score: 100 };
+  const mockStringsData = ['line1', 'line2'];
+
+  const r = runner('function setup() {}', {}, {
+    setTimeout, clearTimeout,
+    fetch(url) {
+      if (url.includes('data.json')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({ score: 999, extra: 'bonus' })
+        });
+      }
+      if (url.includes('data.txt')) {
+        return Promise.resolve({
+          text: () => Promise.resolve('updated1\nupdated2\nupdated3')
+        });
+      }
+      return Promise.reject(new Error('Unknown url'));
+    }
+  });
+
+  r.context.__editRinTriggerRedraw = () => { redrawn++; };
+
+  // Register objects as if loaded via p5 methods
+  r.context.hero = mockP5Image;
+  r.context.bgm = mockSound;
+
+  // Mock Image for p5.Image hot-swapping
+  r.context.Image = class {
+    constructor() {
+      this.naturalWidth = 120;
+      this.naturalHeight = 80;
+    }
+    set src(url) {
+      this._src = url;
+      queueMicrotask(() => this.onload?.());
+    }
+    get src() { return this._src; }
+  };
+
+  // 1. Hot swap p5.Image
+  const imgUrl = 'https://appassets.androidplatform.net/project/run-one/hero.png?_rin_t=123';
+  assert.equal(r.context.__editRinHotSwapAsset('hero.png', 'url', imgUrl), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cleared, 1);
+  assert.equal(mockP5Image.width, 120);
+  assert.equal(mockP5Image.height, 80);
+  assert.ok(redrawn >= 1);
+
+  // 2. Hot swap SoundFile
+  const soundUrl = 'https://appassets.androidplatform.net/project/run-one/bgm.mp3?_rin_t=124';
+  assert.equal(r.context.__editRinHotSwapAsset('bgm.mp3', 'url', soundUrl), true);
+  assert.equal(soundLoaded, 1);
+  assert.equal(mockSound.url, soundUrl);
+
+  // 3. Hot swap JSON & Strings via prototype tracked hooks
+  // Invoke tracked loadJSON and loadStrings
+  const p5Proto = r.context.p5.prototype;
+  if (p5Proto?.loadJSON) {
+    const loadedJson = p5Proto.loadJSON.call({}, 'assets/data.json');
+    Object.assign(loadedJson, mockJsonData);
+    const jsonUrl = 'https://appassets.androidplatform.net/project/run-one/data.json?_rin_t=125';
+    r.context.__editRinHotSwapAsset('data.json', 'url', jsonUrl);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(loadedJson.score, 999);
+    assert.equal(loadedJson.extra, 'bonus');
+  }
+
+  if (p5Proto?.loadStrings) {
+    const loadedStrings = p5Proto.loadStrings.call({}, 'assets/data.txt');
+    loadedStrings.push(...mockStringsData);
+    const stringsUrl = 'https://appassets.androidplatform.net/project/run-one/data.txt?_rin_t=126';
+    r.context.__editRinHotSwapAsset('data.txt', 'url', stringsUrl);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.deepEqual(loadedStrings, ['updated1', 'updated2', 'updated3']);
+  }
+});

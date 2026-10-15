@@ -89,6 +89,24 @@ internal class PreviewSession {
     fun isCurrent(token: String) = snapshotFor(token) != null
     fun invalidate() { requestedToken = "" }
 
+    fun updateAsset(name: String, asset: ProjectAsset) {
+        val currentAssets = current.assets
+        val updatedMap = currentAssets.assets.toMutableMap()
+        val cleanName = name.removePrefix("assets/")
+        updatedMap[cleanName] = asset
+        updatedMap["assets/$cleanName"] = asset
+        current = current.copy(assets = currentAssets.copy(assets = updatedMap))
+    }
+
+    fun updateVirtualFile(path: String, content: String) {
+        val currentAssets = current.assets
+        val updatedMap = currentAssets.virtualFiles.toMutableMap()
+        val cleanPath = path.removePrefix("assets/")
+        updatedMap[cleanPath] = content
+        updatedMap["assets/$cleanPath"] = content
+        current = current.copy(assets = currentAssets.copy(virtualFiles = updatedMap))
+    }
+
     /** Synchronous compatibility for small pure callers and unit tests. */
     fun prepare(work: Work?, source: String, supportingFiles: Map<String, String>,
                 sourceAssets: Map<String, ProjectAsset>, drafts: Map<String, String> = emptyMap()): String {

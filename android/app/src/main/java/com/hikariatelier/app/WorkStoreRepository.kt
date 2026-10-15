@@ -27,6 +27,7 @@ internal interface WorkPersistence {
         (if (folderUri == null) loadLocal() else loadFolder(folderUri))?.works?.find { it.id == workId }
     fun loadWorkLowPriority(folderUri: Uri?, workId: String): Work? = loadWork(folderUri, workId)
     fun materializeWorks(folderUri: Uri?, works: List<Work>): List<Work> = works
+    fun searchWorkIds(query: String): Set<String> = emptySet()
 }
 
 /** Persistence boundary for local works, SAF folders, and their asset blobs. */
@@ -38,9 +39,13 @@ internal class WorkStoreRepository(
 ) : WorkPersistence {
     private val context = context.applicationContext
     private val resolver get() = context.contentResolver
-    private val localSplit = SplitWorkStore(FileWorkDocuments(File(this.context.filesDir, "work-store")))
+    val workDatabase = WorkDatabase(this.context)
+    private val localSplit = SplitWorkStore(FileWorkDocuments(File(this.context.filesDir, "work-store")), workDatabase)
     private val folderSplits = mutableMapOf<String, SplitWorkStore>()
     private val selection by lazy { context.getSharedPreferences("work-selection", Context.MODE_PRIVATE) }
+
+    override fun searchWorkIds(query: String): Set<String> =
+        runCatching { workDatabase.searchWorkIds(query) }.getOrDefault(emptySet())
 
     override fun selectedWorkId(folderUri: Uri?): String? =
         selection.getString(folderUri?.toString() ?: "local", null)
@@ -230,7 +235,7 @@ internal class WorkStoreRepository(
                 override fun write(name: String, content: String) = docs(true)?.write(name, content) == true
                 override fun rename(from: String, to: String) = docs()?.rename(from, to) == true
                 override fun delete(name: String) = docs()?.delete(name) == true
-            })
+            }, workDatabase)
         }
     }
 
