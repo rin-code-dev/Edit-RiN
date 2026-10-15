@@ -221,8 +221,10 @@ internal fun updateParameterInSource(source: String, parameter: WorkParameter, n
                     }
                 }
                 is WorkParameter.Choice -> {
-                    if (parts.isNotEmpty() && parts[0] != newValue) {
-                        parts[0] = newValue
+                    if (newValue != parameter.defaultValue) {
+                        parts.clear()
+                        parts.add(newValue)
+                        parts.addAll(parameter.options)
                         replaced = true
                     }
                 }

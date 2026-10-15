@@ -100,13 +100,9 @@ class EditorTransformsTest {
 
     @Test
     fun preservesStringLiteralsAndTemplateLiteralsInMinify() {
-        val source = """
-            let greeting = "Hello,   world! // not a comment";
-            let msg = 'Single   quote /* also not comment */';
-            let tpl = `Multi
-  line
-    template`;
-        """.trimIndent()
+        val source = "let greeting = \"Hello,   world! // not a comment\";\n" +
+            "let msg = 'Single   quote /* also not comment */';\n" +
+            "let tpl = `Multi\n  line\n    template`;"
 
         val minified = minifyJavaScriptForTweet(source)
         assertEquals(

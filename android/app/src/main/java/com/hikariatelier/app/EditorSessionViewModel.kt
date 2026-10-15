@@ -113,12 +113,8 @@ class EditorSessionViewModel : ViewModel() {
         liveParameterDragInitial = null
         val current = editorValueState.value
         if (initial.text != current.text) {
-            val prevCount = mainDeltaLog.undoCommandsCount
-            mainDeltaLog.record(initial, current)
-            if (mainDeltaLog.undoCommandsCount > prevCount || undoStack.isEmpty()) {
-                undoStack.add(TextFieldValue("", initial.selection))
-            }
-            while (undoStack.size > 2000) {
+            undoStack.add(initial.copy(composition = null))
+            while (undoStack.size > 100 || (undoStack.size > 1 && undoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
                 undoStack.removeAt(0)
             }
             redoStack.clear()
@@ -264,16 +260,7 @@ class EditorSessionViewModel : ViewModel() {
                     change.oldEnd,
                     nextValue.text.substring(change.start, change.newEnd)
                 )
-                val prevCount = mainDeltaLog.undoCommandsCount
                 mainDeltaLog.record(currentValue, nextValue)
-                if (mainDeltaLog.undoCommandsCount > prevCount || targetUndoStack.isEmpty()) {
-                    targetUndoStack.add(TextFieldValue("", currentValue.selection))
-                }
-                while (targetUndoStack.size > 2000) {
-                    targetUndoStack.removeAt(0)
-                }
-                targetRedoStack.clear()
-                return
             }
             // Coalesce adjacent single-char typing entries in targetUndoStack to cut memory by >80%
             val lastEntry = targetUndoStack.lastOrNull()
@@ -297,23 +284,11 @@ class EditorSessionViewModel : ViewModel() {
         targetUndoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = undoStack,
         targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
     ): TextFieldValue? {
-        if (targetUndoStack === undoStack) {
-            val restored = mainDeltaLog.applyUndo(currentValue)
-            if (restored != null) {
-                targetRedoStack.add(TextFieldValue("", currentValue.selection))
-                if (targetUndoStack.isNotEmpty()) targetUndoStack.removeAt(targetUndoStack.lastIndex)
-                mainPieceTable.reset(restored.text)
-                return restored
-            }
-            if (targetUndoStack.isEmpty()) return null
-            targetRedoStack.add(currentValue.copy(composition = null))
-            return targetUndoStack.removeAt(targetUndoStack.lastIndex).also {
-                mainPieceTable.reset(it.text)
-            }
-        }
         if (targetUndoStack.isEmpty()) return null
         targetRedoStack.add(currentValue.copy(composition = null))
-        return targetUndoStack.removeAt(targetUndoStack.lastIndex)
+        return targetUndoStack.removeAt(targetUndoStack.lastIndex).also {
+            if (targetUndoStack === undoStack) mainPieceTable.reset(it.text)
+        }
     }
 
     fun redo(
@@ -321,22 +296,10 @@ class EditorSessionViewModel : ViewModel() {
         targetUndoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = undoStack,
         targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
     ): TextFieldValue? {
-        if (targetUndoStack === undoStack) {
-            val restored = mainDeltaLog.applyRedo(currentValue)
-            if (restored != null) {
-                targetUndoStack.add(TextFieldValue("", currentValue.selection))
-                if (targetRedoStack.isNotEmpty()) targetRedoStack.removeAt(targetRedoStack.lastIndex)
-                mainPieceTable.reset(restored.text)
-                return restored
-            }
-            if (targetRedoStack.isEmpty()) return null
-            targetUndoStack.add(currentValue.copy(composition = null))
-            return targetRedoStack.removeAt(targetRedoStack.lastIndex).also {
-                mainPieceTable.reset(it.text)
-            }
-        }
         if (targetRedoStack.isEmpty()) return null
         targetUndoStack.add(currentValue.copy(composition = null))
-        return targetRedoStack.removeAt(targetRedoStack.lastIndex)
+        return targetRedoStack.removeAt(targetRedoStack.lastIndex).also {
+            if (targetUndoStack === undoStack) mainPieceTable.reset(it.text)
+        }
     }
 }

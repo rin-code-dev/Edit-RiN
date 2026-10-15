@@ -362,6 +362,11 @@ internal fun minifyJavaScriptForTweet(source: String): String {
         }
 
         // 8. Other operators and punctuation
+        if (c == '}') {
+            while (out.isNotEmpty() && (out.last() == ';' || out.last().isWhitespace())) {
+                out.deleteCharAt(out.length - 1)
+            }
+        }
         if ((lastChar == '+' && c == '+') || (lastChar == '-' && c == '-')) {
             out.append(' ')
         }
