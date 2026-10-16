@@ -1394,7 +1394,7 @@ internal class WorkManagementViewModel(
         requireNotNull(transfer).writeJs(uri, editorText)
     }
     fun exportHtml(uri: Uri) = execute("HTMLファイルを書き出せませんでした") {
-        val work = checkNotNull(workContent)
+        val work = snapshots(includeEdits = true, copyIds = setOf(workId), request = this).first { it.id == workId }
         val html = StandaloneHtmlGenerator.generate(work, editorText)
         requireNotNull(transfer).writeHtml(uri, html)
         emit(WorkEvent(message = "HTMLファイルを保存しました"))

@@ -37,6 +37,12 @@ Loading settings are stored in `edit-rin.json`, included in work backups:
 
 A module entry can declare/export `setup`, `draw`, and input callbacks, or create `new p5(...)` instances. Imports need browser-resolvable URLs or a declared HTML import map; npm package names are not automatically installed or bundled.
 
+### Reruns and HTML export
+
+Auto-Run reruns a work after typing pauses. Normal code reruns and asset changes reload the preview, so animation and audio state may restart. The internal hot-swap helpers do not make these editing paths reload-free.
+
+Single-file HTML export can reference CDN libraries and does not bundle every asset or module dependency. It is not a complete offline project package. Use work ZIP export to transfer project files and assets together.
+
 ### Sound and platform limits
 
 p5.js 2.x uses official `p5.sound 0.4.1`. For the older sequencing, synthesis, `SoundRecorder`, and `saveSound` APIs, choose 1.11.5 with its matching legacy sound addon. Audio playback must be unlocked by a user action. Microphone input additionally requires Android permission.
@@ -67,3 +73,9 @@ HTML作品ではHTMLの `script` タグがバージョン・ライブラリ・�
 従来の `p5.Part`、`p5.Phrase`、`p5.PolySynth`、`SoundRecorder`、`saveSound` などは1.11.5と従来版soundを選びます。2.xでは公式sound 0.4.1のAPIを使います。
 
 CORS、ユーザー操作、音声・動画コーデック、端末機能などのブラウザー制約は残ります。通常のタイマーは停止ボタンでは止まりません。容量・保存キューには上記の上限があります。カメラ、マイク、ファイル選択、全画面、WebGPUの最終確認には実機が必要です。
+
+### 再実行とHTML書き出し
+
+Auto-Runは入力を止めた後に作品を再実行します。通常のコード再実行や素材変更ではプレビューを読み込み直すため、アニメーションや音声の状態が最初に戻ることがあります。内部にHot-Swap用の処理はありますが、通常の編集操作はゼロリロードではありません。
+
+単一HTML書き出しでは、ライブラリをCDNから読み込む場合があります。素材やモジュール依存もすべて内包するわけではありません。ファイル一つでの完全なオフライン実行は保証されないため、プロジェクト全体の移動には作品ZIPを使ってください。

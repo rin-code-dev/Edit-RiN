@@ -33,8 +33,8 @@ class StandaloneHtmlGeneratorTest {
         )
         val html = StandaloneHtmlGenerator.generate(work)
 
-        assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.min.js"))
-        assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@1.11.11/lib/addons/p5.sound.min.js"))
+        assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@1.11.5/lib/p5.min.js"))
+        assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@1.11.5/lib/addons/p5.sound.min.js"))
     }
 
     @Test
@@ -94,8 +94,8 @@ class StandaloneHtmlGeneratorTest {
         val html = StandaloneHtmlGenerator.generate(work)
 
         assertTrue(html.contains("<script type=\"module\">"))
-        assertTrue(html.contains("__registerP5ModuleCallbacks"))
-        assertTrue(html.contains("setup: typeof setup === 'function' ? setup : undefined"))
+        assertTrue(html.contains("__editRinRegisterModuleCallbacks"))
+        assertTrue(html.contains("rin-project/sketch.js"))
     }
 
     @Test
@@ -149,5 +149,37 @@ class StandaloneHtmlGeneratorTest {
         assertTrue(html.contains("cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.webgpu.js"))
         assertTrue(html.contains("<style>\nbody { background-color: purple; content: \"<\\/style>\"; }\n</style>"))
         assertTrue(html.contains("function setup() { createCanvas(100, 100); }"))
+    }
+    @Test fun exportedParametersIncludeSavedValuesBeforeSketch() {
+        val work = Work("params", "Params", "// @rin number speed \"Speed\" 0 10 1 1\nfunction draw(){circle(rinParams.speed,0,1)}",
+            parameterValues = mapOf("speed" to "7"))
+        val html = StandaloneHtmlGenerator.generate(work)
+        assertTrue(html.contains("window.rinParams={\"speed\":7}"))
+        assertTrue(html.indexOf("window.rinParams=") < html.indexOf("function draw"))
+    }
+
+    @Test fun selectedModuleAndRelativeDependenciesAreEmbedded() {
+        val work = Work("module", "Module", "throw new Error('wrong entry')", files = mutableMapOf(
+            "edit-rin.json" to """{"executionMode":"module","moduleEntry":"src/main.mjs"}""",
+            "src/main.mjs" to "import { size } from './math.mjs'; export function setup(){ createCanvas(size,size) }",
+            "src/math.mjs" to "export const size = 256;"
+        ))
+        val html = StandaloneHtmlGenerator.generate(work)
+        assertTrue(html.contains("import \"rin-project/src/main.mjs\""))
+        assertTrue(html.contains("rin-project/src/math.mjs"))
+        assertFalse(html.contains("<script>\nthrow new Error('wrong entry')"))
+        val map = org.json.JSONObject(Regex("""<script type="importmap">(.*?)</script>""").find(html)!!.groupValues[1])
+        val encoded = map.getJSONObject("imports").getString("rin-project/src/main.mjs").substringAfter(',')
+        val module = String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+        assertTrue(module.contains("from \"rin-project/src/math.mjs\""))
+        assertTrue(module.contains("__editRinRegisterModuleCallbacks"))
+    }
+
+    @Test fun moduleImportRewriteLeavesTextAndCommentsAlone() {
+        val source = "// import './math.mjs'\nconst text = \"from './math.mjs'\"; import('./math.mjs');"
+        val rewritten = rewriteStandaloneModuleImports(source, "src/main.mjs", setOf("src/math.mjs"))
+        assertTrue(rewritten.startsWith("// import './math.mjs'"))
+        assertTrue(rewritten.contains("\"from './math.mjs'\""))
+        assertTrue(rewritten.contains("import(\"rin-project/src/math.mjs\")"))
     }
 }
