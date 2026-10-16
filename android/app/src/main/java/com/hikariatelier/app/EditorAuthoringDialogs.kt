@@ -225,7 +225,13 @@ internal fun EditorAuthoringDialogs(
         }
     }
 
-    if (settingsViewModel.practiceTourOpen) {
+    val practiceDue = practiceTourDue(
+        onboardingVersion = settingsViewModel.onboardingVersion,
+        practiceTourVersion = settingsViewModel.practiceTourVersion,
+        loadFailed = workManagementViewModel.loadFailure != null,
+        hasPendingDraft = workManagementViewModel.pendingDraft != null
+    )
+    if (practiceDue || settingsViewModel.practiceTourOpen) {
         Dialog(
             onDismissRequest = {},
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,

@@ -51,13 +51,23 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
         repository.completeOnboarding(ONBOARDING_VERSION)
         onboardingVersion = ONBOARDING_VERSION
         onboardingReplay = false
+        completePracticeTour()
     }
 
     /** True while the editor practice tour is open. */
+    var practiceTourVersion by mutableIntStateOf(repository.practiceTourVersion)
+        private set
     var practiceTourOpen by mutableStateOf(false)
         private set
     fun startPracticeTour() { practiceTourOpen = true }
-    fun closePracticeTour() { practiceTourOpen = false }
+    fun completePracticeTour(version: Int = BuildConfig.VERSION_CODE) {
+        repository.completePracticeTour(version)
+        practiceTourVersion = version
+        practiceTourOpen = false
+    }
+    fun closePracticeTour() {
+        completePracticeTour()
+    }
 
     private fun <T> setting(read: (SettingsUiState) -> T, write: (SettingsUiState, T) -> SettingsUiState) =
         object : ReadWriteProperty<Any?, T> {

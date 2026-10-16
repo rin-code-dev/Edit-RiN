@@ -31,7 +31,7 @@ class EditorPracticeTourStepsTest {
         assertEquals("変数の値をリアルタイムにみる", jaSteps[0].title)
         assertEquals("スライダーでコードと図形を同時に操る", jaSteps[1].title)
         assertEquals("作品の設定パネルを作る", jaSteps[2].title)
-        assertEquals("コードを極限まで短くする", jaSteps[3].title)
+        assertEquals("投稿用にコードを圧縮する", jaSteps[3].title)
 
         val enSteps = practiceTourSteps("en")
         assertEquals("Watch variable values live", enSteps[0].title)
@@ -43,10 +43,29 @@ class EditorPracticeTourStepsTest {
         assertEquals("实时查看变量值", zhSteps[0].title)
         assertEquals("用滑块同步调节代码与图形", zhSteps[1].title)
         assertEquals("创建作品专属设置面板", zhSteps[2].title)
-        assertEquals("极简压缩代码以便分享", zhSteps[3].title)
+        assertEquals("压缩代码以便分享", zhSteps[3].title)
 
         // Fallback for unsupported languages uses English
         assertEquals(practiceTourSteps("en"), practiceTourSteps("unsupported"))
+    }
+
+    @Test
+    fun practiceTourIsDueOnlyForExistingUsersOnUpdate() {
+        val targetCode = 36
+        // Fresh install (onboardingVersion == 0) -> NOT due for practice tour (onboarding runs first)
+        assertFalse(practiceTourDue(onboardingVersion = 0, practiceTourVersion = 0, targetVersionCode = targetCode))
+
+        // Existing user from earlier version updating to targetCode -> DUE!
+        assertTrue(practiceTourDue(onboardingVersion = 1, practiceTourVersion = 0, targetVersionCode = targetCode))
+        assertTrue(practiceTourDue(onboardingVersion = 2, practiceTourVersion = 35, targetVersionCode = targetCode))
+
+        // Already completed practice tour for this version -> NOT due
+        assertFalse(practiceTourDue(onboardingVersion = 2, practiceTourVersion = targetCode, targetVersionCode = targetCode))
+        assertFalse(practiceTourDue(onboardingVersion = 2, practiceTourVersion = targetCode + 1, targetVersionCode = targetCode))
+
+        // Blocked by load failure or draft recovery
+        assertFalse(practiceTourDue(onboardingVersion = 2, practiceTourVersion = 0, targetVersionCode = targetCode, loadFailed = true))
+        assertFalse(practiceTourDue(onboardingVersion = 2, practiceTourVersion = 0, targetVersionCode = targetCode, hasPendingDraft = true))
     }
 
     @Test

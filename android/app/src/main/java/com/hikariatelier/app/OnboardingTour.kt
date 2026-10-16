@@ -81,15 +81,15 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
 }
 
 /**
- * True when the first-run tour is due. Shown before release notes and folder selection prompts,
- * but never over an ongoing load failure or a pending draft recovery.
+ * True when the first-run tour is due on a fresh install (storedVersion == 0).
+ * Never shown over an ongoing load failure or a pending draft recovery.
  */
 internal fun onboardingDue(
     storedVersion: Int,
     loadFailed: Boolean = false,
     hasPendingDraft: Boolean = false,
     hasStorageFolder: Boolean = true
-): Boolean = storedVersion < ONBOARDING_VERSION && !loadFailed && !hasPendingDraft
+): Boolean = storedVersion == 0 && !loadFailed && !hasPendingDraft
 
 /**
  * Full-screen first-run tour. Every interaction lives in the mock screens of [OnboardingMocks];

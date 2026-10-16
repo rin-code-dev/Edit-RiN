@@ -51,8 +51,8 @@ class OnboardingTourTest {
         assertFalse(onboardingDue(0, loadFailed = false, hasPendingDraft = true, hasStorageFolder = true))
         // The first-run tour now runs before folder selection prompt
         assertTrue(onboardingDue(0, loadFailed = false, hasPendingDraft = false, hasStorageFolder = false))
-        // Raising ONBOARDING_VERSION later makes users with an older completed version due again.
-        assertTrue(onboardingDue(ONBOARDING_VERSION - 1, loadFailed = false, hasPendingDraft = false, hasStorageFolder = true))
+        // Existing users with storedVersion > 0 do not see onboarding again; they are routed to practice tour instead.
+        assertFalse(onboardingDue(1, loadFailed = false, hasPendingDraft = false, hasStorageFolder = true))
     }
 }
 

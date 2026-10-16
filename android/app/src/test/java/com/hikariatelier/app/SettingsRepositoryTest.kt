@@ -44,13 +44,17 @@ class SettingsRepositoryTest {
         val prefs = Preferences()
         val repository = SettingsRepository(prefs)
         assertEquals(0, repository.onboardingVersion)
+        assertEquals(0, repository.practiceTourVersion)
         repository.dismissReleaseNotesPrompt(33)
         repository.dismissSamplePrompt(33)
+        repository.completePracticeTour(36)
         assertEquals(0, repository.onboardingVersion)
+        assertEquals(36, repository.practiceTourVersion)
         repository.completeOnboarding(1)
         // A new repository over the same storage (an app restart) still sees it, other prompts are untouched.
         val restarted = SettingsRepository(prefs)
         assertEquals(1, restarted.onboardingVersion)
+        assertEquals(36, restarted.practiceTourVersion)
         assertEquals(33, restarted.releaseNotesPromptVersion)
         assertEquals(33, restarted.samplePromptVersion)
     }

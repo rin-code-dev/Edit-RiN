@@ -52,6 +52,18 @@ internal fun practiceTourSteps(language: String): List<PracticeTourStep> {
     )
 }
 
+/**
+ * True when the editor practice tour is due on an app update (onboarding already completed in earlier versions,
+ * but this version's practice tour has not been seen yet).
+ */
+internal fun practiceTourDue(
+    onboardingVersion: Int,
+    practiceTourVersion: Int,
+    targetVersionCode: Int = BuildConfig.VERSION_CODE,
+    loadFailed: Boolean = false,
+    hasPendingDraft: Boolean = false
+): Boolean = onboardingVersion > 0 && practiceTourVersion < targetVersionCode && !loadFailed && !hasPendingDraft
+
 internal fun practiceTourSampleTitle(language: String): String =
     when (language) {
         "zh" -> "教程：注释与实时功能"

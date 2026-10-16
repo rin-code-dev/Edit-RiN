@@ -15,6 +15,8 @@ internal interface SettingsPersistence {
     fun dismissReleaseNotesPrompt(version: Int) {}
     val onboardingVersion: Int get() = 0
     fun completeOnboarding(version: Int) {}
+    val practiceTourVersion: Int get() = 0
+    fun completePracticeTour(version: Int) {}
     val weaveStartupPending: Boolean get() = false
     fun completeWeaveStartup() {}
     fun load(): SettingsUiState
@@ -66,6 +68,11 @@ internal class SettingsRepository(val preferences: SharedPreferences) : Settings
     override val onboardingVersion get() = preferences.getInt("completed_onboarding_version", 0)
     override fun completeOnboarding(version: Int) {
         preferences.edit().putInt("completed_onboarding_version", version).apply()
+    }
+
+    override val practiceTourVersion get() = preferences.getInt("completed_practice_tour_version", 0)
+    override fun completePracticeTour(version: Int) {
+        preferences.edit().putInt("completed_practice_tour_version", version).apply()
     }
 
     override fun load(): SettingsUiState = SettingsUiState(
