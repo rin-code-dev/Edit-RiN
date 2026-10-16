@@ -94,31 +94,67 @@ class EditorSessionViewModel : ViewModel() {
     internal var tweetTargetLimit by mutableIntStateOf(140)
     internal var showMinifySheet by mutableStateOf(false)
 
+    internal var suppressAutoRunOnce by mutableStateOf(false)
     private var liveParameterDragInitial: TextFieldValue? = null
+    private var liveParameterSubFileInitial: Pair<String, String>? = null
 
     internal fun applyLiveParameterToEditor(parameter: WorkParameter, newValue: String) {
-        if (liveParameterDragInitial == null) {
-            liveParameterDragInitial = editorValueState.value
-        }
-        val current = editorValueState.value
-        val updatedText = updateParameterInSource(current.text, parameter, newValue) ?: return
-        if (updatedText != current.text) {
-            val updatedValue = current.copy(text = updatedText)
-            editorValueState.value = updatedValue
-            mainPieceTable.reset(updatedText)
+        suppressAutoRunOnce = true
+        val targetFile = parameter.sourceFile
+        if (targetFile == "sketch.js" || targetFile.isBlank()) {
+            if (liveParameterDragInitial == null) {
+                liveParameterDragInitial = editorValueState.value
+            }
+            val current = editorValueState.value
+            val updatedText = updateParameterInSource(current.text, parameter, newValue) ?: return
+            if (updatedText != current.text) {
+                val updatedValue = current.copy(text = updatedText)
+                editorValueState.value = updatedValue
+                mainPieceTable.reset(updatedText)
+            }
+        } else {
+            val workId = activeWorkIdState.value
+            val key = "$workId/$targetFile"
+            val currentText = fileEditorValues[key]?.value?.text
+                ?: fileDrafts[key]
+                ?: worksState.value.firstOrNull { it.id == workId }?.files?.get(targetFile).orEmpty()
+            if (liveParameterSubFileInitial == null) {
+                liveParameterSubFileInitial = key to currentText
+            }
+            val updatedText = updateParameterInSource(currentText, parameter, newValue) ?: return
+            if (updatedText != currentText) {
+                fileDrafts[key] = updatedText
+                fileEditorValues[key]?.let { it.value = it.value.copy(text = updatedText) }
+            }
         }
     }
 
     internal fun commitLiveParameterChange() {
-        val initial = liveParameterDragInitial ?: return
+        val initial = liveParameterDragInitial
         liveParameterDragInitial = null
-        val current = editorValueState.value
-        if (initial.text != current.text) {
-            undoStack.add(initial.copy(composition = null))
-            while (undoStack.size > 100 || (undoStack.size > 1 && undoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
-                undoStack.removeAt(0)
+        val subFileInitial = liveParameterSubFileInitial
+        liveParameterSubFileInitial = null
+        if (initial != null) {
+            val current = editorValueState.value
+            if (initial.text != current.text) {
+                undoStack.add(initial.copy(composition = null))
+                while (undoStack.size > 100 || (undoStack.size > 1 && undoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
+                    undoStack.removeAt(0)
+                }
+                redoStack.clear()
             }
-            redoStack.clear()
+        }
+        if (subFileInitial != null) {
+            val (key, initialText) = subFileInitial
+            val currentText = fileEditorValues[key]?.value?.text ?: fileDrafts[key] ?: ""
+            if (initialText != currentText) {
+                val subUndo = fileUndoStacks.getOrPut(key) { androidx.compose.runtime.mutableStateListOf() }
+                subUndo.add(TextFieldValue(initialText))
+                while (subUndo.size > 100 || (subUndo.size > 1 && subUndo.sumOf { it.text.length.toLong() } > 2_000_000)) {
+                    subUndo.removeAt(0)
+                }
+                fileRedoStacks[key]?.clear()
+            }
         }
     }
 
@@ -240,11 +276,17 @@ class EditorSessionViewModel : ViewModel() {
         initialized = true
     }
 
+    private var lastEditPosition: Int = -1
+    private var lastEditTimestamp: Long = 0L
+
     fun clearEditHistory() {
         liveParameterDragInitial = null
+        liveParameterSubFileInitial = null
         undoStack.clear()
         redoStack.clear()
         mainDeltaLog.clear()
+        lastEditPosition = -1
+        lastEditTimestamp = 0L
     }
 
     fun applyChange(
@@ -254,8 +296,8 @@ class EditorSessionViewModel : ViewModel() {
         targetRedoStack: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue> = redoStack
     ) {
         if (nextValue.text != currentValue.text) {
+            val change = editorTextChange(currentValue, nextValue)
             if (targetUndoStack === undoStack) {
-                val change = editorTextChange(currentValue, nextValue)
                 mainPieceTable.replace(
                     change.start,
                     change.oldEnd,
@@ -266,13 +308,31 @@ class EditorSessionViewModel : ViewModel() {
             // Coalesce adjacent single-char typing entries in targetUndoStack to cut memory by >80%
             val lastEntry = targetUndoStack.lastOrNull()
             val deltaLen = kotlin.math.abs(nextValue.text.length - currentValue.text.length)
+            val inserted = if (change.newEnd > change.start && change.newEnd <= nextValue.text.length) {
+                nextValue.text.substring(change.start, change.newEnd)
+            } else ""
+            val deleted = if (change.oldEnd > change.start && change.oldEnd <= currentValue.text.length) {
+                currentValue.text.substring(change.start, change.oldEnd)
+            } else ""
+            val isInsertion = nextValue.text.length > currentValue.text.length
+            val lastWasInsertion = lastEntry != null && currentValue.text.length > lastEntry.text.length
+            val now = android.os.SystemClock.uptimeMillis()
+            val timeCoalesce = (now - lastEditTimestamp) < 1500L
+            val positionCoalesce = lastEditPosition == -1 || kotlin.math.abs(change.start - lastEditPosition) <= 2
+            val sameDirection = (lastEntry == null) || (isInsertion == lastWasInsertion)
             val canCoalesce = lastEntry != null && targetUndoStack.size >= 2 &&
                 deltaLen == 1 &&
-                kotlin.math.abs(currentValue.text.length - lastEntry.text.length) in 1..24 &&
-                !nextValue.text.endsWith('\n')
+                !inserted.contains('\n') &&
+                !deleted.contains('\n') &&
+                sameDirection &&
+                positionCoalesce &&
+                timeCoalesce &&
+                kotlin.math.abs(currentValue.text.length - lastEntry.text.length) in 1..24
             if (!canCoalesce) {
                 targetUndoStack.add(currentValue.copy(composition = null))
             }
+            lastEditPosition = change.start
+            lastEditTimestamp = now
             while (targetUndoStack.size > 100 || (targetUndoStack.size > 1 && targetUndoStack.sumOf { it.text.length.toLong() } > 2_000_000)) {
                 targetUndoStack.removeAt(0)
             }

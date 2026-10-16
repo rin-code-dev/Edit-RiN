@@ -59,7 +59,8 @@ internal fun WorkParameterPanel(
     onInsertSample: (() -> Unit)? = null,
     onJumpToParameter: ((String) -> Unit)? = null,
     topPadding: androidx.compose.ui.unit.Dp = 0.dp,
-    onCompareHold: ((Boolean) -> Unit)? = null
+    onCompareHold: ((Boolean) -> Unit)? = null,
+    initialDefaults: Map<String, String>? = null
 ) {
     val context = LocalContext.current
     var lockedParameters by rememberSaveable { mutableStateOf(emptySet<String>()) }
@@ -75,7 +76,8 @@ internal fun WorkParameterPanel(
             if (isComparing) {
                 comparisonSnapshot = values.toMap()
                 parameters.forEach { p ->
-                    onChange(p, p.defaultValue)
+                    val initialDef = initialDefaults?.get(p.name) ?: p.defaultValue
+                    onChange(p, initialDef)
                 }
             } else {
                 val snapshot = comparisonSnapshot
@@ -91,16 +93,17 @@ internal fun WorkParameterPanel(
             }
         }
     }
-    val hasModified = remember(parameters, values) {
+    val hasModified = remember(parameters, values, initialDefaults) {
         parameters.any { p ->
             val cur = parameterValue(p, values[p.name])
+            val defValue = initialDefaults?.get(p.name) ?: p.defaultValue
             when (p) {
-                is WorkParameter.Color -> !cur.equals(p.defaultValue, ignoreCase = true)
-                is WorkParameter.Boolean -> !cur.equals(p.defaultValue, ignoreCase = true)
-                is WorkParameter.Choice -> cur != p.defaultValue
+                is WorkParameter.Color -> !cur.equals(defValue, ignoreCase = true)
+                is WorkParameter.Boolean -> !cur.equals(defValue, ignoreCase = true)
+                is WorkParameter.Choice -> cur != defValue
                 is WorkParameter.Number -> {
                     val curF = cur.toFloatOrNull() ?: 0f
-                    val defF = p.defaultValue.toFloatOrNull() ?: 0f
+                    val defF = defValue.toFloatOrNull() ?: 0f
                     Math.abs(curF - defF) > 0.0001f
                 }
             }
@@ -368,13 +371,14 @@ internal fun WorkParameterPanel(
         // Parameter items
         parameters.forEach { parameter ->
             val value = parameterValue(parameter, values[parameter.name])
+            val defValue = initialDefaults?.get(parameter.name) ?: parameter.defaultValue
             val isModified = when (parameter) {
-                is WorkParameter.Color -> !value.equals(parameter.defaultValue, ignoreCase = true)
-                is WorkParameter.Boolean -> !value.equals(parameter.defaultValue, ignoreCase = true)
-                is WorkParameter.Choice -> value != parameter.defaultValue
+                is WorkParameter.Color -> !value.equals(defValue, ignoreCase = true)
+                is WorkParameter.Boolean -> !value.equals(defValue, ignoreCase = true)
+                is WorkParameter.Choice -> value != defValue
                 is WorkParameter.Number -> {
                     val curF = value.toFloatOrNull() ?: 0f
-                    val defF = parameter.defaultValue.toFloatOrNull() ?: 0f
+                    val defF = defValue.toFloatOrNull() ?: 0f
                     Math.abs(curF - defF) > 0.0001f
                 }
             }
@@ -499,7 +503,7 @@ internal fun WorkParameterPanel(
                                 )
                                 if (isModified) {
                                     Text(
-                                        text = "${text("初期値")}: ${parameter.defaultValue}",
+                                        text = "${text("初期値")}: $defValue",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -690,7 +694,8 @@ internal fun WorkParameterBottomSheet(
     onAddParameter: (() -> Unit)? = null,
     onInsertSample: (() -> Unit)? = null,
     onJumpToParameter: ((String) -> Unit)? = null,
-    onCompareHold: ((Boolean) -> Unit)? = null
+    onCompareHold: ((Boolean) -> Unit)? = null,
+    initialDefaults: Map<String, String>? = null
 ) {
     if (!visible) return
 
@@ -708,7 +713,8 @@ internal fun WorkParameterBottomSheet(
             onAddParameter = onAddParameter,
             onInsertSample = onInsertSample,
             onJumpToParameter = onJumpToParameter,
-            onCompareHold = onCompareHold
+            onCompareHold = onCompareHold,
+            initialDefaults = initialDefaults
         )
     }
 
@@ -764,7 +770,8 @@ internal fun InlineWorkParameterPanel(
     onInsertSample: (() -> Unit)? = null,
     onJumpToParameter: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
-    onCompareHold: ((Boolean) -> Unit)? = null
+    onCompareHold: ((Boolean) -> Unit)? = null,
+    initialDefaults: Map<String, String>? = null
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -797,7 +804,8 @@ internal fun InlineWorkParameterPanel(
             onInsertSample = onInsertSample,
             onJumpToParameter = onJumpToParameter,
             topPadding = 16.dp,
-            onCompareHold = onCompareHold
+            onCompareHold = onCompareHold,
+            initialDefaults = initialDefaults
         )
     }
 }

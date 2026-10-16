@@ -53,6 +53,12 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
         onboardingReplay = false
     }
 
+    /** True while the editor practice tour is open. */
+    var practiceTourOpen by mutableStateOf(false)
+        private set
+    fun startPracticeTour() { practiceTourOpen = true }
+    fun closePracticeTour() { practiceTourOpen = false }
+
     private fun <T> setting(read: (SettingsUiState) -> T, write: (SettingsUiState, T) -> SettingsUiState) =
         object : ReadWriteProperty<Any?, T> {
             override fun getValue(thisRef: Any?, property: KProperty<*>) = read(state)

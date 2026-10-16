@@ -947,7 +947,7 @@ internal fun EditorScreen(
         workGalleryState.changeFolder(if (activeWork?.isSample == true) SAMPLE_FOLDER else activeWork?.folderName?.takeIf { it.isNotEmpty() })
         workGalleryState.jumpToWork(activeWorkId)
     }
-    val workDatabase = remember(applicationContext) { WorkDatabase(applicationContext) }
+    val workDatabase = remember(applicationContext) { WorkDatabase.getInstance(applicationContext) }
     LaunchedEffect(works, activeWorkId) {
         withContext(Dispatchers.IO) {
             runCatching { workDatabase.syncAllWorks(works) }
@@ -957,14 +957,18 @@ internal fun EditorScreen(
     fun toggleAllGallerySelection() {
         if (assetBusy) return
         val trimmedQuery = workGalleryState.query.trim()
-        val ftsMatchedIds = if (trimmedQuery.isEmpty()) emptySet()
-        else runCatching { workDatabase.searchWorkIds(trimmedQuery) }.getOrDefault(emptySet())
-        val allIds = works.filter {
-            !it.isSample && workGalleryState.inFolder(it) &&
-                (workGalleryState.selectedTag == null || it.tags.any { tag -> tag.equals(workGalleryState.selectedTag, true) }) &&
-                matchesGalleryQuery(it, trimmedQuery, ftsMatchedIds)
-        }.map { it.id }.toSet()
-        workGalleryState.selectedIds = if (workGalleryState.selectedIds == allIds) emptySet() else allIds
+        formatScope.launch {
+            val ftsMatchedIds = if (trimmedQuery.isEmpty()) emptySet()
+            else withContext(Dispatchers.IO) {
+                runCatching { workDatabase.searchWorkIds(trimmedQuery) }.getOrDefault(emptySet())
+            }
+            val allIds = works.filter {
+                !it.isSample && workGalleryState.inFolder(it) &&
+                    (workGalleryState.selectedTag == null || it.tags.any { tag -> tag.equals(workGalleryState.selectedTag, true) }) &&
+                    matchesGalleryQuery(it, trimmedQuery, ftsMatchedIds)
+            }.map { it.id }.toSet()
+            workGalleryState.selectedIds = if (workGalleryState.selectedIds == allIds) emptySet() else allIds
+        }
     }
 
     @Composable
@@ -1661,6 +1665,7 @@ internal fun EditorScreen(
             },
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
+            devicePreviewRatio = devicePreviewRatio,
             modifier = modifier
         )
     }
@@ -1707,6 +1712,10 @@ internal fun EditorScreen(
                     onShowOnboarding = {
                         showSettings = false
                         settingsViewModel.replayOnboarding()
+                    },
+                    onShowPracticeTour = {
+                        showSettings = false
+                        settingsViewModel.startPracticeTour()
                     },
                     onExportBackup = { exportBackupLauncher.launch("Edit-RiN-backup.zip") },
                     onImportBackup = { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },

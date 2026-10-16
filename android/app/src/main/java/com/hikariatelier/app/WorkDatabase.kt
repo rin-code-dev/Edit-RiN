@@ -195,4 +195,14 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
 
         return matched
     }
+
+    companion object {
+        @Volatile
+        private var instance: WorkDatabase? = null
+
+        fun getInstance(context: Context): WorkDatabase =
+            instance ?: synchronized(this) {
+                instance ?: WorkDatabase(context.applicationContext).also { instance = it }
+            }
+    }
 }

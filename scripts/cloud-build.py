@@ -196,6 +196,20 @@ def preflight_release(repo):
         raise RuntimeError('Release signing Secrets are missing: ' + ', '.join(sorted(missing)))
 
 
+def run_local_preflight(root):
+    """Run fast local preflight tests before creating/uploading snapshot."""
+    verify_script = root / 'scripts' / 'verify-kotlin-sources.py'
+    if verify_script.exists():
+        res = subprocess.run([sys.executable, str(verify_script)], cwd=root)
+        if res.returncode != 0:
+            raise RuntimeError("Kotlin source verification failed before build.")
+    package_json = root / 'package.json'
+    if package_json.exists():
+        res = subprocess.run(['npm', 'test'], cwd=root)
+        if res.returncode != 0:
+            raise RuntimeError("Local preflight tests (npm test) failed. Fix issues before cloud build.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('build_type', nargs='?', choices=['debug', 'release'], default='debug')
@@ -218,6 +232,7 @@ def main():
                  artifact_name(args.build_type, args.download_run), '-D', temporary], capture=False)
             receive(repo, args.download_run, None, args.output, args.build_type, directory)
         return
+    run_local_preflight(root)
     with tempfile.TemporaryDirectory(prefix='edit-rin-source-') as temporary:
         snapshot = Path(temporary)
         count = prepare_snapshot(root, snapshot)

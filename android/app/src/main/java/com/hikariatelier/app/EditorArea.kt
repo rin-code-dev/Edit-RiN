@@ -131,7 +131,8 @@ internal fun EditorArea(
     onJumpToSource: (String, Int) -> Unit = { _, _ -> },
     onOpenProjectFiles: (() -> Unit)? = null,
     watchValues: Map<Int, String> = emptyMap(),
-    onSwitchRuntimeVersion: ((String) -> Unit)? = null
+    onSwitchRuntimeVersion: ((String) -> Unit)? = null,
+    devicePreviewRatio: Float = 1f
 ) {
     val copyToClipboard = rememberClipboardCopy()
     val currentFontSize = rememberUpdatedState(editorFontSize)
@@ -465,11 +466,13 @@ internal fun EditorArea(
                         onClearNavigationTarget()
                     }
                     val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                    val useFloatingPip = !isLandscape && sessionViewModel.pipModeEnabled
+                    val density = LocalDensity.current
+                    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
+                    val useFloatingPip = !isLandscape && sessionViewModel.pipModeEnabled && (editorFocused || keyboardVisible)
                     val isPipAtBottom = sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_START ||
                         sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_END
 
-                    val pipSafeRatio = previewAspectRatioValue(activeWork?.previewAspectRatio ?: "1:1").coerceIn(0.45f, 2.2f)
+                    val pipSafeRatio = previewAspectRatioValue(activeWork?.previewAspectRatio ?: "1:1", devicePreviewRatio).coerceIn(0.45f, 2.2f)
                     val pipBaseSize = sessionViewModel.pipSizePreset.baseDp
                     val pipCanvasHeightDp = if (pipSafeRatio >= 1f) (pipBaseSize / pipSafeRatio) else pipBaseSize.toFloat()
                     val pipCardHeightDp = if (sessionViewModel.pipMinimized) 32.dp else (pipCanvasHeightDp.dp + 32.dp)

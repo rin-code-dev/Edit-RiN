@@ -184,7 +184,7 @@ internal class PreviewController(
             Toast.makeText(activity, text("録画を停止してから再実行してください"), Toast.LENGTH_SHORT).show()
             return
         }
-        runCatching { webView?.evaluateJavascript("window.rinDispose?.()", null) }
+        runCatching { webView?.evaluateJavascript("(window.__editRinDisposeInternal || window.rinDispose)?.()", null) }
         transfer.abort()
         screenshotTransfer.abort()
         abortFileTransfer()
@@ -323,7 +323,6 @@ internal class PreviewController(
         mime: String = "",
         dataOrUrl: String = ""
     ): Boolean {
-        val port = controlPort ?: return false
         val token = runInput?.token ?: session.assets.token
         val normalized = filename.removePrefix("assets/")
 
@@ -338,6 +337,24 @@ internal class PreviewController(
 
         val isUrl = dataOrUrl.startsWith("http://") || dataOrUrl.startsWith("https://") ||
             dataOrUrl.startsWith("blob:") || mime == "url"
+
+        val port = controlPort
+        if (port == null) {
+            val evalPayload = when {
+                isUrl -> dataOrUrl
+                dataOrUrl.isBlank() -> "${projectFileUrl(token, normalized)}?_rin_t=${SystemClock.elapsedRealtime()}"
+                else -> dataOrUrl
+            }
+            val evalMime = if (isUrl || dataOrUrl.isBlank()) "url" else mime
+            val script = "window.__editRinHotSwapAsset?.(${JSONObject.quote(normalized)},${JSONObject.quote(evalMime)},${JSONObject.quote(evalPayload)})"
+            return try {
+                webView?.evaluateJavascript(script, null)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
         val payload = if (isUrl) {
             "A:$normalized:url:$dataOrUrl"
         } else if (dataOrUrl.isBlank()) {
@@ -359,6 +376,14 @@ internal class PreviewController(
 
     fun hotSwapAssetUrl(filename: String, url: String, asset: ProjectAsset? = null): Boolean =
         hotSwapAsset(filename, asset, "url", url)
+
+    internal fun updateRunSourceSilently(newSource: String, newFiles: Map<String, String>? = null) {
+        val current = runInput ?: return
+        runInput = current.copy(
+            source = newSource,
+            files = newFiles ?: current.files
+        )
+    }
 
     private fun markVisualReadyAndClearLoading(token: String) {
         if (disposed || !session.isCurrent(token) || isError) return
@@ -517,7 +542,7 @@ internal class PreviewController(
     }
 
     fun stopSketch() {
-        runCatching { webView?.evaluateJavascript("window.rinDispose?.()", null) }
+        runCatching { webView?.evaluateJavascript("(window.__editRinDisposeInternal || window.rinDispose)?.()", null) }
         sensors.stop()
         isPaused = true
     }
@@ -544,7 +569,7 @@ internal class PreviewController(
         downloadToast?.cancel()
         recording.onPreviewDestroyed()
         webView?.let {
-            runCatching { it.evaluateJavascript("window.rinDispose?.()", null) }
+            runCatching { it.evaluateJavascript("(window.__editRinDisposeInternal || window.rinDispose)?.()", null) }
             it.stopLoading()
             it.removeJavascriptInterface("Android")
             it.loadUrl("about:blank")
