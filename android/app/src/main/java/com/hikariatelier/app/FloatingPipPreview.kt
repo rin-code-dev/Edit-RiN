@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,8 +20,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -252,6 +256,7 @@ internal fun FloatingPipPreviewHost(
     snapCorner: PipCorner = PipCorner.TOP_END,
     onSnapCornerChange: (PipCorner) -> Unit = {},
     isGhosted: Boolean = false,
+    onTapCanvas: ((LayoutCoordinates, Offset) -> Unit)? = null,
     previewContent: @Composable (Modifier) -> Unit
 ) {
     val density = LocalDensity.current
@@ -383,7 +388,6 @@ internal fun FloatingPipPreviewHost(
                 }
             )
         }
-        val canvasDragGestureModifier = if (isGhosted) Modifier else headerDragGestureModifier
 
         val outerShape = RoundedCornerShape(12.dp)
         Box(
@@ -493,13 +497,16 @@ internal fun FloatingPipPreviewHost(
                     )
                 }
 
+                var canvasLayoutCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .sharePointerWithSiblings(isGhosted)
                         .graphicsLayer { this.alpha = canvasAlpha }
-                        .background(if (isGhosted) Color.Transparent else Color.Black),
+                        .background(if (isGhosted) Color.Transparent else Color.Black)
+                        .onGloballyPositioned { canvasLayoutCoordinates = it },
                     contentAlignment = Alignment.Center
                 ) {
                     // Keep the WebView mounted even when minimized (clipped to 0dp height)
@@ -510,12 +517,19 @@ internal fun FloatingPipPreviewHost(
                         )
                     }
 
-                    // Transparent drag shield over the canvas so dragging anywhere on the PiP window moves it smoothly
-                    if (!minimized && !isGhosted) {
+                    // Transparent canvas tap shield: tapping anywhere on the canvas moves caret to code behind & focuses editor
+                    if (!minimized && onTapCanvas != null) {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
-                                .then(canvasDragGestureModifier)
+                                .pointerInput(onTapCanvas) {
+                                    detectTapGestures { offset ->
+                                        val coords = canvasLayoutCoordinates
+                                        if (coords != null && coords.isAttached) {
+                                            onTapCanvas(coords, offset)
+                                        }
+                                    }
+                                }
                         )
                     }
                 }

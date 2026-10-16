@@ -28,9 +28,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -38,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -135,6 +139,8 @@ internal fun EditorArea(
     devicePreviewRatio: Float = 1f
 ) {
     val copyToClipboard = rememberClipboardCopy()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var textLayoutCoordinates by remember(editingKey) { mutableStateOf<LayoutCoordinates?>(null) }
     val currentFontSize = rememberUpdatedState(editorFontSize)
     val currentFontSizeChange = rememberUpdatedState(onEditorFontSizeChange)
     var pinchFontSize by remember { mutableStateOf<Float?>(null) }
@@ -578,6 +584,40 @@ internal fun EditorArea(
                         }
                     }
 
+                    val currentTextLayout = editorTextLayout
+                    val currentProjection = projection
+                    val currentEditingValue = editingValue
+                    val currentOnUpdateEditingValue = onUpdateEditingValue
+                    val currentReadOnly = readOnly
+
+                    DisposableEffect(sessionViewModel, currentTextLayout, currentProjection, currentEditingValue, currentReadOnly) {
+                        if (!currentReadOnly) {
+                            sessionViewModel.pipCanvasTapHandler = { canvasCoords, tapOffset ->
+                                val textCoords = textLayoutCoordinates
+                                val layout = currentTextLayout
+                                if (textCoords != null && textCoords.isAttached && layout != null) {
+                                    val textLocalOffset = textCoords.localPositionOf(canvasCoords, tapOffset)
+                                    val visualOffset = layout.getOffsetForPosition(textLocalOffset)
+                                        .coerceIn(0, layout.layoutInput.text.length)
+                                    val originalOffset = currentProjection.transformedToOriginal(visualOffset)
+                                        .coerceIn(0, currentEditingValue.text.length)
+                                    currentOnUpdateEditingValue(
+                                        currentEditingValue.copy(
+                                            selection = TextRange(originalOffset)
+                                        )
+                                    )
+                                    editorFocusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            }
+                        } else {
+                            sessionViewModel.pipCanvasTapHandler = null
+                        }
+                        onDispose {
+                            sessionViewModel.pipCanvasTapHandler = null
+                        }
+                    }
+
                     val containerMaxHeight = maxHeight
                     val contentMinHeight = (containerMaxHeight - 32.dp + pipBottomPadding).coerceAtLeast(0.dp)
 
@@ -660,6 +700,7 @@ internal fun EditorArea(
                                         end = 16.dp,
                                         bottom = 28.dp + pipBottomPadding
                                     )
+                                    .onGloballyPositioned { textLayoutCoordinates = it }
                                     .focusRequester(editorFocusRequester)
                                     .onFocusChanged {
                                         onFocusChange(it.isFocused)

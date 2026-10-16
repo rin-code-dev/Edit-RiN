@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.toMutableStateMap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 
@@ -90,6 +92,7 @@ class EditorSessionViewModel : ViewModel() {
     internal var pipMinimized by mutableStateOf(true)
     internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
     internal var pipAutoGhosted by mutableStateOf(false)
+    internal var pipCanvasTapHandler: ((LayoutCoordinates, Offset) -> Unit)? by mutableStateOf(null)
     internal var tweetModeEnabled by mutableStateOf(false)
     internal var tweetTargetLimit by mutableIntStateOf(140)
     internal var showMinifySheet by mutableStateOf(false)

@@ -1777,7 +1777,10 @@ internal fun EditorScreen(
                     onPipSizePresetChanged = { sessionViewModel.pipSizePreset = it },
                     onPipTranslucentChanged = { sessionViewModel.pipTranslucent = it },
                     onPipMinimizedChanged = { sessionViewModel.pipMinimized = it },
-                    onPipSnapCornerChanged = { sessionViewModel.pipSnapCorner = it }
+                    onPipSnapCornerChanged = { sessionViewModel.pipSnapCorner = it },
+                    onPipCanvasTap = { coords, offset ->
+                        sessionViewModel.pipCanvasTapHandler?.invoke(coords, offset)
+                    }
                 ),
                 slots = EditorWorkspaceSlots(
                     workBar = { WorkBar() }, landscapeBar = { LandscapeUnifiedBar() },
