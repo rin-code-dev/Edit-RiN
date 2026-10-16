@@ -24,8 +24,6 @@ internal class UpdateViewModel(application: Application) : AndroidViewModel(appl
         private set
     var readyApk by mutableStateOf<File?>(null)
         private set
-    var isTestPreview by mutableStateOf(false)
-        private set
 
     fun discardReady() { readyApk = null }
 
@@ -36,10 +34,6 @@ internal class UpdateViewModel(application: Application) : AndroidViewModel(appl
     fun download() {
         val release = availableRelease ?: return
         if (checking || downloading || release.apk == null) return
-        if (isTestPreview) {
-            startTestDownloadSimulation()
-            return
-        }
         if (BuildConfig.DEBUG) {
             report("デバッグ版はアプリ内更新に対応していません。配布ページから正式版を入手してください")
             return
@@ -83,12 +77,6 @@ internal class UpdateViewModel(application: Application) : AndroidViewModel(appl
     fun dismiss() {
         if (!downloading) {
             message = null
-            if (isTestPreview) {
-                isTestPreview = false
-                availableRelease = null
-                readyApk = null
-                downloadProgress = 0f
-            }
         }
     }
 
@@ -120,48 +108,6 @@ internal class UpdateViewModel(application: Application) : AndroidViewModel(appl
             } finally {
                 checking = false
                 manualChecking = false
-            }
-        }
-    }
-
-    fun showTestPreview() {
-        val testVersion = ReleaseVersion.parse("v3.2.0") ?: return
-        isTestPreview = true
-        downloadProgress = 0f
-        readyApk = null
-        availableRelease = AppRelease(
-            tag = "v3.2.0",
-            version = testVersion,
-            apk = ReleaseAsset(url = "https://github.com/rin-code-dev/Edit-RiN/releases/download/v3.2.0/Edit-RiN-v3.2.0.apk", size = 6_800_000L),
-            highlights = listOf(
-                UpdateHighlight(title = "コメント駆動パラメータ", description = "// @slider でUIスライダー出現＆双方向連動"),
-                UpdateHighlight(title = "#つぶやきProcessing 支援", description = "140/280字HUDゲージと自動コード圧縮"),
-                UpdateHighlight(title = "PiP小窓オートゴースト", description = "編集行との重なりで自動半透明化＆直接編集")
-            )
-        )
-        message = "新しいバージョンがあります"
-    }
-
-    private fun startTestDownloadSimulation() {
-        downloading = true
-        downloadProgress = 0f
-        readyApk = null
-        report("更新をダウンロード中…")
-        downloadJob = viewModelScope.launch {
-            try {
-                for (step in 1..100) {
-                    kotlinx.coroutines.delay(25)
-                    downloadProgress = step / 100f
-                }
-                val testFile = File(getApplication<Application>().cacheDir, "Edit-RiN-v3.2.0-test.apk")
-                if (!testFile.exists()) testFile.writeText("Edit-RiN test apk payload")
-                readyApk = testFile
-                report("ダウンロードが完了しました。インストールして更新できます")
-            } catch (cancelled: CancellationException) {
-                report("ダウンロードを中止しました")
-                throw cancelled
-            } finally {
-                downloading = false
             }
         }
     }

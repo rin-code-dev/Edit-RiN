@@ -58,7 +58,7 @@ internal fun UpdateDialog(
 ) {
     val message = state.message ?: return
     val release = state.availableRelease
-    val canDownload = release?.apk != null && (!BuildConfig.DEBUG || state.isTestPreview)
+    val canDownload = release?.apk != null && !BuildConfig.DEBUG
     val colors = MaterialTheme.colorScheme
 
     val configuration = LocalConfiguration.current
@@ -371,9 +371,6 @@ internal fun UpdateDialog(
                             Button(
                                 onClick = {
                                     when {
-                                        state.isTestPreview && state.readyApk != null -> {
-                                            state.dismiss()
-                                        }
                                         state.readyApk != null -> install()
                                         canDownload -> state.download()
                                         release != null -> { openRelease(); state.dismiss() }
