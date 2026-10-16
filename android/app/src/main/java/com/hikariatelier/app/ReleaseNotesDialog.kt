@@ -39,6 +39,35 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "3.2.0",
+        versionCode = 37,
+        titleEn = "What's New in v3.2.0",
+        titleJa = "v3.2.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_help,
+                titleEn = "Interactive Editor Practice Tour",
+                titleJa = "エディター実践ツアーの新設",
+                descEn = "Hands-on 4-step interactive tour to try real-time watch badges, live sliders, and code compression in a safe mock sandbox with a quick sample-creation action.",
+                descJa = "リアルタイム変数ウォッチやスライダー、コード圧縮を実際に体験できる全4ステップの対話型ツアーを追加。終了後は専用サンプル作品をすぐに試せます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_system_update,
+                titleEn = "Modernized Update Experience",
+                titleJa = "アプリ更新画面のフルリニューアル",
+                descEn = "Brand-new floating card dialog with download progress tracking, one-tap dismiss, and dynamic feature highlights extracted from GitHub Releases in your language.",
+                descJa = "モダンなカードデザイン、詳細な進捗表示、GitHub Releasesからの多言語ハイライト動的抽出に対応した新しい更新画面を搭載しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Startup Tour Dispatch & Watch Ghosting",
+                titleJa = "起動時ツアー振り分け ＆ ウォッチ透過",
+                descEn = "New installs launch Onboarding; updates launch the Practice Tour. Cursor lines over inline watches automatically fade and pass touches through.",
+                descJa = "新規時は入門ツアー、過去版更新時は実践ツアーを自動案内。編集行と重なる変数ウォッチの自動半透明化＆直接タッチ編集にも対応しました。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "3.1.0",
         versionCode = 36,
         titleEn = "What's New in v3.1.0",
@@ -64,13 +93,6 @@ internal val APP_RELEASE_NOTES = listOf(
                 titleJa = "PiP小窓のオートゴースト ＆ 直接タッチ編集",
                 descEn = "Floating preview lowers opacity to 25% when hovering over cursor lines. Tap directly on the preview to focus the editor and edit the code underneath.",
                 descJa = "編集中のカーソル行と小窓が重なると自動で半透明化。小窓の上から背後のコードを直接タップしてそのまま編集を続けられます。"
-            ),
-            ReleaseFeature(
-                iconRes = R.drawable.ic_help,
-                titleEn = "Interactive Editor Practice Tour",
-                titleJa = "エディター実践ツアーの新設",
-                descEn = "Hands-on 4-step interactive tour to try real-time watch badges, live sliders, and code compression in a safe mock sandbox with a quick sample-creation action.",
-                descJa = "リアルタイム変数ウォッチやスライダー、コード圧縮を実際に体験できる全4ステップの対話型ツアーを追加。終了後は専用サンプル作品をすぐに試せます。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_assets,
