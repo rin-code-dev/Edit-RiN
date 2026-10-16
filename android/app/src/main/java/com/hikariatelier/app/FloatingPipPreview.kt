@@ -302,7 +302,7 @@ internal fun FloatingPipPreviewHost(
     )
 
     BoxWithConstraints(
-        modifier = modifier.fillMaxSize().sharePointerWithSiblings(isGhosted)
+        modifier = modifier.fillMaxSize()
     ) {
         val marginPx = with(density) { 8.dp.toPx() }
         val cardWidthPx = with(density) { animatedWidth.toPx() }

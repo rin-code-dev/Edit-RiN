@@ -87,7 +87,7 @@ class EditorSessionViewModel : ViewModel() {
     internal var showInspectorSheet by mutableStateOf(false)
     internal var pipSizePreset by mutableStateOf(PipSizePreset.SMALL)
     internal var pipTranslucent by mutableStateOf(false)
-    internal var pipMinimized by mutableStateOf(false)
+    internal var pipMinimized by mutableStateOf(true)
     internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
     internal var pipAutoGhosted by mutableStateOf(false)
     internal var tweetModeEnabled by mutableStateOf(false)

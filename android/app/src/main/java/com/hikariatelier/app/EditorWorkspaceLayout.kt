@@ -59,7 +59,7 @@ internal data class EditorWorkspaceState(
     val previewHasChanges: Boolean = false,
     val pipSizePreset: PipSizePreset = PipSizePreset.SMALL,
     val pipTranslucent: Boolean = false,
-    val pipMinimized: Boolean = false,
+    val pipMinimized: Boolean = true,
     val pipSnapCorner: PipCorner = PipCorner.TOP_END,
     val pipAutoGhosted: Boolean = false
 )
