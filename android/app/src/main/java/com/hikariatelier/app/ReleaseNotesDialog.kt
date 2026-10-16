@@ -39,6 +39,23 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "3.2.1",
+        versionCode = 38,
+        titleEn = "What's New in v3.2.1",
+        titleJa = "v3.2.1 の更新内容",
+        features = listOf(
+            ReleaseFeature(R.drawable.ic_share_card, "Tweet code golf", "つぶやきProcessing用のコード圧縮",
+                "Shorten recursive helpers and repeated p5 calls while preserving literal text. Try the result before applying it.",
+                "再帰関数や繰り返すp5関数を短くし、文字列などの内容は保持します。反映前に結果を試してください。"),
+            ReleaseFeature(R.drawable.ic_tune, "Live editing fixes", "ライブ編集の修正",
+                "Keep variable-watch declaration scopes and update annotated constants in classic scripts and modules.",
+                "変数ウォッチの有効範囲を保持し、注釈付きconst変数への操作を通常JSとモジュールに反映します。"),
+            ReleaseFeature(R.drawable.ic_code, "HTML export fixes", "HTML書き出しの修正",
+                "Export parameter values, the selected module entry, and relative module dependencies.",
+                "パラメータ値と指定した開始モジュール、相対インポート先をHTMLへ埋め込みます。")
+        )
+    ),
+    ReleaseNote(
         versionName = "3.2.0",
         versionCode = 37,
         titleEn = "What's New in v3.2.0",

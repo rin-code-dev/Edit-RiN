@@ -319,7 +319,8 @@ class EditorSessionViewModel : ViewModel() {
             } else ""
             val isInsertion = nextValue.text.length > currentValue.text.length
             val lastWasInsertion = lastEntry != null && currentValue.text.length > lastEntry.text.length
-            val now = android.os.SystemClock.uptimeMillis()
+            // A monotonic JVM clock also keeps editor actions testable without Android stubs.
+            val now = System.nanoTime() / 1_000_000L
             val timeCoalesce = (now - lastEditTimestamp) < 1500L
             val positionCoalesce = lastEditPosition == -1 || kotlin.math.abs(change.start - lastEditPosition) <= 2
             val sameDirection = (lastEntry == null) || (isInsertion == lastWasInsertion)

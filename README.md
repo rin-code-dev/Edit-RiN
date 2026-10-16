@@ -55,7 +55,7 @@ function draw() {
 }
 ```
 
-### Editing and preview in v3.2.0
+### Editing and preview in v3.2.1
 
 - Use a floating preview while editing in portrait orientation. Change its size, move it between corners, or minimize it.
 - Generate controls from inline comments such as `let speed = 1; // @slider(0, 3, 0.1)`. Controls update parameter values and the matching code; `@rin` declarations remain supported.
@@ -69,7 +69,7 @@ function draw() {
 
 ## Installation & Requirements
 
-- **Supported OS**: Android 11 (API level 30) or later for the current v3.2.0 release. Older v2.3.1 supports Android 6.0 or later.
+- **Supported OS**: Android 11 (API level 30) or later for the current v3.2.1 release. Older v2.3.1 supports Android 6.0 or later.
 - **Download**: Get the latest signed APK from [GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases).
 - **Updates**: Starting with the v2.3.0 release app, download future updates within the app, then install through Android’s confirmation screen. Download progress and cancellation are available.
 
@@ -128,7 +128,7 @@ Edit:RiN は、Android 端末で p5.js のコードを書き、ジェネラテ�
 - アプリ内更新：v2.3.0以降の正式版では、次回以降の更新用APKをアプリ内でダウンロードできます。進捗の確認や中止に対応し、Androidの確認画面からインストールします。
 - プライバシー：作品の編集・実行はオフラインでも利用できます。広告やトラッキングはありません。公開作品の取り込みや更新確認には通信が必要です。
 
-現在のv3.2.0はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+現在のv3.2.1はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
 
 縦画面では小窓プレビューを表示したまま編集でき、サイズや配置を変えたり最小化したりできます。`@slider` などのコメントから作る操作UI、`// ?` による変数ウォッチ、140／280字のカウンターとコード圧縮、2種類の操作ツアーも利用できます。
 
