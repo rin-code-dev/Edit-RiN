@@ -301,11 +301,8 @@ internal fun resolveActiveWatchLines(
     val minPos = selection.min.coerceIn(0, textLength)
     val maxPos = selection.max.coerceIn(0, textLength)
     val startIdx = logicalLineStarts.binarySearch(minPos).let { if (it >= 0) it else -it - 2 }.coerceAtLeast(0)
-    val endIdx = if (minPos == maxPos) {
-        startIdx
-    } else {
-        logicalLineStarts.binarySearch(maxPos).let { if (it >= 0) it else -it - 2 }.coerceAtLeast(0)
-    }
+    val endPos = if (minPos == maxPos) minPos else (maxPos - 1).coerceAtLeast(minPos)
+    val endIdx = logicalLineStarts.binarySearch(endPos).let { if (it >= 0) it else -it - 2 }.coerceAtLeast(0)
     val firstLine = startIdx + 1
     val lastLine = (endIdx + 1).coerceAtMost(logicalLineStarts.size)
     return (firstLine..lastLine).toSet()
@@ -315,7 +312,7 @@ internal fun resolveActiveWatchLines(
  * Live Watch inline badges: displays real-time values next to lines containing `// ?` or `rinWatch(...)`.
  */
 @Composable
-internal fun LiveWatchOverlayColumn(
+internal fun BoxScope.LiveWatchOverlayColumn(
     watchValues: Map<Int, String>,
     logicalLineStarts: List<Int>,
     projection: FoldProjection,
@@ -330,28 +327,26 @@ internal fun LiveWatchOverlayColumn(
     if (watchValues.isEmpty() || textLayout == null) return
     val density = androidx.compose.ui.platform.LocalDensity.current
 
-    Box(modifier = modifier.fillMaxSize()) {
-        watchValues.forEach { (logicalLine, formattedValue) ->
-            val lineIdx = logicalLine - 1
-            if (lineIdx in logicalLineStarts.indices) {
-                val originalOffset = logicalLineStarts[lineIdx]
-                if (!projection.isHidden(originalOffset)) {
-                    val transformedOffset = projection.originalToTransformed(originalOffset)
-                        .coerceIn(0, textLayout.layoutInput.text.length)
-                    val visualLine = textLayout.getLineForOffset(transformedOffset)
-                    val lineTopPx = textLayout.getLineTop(visualLine) - scrollValue
-                    if (lineTopPx >= -24f && lineTopPx <= viewportHeightPx + 24f) {
-                        val isGhosted = logicalLine in activeLines
-                        key(logicalLine) {
-                            LiveWatchBadge(
-                                formattedValue = formattedValue,
-                                lineTopPx = lineTopPx,
-                                isGhosted = isGhosted,
-                                density = density,
-                                codeFontFamily = codeFontFamily,
-                                colors = colors
-                            )
-                        }
+    watchValues.forEach { (logicalLine, formattedValue) ->
+        val lineIdx = logicalLine - 1
+        if (lineIdx in logicalLineStarts.indices) {
+            val originalOffset = logicalLineStarts[lineIdx]
+            if (!projection.isHidden(originalOffset)) {
+                val transformedOffset = projection.originalToTransformed(originalOffset)
+                    .coerceIn(0, textLayout.layoutInput.text.length)
+                val visualLine = textLayout.getLineForOffset(transformedOffset)
+                val lineTopPx = textLayout.getLineTop(visualLine) - scrollValue
+                if (lineTopPx >= -24f && lineTopPx <= viewportHeightPx + 24f) {
+                    val isGhosted = logicalLine in activeLines
+                    key(logicalLine) {
+                        LiveWatchBadge(
+                            formattedValue = formattedValue,
+                            lineTopPx = lineTopPx,
+                            isGhosted = isGhosted,
+                            density = density,
+                            codeFontFamily = codeFontFamily,
+                            colors = colors
+                        )
                     }
                 }
             }

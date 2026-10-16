@@ -39,5 +39,8 @@ class EditorSelectionTest {
         assertEquals(setOf(1, 2), resolveActiveWatchLines(TextRange(5, 15), 40, lineStarts, isFocused = true))
         assertEquals(setOf(1, 2, 3), resolveActiveWatchLines(TextRange(25, 2), 40, lineStarts, isFocused = true))
         assertEquals(setOf(1, 2, 3, 4), resolveActiveWatchLines(TextRange(0, 35), 40, lineStarts, isFocused = true))
+        // Boundary: selecting exactly line 1 (0..10 exclusive) should NOT include line 2
+        assertEquals(setOf(1), resolveActiveWatchLines(TextRange(0, 10), 40, lineStarts, isFocused = true))
+        assertEquals(setOf(1, 2), resolveActiveWatchLines(TextRange(0, 20), 40, lineStarts, isFocused = true))
     }
 }
