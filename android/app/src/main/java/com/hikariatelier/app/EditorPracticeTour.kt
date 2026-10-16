@@ -44,10 +44,10 @@ internal fun practiceTourSteps(language: String): List<PracticeTourStep> {
                 "在代码开头声明 // @rin 即可创建自定义参数面板。参数值随作品一同保存，分享时也会保留。")
         ),
         PracticeTourStep(
-            t("コードを極限まで短くする", "Minify code for sharing", "极简压缩代码以便分享"),
-            t("Twitter/Xに投稿できる文字数（140/280文字）にコードを圧縮するGolf機能です。// #つぶやきProcessing のハッシュタグも賢く保持されます。",
-                "Golf compresses your code to fit Twitter/X character limits (140/280 chars) while smartly preserving hashtags like // #つぶやきProcessing.",
-                "Golf 功能可将代码压缩至 Twitter/X 字数限制（140/280 字），并智能保留 // #つぶやきProcessing 等标签。")
+            t("投稿用にコードを圧縮する", "Minify code for sharing", "压缩代码以便分享"),
+            t("SNS（Twitter/X）に1投稿で収まるようコードを自動でスリム化します。// #つぶやきProcessing などのハッシュタグも自動で保持されます。",
+                "Compresses your code to fit social media character limits while cleanly preserving hashtags like // #つぶやきProcessing.",
+                "自动压缩代码以适应社交平台字数限制，并智能保留 // #つぶやきProcessing 等标签。")
         )
     )
 }

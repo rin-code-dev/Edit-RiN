@@ -995,7 +995,7 @@ internal fun TweetModeStatusBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Golf",
+                        text = uiText("圧縮"),
                         fontFamily = codeFontFamily,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,

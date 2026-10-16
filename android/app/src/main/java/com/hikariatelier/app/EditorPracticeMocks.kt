@@ -502,14 +502,14 @@ private fun MockPracticeRinParameters(language: String, animate: Boolean) {
     }
 }
 
-/** Step 3: つぶやきGolf ＆ 完了 (`Golf`) */
+/** Step 3: つぶやきコード圧縮 ＆ 完了 */
 @Composable
 private fun MockPracticeGolf(language: String, animate: Boolean) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     var golfed by remember { mutableStateOf(false) }
 
     PracticeMockFrame {
-        Text(t("つぶやきGolf 圧縮", "Tweet Golf Minification", "推文 Golf 极简压缩"), style = MaterialTheme.typography.titleSmall)
+        Text(t("つぶやきコード圧縮", "Tweet Code Compression", "推文代码压缩"), style = MaterialTheme.typography.titleSmall)
 
         // Mock Code Block
         Surface(
@@ -565,7 +565,7 @@ private fun MockPracticeGolf(language: String, animate: Boolean) {
             }
         }
 
-        // Mock Golf Compression Action Button
+        // Mock Compression Action Button
         Button(
             onClick = { golfed = !golfed },
             modifier = Modifier.fillMaxWidth().practiceTapHint(!golfed, animate).testTag("practice-golf-button"),
@@ -581,16 +581,16 @@ private fun MockPracticeGolf(language: String, animate: Boolean) {
             )
             Spacer(Modifier.width(8.dp))
             Text(if (golfed) t("元のコードに戻す", "Revert to Original", "还原为原始代码")
-                 else t("Golf 圧縮を実行 (1行に短縮)", "Run Golf Minify", "执行 Golf 极简压缩"))
+                 else t("コードを自動圧縮 (1行に短縮)", "Compress Code", "自动压缩代码"))
         }
 
         PracticeMockCaption(
-            if (golfed) t("コードが極限まで圧縮されました！ハッシュタグを保持したままX (Twitter) へ投稿できます。",
-                "Code compressed to the limit! Ready to tweet on X with hashtags preserved.",
-                "代码已被极致压缩！保留标签的同时非常适合在 X (Twitter) 上发布。")
-            else t("「Golf 圧縮を実行」をタップしてコードの自動短縮を試してみましょう",
-                "Tap “Run Golf Minify” to test smart code compression",
-                "点击“执行 Golf 极简压缩”体验智能代码压缩")
+            if (golfed) t("コードがスリムに圧縮されました！ハッシュタグを保持したままX (Twitter) へ投稿できます。",
+                "Code compressed cleanly! Ready to tweet on X with hashtags preserved.",
+                "代码已精简压缩！保留标签的同时非常适合在 X (Twitter) 上发布。")
+            else t("「コードを自動圧縮」をタップしてコードのスリム化を試してみましょう",
+                "Tap “Compress Code” to test smart code compression",
+                "点击“自动压缩代码”体验智能代码压缩")
         )
     }
 }
