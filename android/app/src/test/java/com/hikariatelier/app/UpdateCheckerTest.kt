@@ -88,4 +88,25 @@ class UpdateCheckerTest {
         assertEquals(3, enHighlights.size)
         assertEquals("Live Parameters", enHighlights[0].title)
     }
+    @Test fun languageSectionsUseExactNamesAndKeepNestedHeadings() {
+        val body = """
+            ## Changes
+            - Wrong: Not a language section
+            ## English
+            ### Features
+            - First: One
+            ### Fixes
+            - Second: Two
+            ## 日本語
+            - 日本語項目: 説明
+        """.trimIndent()
+        assertEquals(listOf("First", "Second"), parseReleaseHighlights(body, "en").map { it.title })
+        assertEquals("日本語項目", parseReleaseHighlights(body, "ja").single().title)
+        assertEquals(listOf("First", "Second"), parseReleaseHighlights(body, "zh").map { it.title })
+    }
+
+    @Test fun codeExamplesAndRulesAreNotHighlights() {
+        val body = "## English\n```md\n## 日本語\n- Example: Ignore\n```\n---\n- Actual: Show"
+        assertEquals("Actual", parseReleaseHighlights(body, "en").single().title)
+    }
 }

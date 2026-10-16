@@ -141,6 +141,20 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
     }
 }
 
+/** Annotated constants are mutable only in the runtime copy; authored declarations stay intact. */
+internal fun prepareLiveParameterSource(source: String): String = source.split("\n").joinToString("\n") { line ->
+    val match = inlineParameterRegex.matchEntire(line.trimEnd('\r'))
+    if (match != null && workParameters(mapOf("sketch.js" to line)).isNotEmpty()) {
+        val runtimeLine = line.replaceFirst(Regex("""^(\s*)const\b"""), "$1let")
+        val comment = runtimeLine.lastIndexOf("//")
+        val name = match.groupValues[1]
+        val code = runtimeLine.substring(0, comment).trimEnd().removeSuffix(";")
+        // A closure updates the actual binding even in modules or nested scopes. Keep line numbers.
+        code + ";(window.__editRinParameterBindings ||= Object.create(null))[" +
+            JSONObject.quote(name) + "] = v => { $name = v }; " + runtimeLine.substring(comment)
+    } else line
+}
+
 internal fun parameterValue(parameter: WorkParameter, saved: String?): String = when (parameter) {
     is WorkParameter.Number -> saved?.toFloatOrNull()?.takeIf { it.isFinite() && it in parameter.min..parameter.max }
         ?.toString() ?: parameter.defaultValue
@@ -196,10 +210,7 @@ internal fun updateParameterInSource(source: String, parameter: WorkParameter, n
             if (oldValText.trim() != formattedNewVal) {
                 changed = true
                 val cr = if (line.endsWith("\r")) "\r" else ""
-                var updated = trimmed.substring(0, range.first) + formattedNewVal + trimmed.substring(range.last + 1)
-                if (updated.matches(Regex("""^\s*const\s+.*"""))) {
-                    updated = updated.replaceFirst(Regex("""\bconst\b"""), "let")
-                }
+                val updated = trimmed.substring(0, range.first) + formattedNewVal + trimmed.substring(range.last + 1)
                 return@map updated + cr
             }
             return@map line

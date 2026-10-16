@@ -198,4 +198,15 @@ class WorkParametersTest {
         val updated4 = updateParameterInSource(updated3, modeParam, "noise")!!
         assertTrue(updated4.contains("let mode = \"noise\"; // @choice(sin, cos, noise)"))
     }
+    @Test fun runtimeParametersKeepAuthoredConstButExposeAMutableBinding() {
+        val source = "const speed = 1; // @slider(0, 3, 0.1)"
+        val runtime = prepareLiveParameterSource(source)
+        assertTrue(runtime.startsWith("let speed = 1;"))
+        assertTrue(runtime.contains("__editRinParameterBindings"))
+        assertTrue(runtime.contains("speed = v"))
+        assertEquals(0, runtime.count { it == '\n' })
+        val declaration = workParameters(mapOf("sketch.js" to source)).single()
+        assertTrue(updateParameterInSource(source, declaration, "2")!!.startsWith("const speed = 2"))
+        assertEquals("const speed = 1;", prepareLiveParameterSource("const speed = 1;"))
+    }
 }

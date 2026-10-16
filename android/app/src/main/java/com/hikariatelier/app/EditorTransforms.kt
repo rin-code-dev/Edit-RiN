@@ -262,37 +262,71 @@ internal fun minifyJavaScriptForTweet(
 ): String {
     if (source.isBlank()) return ""
 
-    // 0. Strip existing #つぶやきProcessing header comment if present
-    var code = source.replace(
-        Regex("""^\s*//\s*#つぶやきProcessing[^\n\r]*[\r\n]*"""),
-        ""
-    )
-
-    // 1. Strip all comments while keeping literals intact
-    code = stripCommentsPreservingLiterals(code)
-
+    // Golf deliberately changes scope, loop order and setup timing for tweet-sized sketches.
+    // Literal protection is independent of that policy: text/regex contents are never golfed.
+    val literals = TweetGolfLiterals(source)
+    var code = literals.protect()
     if (options.aggressiveGolf) {
-        // 2. Inline constant declarations (e.g., const CANVAS_SIZE = 600; const RING_COUNT = 36;)
-        code = inlineConstantDeclarations(code)
-
-        // 3. Remove non-essential setup calls like pixelDensity(...)
+        code = inlineConstantDeclarations(code, literals.templateIdentifiers())
         code = code.replace(Regex("""\bpixelDensity\s*\([^)]*\)\s*;?"""), "")
+        code = golfNamedFunctions(code)
     }
-
-    // 4. Extract setup() and draw() and merge into `t=0\ndraw=_=>{...}`
-    code = mergeSetupAndDrawForTweet(code, options.aggressiveGolf)
-
-    // 5. Core golf transformations (canvas folding, math constants, loops, variable renaming)
-    code = applyExtremeGolfTransforms(code, options)
-
-    // 6. Embed `#つぶやきProcessing` tag via template literal or header
+    code = mergeSetupAndDrawForTweet(code, options.aggressiveGolf, literals.templateIdentifiers())
+    code = applyExtremeGolfTransforms(code, options, literals.templateIdentifiers())
+    if (options.aggressiveGolf) code = golfRepeatedP5Calls(code)
     code = injectTweetHashtag(code, options.embedHashtagInCall)
-
-    // 7. Final token compaction
-    return compactTokensForTweet(code, preferNewlines = options.preferNewlines)
+    return literals.restore(compactTokensForTweet(code, options.preferNewlines))
 }
 
-private fun inlineConstantDeclarations(source: String): String {
+/** Recursive helpers become assignment arrows; a single return becomes an expression body. */
+private fun golfNamedFunctions(source: String): String {
+    val pattern = Regex("""\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^()]*)\)\s*\{""")
+    var code = source
+    var from = 0
+    while (true) {
+        val match = pattern.find(code, from) ?: break
+        val name = match.groupValues[1]
+        val end = findMatchingBrace(code, match.range.last)
+        if (end < 0) break
+        if (name in P5_AND_JS_RESERVED_WORDS || code.substring(0, match.range.first).trimEnd().endsWith("async")) {
+            from = match.range.last + 1
+            continue
+        }
+        val body = code.substring(match.range.last + 1, end).trim()
+        val expression = body.removePrefix("return ").trim().removeSuffix(";")
+        val arrowBody = if (body.startsWith("return ") && splitTopLevelStatements(expression).size == 1 &&
+            !expression.startsWith("{") && !Regex("""\breturn\b""").containsMatchIn(expression)) expression else "{$body}"
+        val params = match.groupValues[2].trim()
+        val args = if (Regex("""[A-Za-z_$][\w$]*""").matches(params)) params else "($params)"
+        val replacement = "$name=$args=>$arrowBody;"
+        code = code.replaceRange(match.range.first..end, replacement)
+        from = match.range.first + replacement.length
+    }
+    return code
+}
+
+/** Alias only global p5 calls, only when the alias saves characters. Assign inside draw. */
+private fun golfRepeatedP5Calls(source: String): String {
+    var code = source
+    val aliases = mutableListOf<String>()
+    val available = "rabcdefghijklmnopqsuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".map { it.toString() }.distinct()
+        .filterNot { Regex("""\b$it\b""").containsMatchIn(source) }.toMutableList()
+    for (name in listOf("randomGaussian", "strokeWeight", "createVector", "random", "noise", "sin", "cos", "point", "stroke", "fill")) {
+        if (available.isEmpty()) break
+        val occurrences = Regex("""(?<![\w$.])$name\s*(?=\()""")
+        val count = occurrences.findAll(code).count()
+        val short = available.first()
+        if (count * (name.length - 1) <= name.length + 3) continue
+        aliases += "$short=$name"
+        available.removeAt(0)
+        code = code.replace(occurrences, short)
+    }
+    if (aliases.isEmpty()) return code
+    val draw = Regex("""\bdraw\s*=\s*_\s*=>\s*\{""").find(code) ?: return source
+    return code.substring(0, draw.range.last + 1) + aliases.joinToString(",") + ";" + code.substring(draw.range.last + 1)
+}
+
+private fun inlineConstantDeclarations(source: String, preservedNames: Set<String>): String {
     var code = source
     val constRegex = Regex("""^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*;?\s*$""", RegexOption.MULTILINE)
     val constants = mutableMapOf<String, String>()
@@ -304,7 +338,8 @@ private fun inlineConstantDeclarations(source: String): String {
         val isMutated = Regex("""\b${Regex.escape(name)}\s*(?:\+\+|--|[+\-*/%&|^]=|=\s*[^=])""")
             .findAll(code)
             .count() > 1
-        if (!isMutated && name != "t" && name != "time") {
+        if (!isMutated && name != "t" && name != "time" && name !in preservedNames &&
+            !Regex("""\.\s*${Regex.escape(name)}\b|\b${Regex.escape(name)}\s*:""").containsMatchIn(code)) {
             constants[name] = value
         }
     }
@@ -324,7 +359,7 @@ private fun inlineConstantDeclarations(source: String): String {
     return code
 }
 
-private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): String {
+private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean, preservedNames: Set<String>): String {
     val extracted = extractP5Structure(source)
     if (!extracted.hasSetupOrDraw) return source
 
@@ -333,7 +368,7 @@ private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): Stri
     var drawBody = extracted.drawBody.trim()
 
     // Normalize `time` to `t`
-    if (Regex("""\btime\b""").containsMatchIn(source) && !Regex("""\bt\b""").containsMatchIn(source)) {
+    if ("time" !in preservedNames && Regex("""\btime\b""").containsMatchIn(source) && !Regex("""\bt\b""").containsMatchIn(source)) {
         globals = globals.replace(Regex("""\btime\b"""), "t")
         setupBody = setupBody.replace(Regex("""\btime\b"""), "t")
         drawBody = drawBody.replace(Regex("""\btime\b"""), "t")
@@ -402,7 +437,7 @@ private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): Stri
 
 private val STATEMENT_ONLY_REGEX = Regex("""^\s*(?:for\b|while\b|if\b|switch\b|do\b|let\b|const\b|var\b|return\b|throw\b)""")
 
-private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions): String {
+private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions, preservedNames: Set<String>): String {
     var code = source
 
     // 1. Remove all `let`, `const`, `var`
@@ -468,7 +503,7 @@ private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions
 
     // 7. Shorten multi-character user variables into single letters
     if (options.aggressiveGolf) {
-        code = renameUserVariablesToSingleChars(code)
+        code = renameUserVariablesToSingleChars(code, preservedNames)
     }
 
     // 8. Standalone post-increment / += 1 -> pre-increment ++t
@@ -569,7 +604,7 @@ private fun flattenControlBlocksWithCommas(source: String, foldPopIntoFor: Boole
     return current
 }
 
-private fun renameUserVariablesToSingleChars(source: String): String {
+private fun renameUserVariablesToSingleChars(source: String, preservedNames: Set<String>): String {
     var code = source
 
     // 1. Canonical p5 tweet-coding variable names first
@@ -582,7 +617,7 @@ private fun renameUserVariablesToSingleChars(source: String): String {
         "radius" to "r"
     )
     for ((longName, shortName) in preferredMappings) {
-        if (Regex("""\b$longName\b""").containsMatchIn(code) &&
+        if (longName !in preservedNames && !Regex("""\.\s*$longName\b|\b$longName\s*:""").containsMatchIn(code) && Regex("""\b$longName\b""").containsMatchIn(code) &&
             !Regex("""\b$shortName\b""").containsMatchIn(code)
         ) {
             code = code.replace(Regex("""\b$longName\b"""), shortName)
@@ -590,12 +625,12 @@ private fun renameUserVariablesToSingleChars(source: String): String {
     }
 
     // 2. Find all remaining multi-character user variables that are assigned to (`ident = ...`)
-    val assignedVarRegex = Regex("""\b([A-Za-z_$][\w$]{1,})\s*=(?!=)""")
+    val assignedVarRegex = Regex("""(?<![\w$.])([A-Za-z_$][\w$]{1,})\s*=(?!=)""")
     val allIdentifiers = Regex("""\b([A-Za-z_$][\w$]*)\b""").findAll(code).map { it.groupValues[1] }.toSet()
 
     val candidates = assignedVarRegex.findAll(code)
         .map { it.groupValues[1] }
-        .filter { it.length >= 2 && it !in P5_AND_JS_RESERVED_WORDS }
+        .filter { it.length >= 2 && !Regex("""\.\s*${Regex.escape(it)}\b|\b${Regex.escape(it)}\s*:""").containsMatchIn(code) && it !in preservedNames && it !in P5_AND_JS_RESERVED_WORDS && !it.startsWith("__RIN_GOLF_LITERAL_") }
         .distinct()
         .toList()
 

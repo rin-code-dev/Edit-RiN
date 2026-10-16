@@ -451,6 +451,21 @@ test('bundled wave Parameter.js draws with rinParams', async () => {
   assert.equal(vm.runInContext('weaveTime', context), paused);
 });
 
+test('live parameters update the registered lexical binding instead of a window shadow', () => {
+  const r = runner('function setup() {}', {}, {
+    Android: { getWorkParameters: () => JSON.stringify({ speed: 1 }) }
+  });
+  vm.runInContext(`(() => {
+    let speed = 1;
+    window.__editRinParameterBindings = { speed: value => { speed = value; } };
+    window.readBoundSpeed = () => speed;
+  })()`, r.context);
+  r.context.window.__editRinSetParameter('speed', 2);
+  assert.equal(r.context.window.readBoundSpeed(), 2);
+  assert.equal(r.context.window.rinParams.speed, 2);
+  assert.equal(r.context.window.speed, undefined);
+});
+
 test('choice parameters update in rinParams via __editRinSetParameter and enforce type safety', () => {
   const r = runner('function setup() {}', {}, {
     Android: {
