@@ -2,15 +2,22 @@ package com.hikariatelier.app
 
 import org.json.JSONObject
 
-internal sealed class WorkParameter(open val name: String, open val label: String, open val defaultValue: String) {
+internal sealed class WorkParameter(
+    open val name: String,
+    open val label: String,
+    open val defaultValue: String,
+    open val sourceFile: String = "sketch.js"
+) {
     data class Number(override val name: String, override val label: String, override val defaultValue: String,
-                      val min: Float, val max: Float, val step: Float) : WorkParameter(name, label, defaultValue)
-    data class Color(override val name: String, override val label: String, override val defaultValue: String) :
-        WorkParameter(name, label, defaultValue)
-    data class Boolean(override val name: String, override val label: String, override val defaultValue: String) :
-        WorkParameter(name, label, defaultValue)
+                      val min: Float, val max: Float, val step: Float,
+                      override val sourceFile: String = "sketch.js") : WorkParameter(name, label, defaultValue, sourceFile)
+    data class Color(override val name: String, override val label: String, override val defaultValue: String,
+                     override val sourceFile: String = "sketch.js") : WorkParameter(name, label, defaultValue, sourceFile)
+    data class Boolean(override val name: String, override val label: String, override val defaultValue: String,
+                       override val sourceFile: String = "sketch.js") : WorkParameter(name, label, defaultValue, sourceFile)
     data class Choice(override val name: String, override val label: String, override val defaultValue: String,
-                      val options: List<String>) : WorkParameter(name, label, defaultValue)
+                      val options: List<String>,
+                      override val sourceFile: String = "sketch.js") : WorkParameter(name, label, defaultValue, sourceFile)
 }
 
 private val parameterLine = Regex("^\\s*//\\s*@rin\\s+(number|color|boolean|choice)\\s+([A-Za-z_$][\\w$]*)\\s+\"([^\"]{1,40})\"\\s+(.+?)\\s*$")
@@ -43,14 +50,14 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                         if (min == null || max == null || initial == null || step == null ||
                             !min.isFinite() || !max.isFinite() || !initial.isFinite() || !step.isFinite() ||
                             min >= max || initial !in min..max || step <= 0f) null
-                        else WorkParameter.Number(name, label, initial.toString(), min, max, step)
+                        else WorkParameter.Number(name, label, initial.toString(), min, max, step, file)
                     }
                 }
                 "color" -> parts.singleOrNull()?.takeIf { hexColor.matches(it) }?.let {
-                    WorkParameter.Color(name, label, it.uppercase())
+                    WorkParameter.Color(name, label, it.uppercase(), file)
                 }
                 "boolean" -> parts.singleOrNull()?.lowercase()?.takeIf { it == "true" || it == "false" }?.let {
-                    WorkParameter.Boolean(name, label, it)
+                    WorkParameter.Boolean(name, label, it, file)
                 }
                 "choice" -> {
                     if (parts.size < 2) null else {
@@ -58,7 +65,7 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                         val rawOptions = if (parts.drop(1).contains(defaultVal)) parts.drop(1) else parts
                         val options = rawOptions.distinct()
                         if (options.size < 2 || defaultVal !in options || options.any { !choiceToken.matches(it) }) null
-                        else WorkParameter.Choice(name, label, defaultVal, options)
+                        else WorkParameter.Choice(name, label, defaultVal, options, file)
                     }
                 }
                 else -> null
@@ -88,7 +95,7 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                         val step = if (parts.size >= 3) parts[2] else ((max - min) / 100f)
                         if (!step.isFinite() || step <= 0f) null else {
                             val initial = (valueLiteral.toFloatOrNull() ?: min).coerceIn(min, max)
-                            WorkParameter.Number(name, label, formatNumberValue(initial, step), min, max, step)
+                            WorkParameter.Number(name, label, formatNumberValue(initial, step), min, max, step, file)
                         }
                     }
                 }
@@ -101,20 +108,20 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                     if (!min.isFinite() || !max.isFinite() || min >= max) null else {
                         val step = 1f
                         val initial = (valueLiteral.toIntOrNull()?.toFloat() ?: min).coerceIn(min, max)
-                        WorkParameter.Number(name, label, initial.toInt().toString(), min, max, step)
+                        WorkParameter.Number(name, label, initial.toInt().toString(), min, max, step, file)
                     }
                 }
             }
             "color" -> {
                 val clean = valueLiteral.removeSurrounding("\"").removeSurrounding("'")
                 if (hexColor.matches(clean)) {
-                    WorkParameter.Color(name, label, clean.uppercase())
+                    WorkParameter.Color(name, label, clean.uppercase(), file)
                 } else null
             }
             "toggle" -> {
                 val clean = valueLiteral.lowercase()
                 if (clean == "true" || clean == "false") {
-                    WorkParameter.Boolean(name, label, clean)
+                    WorkParameter.Boolean(name, label, clean, file)
                 } else null
             }
             "choice" -> {
@@ -125,7 +132,7 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                 if (options.size < 2) null else {
                     val cleanVal = valueLiteral.removeSurrounding("\"").removeSurrounding("'")
                     val defaultVal = if (cleanVal in options) cleanVal else options.first()
-                    WorkParameter.Choice(name, label, defaultVal, options)
+                    WorkParameter.Choice(name, label, defaultVal, options, file)
                 }
             }
             else -> null
@@ -189,7 +196,11 @@ internal fun updateParameterInSource(source: String, parameter: WorkParameter, n
             if (oldValText.trim() != formattedNewVal) {
                 changed = true
                 val cr = if (line.endsWith("\r")) "\r" else ""
-                return@map trimmed.substring(0, range.first) + formattedNewVal + trimmed.substring(range.last + 1) + cr
+                var updated = trimmed.substring(0, range.first) + formattedNewVal + trimmed.substring(range.last + 1)
+                if (updated.matches(Regex("""^\s*const\s+.*"""))) {
+                    updated = updated.replaceFirst(Regex("""\bconst\b"""), "let")
+                }
+                return@map updated + cr
             }
             return@map line
         }

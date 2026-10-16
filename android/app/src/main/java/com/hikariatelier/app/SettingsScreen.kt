@@ -72,7 +72,11 @@ internal fun SettingsScreen(
                 val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
                 UserGuideScreen(
                     language = resolveUiLanguage(state.appLanguage, deviceLanguage),
-                    onClose = { showUserGuide = false }
+                    onClose = { showUserGuide = false },
+                    onStartPracticeTour = {
+                        showUserGuide = false
+                        actions.onShowPracticeTour()
+                    }
                 )
             }
 
@@ -1196,6 +1200,7 @@ internal fun SettingsScreen(
                 SettingsAboutSection(updateViewModel,
                     onShowGuide = { showUserGuide = true },
                     onShowOnboarding = actions.onShowOnboarding,
+                    onShowPracticeTour = actions.onShowPracticeTour,
                     onShowLicenses = { showLicenses = true },
                     onShowReleaseNotes = { showReleaseNotes = true },
                     openExternalUrl = actions.openExternalUrl,

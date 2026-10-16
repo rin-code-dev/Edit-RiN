@@ -39,7 +39,7 @@ internal class WorkStoreRepository(
 ) : WorkPersistence {
     private val context = context.applicationContext
     private val resolver get() = context.contentResolver
-    val workDatabase = WorkDatabase(this.context)
+    val workDatabase = WorkDatabase.getInstance(this.context)
     private val localSplit = SplitWorkStore(FileWorkDocuments(File(this.context.filesDir, "work-store")), workDatabase)
     private val folderSplits = mutableMapOf<String, SplitWorkStore>()
     private val selection by lazy { context.getSharedPreferences("work-selection", Context.MODE_PRIVATE) }

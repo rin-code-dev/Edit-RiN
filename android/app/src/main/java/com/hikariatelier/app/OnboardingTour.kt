@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -80,15 +81,15 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
 }
 
 /**
- * True when the first-run tour is due. Shown before release notes and folder selection prompts,
- * but never over an ongoing load failure or a pending draft recovery.
+ * True when the first-run tour is due on a fresh install (storedVersion == 0).
+ * Never shown over an ongoing load failure or a pending draft recovery.
  */
 internal fun onboardingDue(
     storedVersion: Int,
     loadFailed: Boolean = false,
     hasPendingDraft: Boolean = false,
     hasStorageFolder: Boolean = true
-): Boolean = storedVersion < ONBOARDING_VERSION && !loadFailed && !hasPendingDraft
+): Boolean = storedVersion == 0 && !loadFailed && !hasPendingDraft
 
 /**
  * Full-screen first-run tour. Every interaction lives in the mock screens of [OnboardingMocks];
@@ -102,7 +103,8 @@ internal fun OnboardingTour(
     onSkip: () -> Unit,
     onOpenDetailedGuide: () -> Unit,
     allowSkip: Boolean = true,
-    animate: Boolean = true
+    animate: Boolean = true,
+    onOpenPracticeTour: () -> Unit = {}
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     val steps = remember(language) { onboardingSteps(language) }
@@ -165,6 +167,14 @@ internal fun OnboardingTour(
                 ) { Text(if (last) t("始める", "Start Creating", "开始创作") else t("次へ", "Next", "下一步")) }
             }
             if (last) {
+                OutlinedButton(
+                    onClick = onOpenPracticeTour,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onboarding-practice-tour")
+                ) {
+                    Icon(painterResource(R.drawable.ic_reload), contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(t("実践ツアーを体験する", "Try Practice Tour", "体验实践向导"))
+                }
                 TextButton(onClick = onOpenDetailedGuide, modifier = Modifier.fillMaxWidth().testTag("onboarding-guide")) {
                     Text(t("詳しい使い方を見る", "Open the User Guide", "查看使用指南"))
                 }

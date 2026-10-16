@@ -15,9 +15,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -59,7 +61,7 @@ internal data class EditorWorkspaceState(
     val previewHasChanges: Boolean = false,
     val pipSizePreset: PipSizePreset = PipSizePreset.SMALL,
     val pipTranslucent: Boolean = false,
-    val pipMinimized: Boolean = false,
+    val pipMinimized: Boolean = true,
     val pipSnapCorner: PipCorner = PipCorner.TOP_END,
     val pipAutoGhosted: Boolean = false
 )
@@ -76,7 +78,8 @@ internal data class EditorWorkspaceActions(
     val onPipSizePresetChanged: (PipSizePreset) -> Unit = {},
     val onPipTranslucentChanged: (Boolean) -> Unit = {},
     val onPipMinimizedChanged: (Boolean) -> Unit = {},
-    val onPipSnapCornerChanged: (PipCorner) -> Unit = {}
+    val onPipSnapCornerChanged: (PipCorner) -> Unit = {},
+    val onPipCanvasTap: ((LayoutCoordinates, Offset) -> Unit)? = null
 )
 
 internal data class EditorWorkspaceSlots(
@@ -577,6 +580,7 @@ internal fun EditorWorkspaceLayout(
                             snapCorner = state.pipSnapCorner,
                             onSnapCornerChange = actions.onPipSnapCornerChanged,
                             isGhosted = state.pipAutoGhosted,
+                            onTapCanvas = actions.onPipCanvasTap,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = 6.dp, start = 8.dp, end = 8.dp, bottom = bottomReserved)

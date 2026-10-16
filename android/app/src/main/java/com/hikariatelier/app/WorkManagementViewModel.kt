@@ -716,6 +716,27 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(rerun = true))
     }
 
+    fun createWorkWithCode(
+        title: String,
+        code: String,
+        ratio: String = "1:1",
+        libraries: Map<String, String> = emptyMap()
+    ) = execute(locksEditor = true) {
+        val work = Work(
+            id = java.util.UUID.randomUUID().toString(),
+            title = title,
+            code = code,
+            previewAspectRatio = ratio,
+            libraries = libraries,
+            folderName = requestedFolderName.takeIf { it in galleryFolders }.orEmpty()
+        )
+        val next = snapshots(includeEdits = true, request = this) + work
+        persistAndSwitch(next, work.id)
+        showAddDialog = false
+        workMenuExpanded = false
+        emit(WorkEvent(rerun = true, forceRun = true))
+    }
+
     private var templateLoadJob: Job? = null
     private var templatesLoaded = false
     private fun startTemplateLoad(): Job {

@@ -187,7 +187,11 @@ internal fun EditorAuthoringDialogs(
             val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
             UserGuideScreen(
                 language = resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage),
-                onClose = { onUserGuideChange(false) }
+                onClose = { onUserGuideChange(false) },
+                onStartPracticeTour = {
+                    onUserGuideChange(false)
+                    settingsViewModel.startPracticeTour()
+                }
             )
         }
     }
@@ -212,7 +216,38 @@ internal fun EditorAuthoringDialogs(
                     settingsViewModel.completeOnboarding()
                     onUserGuideChange(true)
                 },
+                onOpenPracticeTour = {
+                    settingsViewModel.completeOnboarding()
+                    settingsViewModel.startPracticeTour()
+                },
                 allowSkip = settingsViewModel.onboardingReplay
+            )
+        }
+    }
+
+    val practiceDue = practiceTourDue(
+        onboardingVersion = settingsViewModel.onboardingVersion,
+        practiceTourVersion = settingsViewModel.practiceTourVersion,
+        loadFailed = workManagementViewModel.loadFailure != null,
+        hasPendingDraft = workManagementViewModel.pendingDraft != null
+    )
+    if (practiceDue || settingsViewModel.practiceTourOpen) {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
+                dismissOnClickOutside = false)
+        ) {
+            val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
+            val uiLang = resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage)
+            EditorPracticeTour(
+                language = uiLang,
+                onClose = { settingsViewModel.closePracticeTour() },
+                onTrySample = {
+                    settingsViewModel.closePracticeTour()
+                    val title = practiceTourSampleTitle(uiLang)
+                    val code = practiceTourSampleCode(uiLang)
+                    workManagementViewModel.createWorkWithCode(title, code)
+                }
             )
         }
     }
@@ -377,7 +412,7 @@ internal fun TweetMinifyShareSheet(
                 val pillShape = RoundedCornerShape(8.dp)
                 listOf(
                     (embedHashtagInCall to "noStroke`#...`") to { embedHashtagInCall = !embedHashtagInCall },
-                    (preferNewlines to "改行優先") to { preferNewlines = !preferNewlines }
+                    (preferNewlines to uiText("改行優先")) to { preferNewlines = !preferNewlines }
                 ).forEach { (pair, onClick) ->
                     val (active, label) = pair
                     Box(

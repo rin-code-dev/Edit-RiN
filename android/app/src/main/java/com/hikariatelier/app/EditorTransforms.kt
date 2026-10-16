@@ -240,7 +240,11 @@ private val P5_AND_JS_RESERVED_WORDS = setOf(
     "abs", "ceil", "constrain", "dist", "exp", "floor", "lerp", "log", "mag", "map", "max", "min",
     "norm", "pow", "round", "sq", "sqrt", "fract", "noise", "noiseDetail", "noiseSeed",
     "random", "randomSeed", "randomGaussian", "color", "lerpColor", "red", "green", "blue", "alpha",
-    "hue", "saturation", "brightness", "blendMode", "drawingContext", "filter", "BLUR", "POSTERIZE", "THRESHOLD", "INVERT"
+    "hue", "saturation", "brightness", "blendMode", "drawingContext", "filter", "BLUR", "POSTERIZE", "THRESHOLD", "INVERT",
+    // p5 event callbacks
+    "mousePressed", "mouseReleased", "mouseClicked", "mouseMoved", "mouseDragged", "mouseWheel",
+    "keyPressed", "keyReleased", "keyTyped", "touchStarted", "touchMoved", "touchEnded",
+    "deviceMoved", "deviceTurned", "deviceShaken", "windowResized"
 )
 
 /**
@@ -341,11 +345,6 @@ private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): Stri
     val hasTimeVar = Regex("""\bt\s*=""").containsMatchIn(globals) ||
         Regex("""\bt\b""").containsMatchIn(drawBody)
 
-    // Ensure `t=0` is at the top if `t` is used or setup needs `t||createCanvas`
-    if (hasTimeVar && !Regex("""\bt\s*=""").containsMatchIn(globals)) {
-        globals = if (globals.isEmpty()) "t=0" else "t=0\n$globals"
-    }
-
     // Extract createCanvas(...) from setupBody if present
     val canvasRegex = Regex("""\bcreateCanvas\s*\([^)]*\)\s*;?""")
     val canvasCall = canvasRegex.find(setupBody)?.value?.trim()?.removeSuffix(";")
@@ -353,28 +352,45 @@ private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): Stri
         setupBody = setupBody.replace(canvasRegex, "").trim()
     }
 
+    val needsTimeInit = hasTimeVar || (canvasCall != null && aggressive)
+
+    // Ensure `t=0` is at the top if `t` is used or setup needs `t||createCanvas`
+    if (needsTimeInit && !Regex("""\bt\s*=""").containsMatchIn(globals)) {
+        globals = if (globals.isEmpty()) "t=0" else "t=0\n$globals"
+    }
+
     return buildString {
         if (globals.isNotBlank()) {
             append(globals).append("\n")
-        } else if (canvasCall != null && aggressive) {
-            append("t=0\n")
         }
 
         append("draw=_=>{")
-        if (canvasCall != null) {
-            if (aggressive && (hasTimeVar || Regex("""\bt\b""").containsMatchIn(drawBody))) {
+        if (canvasCall != null && aggressive) {
+            val setupStatements = mutableListOf(canvasCall)
+            if (setupBody.isNotBlank()) {
+                val statements = splitTopLevelStatements(setupBody)
+                setupStatements.addAll(statements)
+            }
+            val hasStatementKeywords = setupStatements.any { STATEMENT_ONLY_REGEX.containsMatchIn(it) }
+            if (hasStatementKeywords) {
+                append("if(!t){").append(setupStatements.joinToString(";")).append("}\n")
+            } else if (setupStatements.size == 1) {
                 append("t||").append(canvasCall).append("\n")
             } else {
+                append("t||(").append(setupStatements.joinToString(",")).append(")\n")
+            }
+        } else {
+            if (canvasCall != null) {
                 append(canvasCall).append("\n")
             }
-        }
-        if (setupBody.isNotBlank()) {
-            append(setupBody).append("\n")
+            if (setupBody.isNotBlank()) {
+                append(setupBody).append("\n")
+            }
         }
         if (drawBody.isNotBlank()) {
             append(drawBody)
         }
-        if (aggressive && canvasCall != null && !Regex("""\bt\s*(?:\+\+|\+=|=\s*\(?t)""").containsMatchIn(drawBody)) {
+        if (aggressive && canvasCall != null && !Regex("""(?:\+\+\s*t|\bt\s*(?:\+\+|\+=|=\s*\(?t))""").containsMatchIn(drawBody)) {
             append("\n++t")
         }
         append("}")
@@ -383,6 +399,8 @@ private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): Stri
         }
     }
 }
+
+private val STATEMENT_ONLY_REGEX = Regex("""^\s*(?:for\b|while\b|if\b|switch\b|do\b|let\b|const\b|var\b|return\b|throw\b)""")
 
 private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions): String {
     var code = source
@@ -408,7 +426,7 @@ private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions
         if (fullSize != null && fullSize >= 100 && !Regex("""\bW\b""").containsMatchIn(code)) {
             val halfSize = fullSize / 2
             val hasHalfLiteral = fullSize % 2 == 0 &&
-                Regex("""\b$halfSize\b""").findAll(code).count() >= 1 &&
+                Regex("""(?<![\d.])$halfSize(?![\d.])""").findAll(code).count() >= 1 &&
                 !Regex("""\bw\b""").containsMatchIn(code)
             val modeSuffix = if (modeArg != null) ",$modeArg" else ""
 
@@ -417,8 +435,8 @@ private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions
                     canvasMatch.range,
                     "createCanvas(W=(w=$halfSize)*2,W$modeSuffix)"
                 )
-                code = code.replace(Regex("""\b$fullSize\b"""), "W")
-                code = code.replace(Regex("""\b$halfSize\b"""), "w")
+                code = code.replace(Regex("""(?<![\d.])$fullSize(?![\d.])"""), "W")
+                code = code.replace(Regex("""(?<![\d.])$halfSize(?![\d.])"""), "w")
                 code = code.replace(Regex("""\b(?:width|height)\s*\*\s*0?\.5\b"""), "w")
                 code = code.replace(Regex("""\b(?:width|height)\s*/\s*2\b"""), "w")
                 code = code.replace(Regex("""\b(?:width|height)\b"""), "W")
@@ -428,7 +446,7 @@ private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions
                     canvasMatch.range,
                     "createCanvas(W=$fullSize,W$modeSuffix)"
                 )
-                code = code.replace(Regex("""\b$fullSize\b"""), "W")
+                code = code.replace(Regex("""(?<![\d.])$fullSize(?![\d.])"""), "W")
                 code = code.replace(Regex("""\b(?:width|height)\s*\*\s*0?\.5\b"""), "W/2")
                 code = code.replace(Regex("""\b(?:width|height)\s*/\s*2\b"""), "W/2")
                 code = code.replace(Regex("""\b(?:width|height)\b"""), "W")
@@ -601,8 +619,8 @@ private fun injectTweetHashtag(source: String, embedInCall: Boolean): String {
     if (source.contains("#つぶやきProcessing")) return source
 
     if (embedInCall) {
-        // Look for a zero-argument p5 function call like `noStroke()`, `noFill()`, `clear()`
-        val zeroArgCallRegex = Regex("""\b(noStroke|noFill|clear|lights|ortho|perspective)\s*\(\s*\)""")
+        // Look for a zero-argument p5 function call like `noStroke()`, `noFill()`, `lights()`
+        val zeroArgCallRegex = Regex("""\b(noStroke|noFill|lights)\s*\(\s*\)""")
         val match = zeroArgCallRegex.find(source)
         if (match != null) {
             val fnName = match.groupValues[1]

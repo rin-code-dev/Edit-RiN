@@ -63,11 +63,57 @@ def check_broken_symbols(problems):
                     f"{kt.name}:{lineno}: Found 'target.range.first/last'. EditorColorTarget.range is a TextRange (use replaceColorTarget instead)."
                 )
 
+            if re.search(r'\bsessionViewModel\.editorValue\b(?!\w)', code_part):
+                problems.append(
+                    f"{kt.name}:{lineno}: Found 'sessionViewModel.editorValue'. Use 'sessionViewModel.editorValueState.value' instead."
+                )
+
+
+def check_duplicate_functions(problems):
+    # Only match non-indented top-level functions (not local helper functions inside composables/functions)
+    fn_pattern = re.compile(
+        r'^(?:(?:private|internal|public)\s+)?fun\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\)'
+    )
+    for kt in KOTLIN_DIR.glob('*.kt'):
+        text = kt.read_text(encoding='utf-8')
+        seen_sigs = {}
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            line_clean = line.split('//')[0]
+            # Must not be indented (top-level)
+            if not line_clean or line_clean[0].isspace():
+                continue
+            match = fn_pattern.match(line_clean)
+            if not match:
+                continue
+            name = match.group(1)
+            raw_params = match.group(2)
+            params = []
+            for p in raw_params.split(','):
+                p = p.strip()
+                if not p:
+                    continue
+                # Extract type after colon and strip default value
+                parts = p.split(':')
+                if len(parts) > 1:
+                    ptype = parts[1].split('=')[0].strip()
+                else:
+                    ptype = p.split('=')[0].strip()
+                params.append(ptype)
+            sig = f"{name}({', '.join(params)})"
+            if sig in seen_sigs:
+                prev_line = seen_sigs[sig]
+                problems.append(
+                    f"{kt.name}:{lineno}: Duplicate top-level function signature '{sig}' (previously defined at line {prev_line})"
+                )
+            else:
+                seen_sigs[sig] = lineno
+
 
 def main():
     problems = []
     check_drawables(problems)
     check_broken_symbols(problems)
+    check_duplicate_functions(problems)
 
     if problems:
         print(f"FAILED: Found {len(problems)} static issue(s) in Kotlin sources:")

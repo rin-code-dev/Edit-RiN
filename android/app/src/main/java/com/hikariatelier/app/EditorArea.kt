@@ -28,9 +28,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -38,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -131,9 +135,12 @@ internal fun EditorArea(
     onJumpToSource: (String, Int) -> Unit = { _, _ -> },
     onOpenProjectFiles: (() -> Unit)? = null,
     watchValues: Map<Int, String> = emptyMap(),
-    onSwitchRuntimeVersion: ((String) -> Unit)? = null
+    onSwitchRuntimeVersion: ((String) -> Unit)? = null,
+    devicePreviewRatio: Float = 1f
 ) {
     val copyToClipboard = rememberClipboardCopy()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var textLayoutCoordinates by remember(editingKey) { mutableStateOf<LayoutCoordinates?>(null) }
     val currentFontSize = rememberUpdatedState(editorFontSize)
     val currentFontSizeChange = rememberUpdatedState(onEditorFontSizeChange)
     var pinchFontSize by remember { mutableStateOf<Float?>(null) }
@@ -260,6 +267,14 @@ internal fun EditorArea(
             val idx = logicalLineStarts.binarySearch(pos)
             (if (idx >= 0) idx else -idx - 2).coerceAtLeast(0) + 1
         }
+    }
+    val activeWatchLines = remember(editingValue.selection, logicalLineStarts, editorFocused) {
+        resolveActiveWatchLines(
+            selection = editingValue.selection,
+            textLength = editingText.length,
+            logicalLineStarts = logicalLineStarts,
+            isFocused = editorFocused
+        )
     }
 
     val foldsByLine = remember(foldRegions, logicalLineStarts) {
@@ -465,11 +480,13 @@ internal fun EditorArea(
                         onClearNavigationTarget()
                     }
                     val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                    val useFloatingPip = !isLandscape && sessionViewModel.pipModeEnabled
+                    val density = LocalDensity.current
+                    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
+                    val useFloatingPip = !isLandscape && sessionViewModel.pipModeEnabled && (editorFocused || keyboardVisible)
                     val isPipAtBottom = sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_START ||
                         sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_END
 
-                    val pipSafeRatio = previewAspectRatioValue(activeWork?.previewAspectRatio ?: "1:1").coerceIn(0.45f, 2.2f)
+                    val pipSafeRatio = previewAspectRatioValue(activeWork?.previewAspectRatio ?: "1:1", devicePreviewRatio).coerceIn(0.45f, 2.2f)
                     val pipBaseSize = sessionViewModel.pipSizePreset.baseDp
                     val pipCanvasHeightDp = if (pipSafeRatio >= 1f) (pipBaseSize / pipSafeRatio) else pipBaseSize.toFloat()
                     val pipCardHeightDp = if (sessionViewModel.pipMinimized) 32.dp else (pipCanvasHeightDp.dp + 32.dp)
@@ -575,6 +592,40 @@ internal fun EditorArea(
                         }
                     }
 
+                    val currentTextLayout = editorTextLayout
+                    val currentProjection = projection
+                    val currentEditingValue = editingValue
+                    val currentOnUpdateEditingValue = onUpdateEditingValue
+                    val currentReadOnly = readOnly
+
+                    DisposableEffect(sessionViewModel, currentTextLayout, currentProjection, currentEditingValue, currentReadOnly) {
+                        if (!currentReadOnly) {
+                            sessionViewModel.pipCanvasTapHandler = { canvasCoords, tapOffset ->
+                                val textCoords = textLayoutCoordinates
+                                val layout = currentTextLayout
+                                if (textCoords != null && textCoords.isAttached && layout != null) {
+                                    val textLocalOffset = textCoords.localPositionOf(canvasCoords, tapOffset)
+                                    val visualOffset = layout.getOffsetForPosition(textLocalOffset)
+                                        .coerceIn(0, layout.layoutInput.text.length)
+                                    val originalOffset = currentProjection.transformedToOriginal(visualOffset)
+                                        .coerceIn(0, currentEditingValue.text.length)
+                                    currentOnUpdateEditingValue(
+                                        currentEditingValue.copy(
+                                            selection = TextRange(originalOffset)
+                                        )
+                                    )
+                                    editorFocusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            }
+                        } else {
+                            sessionViewModel.pipCanvasTapHandler = null
+                        }
+                        onDispose {
+                            sessionViewModel.pipCanvasTapHandler = null
+                        }
+                    }
+
                     val containerMaxHeight = maxHeight
                     val contentMinHeight = (containerMaxHeight - 32.dp + pipBottomPadding).coerceAtLeast(0.dp)
 
@@ -657,6 +708,7 @@ internal fun EditorArea(
                                         end = 16.dp,
                                         bottom = 28.dp + pipBottomPadding
                                     )
+                                    .onGloballyPositioned { textLayoutCoordinates = it }
                                     .focusRequester(editorFocusRequester)
                                     .onFocusChanged {
                                         onFocusChange(it.isFocused)
@@ -684,7 +736,8 @@ internal fun EditorArea(
                         scrollValue = editorScrollState.value,
                         viewportHeightPx = viewportHeightPx,
                         codeFontFamily = codeFontFamily,
-                        colors = colors
+                        colors = colors,
+                        activeLines = activeWatchLines
                     )
 
                     // Bottom-Right Flat Status, Auto-Run & Run Changes Bar (Unified RoundedCornerShape(10.dp))
@@ -951,7 +1004,7 @@ internal fun TweetModeStatusBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Golf",
+                        text = uiText("圧縮"),
                         fontFamily = codeFontFamily,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,

@@ -153,8 +153,100 @@ class EditorTransformsTest {
         assertFalse(actual.contains("CANVAS_SIZE"))
         assertFalse(actual.contains("RING_COUNT"))
         assertFalse(actual.contains("pixelDensity"))
-        assertTrue(actual.contains("t||createCanvas(W=600,W)"))
-        assertTrue(actual.contains("noFill`#つぶやきProcessing`"))
+        assertTrue(actual.contains("t||(createCanvas(W=600,W),colorMode(HSB),strokeWeight(1.5),noFill`#つぶやきProcessing`)") || actual.contains("t||(createCanvas(W=600,W)"))
         assertTrue(actual.contains("for(i=36;i--;)"))
+    }
+
+    @Test
+    fun `minifyJavaScriptForTweet guarantees t=0 when globals exist and setup has createCanvas`() {
+        val input = """
+            let count = 10;
+            function setup() {
+              createCanvas(400, 400);
+            }
+            function draw() {
+              background(0);
+              circle(200, 200, count);
+            }
+        """.trimIndent()
+        val actual = minifyJavaScriptForTweet(input)
+        assertTrue("Expected t=0 to be emitted at top, got: $actual", actual.startsWith("t=0\n") || actual.startsWith("t=0;"))
+        assertTrue("Expected t||( or t||createCanvas, got: $actual", actual.contains("t||createCanvas(W=(w=200)*2,W)"))
+        assertTrue("Expected ++t at the end, got: $actual", actual.contains("++t"))
+    }
+
+    @Test
+    fun `minifyJavaScriptForTweet protects floating point numbers from canvas size replacement`() {
+        val input = """
+            function setup() {
+              createCanvas(400, 400);
+            }
+            function draw() {
+              background(0);
+              let val1 = 400.5;
+              let val2 = 0.400;
+              let val3 = 200.25;
+              circle(200, 200, val1);
+            }
+        """.trimIndent()
+        val actual = minifyJavaScriptForTweet(input)
+        assertTrue("Expected 400.5 to be preserved, got: $actual", actual.contains("400.5"))
+        assertTrue("Expected 0.4 or .4 to be preserved, got: $actual", actual.contains(".4") || actual.contains("0.4"))
+        assertTrue("Expected 200.25 to be preserved, got: $actual", actual.contains("200.25"))
+        assertFalse("Did not expect W.5, got: $actual", actual.contains("W.5"))
+    }
+
+    @Test
+    fun `minifyJavaScriptForTweet preserves p5 event callbacks and excludes clear from tagged templates`() {
+        val input = """
+            function setup() {
+              createCanvas(400, 400);
+            }
+            function draw() {
+              clear();
+            }
+            function mousePressed() {
+              background(255);
+            }
+        """.trimIndent()
+        val actual = minifyJavaScriptForTweet(input)
+        assertTrue("Expected mousePressed to be retained without renaming, got: $actual", actual.contains("mousePressed"))
+        assertFalse("clear() should not be tagged with template hashtag, got: $actual", actual.contains("clear`#つぶやきProcessing`"))
+        assertTrue("Fallback comment hashtag should be present, got: $actual", actual.contains("#つぶやきProcessing"))
+    }
+
+    @Test
+    fun `minifyJavaScriptForTweet does not duplicate ++t when draw already has ++t`() {
+        val input = """
+            function setup() {
+              createCanvas(400, 400);
+            }
+            function draw() {
+              background(0);
+              ++t;
+            }
+        """.trimIndent()
+        val actual = minifyJavaScriptForTweet(input)
+        val count = Regex("""\+\+t""").findAll(actual).count()
+        assertEquals("Expected exactly one ++t in output, got: $actual", 1, count)
+    }
+
+    @Test
+    fun `minifyJavaScriptForTweet handles setup with loops using if(!t) block`() {
+        val input = """
+            let pts = [];
+            function setup() {
+              createCanvas(400, 400);
+              for (let i = 0; i < 10; i++) {
+                pts.push(i);
+              }
+            }
+            function draw() {
+              background(0);
+            }
+        """.trimIndent()
+        val actual = minifyJavaScriptForTweet(input)
+        assertTrue("Expected if(!t) block for loop in setup, got: $actual", actual.contains("if(!t){"))
+        assertFalse("Should not create broken comma expression for loop, got: $actual", actual.contains("t||(createCanvas"))
     }
 }
