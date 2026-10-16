@@ -24,7 +24,7 @@
 - Added `#つぶやきProcessing` support mode featuring a slim 1-line HUD character gauge (140/280 chars), a compact modal share sheet, and smart code compression to fit creations cleanly into social posts.
 - Implemented PiP auto-ghosting and direct touch editing in portrait mode: floating preview automatically drops opacity to 25% when hovering over active cursor lines or inline watch values; tapping directly on preview focuses the editor to edit code underneath.
 - Added dynamic bottom content padding in portrait editor, expanding scrollable space when PiP is docked to bottom corners so code is never hidden beneath preview.
-- Upgraded asset hot-swapping to streamed URL references, replacing Base64 encoding to eliminate out-of-memory risks on large images, audio files, fonts, and JSON datasets without reloading the sketch.
+- Added URL-based asset hot-swap helpers. Normal asset changes still reload the preview. Asset size limits apply; memory usage depends on the device and content.
 - Optimized app memory footprint with lazy-loaded reference databases and translation catalogs.
 
 ### 日本語
@@ -33,31 +33,31 @@
 - `#つぶやきProcessing` 支援モードを追加しました。画面上部に常時表示される1行スリムHUD文字数カウンター（140/280字）、専用シェアシート、余分な記述のスリム化や定数置換・変数名整理を行うコード自動圧縮機能を搭載しました。
 - 縦画面PiP（小窓プレビュー）に「オートゴースト」と「直接タッチ編集」を導入しました。編集中のカーソル行やインラインウォッチと小窓が重なると自動で半透明化（不透明度25%）し、小窓の上から背後にあるコードを直接タップしてそのまま編集を続けられます。
 - 縦画面エディターに動的ボトムパディングを追加し、小窓が下隅にある際も最下行のコードが小窓の下に隠れないようスクロール余白を自動調整します。
-- アセットHot-Swapをストリーム参照方式へ全面刷新し、Base64送信を廃止しました。大容量の画像・音声・フォント・JSONをメモリ不足（OOM）を起こすことなくゼロリロードで安全に差し替えられます。
+- URL参照で素材を差し替える内部処理を追加しました。通常の素材変更ではプレビューを読み込み直します。素材には容量制限があり、メモリ使用量は端末や内容によって異なります。
 - p5.jsリファレンスデータおよび多言語翻訳カタログの遅延展開（Lazy Loading）を導入し、アプリ起動時のメモリ消費を削減しました。
 
 ## 3.0.0 — 2026-10-15
 
 ### English
 
-- Added zero-reload hot-swap preview using WebMessagePort, reflecting code changes to the running canvas in real time without white-screen reloads or audio stutter.
+- Added internal WebMessagePort hot-swap helpers. Normal code reruns reload the preview; reload-free editing and uninterrupted audio are not guaranteed.
 - Added floating PiP (Picture-in-Picture) preview in portrait mode: canvas docks to screen corners during editing with S/M/L presets, smooth corner snapping, customizable translucency, and session-persistent layout state.
 - Added live parameter auto-run option that automatically updates sketches when typing pauses.
 - Introduced 2-axis numeric scrubbing (horizontal drag adjusts value, vertical drag scales step increment) and inline color swatch palette for instant hex color tweaking.
 - Added dedicated symbol accessory bar on mobile keyboard with quick-insert for common coding punctuation, brackets, operators, and indentation tools.
-- Integrated a Piece Table text buffer and viewport virtualization into the code editor, sustaining fluid 120fps editing and responsive syntax highlighting across large sketches.
+- Added a Piece Table text buffer and viewport virtualization to reduce editing and rendering work for large sketches. Performance depends on the device and sketch; no fixed frame rate is guaranteed.
 - Expanded the interactive onboarding tour to 8 steps with dedicated interactive previews for editor helper tools and PiP preview mode.
 - Streamlined fresh install and update flows into an orderly sequence: Onboarding Tour, followed by What's New highlights, followed by workspace folder selection.
 - Enforced complete tour completion on initial runs and major updates while keeping instant skipping available when replaying from Settings.
 
 ### 日本語
 
-- WebMessagePortを活用した「ゼロ・リロード（Hot-Swap）プレビュー」を導入しました。画面の白フラッシュや音切れを発生させることなく、コードの変更内容をリアルタイムに実行中のキャンバスへ反映します。
+- WebMessagePortを使うHot-Swap用の内部処理を追加しました。通常のコード再実行ではプレビューを読み込み直します。編集時のゼロリロードや音声の継続を保証するものではありません。
 - 縦画面の入力時に作品が画面の四隅にスナップする「フローティングPiP（小窓）プレビュー」を追加しました。S/M/Lの3段階サイズ切替、4隅ドラッグスナップ、透過度調整、最小化に対応し、配置やサイズの状態はセッション内で安全に記憶されます。
 - 文字入力停止時に自動でプレビューを更新する「Auto-Run」機能を追加しました。
 - 2軸ベロシティ・スクラブ（左右ドラッグで数値増減、上下ドラッグで桁倍率変更）と、コード内のカラーコードをタップして直接色を選べるインラインカラーパレットを追加しました。
 - キーボード上部に記号入力バーを追加し、波括弧やセミコロン、比較演算子、インデント調整をワンタップで素早く入力できるようにしました。
-- エディター内部にPiece Tableテキストバッファと表示領域のみを描画する仮想化レンダラーを採用し、数千行の大規模スケッチでも120fpsの滑らかなスクロールと入力応答性を実現しました。
+- エディターにPiece Tableテキストバッファと表示領域のみを描画する処理を導入し、大規模コードの編集・描画の負荷を減らしました。動作速度は端末や作品によって異なり、一定のフレームレートを保証するものではありません。
 - 対話型入門ツアーを全8ステップに拡充し、エディター便利機能（記号バー・スクラブ・カラー）とPiP小窓プレビューの模擬操作ガイドを追加しました。
 - 新規インストールおよびアップデート時の案内順序を「入門ツアー → 更新内容 → フォルダー選択」の順に整理し、重複表示なくスムーズに案内されるように直列化しました。
 - 強制表示時のツアーではスキップを不可（設定画面からのリプレイ時のみスキップ可能）とし、主要な機能の理解をサポートします。
