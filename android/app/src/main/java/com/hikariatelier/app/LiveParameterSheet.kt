@@ -34,8 +34,9 @@ internal fun LiveParameterSheet(
     val initialDefaults = remember(parameterWork?.id) {
         declarations.associate { it.name to it.defaultValue }
     }
+    val pendingLiveChanges = remember { mutableStateMapOf<String, Pair<WorkParameter, String>>() }
     val syncPreviewSource = {
-        val updatedSource = sessionViewModel.editorValue.text
+        val updatedSource = sessionViewModel.editorValueState.value.text
         val workId = parameterWork?.id
         val updatedFiles = parameterWork?.files.orEmpty().mapValues { (name, code) ->
             sessionViewModel.fileDrafts["$workId/$name"] ?: code
@@ -181,8 +182,9 @@ internal fun LiveParameterPanel(
     val initialDefaults = remember(parameterWork?.id) {
         declarations.associate { it.name to it.defaultValue }
     }
+    val pendingLiveChanges = remember { mutableStateMapOf<String, Pair<WorkParameter, String>>() }
     val syncPreviewSource = {
-        val updatedSource = sessionViewModel.editorValue.text
+        val updatedSource = sessionViewModel.editorValueState.value.text
         val workId = parameterWork?.id
         val updatedFiles = parameterWork?.files.orEmpty().mapValues { (name, code) ->
             sessionViewModel.fileDrafts["$workId/$name"] ?: code

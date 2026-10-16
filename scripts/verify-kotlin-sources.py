@@ -63,6 +63,11 @@ def check_broken_symbols(problems):
                     f"{kt.name}:{lineno}: Found 'target.range.first/last'. EditorColorTarget.range is a TextRange (use replaceColorTarget instead)."
                 )
 
+            if re.search(r'\bsessionViewModel\.editorValue\b(?!\w)', code_part):
+                problems.append(
+                    f"{kt.name}:{lineno}: Found 'sessionViewModel.editorValue'. Use 'sessionViewModel.editorValueState.value' instead."
+                )
+
 
 def check_duplicate_functions(problems):
     # Only match non-indented top-level functions (not local helper functions inside composables/functions)
