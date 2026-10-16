@@ -66,5 +66,26 @@ class UpdateCheckerTest {
 
         assertTrue(parseReleaseHighlights("").isEmpty())
         assertTrue(parseReleaseHighlights("Just random text without bullets").isEmpty())
+
+        val multilingualBody = """
+            ### English
+            - Live Parameters: Sliders in preview
+            - Tweet Coding: Minify tool
+            - PiP Mode: Transparent window
+
+            ### 日本語
+            - コメント駆動パラメータ: プレビュー連動スライダー
+            - #つぶやきProcessing: コード圧縮機能
+            - PiP小窓: 半透明化とタッチ透過
+        """.trimIndent()
+        val jaHighlights = parseReleaseHighlights(multilingualBody, "ja")
+        assertEquals(3, jaHighlights.size)
+        assertEquals("コメント駆動パラメータ", jaHighlights[0].title)
+        assertEquals("プレビュー連動スライダー", jaHighlights[0].description)
+        assertEquals("#つぶやきProcessing", jaHighlights[1].title)
+
+        val enHighlights = parseReleaseHighlights(multilingualBody, "en")
+        assertEquals(3, enHighlights.size)
+        assertEquals("Live Parameters", enHighlights[0].title)
     }
 }

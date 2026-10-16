@@ -46,20 +46,65 @@ internal data class AppRelease(
     val tag: String,
     val version: ReleaseVersion,
     val apk: ReleaseAsset? = null,
-    val highlights: List<UpdateHighlight> = emptyList()
+    val highlights: List<UpdateHighlight> = emptyList(),
+    val body: String = ""
 )
 
-internal fun parseReleaseHighlights(body: String): List<UpdateHighlight> {
+internal fun extractLanguageSection(body: String, language: String): String {
+    val lines = body.lines()
+    val targetKeywords = when {
+        language.startsWith("ja") -> listOf("日本語", "japanese", "ja")
+        language.startsWith("zh") -> listOf("中文", "chinese", "zh")
+        else -> listOf("english", "en")
+    }
+
+    var capturing = false
+    val sectionLines = mutableListOf<String>()
+
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("#")) {
+            val headingLower = trimmed.lowercase(java.util.Locale.ROOT)
+            val isTarget = targetKeywords.any { headingLower.contains(it) }
+            if (isTarget) {
+                capturing = true
+                continue
+            } else if (capturing) {
+                break
+            }
+        }
+        if (capturing) {
+            sectionLines.add(line)
+        }
+    }
+
+    return if (sectionLines.isNotEmpty()) sectionLines.joinToString("\n") else body
+}
+
+internal fun parseReleaseHighlights(body: String, language: String = "ja"): List<UpdateHighlight> {
     if (body.isBlank()) return emptyList()
-    val lines = body.lines().map { it.trim() }
+    val section = extractLanguageSection(body, language)
+    val lines = section.lines().map { it.trim() }
     val highlights = mutableListOf<UpdateHighlight>()
     for (line in lines) {
         val bullet = Regex("^[-*•\\d.]+\\s*(.*)$").matchEntire(line)?.groupValues?.get(1)?.trim() ?: continue
         if (bullet.isBlank()) continue
-        val cleaned = bullet.removeSurrounding("**").removeSurrounding("__").trim()
-        val split = cleaned.split(Regex("[:：]\\s*"), limit = 2)
-        val title = split[0].removeSurrounding("**").trim()
-        val desc = split.getOrNull(1)?.removeSurrounding("**")?.trim().orEmpty()
+        val cleaned = bullet.replace("`", "").removeSurrounding("**").removeSurrounding("__").trim()
+        val colonSplit = cleaned.split(Regex("[:：]\\s*"), limit = 2)
+        val (rawTitle, rawDesc) = if (colonSplit.size == 2 && colonSplit[0].length <= 40) {
+            colonSplit[0].trim().removeSurrounding("**") to colonSplit[1].trim().removeSurrounding("**")
+        } else {
+            val periodSplit = cleaned.split(Regex("[。.]\\s*"), limit = 2)
+            if (periodSplit.size == 2 && periodSplit[0].length in 4..35) {
+                periodSplit[0].trim().removeSurrounding("**") to periodSplit[1].trim().removeSurrounding("**")
+            } else {
+                val cut = cleaned.take(30).trim().removeSurrounding("**")
+                val rest = cleaned.drop(cut.length).trim().removeSurrounding("**")
+                cut to rest
+            }
+        }
+        val title = rawTitle.take(45)
+        val desc = rawDesc.take(120)
         if (title.isNotBlank()) {
             highlights.add(UpdateHighlight(title = title, description = desc))
         }
@@ -96,8 +141,8 @@ internal fun newestRelease(json: String): AppRelease? {
         val version = ReleaseVersion.parse(tag) ?: return@mapNotNull null
         if (version.suffix.isNotEmpty()) return@mapNotNull null
         val body = release.optString("body")
-        val highlights = parseReleaseHighlights(body)
-        AppRelease(tag, version, releaseApk(release), highlights)
+        val highlights = parseReleaseHighlights(body, "ja")
+        AppRelease(tag, version, releaseApk(release), highlights, body)
     }.maxByOrNull { it.version }
 }
 

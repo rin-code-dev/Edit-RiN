@@ -3,8 +3,10 @@ package com.hikariatelier.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -63,10 +65,20 @@ internal fun UpdateDialog(
     val deviceLanguage = ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en"
     val isJa = deviceLanguage.startsWith("ja")
 
-    // Use dynamically parsed highlights from GitHub Releases body if available;
-    // otherwise fallback to embedded release notes in APP_RELEASE_NOTES.
-    val highlights: List<DisplayHighlight> = if (release != null && release.highlights.isNotEmpty()) {
-        release.highlights.take(3).map { hl ->
+    // Parse highlights for the user's language from release body if available;
+    // otherwise fallback to pre-parsed highlights or embedded release notes in APP_RELEASE_NOTES.
+    val dynamicParsed = if (release != null && release.body.isNotBlank()) {
+        parseReleaseHighlights(release.body, deviceLanguage)
+    } else emptyList()
+
+    val rawHighlights = when {
+        dynamicParsed.isNotEmpty() -> dynamicParsed
+        release != null && release.highlights.isNotEmpty() -> release.highlights
+        else -> emptyList()
+    }
+
+    val highlights: List<DisplayHighlight> = if (rawHighlights.isNotEmpty()) {
+        rawHighlights.take(3).map { hl ->
             DisplayHighlight(
                 iconRes = resolveHighlightIcon(hl.title, hl.description),
                 title = hl.title,
@@ -87,6 +99,9 @@ internal fun UpdateDialog(
         }.orEmpty()
     }
 
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val maxHeight = (screenHeight * 0.86f).coerceAtLeast(360.dp)
+
     Dialog(
         onDismissRequest = { if (!state.downloading) state.dismiss() },
         properties = DialogProperties(
@@ -97,74 +112,77 @@ internal fun UpdateDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 24.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 modifier = Modifier
                     .widthIn(max = 420.dp)
                     .fillMaxWidth()
-                    .wrapContentHeight()
+                    .heightIn(max = maxHeight)
                     .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                 shape = RoundedCornerShape(24.dp),
                 color = colors.surfaceContainer,
                 tonalElevation = 6.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
                 ) {
-                    // 1. Header Icon
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(colors.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_system_update),
-                            contentDescription = null,
-                            tint = colors.onPrimaryContainer,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                    // 1. Header (Icon, Title, Chips, and Close Button)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (!state.downloading) {
+                            IconButton(
+                                onClick = { state.dismiss() },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(36.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_close),
+                                    contentDescription = text("閉じる"),
+                                    tint = colors.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
 
-                    // 2. Title & Version/Size Chips
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = text("新しいバージョンがあります"),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.onSurface,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val tagText = release?.tag ?: "v${BuildConfig.VERSION_NAME}"
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(colors.secondaryContainer)
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.primaryContainer),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = tagText,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.onSecondaryContainer
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_system_update),
+                                    contentDescription = null,
+                                    tint = colors.onPrimaryContainer,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
 
-                            val apkSize = release?.apk?.size ?: 0L
-                            if (apkSize > 0) {
+                            Text(
+                                text = text("新しいバージョンがあります"),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val tagText = release?.tag ?: "v${BuildConfig.VERSION_NAME}"
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
@@ -172,143 +190,179 @@ internal fun UpdateDialog(
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
                                     Text(
-                                        text = formatFileSize(apkSize),
-                                        fontSize = 13.sp,
+                                        text = tagText,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.onSecondaryContainer
                                     )
+                                }
+
+                                val apkSize = release?.apk?.size ?: 0L
+                                if (apkSize > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(colors.secondaryContainer)
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = formatFileSize(apkSize),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.onSecondaryContainer
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // 3. Feature Highlights (Rich Card feature)
-                    if (highlights.isNotEmpty() && release != null) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = text("主な更新内容"),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 2.dp)
-                            )
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                            highlights.forEach { feature ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(colors.surfaceContainerHigh)
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
+                    // 2. Scrollable Body: Features & Download Progress
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (highlights.isNotEmpty() && release != null) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = text("主な更新内容"),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 2.dp)
+                                )
+
+                                highlights.forEach { feature ->
+                                    Row(
                                         modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(colors.primary.copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(colors.surfaceContainerHigh)
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            painter = painterResource(feature.iconRes),
-                                            contentDescription = null,
-                                            tint = colors.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = feature.title,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.onSurface
-                                        )
-                                        if (feature.desc.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(colors.primary.copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(feature.iconRes),
+                                                contentDescription = null,
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = feature.desc,
-                                                fontSize = 11.sp,
-                                                color = colors.onSurfaceVariant,
-                                                maxLines = 1,
+                                                text = feature.title,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.onSurface,
+                                                maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            if (feature.desc.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = feature.desc,
+                                                    fontSize = 11.sp,
+                                                    color = colors.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // 4. Download Progress / Status message
-                    if (state.downloading) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            LinearProgressIndicator(
-                                progress = { state.downloadProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(RoundedCornerShape(4.dp)),
-                                color = colors.primary,
-                                trackColor = colors.surfaceContainerHighest
-                            )
-                            val totalBytes = release?.apk?.size ?: 0L
-                            val progressPercent = (state.downloadProgress * 100).toInt()
-                            val progressDetail = if (totalBytes > 0) {
-                                val currentBytes = (totalBytes * state.downloadProgress).toLong()
-                                "$progressPercent% (${formatFileSize(currentBytes)} / ${formatFileSize(totalBytes)})"
-                            } else {
-                                "$progressPercent%"
+                        // Download status / Progress bar
+                        if (state.downloading) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { state.downloadProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = colors.primary,
+                                    trackColor = colors.surfaceContainerHighest
+                                )
+                                val totalBytes = release?.apk?.size ?: 0L
+                                val progressPercent = (state.downloadProgress * 100).toInt()
+                                val progressDetail = if (totalBytes > 0) {
+                                    val currentBytes = (totalBytes * state.downloadProgress).toLong()
+                                    "$progressPercent% (${formatFileSize(currentBytes)} / ${formatFileSize(totalBytes)})"
+                                } else {
+                                    "$progressPercent%"
+                                }
+                                Text(
+                                    text = "${text("ダウンロード中…")} $progressDetail",
+                                    fontSize = 12.sp,
+                                    color = colors.primary,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                )
                             }
+                        } else if (state.readyApk != null) {
                             Text(
-                                text = "${text("ダウンロード中…")} $progressDetail",
+                                text = text("ダウンロードが完了しました。インストールして更新できます"),
                                 fontSize = 12.sp,
-                                color = colors.primary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                                color = colors.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (canDownload) {
+                            Text(
+                                text = text("Androidの確認画面でインストールします。初回は、このアプリからのインストールを許可してください"),
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (release != null) {
+                            Text(
+                                text = text(
+                                    if (BuildConfig.DEBUG)
+                                        "デバッグ版はアプリ内更新に対応していません。配布ページから正式版を入手してください"
+                                    else
+                                        "このリリースのAPKが見つかりません。配布ページを確認してください"
+                                ),
+                                fontSize = 11.sp,
+                                color = colors.error,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(
+                                text = text(message),
+                                fontSize = 12.sp,
+                                color = colors.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
-                    } else if (state.readyApk != null) {
-                        Text(
-                            text = text("ダウンロードが完了しました。インストールして更新できます"),
-                            fontSize = 13.sp,
-                            color = colors.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (canDownload) {
-                        Text(
-                            text = text("Androidの確認画面でインストールします。初回は、このアプリからのインストールを許可してください"),
-                            fontSize = 12.sp,
-                            color = colors.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (release != null) {
-                        Text(
-                            text = text(
-                                if (BuildConfig.DEBUG)
-                                    "デバッグ版はアプリ内更新に対応していません。配布ページから正式版を入手してください"
-                                else
-                                    "このリリースのAPKが見つかりません。配布ページを確認してください"
-                            ),
-                            fontSize = 12.sp,
-                            color = colors.error,
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = text(message),
-                            fontSize = 13.sp,
-                            color = colors.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
                     }
 
-                    // 5. Actions
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 3. Fixed Footer: Actions
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -328,7 +382,7 @@ internal fun UpdateDialog(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(48.dp),
+                                    .height(44.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = colors.primary,
@@ -344,13 +398,13 @@ internal fun UpdateDialog(
                                             else -> "閉じる"
                                         }
                                     ),
-                                    fontSize = 15.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
 
-                        // Secondary actions
+                        // Secondary actions row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -365,7 +419,7 @@ internal fun UpdateDialog(
                             } else {
                                 if (canDownload && release != null) {
                                     TextButton(onClick = openRelease) {
-                                        Text(text("配布ページを開く"), color = colors.onSurfaceVariant, fontSize = 14.sp)
+                                        Text(text("配布ページを開く"), color = colors.onSurfaceVariant, fontSize = 13.sp)
                                     }
                                 } else {
                                     Spacer(modifier = Modifier.width(1.dp))
@@ -375,7 +429,7 @@ internal fun UpdateDialog(
                                     Text(
                                         text = text(if (release != null) "後で" else "閉じる"),
                                         color = colors.onSurfaceVariant,
-                                        fontSize = 14.sp
+                                        fontSize = 13.sp
                                     )
                                 }
                             }
