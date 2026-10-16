@@ -151,7 +151,11 @@ private fun GuideSection.matches(query: String): Boolean =
     query.isBlank() || (listOf(title, summary, tag) + steps).any { it.contains(query.trim(), ignoreCase = true) }
 
 @Composable
-internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
+internal fun UserGuideScreen(
+    language: String,
+    onClose: () -> Unit,
+    onStartPracticeTour: () -> Unit = {}
+) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     val sections = localizedUserGuide(language)
     val configuration = LocalConfiguration.current
@@ -186,7 +190,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
             if (landscape) {
                 Row(Modifier.fillMaxSize()) {
                     Box(Modifier.width(300.dp).fillMaxHeight()) {
-                        GuideContents(language, sections, current, query, { query = it }, ::open)
+                        GuideContents(language, sections, current, query, { query = it }, ::open, onStartPracticeTour)
                     }
                     VerticalDivider()
                     Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -194,7 +198,7 @@ internal fun UserGuideScreen(language: String, onClose: () -> Unit) {
                     }
                 }
             } else if (current == GUIDE_LIST) {
-                GuideContents(language, sections, current, query, { query = it }, ::open)
+                GuideContents(language, sections, current, query, { query = it }, ::open, onStartPracticeTour)
             } else {
                 GuideBody(language, sections, current, contentState, ::open, maxContentWidth = 720)
             }
@@ -209,7 +213,8 @@ private fun GuideContents(
     current: Int,
     query: String,
     onQueryChange: (String) -> Unit,
-    onOpen: (Int) -> Unit
+    onOpen: (Int) -> Unit,
+    onStartPracticeTour: () -> Unit = {}
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     val matches = sections.withIndex().filter { it.value.matches(query) }
@@ -228,13 +233,35 @@ private fun GuideContents(
                 label = { Text(t("ガイドを検索", "Search the guide", "搜索指南")) }
             )
         }
+        val qLower = query.trim().lowercase()
+        val practiceTourMatches = query.isNotBlank() && listOf(
+            "?", "@slider", "@rin", "@int", "@color", "@toggle", "@choice",
+            "tour", "golf", "ツアー", "実践", "体験", "練習", "practice",
+            "つぶやき", "minify", "ウォッチ", "watch"
+        ).any { it in qLower || qLower in it }
+
         if (query.isBlank()) {
             item {
                 GuideContentsEntry(t("操作を試す", "Practice", "练习"),
                     t("練習用の画面でボタンの働きを確かめます", "Try the buttons on a practice screen", "在练习画面中试用按钮"),
                     current == GUIDE_PRACTICE) { onOpen(GUIDE_PRACTICE) }
             }
+            item {
+                GuideContentsEntry(
+                    t("実際に触って体験する（エディター実践ツアー）", "Interactive Editor Practice Tour", "亲自体验（编辑器实践向导）"),
+                    t("// ? や // @slider などのコメント機能を体験", "Experience comment features like // ? and // @slider", "体验 // ? 和 // @slider 等注释功能"),
+                    false
+                ) { onStartPracticeTour() }
+            }
             item { Text(t("機能別の使い方", "Explore by task", "按功能查看"), style = MaterialTheme.typography.titleMedium) }
+        } else if (practiceTourMatches) {
+            item {
+                GuideContentsEntry(
+                    t("実際に触って体験する（エディター実践ツアー）", "Interactive Editor Practice Tour", "亲自体验（编辑器实践向导）"),
+                    t("// ? や // @slider などのコメント機能を体験", "Experience comment features like // ? and // @slider", "体验 // ? 和 // @slider 等注释功能"),
+                    false
+                ) { onStartPracticeTour() }
+            }
         }
         items(matches, key = { it.index }) { (index, section) ->
             GuideContentsEntry("${index + 1}. ${section.title}", section.summary, current == index) { onOpen(index) }
@@ -247,7 +274,7 @@ private fun GuideContents(
                 }
             }
         }
-        if (matches.isEmpty() && referenceMatches.isEmpty()) {
+        if (matches.isEmpty() && referenceMatches.isEmpty() && !practiceTourMatches) {
             item { Text(t("一致する項目がありません", "No matching topics", "没有匹配的项目"), style = MaterialTheme.typography.bodyMedium) }
         }
     }

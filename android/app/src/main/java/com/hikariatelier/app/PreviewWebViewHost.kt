@@ -12,6 +12,16 @@ internal class PreviewWebViewHost(context: Context, val preview: WebView) : View
         return super.dispatchTouchEvent(ev)
     }
 
+    override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
+        if (!isEnabled) return false
+        return super.onInterceptTouchEvent(ev)
+    }
+
+    override fun onTouchEvent(ev: MotionEvent?): Boolean {
+        if (!isEnabled) return false
+        return super.onTouchEvent(ev)
+    }
+
     private var logicalWidth: Int? = null
     private var logicalHeight: Int? = null
 

@@ -143,12 +143,18 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
 
 
 
-    // Strict first-run sequence: 1. Tour (EditorAuthoringDialogs) -> 2. Release Notes -> 3. Folder Selection
+    val practiceDue = practiceTourDue(
+        onboardingVersion = settingsViewModel.onboardingVersion,
+        practiceTourVersion = settingsViewModel.practiceTourVersion,
+        loadFailed = workManagementViewModel.loadFailure != null,
+        hasPendingDraft = workManagementViewModel.pendingDraft != null
+    )
+    // Strict first-run sequence: 1. Tour (Onboarding or Practice) -> 2. Release Notes -> 3. Folder Selection
     val tourPending = onboardingDue(
         settingsViewModel.onboardingVersion,
         loadFailed = workManagementViewModel.loadFailure != null,
         hasPendingDraft = workManagementViewModel.pendingDraft != null
-    ) || settingsViewModel.onboardingReplay
+    ) || practiceDue || settingsViewModel.onboardingReplay || settingsViewModel.practiceTourOpen
     val showReleaseNotesPrompt = !tourPending && settingsViewModel.releaseNotesPromptVersion < BuildConfig.VERSION_CODE &&
         workManagementViewModel.loadFailure == null && workManagementViewModel.pendingDraft == null
 

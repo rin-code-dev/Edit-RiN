@@ -175,24 +175,51 @@
   try { initial = JSON.parse(window.Android?.getWorkParameters?.(window.__editRinRunToken) || '{}'); } catch (_) {}
   window.rinParams = Object.assign(Object.create(null), initial);
   window.__editRinSetParameter = (name, value) => {
+    if (typeof name !== 'string' || !name) return;
     if (Object.prototype.hasOwnProperty.call(window.rinParams, name)) {
       const current = window.rinParams[name];
+      let valid = false;
       if (typeof current === 'number') {
         if (typeof value === 'number' && Number.isFinite(value)) {
           window.rinParams[name] = value;
+          valid = true;
         }
       } else if (typeof current === 'boolean') {
         if (typeof value === 'boolean') {
           window.rinParams[name] = value;
+          valid = true;
         }
       } else if (typeof current === 'string' && typeof value === 'string') {
         if (/^#[0-9a-fA-F]{6}$/.test(current)) {
           if (/^#[0-9a-fA-F]{6}$/.test(value)) {
             window.rinParams[name] = value;
+            valid = true;
           }
         } else {
           window.rinParams[name] = value;
+          valid = true;
         }
+      }
+      if (!valid) return;
+
+      if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
+        try {
+          window.eval(name + " = " + JSON.stringify(value));
+        } catch (_) {
+          try { window[name] = value; } catch (__) {}
+        }
+      } else {
+        try { window[name] = value; } catch (_) {}
+      }
+
+      if (typeof window.rinOnParamChange === 'function') {
+        try { window.rinOnParamChange(name, value); } catch (e) { console.error(e); }
+      }
+
+      if (typeof window.__editRinTriggerRedraw === 'function') {
+        try { window.__editRinTriggerRedraw(); } catch (_) {}
+      } else if (typeof redraw === 'function' && typeof isLooping === 'function' && !isLooping()) {
+        try { redraw(); } catch (_) {}
       }
     }
   };
@@ -1395,6 +1422,14 @@ function attachP5(constructor) {
       if (img && typeof path === 'string') {
         img._rinSourcePath = path;
         trackedAssets.images.add(img);
+        if (typeof img.then === 'function') {
+          img.then(resolved => {
+            if (resolved && typeof resolved === 'object') {
+              resolved._rinSourcePath = path;
+              trackedAssets.images.add(resolved);
+            }
+          }).catch(() => {});
+        }
       }
       return img;
     };
@@ -1406,6 +1441,14 @@ function attachP5(constructor) {
       if (sound && typeof path === 'string') {
         sound._rinSourcePath = path;
         trackedAssets.sounds.add(sound);
+        if (typeof sound.then === 'function') {
+          sound.then(resolved => {
+            if (resolved && typeof resolved === 'object') {
+              resolved._rinSourcePath = path;
+              trackedAssets.sounds.add(resolved);
+            }
+          }).catch(() => {});
+        }
       }
       return sound;
     };
@@ -1417,6 +1460,14 @@ function attachP5(constructor) {
       if (font && typeof path === 'string') {
         font._rinSourcePath = path;
         trackedAssets.fonts.add(font);
+        if (typeof font.then === 'function') {
+          font.then(resolved => {
+            if (resolved && typeof resolved === 'object') {
+              resolved._rinSourcePath = path;
+              trackedAssets.fonts.add(resolved);
+            }
+          }).catch(() => {});
+        }
       }
       return font;
     };
@@ -1426,7 +1477,15 @@ function attachP5(constructor) {
     constructor.prototype.loadJSON = function (path, ...args) {
       const json = origLoadJSON.call(this, path, ...args);
       if (json && typeof path === 'string') {
-        trackedAssets.json.push({ path, obj: json });
+        const entry = { path, obj: json };
+        trackedAssets.json.push(entry);
+        if (typeof json.then === 'function') {
+          json.then(resolved => {
+            if (resolved && typeof resolved === 'object') {
+              entry.obj = resolved;
+            }
+          }).catch(() => {});
+        }
       }
       return json;
     };
@@ -1436,7 +1495,15 @@ function attachP5(constructor) {
     constructor.prototype.loadStrings = function (path, ...args) {
       const strings = origLoadStrings.call(this, path, ...args);
       if (strings && typeof path === 'string') {
-        trackedAssets.strings.push({ path, arr: strings });
+        const entry = { path, arr: strings };
+        trackedAssets.strings.push(entry);
+        if (typeof strings.then === 'function') {
+          strings.then(resolved => {
+            if (resolved) {
+              entry.arr = resolved;
+            }
+          }).catch(() => {});
+        }
       }
       return strings;
     };
@@ -1552,6 +1619,7 @@ window.addEventListener('load', () => {
     }
   }
 
+  window.__editRinDisposeInternal = disposeSketch;
   window.rinDispose = disposeSketch;
 
   window.__editRinTriggerRedraw = () => {
@@ -1570,7 +1638,7 @@ window.addEventListener('load', () => {
 
   window.addEventListener('beforeunload', () => {
     document.getElementById('boot')?.remove();
-    disposeSketch();
+    (window.__editRinDisposeInternal || disposeSketch)();
   }, { once: true });
 })();
 
@@ -1708,7 +1776,7 @@ window.addEventListener('load', () => {
       const isUrl = mime === 'url' || (typeof payload === 'string' && (payload.startsWith('http://') || payload.startsWith('https://') || payload.startsWith('blob:')));
       const resourceUrl = isUrl ? payload : ('data:' + mime + ';base64,' + payload);
       const cleanName = filename.replace(/^assets\//, '');
-      const matchName = name => typeof name === 'string' && (name.includes(cleanName) || name.includes(filename) || cleanName.includes(name));
+      const matchName = name => typeof name === 'string' && name.trim().length > 0 && (name.includes(cleanName) || name.includes(filename) || cleanName.includes(name));
 
       const trackedAssets = window.__editRinTrackedAssets || {
         images: new Set(),
@@ -1780,8 +1848,14 @@ window.addEventListener('load', () => {
       for (const sound of trackedAssets.sounds) {
         if (matchName(sound._rinSourcePath || sound.url || sound._url)) {
           try {
-            sound.url = resourceUrl;
-            sound.load?.();
+            if (typeof sound.setPath === 'function') {
+              sound.setPath(resourceUrl, () => {
+                sound.load?.();
+              });
+            } else {
+              sound.url = resourceUrl;
+              sound.load?.();
+            }
           } catch (_) {}
         }
       }
@@ -1865,8 +1939,14 @@ window.addEventListener('load', () => {
           if (typeof val.load === 'function' && typeof val.play === 'function') {
             if (matchName(val._rinSourcePath || val.url || val._url)) {
               try {
-                val.url = resourceUrl;
-                val.load?.();
+                if (typeof val.setPath === 'function') {
+                  val.setPath(resourceUrl, () => {
+                    val.load?.();
+                  });
+                } else {
+                  val.url = resourceUrl;
+                  val.load?.();
+                }
               } catch (_) {}
             }
           }

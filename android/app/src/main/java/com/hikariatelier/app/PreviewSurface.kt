@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -100,6 +102,7 @@ internal fun PreviewSurface(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun PreviewWebView(
     preview: PreviewController,
@@ -112,16 +115,24 @@ internal fun PreviewWebView(
     key(preview.generation) {
         AndroidView(
             factory = { context -> preview.createHost(context, onClearEditorFocus, clearFocusOnTouch) },
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .then(
+                    if (isGhosted) Modifier.pointerInteropFilter { false }
+                    else Modifier
+                ),
             update = { host ->
                 val interactive = !isGhosted
                 host.isEnabled = interactive
+                host.isClickable = interactive
                 host.preview.isEnabled = interactive
+                host.preview.isClickable = interactive
+                host.preview.isFocusable = interactive
                 host.setLogicalSize(logicalSize?.width, logicalSize?.height)
                 if (interactive) {
                     preview.bindTouchBehavior(host.preview, onClearEditorFocus, clearFocusOnTouch)
                 } else {
-                    host.preview.setOnTouchListener(null)
+                    host.preview.setOnTouchListener { _, _ -> false }
                 }
             },
             onRelease = { host ->

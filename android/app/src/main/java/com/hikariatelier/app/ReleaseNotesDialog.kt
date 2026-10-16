@@ -48,29 +48,36 @@ internal val APP_RELEASE_NOTES = listOf(
                 iconRes = R.drawable.ic_tune,
                 titleEn = "Comment-Driven Live Parameters",
                 titleJa = "コメント駆動の双方向パラメータ",
-                descEn = "Declare parameters using inline comments like // @slider, // @color, and // @toggle. Adjusting the UI instantly updates both running preview and code literals with grouped undo.",
-                descJa = "// @slider, // @color, // @toggle などのコメントを書くだけで操作UIが出現。スライダー操作でプレビューの即時反映とコード数値の自動置換が連動します（Undo集約対応）。"
+                descEn = "Declare parameters using inline comments like // @slider and // @color. Adjusting the UI instantly updates both running preview and code literals with grouped undo.",
+                descJa = "// @slider や // @color などのコメントを書くだけで操作スライダーが出現。ドラッグ操作でプレビュー即時反映＆コードの数値が連動して書き換わります（Undo集約対応）。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_share_card,
-                titleEn = "#つぶやきProcessing Mode & Extreme Golfing",
-                titleJa = "#つぶやきProcessing モード ＆ 極限短縮Golf",
-                descEn = "Dedicated tweet coding studio with 140/280 char HUD gauge, compact share sheet, and an extreme code golfer (inlines constants, compact canvas, hashtag injection, single-char renaming).",
-                descJa = "文字切れしない140/280字のHUDゲージ、専用シェアシート、定数インライン化やハッシュタグ埋め込み・変数1文字化を行う極限Golfingエンジンを搭載しました。"
+                titleEn = "#つぶやきProcessing & Smart Code Minify",
+                titleJa = "#つぶやきProcessing 支援 ＆ コード自動圧縮",
+                descEn = "Dedicated tweet coding studio with 140/280 char HUD gauge, compact share sheet, and smart code compression to fit creations into a single post.",
+                descJa = "140/280字の文字数HUDと専用シェアシートを搭載。余分な記述をスリム化する自動圧縮で手軽にSNS共有できます。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_pip_opacity,
-                titleEn = "PiP Auto-Ghosting & Native Touch Pass-Through",
-                titleJa = "PiP小窓のオートゴースト ＆ タッチ透過",
-                descEn = "Floating preview automatically lowers opacity to 25% when overlapping your cursor or inline watch values, passing touches through freely to editor text beneath.",
-                descJa = "縦画面の小窓プレビューがカーソル行やインラインウォッチと重なると自動で半透明化。小窓の真下にあるコードを直接タップ・編集できるようになりました。"
+                titleEn = "PiP Auto-Ghosting & Direct Touch Edit",
+                titleJa = "PiP小窓のオートゴースト ＆ 直接タッチ編集",
+                descEn = "Floating preview lowers opacity to 25% when hovering over cursor lines. Tap directly on the preview to focus the editor and edit the code underneath.",
+                descJa = "編集中のカーソル行と小窓が重なると自動で半透明化。小窓の上から背後のコードを直接タップしてそのまま編集を続けられます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_help,
+                titleEn = "Interactive Editor Practice Tour",
+                titleJa = "エディター実践ツアーの新設",
+                descEn = "Hands-on 4-step interactive tour to try real-time watch badges, live sliders, and code compression in a safe mock sandbox with a quick sample-creation action.",
+                descJa = "リアルタイム変数ウォッチやスライダー、コード圧縮を実際に体験できる全4ステップの対話型ツアーを追加。終了後は専用サンプル作品をすぐに試せます。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_assets,
-                titleEn = "Streamed Asset Hot-Swap & Memory Optimization",
+                titleEn = "Streamed Asset Hot-Swap & Lean Memory",
                 titleJa = "アセットHot-Swapのストリーム化 ＆ メモリ最適化",
-                descEn = "Hot-swap large images, audio, fonts, and data files safely via streamed URL references instead of Base64, paired with lazy-loaded reference data for a lean memory footprint.",
-                descJa = "Base64送信を廃止し、大容量の画像・音声・フォント・JSONをメモリ不足なく瞬時にゼロリロード差し替え。リファレンス等の遅延展開で起動メモリも削減しました。"
+                descEn = "Hot-swap large images, audio, and JSON files safely via streamed URL references without OOM risks, paired with lazy-loaded reference catalogs for a lean footprint.",
+                descJa = "大容量の画像・音声・フォント・JSONをメモリ不足なく瞬時にゼロリロード差し替え。リファレンス等の遅延展開で起動メモリも削減しました。"
             )
         )
     ),

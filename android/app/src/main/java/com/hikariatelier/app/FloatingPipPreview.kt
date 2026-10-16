@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,10 +20,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -31,10 +40,45 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+
+private class GhostPointerNode(
+    var isGhosted: Boolean
+) : Modifier.Node(), PointerInputModifierNode {
+    override fun sharePointerInputWithSiblings(): Boolean = isGhosted
+
+    override fun onPointerEvent(
+        pointerEvent: PointerEvent,
+        pass: PointerEventPass,
+        bounds: IntSize
+    ) {
+    }
+
+    override fun onCancelPointerInput() {
+    }
+}
+
+private data class GhostPointerElement(
+    val isGhosted: Boolean
+) : ModifierNodeElement<GhostPointerNode>() {
+    override fun create(): GhostPointerNode = GhostPointerNode(isGhosted)
+
+    override fun update(node: GhostPointerNode) {
+        node.isGhosted = isGhosted
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "ghostPointer"
+        properties["isGhosted"] = isGhosted
+    }
+}
+
+internal fun Modifier.sharePointerWithSiblings(isGhosted: Boolean): Modifier =
+    this.then(GhostPointerElement(isGhosted))
 
 internal val LocalPipGhosted = compositionLocalOf { false }
 
@@ -212,6 +256,7 @@ internal fun FloatingPipPreviewHost(
     snapCorner: PipCorner = PipCorner.TOP_END,
     onSnapCornerChange: (PipCorner) -> Unit = {},
     isGhosted: Boolean = false,
+    onTapCanvas: ((LayoutCoordinates, Offset) -> Unit)? = null,
     previewContent: @Composable (Modifier) -> Unit
 ) {
     val density = LocalDensity.current
@@ -240,15 +285,25 @@ internal fun FloatingPipPreviewHost(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pipHeight"
     )
-    val targetAlpha = when {
+    val targetCanvasAlpha = when {
         isGhosted -> 0.25f
         translucent -> 0.48f
         else -> 0.98f
     }
-    val alpha by animateFloatAsState(
-        targetValue = targetAlpha,
+    val canvasAlpha by animateFloatAsState(
+        targetValue = targetCanvasAlpha,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "pipAlpha"
+        label = "pipCanvasAlpha"
+    )
+    val targetHeaderAlpha = when {
+        isGhosted -> 0.90f
+        translucent -> 0.75f
+        else -> 1.0f
+    }
+    val headerAlpha by animateFloatAsState(
+        targetValue = targetHeaderAlpha,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "pipHeaderAlpha"
     )
 
     BoxWithConstraints(
@@ -294,8 +349,10 @@ internal fun FloatingPipPreviewHost(
         val currentMarginPx by rememberUpdatedState(marginPx)
         val currentAnchorX by rememberUpdatedState(anchorX)
         val currentAnchorY by rememberUpdatedState(anchorY)
+        val currentSnapCorner by rememberUpdatedState(snapCorner)
+        val currentOnSnapCornerChange by rememberUpdatedState(onSnapCornerChange)
 
-        val dragGestureModifier = if (isGhosted) Modifier else Modifier.pointerInput(Unit) {
+        val headerDragGestureModifier = Modifier.pointerInput(Unit) {
             detectDragGestures(
                 onDragStart = {
                     isDragging = true
@@ -316,10 +373,10 @@ internal fun FloatingPipPreviewHost(
                         !preferBottom && preferRight -> PipCorner.TOP_END
                         else -> PipCorner.TOP_START
                     }
-                    if (nextCorner != snapCorner) {
+                    if (nextCorner != currentSnapCorner) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
-                    onSnapCornerChange(nextCorner)
+                    currentOnSnapCornerChange(nextCorner)
                     dragDx = 0f
                     dragDy = 0f
                     isDragging = false
@@ -342,11 +399,15 @@ internal fun FloatingPipPreviewHost(
                     )
                 }
                 .size(animatedWidth, animatedHeight)
+                .sharePointerWithSiblings(isGhosted)
                 .shadow(elevation = if (isGhosted) 0.dp else 4.dp, shape = outerShape, clip = false)
-                .graphicsLayer { this.alpha = alpha }
                 .clip(outerShape)
-                .background(colors.surface)
-                .border(1.dp, if (isGhosted) colors.primary.copy(alpha = 0.35f) else colors.outlineVariant, outerShape)
+                .background(if (isGhosted) Color.Transparent else colors.surface)
+                .border(
+                    width = 1.dp,
+                    color = if (isGhosted) colors.primary.copy(alpha = 0.55f) else colors.outlineVariant,
+                    shape = outerShape
+                )
         ) {
             Column(Modifier.fillMaxSize()) {
                 // Flat Header Bar with 4 Unified Vector Buttons
@@ -354,8 +415,9 @@ internal fun FloatingPipPreviewHost(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(headerHeight)
+                        .graphicsLayer { this.alpha = headerAlpha }
                         .background(colors.surface)
-                        .then(dragGestureModifier)
+                        .then(headerDragGestureModifier)
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -376,7 +438,7 @@ internal fun FloatingPipPreviewHost(
                             autoRunEnabled -> "AUTO"
                             else -> null
                         },
-                        enabled = !isGhosted,
+                        enabled = true,
                         onClick = {
                             if (showRunPending) onRunNow() else onToggleAutoRun()
                         }
@@ -393,7 +455,7 @@ internal fun FloatingPipPreviewHost(
                                 description = uiText("半透明表示を切り替え"),
                                 colors = colors,
                                 active = translucent,
-                                enabled = !isGhosted,
+                                enabled = true,
                                 onClick = { onTranslucentChange(!translucent) }
                             )
 
@@ -404,7 +466,7 @@ internal fun FloatingPipPreviewHost(
                                 colors = colors,
                                 active = false,
                                 badgeText = sizePreset.shortLabel,
-                                enabled = !isGhosted,
+                                enabled = true,
                                 onClick = {
                                     val nextPreset = when (sizePreset) {
                                         PipSizePreset.SMALL -> PipSizePreset.MEDIUM
@@ -422,7 +484,7 @@ internal fun FloatingPipPreviewHost(
                             description = uiText(if (minimized) "小窓を展開" else "小窓を最小化"),
                             colors = colors,
                             active = minimized,
-                            enabled = !isGhosted,
+                            enabled = true,
                             onClick = { onMinimizedChange(!minimized) }
                         )
                     }
@@ -435,11 +497,16 @@ internal fun FloatingPipPreviewHost(
                     )
                 }
 
+                var canvasLayoutCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .background(Color.Black),
+                        .sharePointerWithSiblings(isGhosted)
+                        .graphicsLayer { this.alpha = canvasAlpha }
+                        .background(if (isGhosted) Color.Transparent else Color.Black)
+                        .onGloballyPositioned { canvasLayoutCoordinates = it },
                     contentAlignment = Alignment.Center
                 ) {
                     // Keep the WebView mounted even when minimized (clipped to 0dp height)
@@ -450,12 +517,19 @@ internal fun FloatingPipPreviewHost(
                         )
                     }
 
-                    // Transparent drag shield over the canvas so dragging anywhere on the PiP window moves it smoothly
-                    if (!minimized && !isGhosted) {
+                    // Transparent canvas tap shield: tapping anywhere on the canvas moves caret to code behind & focuses editor
+                    if (!minimized && onTapCanvas != null) {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
-                                .then(dragGestureModifier)
+                                .pointerInput(onTapCanvas) {
+                                    detectTapGestures { offset ->
+                                        val coords = canvasLayoutCoordinates
+                                        if (coords != null && coords.isAttached) {
+                                            onTapCanvas(coords, offset)
+                                        }
+                                    }
+                                }
                         )
                     }
                 }

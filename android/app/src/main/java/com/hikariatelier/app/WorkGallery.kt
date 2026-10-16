@@ -456,7 +456,7 @@ private fun WorkGalleryContent(
     }
 
     val galleryContext = androidx.compose.ui.platform.LocalContext.current
-    val workDatabase = remember(galleryContext) { WorkDatabase(galleryContext.applicationContext) }
+    val workDatabase = remember(galleryContext) { WorkDatabase.getInstance(galleryContext) }
     val ftsMatchedIds by produceState(emptySet<String>(), state.query, works) {
         val q = state.query.trim()
         value = if (q.isEmpty()) emptySet() else withContext(Dispatchers.IO) {

@@ -74,7 +74,11 @@ internal class UpdateViewModel(application: Application) : AndroidViewModel(appl
         private set
     private var startupChecked = false
 
-    fun dismiss() { if (!downloading) message = null }
+    fun dismiss() {
+        if (!downloading) {
+            message = null
+        }
+    }
 
     fun checkAtStartup() {
         if (startupChecked) return

@@ -19,6 +19,7 @@ internal fun SettingsAboutSection(
     updateViewModel: UpdateViewModel,
     onShowGuide: () -> Unit,
     onShowOnboarding: () -> Unit,
+    onShowPracticeTour: () -> Unit = {},
     onShowLicenses: () -> Unit,
     onShowReleaseNotes: () -> Unit,
     openExternalUrl: (String) -> Unit,
@@ -151,6 +152,15 @@ internal fun SettingsAboutSection(
                 subtitle = uiText("初回起動時のツアーを再開します"),
                 trailingText = "›",
                 onClick = onShowOnboarding
+            )
+
+            SettingsDivider()
+
+            AboutActionRow(
+                title = uiText("エディター実践ツアーを体験する"),
+                subtitle = uiText("// ? や // @slider などのコメント機能を体験"),
+                trailingText = "›",
+                onClick = onShowPracticeTour
             )
 
             SettingsDivider()
