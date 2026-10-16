@@ -41,7 +41,32 @@ internal data class ReleaseVersion(val numbers: List<Long>, val suffix: List<Str
 
 internal const val MAX_UPDATE_BYTES = 128L * 1024 * 1024
 internal data class ReleaseAsset(val url: String, val size: Long, val sha256: String? = null)
-internal data class AppRelease(val tag: String, val version: ReleaseVersion, val apk: ReleaseAsset? = null)
+internal data class UpdateHighlight(val title: String, val description: String)
+internal data class AppRelease(
+    val tag: String,
+    val version: ReleaseVersion,
+    val apk: ReleaseAsset? = null,
+    val highlights: List<UpdateHighlight> = emptyList()
+)
+
+internal fun parseReleaseHighlights(body: String): List<UpdateHighlight> {
+    if (body.isBlank()) return emptyList()
+    val lines = body.lines().map { it.trim() }
+    val highlights = mutableListOf<UpdateHighlight>()
+    for (line in lines) {
+        val bullet = Regex("^[-*•\\d.]+\\s*(.*)$").matchEntire(line)?.groupValues?.get(1)?.trim() ?: continue
+        if (bullet.isBlank()) continue
+        val cleaned = bullet.removeSurrounding("**").removeSurrounding("__").trim()
+        val split = cleaned.split(Regex("[:：]\\s*"), limit = 2)
+        val title = split[0].removeSurrounding("**").trim()
+        val desc = split.getOrNull(1)?.removeSurrounding("**")?.trim().orEmpty()
+        if (title.isNotBlank()) {
+            highlights.add(UpdateHighlight(title = title, description = desc))
+        }
+        if (highlights.size == 3) break
+    }
+    return highlights
+}
 
 internal fun releaseApk(release: org.json.JSONObject): ReleaseAsset? {
     val assets = release.optJSONArray("assets") ?: return null
@@ -70,7 +95,9 @@ internal fun newestRelease(json: String): AppRelease? {
         val tag = release.optString("tag_name")
         val version = ReleaseVersion.parse(tag) ?: return@mapNotNull null
         if (version.suffix.isNotEmpty()) return@mapNotNull null
-        AppRelease(tag, version, releaseApk(release))
+        val body = release.optString("body")
+        val highlights = parseReleaseHighlights(body)
+        AppRelease(tag, version, releaseApk(release), highlights)
     }.maxByOrNull { it.version }
 }
 

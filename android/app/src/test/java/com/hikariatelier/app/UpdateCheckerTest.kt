@@ -45,4 +45,26 @@ class UpdateCheckerTest {
         assertNotNull(updateFailureMessage(false))
         assertNotNull(evaluateUpdate(same, "1.00", false).message)
     }
+
+    @Test fun parsesReleaseHighlightsFromMarkdownBody() {
+        val body = """
+            ## What's New in v3.2.0
+            Here is the update summary:
+            - **Live Parameters**: Declare sliders via comments
+            - #つぶやきProcessing: Smart minify and HUD gauge
+            * PiP Ghosting: Transparent background editing
+            - Excess Item: Should not exceed 3
+        """.trimIndent()
+        val highlights = parseReleaseHighlights(body)
+        assertEquals(3, highlights.size)
+        assertEquals("Live Parameters", highlights[0].title)
+        assertEquals("Declare sliders via comments", highlights[0].description)
+        assertEquals("#つぶやきProcessing", highlights[1].title)
+        assertEquals("Smart minify and HUD gauge", highlights[1].description)
+        assertEquals("PiP Ghosting", highlights[2].title)
+        assertEquals("Transparent background editing", highlights[2].description)
+
+        assertTrue(parseReleaseHighlights("").isEmpty())
+        assertTrue(parseReleaseHighlights("Just random text without bullets").isEmpty())
+    }
 }

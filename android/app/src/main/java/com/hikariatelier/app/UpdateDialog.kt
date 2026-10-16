@@ -30,6 +30,23 @@ internal fun formatFileSize(bytes: Long): String {
     return if (digitGroups == 0) "$bytes B" else String.format(Locale.US, "%.1f %s", value, units[digitGroups])
 }
 
+internal data class DisplayHighlight(val iconRes: Int, val title: String, val desc: String)
+
+internal fun resolveHighlightIcon(title: String, desc: String): Int {
+    val text = "$title $desc".lowercase(Locale.ROOT)
+    return when {
+        text.contains("param") || text.contains("slider") || text.contains("パラメータ") || text.contains("スライダー") -> R.drawable.ic_tune
+        text.contains("tweet") || text.contains("つぶやき") || text.contains("golf") || text.contains("短縮") || text.contains("圧縮") || text.contains("share") || text.contains("共有") -> R.drawable.ic_share_card
+        text.contains("pip") || text.contains("window") || text.contains("小窓") || text.contains("浮遊") || text.contains("ゴースト") -> R.drawable.ic_pip_opacity
+        text.contains("sound") || text.contains("audio") || text.contains("音声") || text.contains("音") -> R.drawable.ic_play
+        text.contains("asset") || text.contains("image") || text.contains("素材") || text.contains("画像") -> R.drawable.ic_assets
+        text.contains("tour") || text.contains("guide") || text.contains("ツアー") || text.contains("ガイド") || text.contains("入門") -> R.drawable.ic_help
+        text.contains("history") || text.contains("undo") || text.contains("履歴") -> R.drawable.ic_history
+        text.contains("watch") || text.contains("バッジ") || text.contains("診断") || text.contains("変数") -> R.drawable.ic_quick_fix
+        else -> R.drawable.ic_code
+    }
+}
+
 @Composable
 internal fun UpdateDialog(
     state: UpdateViewModel,
@@ -39,19 +56,36 @@ internal fun UpdateDialog(
 ) {
     val message = state.message ?: return
     val release = state.availableRelease
-    val canDownload = release?.apk != null && !BuildConfig.DEBUG
+    val canDownload = release?.apk != null && (!BuildConfig.DEBUG || state.isTestPreview)
     val colors = MaterialTheme.colorScheme
 
     val configuration = LocalConfiguration.current
     val deviceLanguage = ConfigurationCompat.getLocales(configuration)[0]?.language ?: "en"
     val isJa = deviceLanguage.startsWith("ja")
 
-    // Find highlights for this release or fallback to the latest known release note
-    val note = APP_RELEASE_NOTES.firstOrNull {
-        val relTag = release?.tag?.removePrefix("v") ?: ""
-        it.versionName == relTag || it.versionName == release?.tag
-    } ?: APP_RELEASE_NOTES.firstOrNull()
-    val highlights = note?.features?.take(3).orEmpty()
+    // Use dynamically parsed highlights from GitHub Releases body if available;
+    // otherwise fallback to embedded release notes in APP_RELEASE_NOTES.
+    val highlights: List<DisplayHighlight> = if (release != null && release.highlights.isNotEmpty()) {
+        release.highlights.take(3).map { hl ->
+            DisplayHighlight(
+                iconRes = resolveHighlightIcon(hl.title, hl.description),
+                title = hl.title,
+                desc = hl.description
+            )
+        }
+    } else {
+        val note = APP_RELEASE_NOTES.firstOrNull {
+            val relTag = release?.tag?.removePrefix("v") ?: ""
+            it.versionName == relTag || it.versionName == release?.tag
+        } ?: APP_RELEASE_NOTES.firstOrNull()
+        note?.features?.take(3)?.map { feat ->
+            DisplayHighlight(
+                iconRes = feat.iconRes,
+                title = if (isJa) feat.titleJa else feat.titleEn,
+                desc = if (isJa) feat.descJa else feat.descEn
+            )
+        }.orEmpty()
+    }
 
     Dialog(
         onDismissRequest = { if (!state.downloading) state.dismiss() },
@@ -188,18 +222,20 @@ internal fun UpdateDialog(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = if (isJa) feature.titleJa else feature.titleEn,
+                                            text = feature.title,
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.onSurface
                                         )
-                                        Text(
-                                            text = if (isJa) feature.descJa else feature.descEn,
-                                            fontSize = 11.sp,
-                                            color = colors.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        if (feature.desc.isNotBlank()) {
+                                            Text(
+                                                text = feature.desc,
+                                                fontSize = 11.sp,
+                                                color = colors.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -281,6 +317,9 @@ internal fun UpdateDialog(
                             Button(
                                 onClick = {
                                     when {
+                                        state.isTestPreview && state.readyApk != null -> {
+                                            state.dismiss()
+                                        }
                                         state.readyApk != null -> install()
                                         canDownload -> state.download()
                                         release != null -> { openRelease(); state.dismiss() }

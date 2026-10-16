@@ -83,6 +83,16 @@ internal fun SettingsAboutSection(
                 onClick = { updateViewModel.checkManually() }
             )
 
+            if (BuildConfig.DEBUG) {
+                SettingsDivider()
+                AboutActionRow(
+                    title = uiText("更新画面のプレビュー (テスト用)"),
+                    subtitle = uiText("モックデータで更新ダイアログを表示"),
+                    trailingText = "›",
+                    onClick = { updateViewModel.showTestPreview() }
+                )
+            }
+
             SettingsDivider()
 
             AboutActionRow(

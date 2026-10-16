@@ -475,6 +475,8 @@ internal val uiTranslations: Map<String, Pair<String, String>> by lazy(LazyThrea
     "アップデート" to ("Updates" to "更新"),
     "アップデートを確認" to ("Check for updates" to "检查更新"),
     "確認中…" to ("Checking…" to "正在检查…"),
+    "更新画面のプレビュー (テスト用)" to ("Update dialog preview (Test)" to "更新页面预览 (测试用)"),
+    "モックデータで更新ダイアログを表示" to ("Show update dialog with mock data" to "使用模拟数据显示更新弹窗"),
     "新しいバージョンがあります" to ("A new version is available" to "有新版本可用"),
     "主な更新内容" to ("Highlights" to "主要更新内容"),
     "新しいアップデートはありません" to ("No new updates available" to "暂无新更新"),
