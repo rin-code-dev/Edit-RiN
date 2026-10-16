@@ -268,6 +268,14 @@ internal fun EditorArea(
             (if (idx >= 0) idx else -idx - 2).coerceAtLeast(0) + 1
         }
     }
+    val activeWatchLines = remember(editingValue.selection, logicalLineStarts, editorFocused) {
+        resolveActiveWatchLines(
+            selection = editingValue.selection,
+            textLength = editingText.length,
+            logicalLineStarts = logicalLineStarts,
+            isFocused = editorFocused
+        )
+    }
 
     val foldsByLine = remember(foldRegions, logicalLineStarts) {
         foldRegions.groupBy { fold ->
@@ -728,7 +736,8 @@ internal fun EditorArea(
                         scrollValue = editorScrollState.value,
                         viewportHeightPx = viewportHeightPx,
                         codeFontFamily = codeFontFamily,
-                        colors = colors
+                        colors = colors,
+                        activeLines = activeWatchLines
                     )
 
                     // Bottom-Right Flat Status, Auto-Run & Run Changes Bar (Unified RoundedCornerShape(10.dp))

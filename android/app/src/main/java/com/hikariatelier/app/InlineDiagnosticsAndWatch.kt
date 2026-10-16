@@ -1,6 +1,8 @@
 package com.hikariatelier.app
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -287,6 +289,29 @@ internal fun InlineDiagnosticBanner(
 }
 
 /**
+ * Resolves logical line numbers (1-indexed) covered by the current selection range for auto-ghosting live watch badges.
+ */
+internal fun resolveActiveWatchLines(
+    selection: TextRange,
+    textLength: Int,
+    logicalLineStarts: List<Int>,
+    isFocused: Boolean
+): Set<Int> {
+    if (!isFocused || logicalLineStarts.isEmpty()) return emptySet()
+    val minPos = selection.min.coerceIn(0, textLength)
+    val maxPos = selection.max.coerceIn(0, textLength)
+    val startIdx = logicalLineStarts.binarySearch(minPos).let { if (it >= 0) it else -it - 2 }.coerceAtLeast(0)
+    val endIdx = if (minPos == maxPos) {
+        startIdx
+    } else {
+        logicalLineStarts.binarySearch(maxPos).let { if (it >= 0) it else -it - 2 }.coerceAtLeast(0)
+    }
+    val firstLine = startIdx + 1
+    val lastLine = (endIdx + 1).coerceAtMost(logicalLineStarts.size)
+    return (firstLine..lastLine).toSet()
+}
+
+/**
  * Live Watch inline badges: displays real-time values next to lines containing `// ?` or `rinWatch(...)`.
  */
 @Composable
@@ -299,6 +324,7 @@ internal fun LiveWatchOverlayColumn(
     viewportHeightPx: Float,
     codeFontFamily: FontFamily,
     colors: ColorScheme,
+    activeLines: Set<Int> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     if (watchValues.isEmpty() || textLayout == null) return
@@ -315,31 +341,60 @@ internal fun LiveWatchOverlayColumn(
                     val visualLine = textLayout.getLineForOffset(transformedOffset)
                     val lineTopPx = textLayout.getLineTop(visualLine) - scrollValue
                     if (lineTopPx >= -24f && lineTopPx <= viewportHeightPx + 24f) {
-                        val topDp = with(density) { lineTopPx.toDp() } + 16.dp
-                        val badgeShape = RoundedCornerShape(6.dp)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = topDp.coerceAtLeast(0.dp), end = 12.dp)
-                                .clip(badgeShape)
-                                .background(colors.surface.copy(alpha = 0.92f))
-                                .border(1.dp, colors.primary.copy(alpha = 0.45f), badgeShape)
-                                .padding(horizontal = 6.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "⇒ $formattedValue",
-                                fontFamily = codeFontFamily,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        val isGhosted = logicalLine in activeLines
+                        key(logicalLine) {
+                            LiveWatchBadge(
+                                formattedValue = formattedValue,
+                                lineTopPx = lineTopPx,
+                                isGhosted = isGhosted,
+                                density = density,
+                                codeFontFamily = codeFontFamily,
+                                colors = colors
                             )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BoxScope.LiveWatchBadge(
+    formattedValue: String,
+    lineTopPx: Float,
+    isGhosted: Boolean,
+    density: androidx.compose.ui.unit.Density,
+    codeFontFamily: FontFamily,
+    colors: ColorScheme
+) {
+    val alpha by animateFloatAsState(
+        targetValue = if (isGhosted) 0.20f else 0.92f,
+        animationSpec = tween(durationMillis = 150),
+        label = "liveWatchAlpha"
+    )
+    val topDp = with(density) { lineTopPx.toDp() } + 16.dp
+    val badgeShape = RoundedCornerShape(6.dp)
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(top = topDp.coerceAtLeast(0.dp), end = 12.dp)
+            .sharePointerWithSiblings(isGhosted)
+            .graphicsLayer { this.alpha = alpha }
+            .clip(badgeShape)
+            .background(colors.surface.copy(alpha = 0.92f))
+            .border(1.dp, colors.primary.copy(alpha = 0.45f), badgeShape)
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+    ) {
+        Text(
+            text = "⇒ $formattedValue",
+            fontFamily = codeFontFamily,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
