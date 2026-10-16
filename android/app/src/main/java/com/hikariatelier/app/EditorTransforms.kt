@@ -402,56 +402,6 @@ private fun mergeSetupAndDrawForTweet(source: String, aggressive: Boolean): Stri
 
 private val STATEMENT_ONLY_REGEX = Regex("""^\s*(?:for\b|while\b|if\b|switch\b|do\b|let\b|const\b|var\b|return\b|throw\b)""")
 
-private fun splitTopLevelStatements(code: String): List<String> {
-    val statements = mutableListOf<String>()
-    var depthParen = 0
-    var depthBrace = 0
-    var depthBracket = 0
-    var start = 0
-    var inQuote: Char? = null
-    var i = 0
-    while (i < code.length) {
-        val c = code[i]
-        if (inQuote != null) {
-            if (c == '\\') {
-                i += 2
-                continue
-            }
-            if (c == inQuote) {
-                inQuote = null
-            }
-            i++
-            continue
-        }
-        when (c) {
-            '\'', '"', '`' -> inQuote = c
-            '(' -> depthParen++
-            ')' -> if (depthParen > 0) depthParen--
-            '{' -> depthBrace++
-            '}' -> if (depthBrace > 0) depthBrace--
-            '[' -> depthBracket++
-            ']' -> if (depthBracket > 0) depthBracket--
-            ';', '\n' -> {
-                if (depthParen == 0 && depthBrace == 0 && depthBracket == 0) {
-                    val stmt = code.substring(start, i).trim().removeSuffix(";")
-                    if (stmt.isNotEmpty()) {
-                        statements.add(stmt)
-                    }
-                    start = i + 1
-                }
-            }
-        }
-        i++
-    }
-    if (start < code.length) {
-        val stmt = code.substring(start).trim().removeSuffix(";")
-        if (stmt.isNotEmpty()) {
-            statements.add(stmt)
-        }
-    }
-    return statements
-}
-
 private fun applyExtremeGolfTransforms(source: String, options: TweetGolfOptions): String {
     var code = source
 
