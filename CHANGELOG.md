@@ -1,5 +1,44 @@
 # Changelog
 
+## 3.2.1 — 2026-10-17
+
+## English
+
+Requires Android 11 or later.
+
+- Tweet code golf: Shorten recursive helpers and repeated p5 calls while preserving strings, templates, and regex literals.
+- Live editing fixes: Keep variable-watch declaration scopes and update annotated constants in classic scripts and modules.
+- HTML export fixes: Include saved parameter values, use the selected module entry, and embed relative module dependencies.
+- Update highlights now recognize exact language headings, retain nested sections, and skip fenced code examples.
+- Legacy HTML exports use p5.js 1.11.5, matching the app runtime.
+
+Code golf favors shorter formulas over identical execution. Scope, loop order, and setup timing can change; try the result before applying or sharing it. HTML exports may still need network access for libraries and separate asset files.
+
+## 日本語
+
+Android 11以降に対応しています。
+
+- つぶやきProcessing用のコード圧縮: 再帰関数のアロー式化やp5関数の別名化を追加しました。文字列・テンプレート・正規表現の内容は保持します。
+- ライブ編集の修正: 変数ウォッチで宣言の有効範囲が変わる問題を直しました。注釈付きconst変数のパラメータ操作は、通常JSとモジュールの両方で実変数に反映します。
+- HTML書き出しの修正: 保存したパラメータ値を初期化し、指定した開始モジュールと相対インポート先を埋め込みます。
+- 更新内容は言語見出しを完全一致で判定し、小見出しの先も読み取ります。コード例の箇条書きは表示対象から外しました。
+- 旧バージョン用のHTML出力は、アプリと同じp5.js 1.11.5を使うように直しました。
+
+コード圧縮は、同じ動作の維持より式の短さを優先します。変数の有効範囲、ループの順序、初期化のタイミングが変わるため、本文への反映や共有の前に結果を試してください。HTML出力では、ライブラリ取得のための通信や素材の別ファイルが必要な場合があります。
+
+## 中文
+
+需要 Android 11 或更高版本。
+
+- 推文代码压缩: 将递归辅助函数改写为箭头表达式，为重复的p5函数调用使用短别名，同时保留字符串、模板和正则表达式的内容。
+- 实时编辑修复: 保留变量监视声明的作用域，让带注释的const参数在普通脚本和模块中都能更新实际变量。
+- HTML导出修复: 初始化已保存的参数值，使用指定的入口模块，并嵌入相对导入的模块文件。
+- 更新内容按完整的语言标题匹配，保留子标题下的内容，并跳过代码示例中的列表项。
+- 旧版本HTML导出改用与应用一致的p5.js 1.11.5。
+
+代码压缩优先缩短公式，可能改变作用域、循环顺序和初始化时机。应用或分享前请先试运行。导出的HTML可能仍需联网加载库，或需要额外的素材文件。
+
+
 ## 3.2.0 — 2026-10-16
 
 ### English

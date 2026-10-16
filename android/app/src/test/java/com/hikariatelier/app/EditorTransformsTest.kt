@@ -170,7 +170,7 @@ class EditorTransformsTest {
             }
         """.trimIndent()
         val actual = minifyJavaScriptForTweet(input)
-        assertTrue("Expected t=0 to be emitted at top, got: $actual", actual.startsWith("t=0\n") || actual.startsWith("t=0;"))
+        assertTrue("Expected t=0 to be emitted at top, got: $actual", actual.lineSequence().first { !it.startsWith("//") }.startsWith("t=0"))
         assertTrue("Expected t||( or t||createCanvas, got: $actual", actual.contains("t||createCanvas(W=(w=200)*2,W)"))
         assertTrue("Expected ++t at the end, got: $actual", actual.contains("++t"))
     }
@@ -248,5 +248,58 @@ class EditorTransformsTest {
         val actual = minifyJavaScriptForTweet(input)
         assertTrue("Expected if(!t) block for loop in setup, got: $actual", actual.contains("if(!t){"))
         assertFalse("Should not create broken comma expression for loop, got: $actual", actual.contains("t||(createCanvas"))
+    }
+    @Test fun golfKeepsStringsTemplatesRegexAndPropertyNames() {
+        val source = """
+            const label = "let radius Math.PI 400";
+            const matcher = /let radius[ /]+/g;
+            const message = `let radius ${'$'}{`nested ${'$'}{1 + 2}`}`;
+            function draw() { text(label, 1, 2); console.log(matcher, message); }
+        """.trimIndent()
+        val result = minifyJavaScriptForTweet(source)
+        assertTrue(result.contains("\"let radius Math.PI 400\""))
+        assertTrue(result.contains("/let radius[ /]+/g"))
+        assertTrue(result.contains("`let radius ${'$'}{`nested ${'$'}{1 + 2}`}`"))
+    }
+
+    @Test fun golfAliasesRepeatedCallsAndShrinksRecursiveHelpers() {
+        val source = """
+            function setup() { createCanvas(400, 400); }
+            function branch(x,y,n) { return n>0 ? (point(x,y),branch(x+randomGaussian(),y+randomGaussian(),n-1)) : 0; }
+            function draw() { branch(200,400,20); }
+        """.trimIndent()
+        val result = minifyJavaScriptForTweet(source)
+        assertFalse(result.contains("function branch"))
+        assertTrue(result.contains("=>n>0?"))
+        assertEquals(1, Regex("randomGaussian").findAll(result).count())
+        assertTrue(result.contains("++t"))
+        assertTrue("Expected a shorter formula: $result", result.length < source.length)
+    }
+
+    @Test fun golfPreservesAlreadyGolfedRecursiveFormula() {
+        val source = """
+            t=0
+            draw=_=>{
+              r=randomGaussian
+              createCanvas(W=(w=200)*2,W)
+              P=(x,y,n,c,N,Y,d=11)=>n>1&&c<30?(stroke(S=(n+c)*5+t,G=(y/2+abs(x-w)-c),G/c,88),strokeWeight(c/3),point(x,y),P(x,Y=y-r(0,2*d),N=n-1,c+1),P(x+r(0,d),Y,N,c+2)):0
+              P(w,W,20,0)
+              ++t
+            }
+        """.trimIndent()
+        val result = minifyJavaScriptForTweet(source)
+        assertTrue(result.contains("n>1&&c<30?"))
+        assertTrue(result.contains("d=11"))
+        assertTrue(result.contains("G/c"))
+        assertEquals(1, Regex("""\+\+t""").findAll(result).count())
+    }
+
+    @Test fun golfKeepsTemplateFreeNamesAndMemberNames() {
+        val source = "let time=0; let radius=2; function draw(){ console.log(`${'$'}{time}`, {radius:radius}.radius); time++; }"
+        val result = minifyJavaScriptForTweet(source)
+        assertTrue(result.contains("time=0"))
+        assertTrue(result.contains("`${'$'}{time}`"))
+        assertTrue(result.contains(".radius"))
+        assertTrue(result.contains("radius:radius"))
     }
 }

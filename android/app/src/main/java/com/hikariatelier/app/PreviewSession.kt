@@ -46,13 +46,14 @@ internal fun preparePreviewRun(input: PreviewRunInput): PreparedPreviewRun {
     val run = resolveProjectRun(input.files, config, input.source)
     val virtualFiles = (input.files + ("sketch.js" to input.source)).mapValues { (name, code) ->
         when { isHtmlProjectFile(name) -> prepareProjectHtml(code, input.token)
-            name == run.modulePath -> code + moduleCallbackRegistrationTail()
+            name == run.modulePath -> prepareLiveParameterSource(code) + moduleCallbackRegistrationTail()
+            isJavaScriptProjectFile(name) -> prepareLiveParameterSource(code)
             else -> code }
     }
     val declarations = workParameters(input.files.toSortedMap() + ("sketch.js" to input.source))
     return PreparedPreviewRun(
         PreviewAssets(input.token, input.assets, virtualFiles, run.documentPath), input.workId,
-        composeProjectSource(input.source, input.files), input.p5Version, input.soundEnabled,
+        prepareLiveParameterSource(composeProjectSource(input.source, input.files)), input.p5Version, input.soundEnabled,
         JSONObject(input.libraries).toString(), parameterValuesJson(declarations, input.parameterValues),
         JSONObject(input.files.filter { it.key.substringAfterLast('.', "").lowercase() in setOf("frag", "vert", "glsl", "wgsl") } as Map<*, *>).toString(),
         if (run.usesSeparateFiles) emptyList() else previewSourceFiles(input.source, input.files), run.runtimeConfig(input.token)

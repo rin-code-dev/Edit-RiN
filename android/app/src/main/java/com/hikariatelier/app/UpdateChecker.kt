@@ -51,34 +51,45 @@ internal data class AppRelease(
 )
 
 internal fun extractLanguageSection(body: String, language: String): String {
-    val lines = body.lines()
-    val targetKeywords = when {
-        language.startsWith("ja") -> listOf("日本語", "japanese", "ja")
-        language.startsWith("zh") -> listOf("中文", "chinese", "zh")
-        else -> listOf("english", "en")
+    val normalized = language.lowercase(java.util.Locale.ROOT)
+    val target = when {
+        normalized.startsWith("ja") -> "ja"
+        normalized.startsWith("zh") -> "zh"
+        else -> "en"
     }
-
-    var capturing = false
-    val sectionLines = mutableListOf<String>()
-
-    for (line in lines) {
-        val trimmed = line.trim()
-        if (trimmed.startsWith("#")) {
-            val headingLower = trimmed.lowercase(java.util.Locale.ROOT)
-            val isTarget = targetKeywords.any { headingLower.contains(it) }
-            if (isTarget) {
-                capturing = true
+    val names = mapOf(
+        "ja" to setOf("日本語", "japanese", "ja"),
+        "zh" to setOf("中文", "简体中文", "簡體中文", "chinese", "zh"),
+        "en" to setOf("english", "en")
+    )
+    val heading = Regex("""^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$""")
+    fun section(wanted: String): String? {
+        var level = 0
+        val captured = mutableListOf<String>()
+        var fence: Char? = null
+        for (line in body.lines()) {
+            val trimmed = line.trimStart()
+            if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+                val marker = trimmed.first()
+                if (fence == null) fence = marker else if (fence == marker) fence = null
+                if (level > 0) captured += line
                 continue
-            } else if (capturing) {
-                break
             }
+            val match = if (fence == null) heading.matchEntire(line) else null
+            if (match != null) {
+                val currentLevel = match.groupValues[1].length
+                val label = match.groupValues[2].trim().lowercase(java.util.Locale.ROOT)
+                if (level == 0 && label in names.getValue(wanted)) {
+                    level = currentLevel
+                    continue
+                }
+                if (level > 0 && currentLevel <= level) break
+            }
+            if (level > 0) captured += line
         }
-        if (capturing) {
-            sectionLines.add(line)
-        }
+        return captured.joinToString("\n").takeIf { it.isNotBlank() }
     }
-
-    return if (sectionLines.isNotEmpty()) sectionLines.joinToString("\n") else body
+    return section(target) ?: (if (target != "en") section("en") else null) ?: body
 }
 
 internal fun parseReleaseHighlights(body: String, language: String = "ja"): List<UpdateHighlight> {
@@ -86,7 +97,14 @@ internal fun parseReleaseHighlights(body: String, language: String = "ja"): List
     val section = extractLanguageSection(body, language)
     val lines = section.lines().map { it.trim() }
     val highlights = mutableListOf<UpdateHighlight>()
+    var fence: Char? = null
     for (line in lines) {
+        if (line.startsWith("```") || line.startsWith("~~~")) {
+            val marker = line.first()
+            if (fence == null) fence = marker else if (fence == marker) fence = null
+            continue
+        }
+        if (fence != null || line.matches(Regex("""[-*_]{3,}"""))) continue
         val bullet = Regex("^[-*•\\d.]+\\s*(.*)$").matchEntire(line)?.groupValues?.get(1)?.trim() ?: continue
         if (bullet.isBlank()) continue
         val cleaned = bullet.replace("`", "").removeSurrounding("**").removeSurrounding("__").trim()

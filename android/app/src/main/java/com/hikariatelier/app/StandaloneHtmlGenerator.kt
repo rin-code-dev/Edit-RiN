@@ -7,9 +7,9 @@ package com.hikariatelier.app
 internal object StandaloneHtmlGenerator {
 
     private const val P5_V2_CDN = "https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js"
-    private const val P5_V1_CDN = "https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.min.js"
+    private const val P5_V1_CDN = "https://cdn.jsdelivr.net/npm/p5@1.11.5/lib/p5.min.js"
     private const val P5_SOUND_V2_CDN = "https://cdn.jsdelivr.net/npm/p5.sound@0.4.1/dist/p5.sound.min.js"
-    private const val P5_SOUND_V1_CDN = "https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/addons/p5.sound.min.js"
+    private const val P5_SOUND_V1_CDN = "https://cdn.jsdelivr.net/npm/p5@1.11.5/lib/addons/p5.sound.min.js"
     private const val MATTER_CDN = "https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"
     private const val BRUSH_CDN = "https://cdn.jsdelivr.net/npm/p5.brush@2.2.1/dist/p5.brush.js"
     private const val P5_WEBGPU_CDN = "https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.webgpu.js"
@@ -21,7 +21,11 @@ internal object StandaloneHtmlGenerator {
         val entryHtml = resolvedRun?.documentPath?.let { work.files[it] }
 
         return if (entryHtml != null) {
-            bundleExistingHtml(entryHtml, work.files, currentCode)
+            bundleExistingHtml(entryHtml, work.files, currentCode).let { html ->
+                val init = parameterInitialization(work, currentCode)
+                val head = Regex("<head[^>]*>", RegexOption.IGNORE_CASE).find(html)
+                if (head != null) html.replaceRange(head.range.last + 1, head.range.last + 1, init) else init + html
+            }
         } else {
             generateNewStandaloneHtml(work, currentCode, config, resolvedRun)
         }
@@ -58,7 +62,8 @@ internal object StandaloneHtmlGenerator {
             }
         }
 
-        val classicAuxiliaryScripts = if (resolvedRun?.classicScripts?.isNotEmpty() == true) {
+        val isModule = resolvedRun?.moduleMode == true
+        val classicAuxiliaryScripts = if (isModule) emptyList() else if (resolvedRun?.classicScripts?.isNotEmpty() == true) {
             resolvedRun.classicScripts
         } else {
             orderedClassicScriptFiles(work.files, config)
@@ -70,54 +75,15 @@ internal object StandaloneHtmlGenerator {
             "<!-- Project file: $safeCommentPath -->\n<script>\n${escapeScriptContent(code)}\n</script>"
         }
 
-        val isModule = config.executionMode == "module" ||
-            resolvedRun?.moduleMode == true ||
-            projectUsesModuleSyntax(currentCode)
-
-        val moduleHelper = if (isModule) {
-            """
-  <script>
-    window.__registerP5ModuleCallbacks = function(c) {
-      for (var k in c) { if (typeof c[k] === 'function') window[k] = c[k]; }
-      if ((typeof c.setup === 'function' || typeof c.draw === 'function') && window.p5 && !window.p5.instance) {
-        new window.p5();
-      }
-    };
-  </script>
-            """.trimIndent()
-        } else ""
-
+        val moduleFiles = work.files + ("sketch.js" to currentCode)
         val mainScript = if (isModule) {
-            val tail = """
-;if (typeof window.__registerP5ModuleCallbacks === 'function') {
-  window.__registerP5ModuleCallbacks({
-    preload: typeof preload === 'function' ? preload : undefined,
-    setup: typeof setup === 'function' ? setup : undefined,
-    draw: typeof draw === 'function' ? draw : undefined,
-    windowResized: typeof windowResized === 'function' ? windowResized : undefined,
-    mouseMoved: typeof mouseMoved === 'function' ? mouseMoved : undefined,
-    mouseDragged: typeof mouseDragged === 'function' ? mouseDragged : undefined,
-    mousePressed: typeof mousePressed === 'function' ? mousePressed : undefined,
-    mouseReleased: typeof mouseReleased === 'function' ? mouseReleased : undefined,
-    mouseClicked: typeof mouseClicked === 'function' ? mouseClicked : undefined,
-    doubleClicked: typeof doubleClicked === 'function' ? doubleClicked : undefined,
-    mouseWheel: typeof mouseWheel === 'function' ? mouseWheel : undefined,
-    keyPressed: typeof keyPressed === 'function' ? keyPressed : undefined,
-    keyReleased: typeof keyReleased === 'function' ? keyReleased : undefined,
-    keyTyped: typeof keyTyped === 'function' ? keyTyped : undefined,
-    touchStarted: typeof touchStarted === 'function' ? touchStarted : undefined,
-    touchMoved: typeof touchMoved === 'function' ? touchMoved : undefined,
-    touchEnded: typeof touchEnded === 'function' ? touchEnded : undefined,
-    deviceMoved: typeof deviceMoved === 'function' ? deviceMoved : undefined,
-    deviceTurned: typeof deviceTurned === 'function' ? deviceTurned : undefined,
-    deviceShaken: typeof deviceShaken === 'function' ? deviceShaken : undefined
-  });
-}
-            """.trimIndent()
-            "<script type=\"module\">\n${escapeScriptContent(currentCode)}\n$tail\n</script>"
-        } else {
-            "<script>\n${escapeScriptContent(currentCode)}\n</script>"
-        }
+            val entry = requireNotNull(resolvedRun?.modulePath)
+            "<script>window.__editRinRegisterModuleCallbacks=c=>{" +
+                "for(const k in c)if(typeof c[k]==='function')window[k]=c[k];" +
+                "if((c.setup||c.draw)&&window.p5&&!window.p5.instance)new window.p5()};</script>\n" +
+                "<script type=\"importmap\">" + escapeScriptContent(standaloneModuleMap(moduleFiles, entry)) +
+                "</script>\n<script type=\"module\">import " + org.json.JSONObject.quote("rin-project/$entry") + ";</script>"
+        } else "<script>\n${escapeScriptContent(currentCode)}\n</script>"
 
         return buildString {
             appendLine("<!doctype html>")
@@ -143,10 +109,8 @@ internal object StandaloneHtmlGenerator {
             appendLine("      touch-action: none;")
             appendLine("    }")
             appendLine("  </style>")
+            appendLine(parameterInitialization(work, currentCode))
             scripts.forEach { appendLine("  $it") }
-            if (moduleHelper.isNotBlank()) {
-                appendLine("  $moduleHelper")
-            }
             if (auxiliaryInlined.isNotBlank()) {
                 appendLine(auxiliaryInlined)
             }
@@ -156,6 +120,12 @@ internal object StandaloneHtmlGenerator {
             appendLine("</body>")
             append("</html>")
         }
+    }
+
+    private fun parameterInitialization(work: Work, currentCode: String): String {
+        val declarations = workParameters(work.files + ("sketch.js" to currentCode))
+        val json = parameterValuesJson(declarations, work.parameterValues)
+        return "<script>window.rinParams=" + escapeScriptContent(json) + ";</script>"
     }
 
     private fun bundleExistingHtml(

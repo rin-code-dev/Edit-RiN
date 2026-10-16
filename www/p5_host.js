@@ -204,7 +204,9 @@
 
       if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
         try {
-          window.eval(name + " = " + JSON.stringify(value));
+          const binding = window.__editRinParameterBindings?.[name];
+          if (typeof binding === 'function') binding(value);
+          else window.eval(name + " = " + JSON.stringify(value));
         } catch (_) {
           try { window[name] = value; } catch (__) {}
         }
