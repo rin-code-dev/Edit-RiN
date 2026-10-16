@@ -1,12 +1,28 @@
 # Changelog
 
+## 3.2.0 — 2026-10-16
+
+### English
+
+- Added an interactive 4-step Editor Practice Tour accessible from Settings, User Guide, and Onboarding completion to explore live watch badges, parameters, and code compression in a safe sandbox.
+- Implemented startup tour automatic dispatch: fresh installations launch the Onboarding Tour, while updating from earlier versions prioritizes the new Editor Practice Tour.
+- Redesigned the update dialog with modern card styling, clear download progress details, and automatic language-based feature highlights extracted dynamically from GitHub Releases.
+- Added live watch auto-ghosting and direct touch pass-through when cursor lines hover over inline watch comments.
+
+### 日本語
+
+- 変数ウォッチ、スライダー、コード圧縮を安全なサンドボックスで実際に体験できる「エディター実践ツアー」（全4ステップ）を新設しました（初回ツアー完了画面、設定画面、使い方ガイドからいつでも起動可能）。
+- 起動時ツアーの自動振り分けを実装しました。新規インストール時は入門ツアー、過去バージョンからの更新時はエディター実践ツアーを優先して自動案内します。
+- アプリ更新画面をモダンなカードデザインに刷新し、詳細な進捗表示とGitHub Releasesからの多言語ハイライト自動抽出に対応しました。
+- 編集中のカーソル行と重なる変数ウォッチバッジの自動半透明化（オートゴースト）および直接タッチ編集に対応しました。
+
 ## 3.1.0 — 2026-10-16
 
 ### English
 
 - Added comment-driven bidirectional live parameters: declare variables with inline comments like `// @slider(min, max, step)`, `// @int(min, max)`, `// @color`, `// @toggle`, and `// @choice(...)` to automatically generate parameter controls that sync bidirectionally with running preview and editor code with grouped undo.
-- Added dedicated `#つぶやきProcessing` studio mode featuring a slim 1-line HUD character gauge (140/280 chars), a compact modal share sheet, and an extreme code golfer that folds `createCanvas`, inlines constants, embeds hashtags into zero-arg functions, and renames variables to single letters.
-- Implemented PiP auto-ghosting and native touch pass-through in portrait mode: floating preview automatically drops opacity to 25% when hovering over active cursor lines or inline watch values, passing touches through freely to the underlying editor.
+- Added `#つぶやきProcessing` support mode featuring a slim 1-line HUD character gauge (140/280 chars), a compact modal share sheet, and smart code compression to fit creations cleanly into social posts.
+- Implemented PiP auto-ghosting and direct touch editing in portrait mode: floating preview automatically drops opacity to 25% when hovering over active cursor lines or inline watch values; tapping directly on preview focuses the editor to edit code underneath.
 - Added dynamic bottom content padding in portrait editor, expanding scrollable space when PiP is docked to bottom corners so code is never hidden beneath preview.
 - Upgraded asset hot-swapping to streamed URL references, replacing Base64 encoding to eliminate out-of-memory risks on large images, audio files, fonts, and JSON datasets without reloading the sketch.
 - Optimized app memory footprint with lazy-loaded reference databases and translation catalogs.
@@ -14,8 +30,8 @@
 ### 日本語
 
 - コメント駆動の双方向ライブパラメータを導入しました。コード内に `// @slider(min, max, step)`, `// @int(min, max)`, `// @color`, `// @toggle`, `// @choice(...)` などのインラインコメントを書くだけで操作UIが自動生成され、スライダー操作によるプレビュー即時反映とコード数値の自動置換が連動します（1操作ごとのUndo集約対応）。
-- `#つぶやきProcessing` 特化スタジオモードを追加しました。文字切れしないスリムな1行HUD文字数ゲージ（140/280字）、専用シェアシート、定数インライン化・キャンバス圧縮・ハッシュタグ埋め込み・変数1文字化を行う極限Golfingエンジンを搭載しました。
-- 縦画面PiP（小窓プレビュー）に「オートゴースト」と「ネイティブタッチ透過」を導入しました。編集中のカーソル行やインラインウォッチと小窓が重なると自動で半透明化（不透明度25%）し、ネイティブWebViewがタッチイベントを透過して小窓直下のコードを直接タップ・編集できます。
+- `#つぶやきProcessing` 支援モードを追加しました。画面上部に常時表示される1行スリムHUD文字数カウンター（140/280字）、専用シェアシート、余分な記述のスリム化や定数置換・変数名整理を行うコード自動圧縮機能を搭載しました。
+- 縦画面PiP（小窓プレビュー）に「オートゴースト」と「直接タッチ編集」を導入しました。編集中のカーソル行やインラインウォッチと小窓が重なると自動で半透明化（不透明度25%）し、小窓の上から背後にあるコードを直接タップしてそのまま編集を続けられます。
 - 縦画面エディターに動的ボトムパディングを追加し、小窓が下隅にある際も最下行のコードが小窓の下に隠れないようスクロール余白を自動調整します。
 - アセットHot-Swapをストリーム参照方式へ全面刷新し、Base64送信を廃止しました。大容量の画像・音声・フォント・JSONをメモリ不足（OOM）を起こすことなくゼロリロードで安全に差し替えられます。
 - p5.jsリファレンスデータおよび多言語翻訳カタログの遅延展開（Lazy Loading）を導入し、アプリ起動時のメモリ消費を削減しました。
