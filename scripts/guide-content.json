@@ -1,0 +1,3236 @@
+{
+  "version": "3.2.1",
+  "chapters": [
+    {
+      "id": "quickstart",
+      "title": [
+        "作品の作成・取り込み",
+        "Create & import"
+      ],
+      "summary": [
+        "サンプルを開くところから、自分の作品とテンプレートの管理まで。",
+        "Open samples, make your own works, and bring in existing projects."
+      ],
+      "sources": [
+        "WorkGallery.kt",
+        "WorkManagementDialogs.kt",
+        "UserTemplateDialogs.kt",
+        "P5AccountImportDialog.kt"
+      ],
+      "topics": [
+        {
+          "id": "samples",
+          "title": [
+            "サンプルを開き、コピーして編集する",
+            "Open a sample and make an editable copy"
+          ],
+          "lead": [
+            "完成したサンプルの動きを確かめてから、自分の作品として編集できます。",
+            "Explore a finished sample, then make your own editable work."
+          ],
+          "path": [
+            "画面上部の作品名 → 作品一覧 → サンプル",
+            "Work title at the top → work picker → Samples"
+          ],
+          "steps": [
+            [
+              "Paletteなどのサンプルを選び、プレビューを操作します。",
+              "Select a sample such as Palette and interact with its preview."
+            ],
+            [
+              "コードを変更するときは「コピーして編集」を押します。",
+              "Choose Copy to edit when you want to change its code."
+            ],
+            [
+              "名前を入力して作成し、「自分の作品」に切り替わったことを確認します。",
+              "Name the copy and check that it appears under My works."
+            ]
+          ],
+          "result": [
+            "原本を残したまま、独立したコピーを編集できます。",
+            "You can edit an independent copy while keeping the original."
+          ],
+          "note": [
+            "サンプル原本は読み取り専用です。コードの選択・コピー、折りたたみ、利用できるパラメーターの試用は可能です。",
+            "Sample originals are read-only. You can select and copy text, fold blocks, and try available parameters."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "WorkManagementDialogs.kt",
+            "UserTemplateDialogs.kt",
+            "P5AccountImportDialog.kt"
+          ],
+          "demo": "gallery"
+        },
+        {
+          "id": "create",
+          "title": [
+            "新しい作品を作る",
+            "Create a work"
+          ],
+          "lead": [
+            "テンプレートのコードと実行設定を使って、新しい作品を作成します。",
+            "Start with code and runtime settings supplied by a template."
+          ],
+          "path": [
+            "作品一覧 → ＋",
+            "Work picker → +"
+          ],
+          "steps": [
+            [
+              "作品名とプレビュー比率を指定します。",
+              "Choose a name and preview ratio."
+            ],
+            [
+              "2D、アニメーション、マウス／タッチなどのテンプレートを選びます。",
+              "Select a template such as 2D, Animation, or Mouse / Touch."
+            ],
+            [
+              "「作成」を押し、コードを編集して実行します。",
+              "Choose Create, edit the code, and run it."
+            ]
+          ],
+          "result": [
+            "選んだテンプレートを使った新しい作品ができます。",
+            "A new work is created from the selected template."
+          ],
+          "note": [
+            "新規作成では現在の作品のコードをコピーしません。既存作品を元にする場合は「複製」を使います。",
+            "Creating a work does not copy the currently open code. Use Duplicate to start from an existing user work."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "WorkManagementDialogs.kt",
+            "UserTemplateDialogs.kt",
+            "P5AccountImportDialog.kt"
+          ]
+        },
+        {
+          "id": "templates",
+          "title": [
+            "自作テンプレートを保存・再利用する",
+            "Save and reuse your templates"
+          ],
+          "lead": [
+            "繰り返し使うコード・素材・実行設定を、新規作成の出発点にできます。",
+            "Reuse code, assets, and runtime settings as a starting point."
+          ],
+          "path": [
+            "作品メニュー → テンプレート・ピン・タグ・名前・複製 → テンプレートとして保存",
+            "Work menu → Templates, pin, tags, rename, duplicate → Save as template"
+          ],
+          "steps": [
+            [
+              "元にする作品を開き、補助ファイルと素材も確認します。",
+              "Open the work and check its supporting files and assets."
+            ],
+            [
+              "テンプレートとして保存し、名前を付けます。",
+              "Save it as a template and give it a name."
+            ],
+            [
+              "新規作成で「自作テンプレート」を選びます。",
+              "Select My templates when creating a new work."
+            ]
+          ],
+          "result": [
+            "テンプレートの内容を引き継いだ別の作品を作成できます。",
+            "A separate work inherits the template contents."
+          ],
+          "note": [
+            "作品メニューの「テンプレート管理」では検索・名前変更・更新ができます。削除しても、そのテンプレートから作成済みの作品には影響しません。",
+            "Use Manage templates in the work menu to search, rename, or update templates. Deleting one does not affect works already created from it."
+          ],
+          "sources": [
+            "UserTemplateDialogs.kt",
+            "WorkManagementSheets.kt"
+          ]
+        },
+        {
+          "id": "imports",
+          "title": [
+            "JS・作品ZIPを取り込む",
+            "Import JavaScript or a work ZIP"
+          ],
+          "lead": [
+            "既存のコードや作品一式を端末のファイルから取り込みます。",
+            "Bring existing code or a complete work in from a file."
+          ],
+          "path": [
+            "JS：作品メニュー → JSをインポート／設定 → 保存 → Import .js、ZIP：作品メニュー → 作品ZIPを追加",
+            "JS: Work menu → Import JS / Settings → Save → Import .js; ZIP: Work menu → Import work ZIP"
+          ],
+          "steps": [
+            [
+              "コードだけなら.js、補助ファイルや素材も移すなら作品ZIPを用意します。",
+              "Use .js for code alone, or a work ZIP for files and assets as well."
+            ],
+            [
+              "該当するインポート操作からファイルを選びます。",
+              "Choose the appropriate import action and select the file."
+            ],
+            [
+              "取り込んだ作品を開き、実行環境と素材のパスを確認して実行します。",
+              "Open the imported work, check runtime and asset paths, and run it."
+            ]
+          ],
+          "result": [
+            "取り込んだ内容をアプリ内で編集できます。",
+            "The imported content becomes available for editing."
+          ],
+          "note": [
+            "任意のZIPをそのまま実行できるわけではありません。読み込みエラーが出た場合は、ファイル構成と上限を確認します。",
+            "Not every arbitrary ZIP is a runnable work. Check its structure and limits if importing fails."
+          ],
+          "sources": [
+            "SettingsScreen.kt",
+            "WorkManagementSheets.kt",
+            "WorkStoreRepository.kt",
+            "ProjectPaths.kt"
+          ]
+        },
+        {
+          "id": "p5-account",
+          "title": [
+            "p5.js Web Editorの公開作品を取り込む",
+            "Import public p5.js Web Editor sketches"
+          ],
+          "lead": [
+            "ユーザー名から公開作品の一覧を取得して取り込めます。",
+            "Retrieve public sketches by username and import them."
+          ],
+          "path": [
+            "設定 → 保存 → p5.jsから作品を取り込む",
+            "Settings → Save → Import from p5.js"
+          ],
+          "steps": [
+            [
+              "p5.js Web Editorのユーザー名を入力します。",
+              "Enter the p5.js Web Editor username."
+            ],
+            [
+              "「作品を取得」を押し、公開作品の一覧から対象を選びます。",
+              "Choose Load works, then select a public sketch."
+            ],
+            [
+              "取り込み後に素材とライブラリの設定を確認します。",
+              "Check assets and library settings after importing."
+            ]
+          ],
+          "result": [
+            "公開作品のローカルコピーを編集できます。",
+            "You can edit a local copy of the public sketch."
+          ],
+          "note": [
+            "ネット接続が必要です。パスワードを使うログインや、非公開作品との自動同期は行いません。",
+            "An internet connection is required. This does not log in with a password or automatically synchronize private sketches."
+          ],
+          "sources": [
+            "P5AccountImportDialog.kt",
+            "P5WebEditor.kt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "editor",
+      "title": [
+        "コードの編集",
+        "Write & inspect code"
+      ],
+      "summary": [
+        "入力、数値調整、検索、エラー確認を使い分けます。",
+        "Use editing tools, numeric adjustment, search, and diagnostics."
+      ],
+      "sources": [
+        "EditorAccessoryBar.kt",
+        "EditorTextActions.kt",
+        "EditorArea.kt"
+      ],
+      "topics": [
+        {
+          "id": "input-tools",
+          "title": [
+            "編集キー・補完・Undo／Redo",
+            "Editing keys, completion, Undo / Redo"
+          ],
+          "lead": [
+            "記号やよく使うコードを入力し、操作を取り消せます。",
+            "Enter symbols and common code patterns, and undo edits."
+          ],
+          "path": [
+            "コード欄 → 編集キー／スニペット",
+            "Code editor → accessory keys / snippets"
+          ],
+          "steps": [
+            [
+              "自分の作品のコード欄をタップし、カーソルを置きます。",
+              "Tap your work’s editor and position the caret."
+            ],
+            [
+              "編集キーでカーソルを移動し、記号やスニペットを挿入します。",
+              "Use accessory keys to move the caret and insert symbols or snippets."
+            ],
+            [
+              "補完候補を選びます。戻したい変更はUndo、やり直す場合はRedoを使います。",
+              "Choose a completion. Use Undo to reverse an edit and Redo to reapply it."
+            ]
+          ],
+          "result": [
+            "編集後のコードを実行して結果を確認できます。",
+            "Run the edited code to inspect the result."
+          ],
+          "note": [
+            "選択範囲がある状態でスニペットを入れると、その範囲を置き換えます。編集キーや補完は設定で切り替えられます。",
+            "A snippet replaces selected text. Accessory keys and completion can be configured in Settings."
+          ],
+          "sources": [
+            "EditorAccessoryBar.kt",
+            "EditorTextActions.kt",
+            "EditorArea.kt"
+          ],
+          "demo": "editor"
+        },
+        {
+          "id": "number-scrub",
+          "title": [
+            "編集キーで数値を調整する",
+            "Adjust numbers with the accessory scrubber"
+          ],
+          "lead": [
+            "カーソル位置の数値を、編集キーのドラッグ操作で変更できます。",
+            "Adjust the number at the caret using the accessory scrubber."
+          ],
+          "path": [
+            "エディターで数値にカーソルを置く → 編集キーの数値調整",
+            "Place the caret on a number → numeric scrubber in accessory keys"
+          ],
+          "steps": [
+            [
+              "コード内の数値にカーソルを置き、編集キーに数値調整が表示されることを確認します。",
+              "Place the caret on a numeric literal and locate the scrubber in the accessory bar."
+            ],
+            [
+              "編集キーの数値調整を左右にドラッグします。上下方向では調整の刻みを変えられます。",
+              "Drag the accessory scrubber left or right. Dragging vertically changes its adjustment step."
+            ],
+            [
+              "必要に応じて「変更を実行」を押し、Undoで変更を戻します。",
+              "Run changes when needed, or use Undo to revert the edit."
+            ]
+          ],
+          "result": [
+            "元のコードの数値が変わります。",
+            "The numeric literal in the source changes."
+          ],
+          "note": [
+            "読み取り専用のサンプルはコピーしてから編集します。文字列の中の数字は数値リテラルとは扱いが異なります。",
+            "Copy a read-only sample before editing. Digits inside strings are not numeric literals."
+          ],
+          "sources": [
+            "EditorAccessoryBar.kt",
+            "EditorTextActions.kt"
+          ]
+        },
+        {
+          "id": "color-picker",
+          "title": [
+            "コード内の色とカラーピッカー",
+            "Edit code colors with the color picker"
+          ],
+          "lead": [
+            "コードの色リテラルを選び、編集キーから色を調整できます。",
+            "Select a source color literal and adjust it from the accessory bar."
+          ],
+          "path": [
+            "色コードにカーソルを置く → 編集キーの色見本",
+            "Place the caret on a color code → accessory color swatch"
+          ],
+          "steps": [
+            [
+              "色コードの位置にカーソルを置きます。",
+              "Place the caret on a color code."
+            ],
+            [
+              "色見本を押してインラインの色選択を開きます。",
+              "Press the swatch to open inline color controls."
+            ],
+            [
+              "色を選んでソースを確認します。色リテラルがない場合もカラーピッカーを開けます。",
+              "Choose a color and inspect the source. The picker can also open without a selected color literal."
+            ]
+          ],
+          "result": [
+            "選択中の色コードを調整できます。",
+            "Adjust the selected color literal."
+          ],
+          "note": [
+            "パラメーターパネルの@colorとは別の、コード編集用の操作です。",
+            "This source-editing control is separate from @color in the parameter panel."
+          ],
+          "sources": [
+            "EditorAccessoryBar.kt"
+          ]
+        },
+        {
+          "id": "fold-wrap",
+          "title": [
+            "ブロックの折りたたみ・行の折り返し",
+            "Fold blocks and wrap long lines"
+          ],
+          "lead": [
+            "長いコードの表示量を調整できます。",
+            "Control how much code is visible at once."
+          ],
+          "path": [
+            "行番号横の三角／設定 → エディター → コードを画面幅で折り返す",
+            "Triangle beside line numbers / Settings → Editor → Wrap code at screen width"
+          ],
+          "steps": [
+            [
+              "関数やブロックの横の三角を押して折りたたみます。",
+              "Press the triangle beside a function or block to collapse it."
+            ],
+            [
+              "もう一度押して展開します。",
+              "Press it again to expand the block."
+            ],
+            [
+              "長い行を画面内で読みたい場合は折り返しを有効にします。",
+              "Enable wrapping to read long lines within the screen width."
+            ]
+          ],
+          "result": [
+            "ソースを削除したり改行を追加したりせず、見え方だけを変更できます。",
+            "Only the display changes; no source is deleted and no line breaks are inserted."
+          ],
+          "note": [
+            "折り返しを無効にすると、長い行は横にスクロールします。",
+            "With wrapping disabled, long lines scroll horizontally."
+          ],
+          "sources": [
+            "CodeFolding.kt",
+            "EditorFoldAnalysis.kt",
+            "SettingsScreen.kt"
+          ]
+        },
+        {
+          "id": "search-format",
+          "title": [
+            "検索・置換・コード整形",
+            "Search, replace, and format"
+          ],
+          "lead": [
+            "文字列を探し、置換する範囲を選び、対応するコードを整形します。",
+            "Find text, choose what to replace, and format supported code."
+          ],
+          "path": [
+            "作品メニュー → 検索・置換／コードを整形",
+            "Work menu → Find & replace / Format code"
+          ],
+          "steps": [
+            [
+              "検索を開いて文字列を入力します。「現在のファイル」と「作品全体」を選び、必要なら大文字・小文字を区別します。",
+              "Open search and enter text. Choose Current file or Entire work, and optionally match case."
+            ],
+            [
+              "置換内容と対象を確認してから置換します。",
+              "Check the replacement and target before applying it."
+            ],
+            [
+              "整形後は差分を確認し、必要ならUndoで戻します。",
+              "Inspect the formatted code and use Undo if needed."
+            ]
+          ],
+          "result": [
+            "一致箇所を確認しながら編集できます。",
+            "You can edit while checking the matching locations."
+          ],
+          "note": [
+            "検索バーでは指定行への移動もできます。作品一覧の検索は別の機能です。整形は実行エラーを自動で修正する機能ではありません。",
+            "The search bar also supports jumping to a line. Work-picker search is a separate feature. Formatting does not automatically fix runtime errors."
+          ],
+          "sources": [
+            "SearchReplaceDialog.kt",
+            "SearchReplaceBar.kt",
+            "ProjectSearch.kt",
+            "EditorTextActions.kt"
+          ]
+        },
+        {
+          "id": "diagnostics",
+          "title": [
+            "エラー・ログ・互換性の案内",
+            "Errors, logs, and compatibility hints"
+          ],
+          "lead": [
+            "実行に失敗した箇所や、バージョンによる違いを確認できます。",
+            "Inspect failures and differences between runtime versions."
+          ],
+          "path": [
+            "プレビューのログ／エディターのエラー表示",
+            "Preview log / editor diagnostics"
+          ],
+          "steps": [
+            [
+              "実行後にログを開き、最初のエラーを読みます。",
+              "Open the log after running and read the first error."
+            ],
+            [
+              "ソース位置があるエラーを選び、該当行へ移動します。",
+              "Select an error with a source location to jump to the relevant line."
+            ],
+            [
+              "素材のパス、関数名、実行環境を確認して再実行します。",
+              "Check asset paths, function names, and runtime, then run again."
+            ]
+          ],
+          "result": [
+            "修正した箇所の結果を再確認できます。",
+            "You can verify the effect of the correction."
+          ],
+          "note": [
+            "最初のエラーを直すと、後続のエラーもまとめて解消する場合があります。p5.js 1.xと2.xでは読み込みAPIなどが異なります。",
+            "Fixing the first failure may resolve later errors as well. Loading APIs differ between p5.js 1.x and 2.x."
+          ],
+          "sources": [
+            "InlineDiagnosticsAndWatch.kt",
+            "PreviewSession.kt"
+          ]
+        },
+        {
+          "id": "p5-reference",
+          "title": [
+            "アプリ内のp5.jsリファレンス",
+            "Use the in-app p5.js reference"
+          ],
+          "lead": [
+            "関数名やキーワードから、APIの書式を確認できます。",
+            "Look up API signatures by function name or keyword."
+          ],
+          "path": [
+            "エディター → p5.jsリファレンス",
+            "Editor → p5.js reference"
+          ],
+          "steps": [
+            [
+              "関数名またはキーワードを入力します。",
+              "Enter a function name or keyword."
+            ],
+            [
+              "カテゴリで絞り込み、説明と引数を読みます。",
+              "Filter by category and read the description and arguments."
+            ],
+            [
+              "作品のp5.jsバージョンに合わせてコードを記述します。",
+              "Write code for the p5.js version selected for your work."
+            ]
+          ],
+          "result": [
+            "編集を進めながら関数の用途を調べられます。",
+            "You can look up a function’s purpose while editing."
+          ],
+          "note": [
+            "詳しいAPI仕様はp5.js公式リファレンスも参照してください。",
+            "Consult the official p5.js reference for detailed API specifications."
+          ],
+          "sources": [
+            "P5ReferenceDialog.kt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "preview-pip",
+      "title": [
+        "実行・画面配置・PiP",
+        "Run, layout & PiP"
+      ],
+      "summary": [
+        "変更の反映と、作品を確認しやすい画面の使い方。",
+        "Apply code changes and arrange the preview around your work."
+      ],
+      "sources": [
+        "EditorScreen.kt",
+        "EditorWorkspaceLayout.kt",
+        "PreviewControls.kt",
+        "SettingsScreen.kt"
+      ],
+      "topics": [
+        {
+          "id": "run-pause",
+          "title": [
+            "手動実行・Auto-Run・一時停止",
+            "Run changes, Auto-Run, and pause"
+          ],
+          "lead": [
+            "コードの再実行と、描画の一時停止を使い分けます。",
+            "Choose when to rerun code and when to pause drawing."
+          ],
+          "path": [
+            "実行操作・AUTOボタン／設定 → 画面と実行 → 作品切替時に自動実行",
+            "Run controls & AUTO button / Settings → Display and run → Run when switching works"
+          ],
+          "steps": [
+            [
+              "コードを変更し、手動の場合は「変更を実行」を押します。",
+              "Edit the code and choose Run changes when running manually."
+            ],
+            [
+              "AUTO（Auto-Run）を有効にすると入力が止まった後に再実行し、「作品切替時に自動実行」では別の作品を開いたときに自動で実行します。",
+              "Enable AUTO (Auto-Run) to rerun after typing pauses; enable Run when switching works to run automatically when opening another work."
+            ],
+            [
+              "アニメーションを止めたいときは一時停止し、再開します。",
+              "Use Pause and Resume to inspect an animation."
+            ]
+          ],
+          "result": [
+            "再実行では最新のコードを読み込み、一時停止では描画の進行を止めます。",
+            "Rerunning loads the latest code; pausing stops drawing progression."
+          ],
+          "note": [
+            "通常の再実行や素材の変更ではプレビューを再読み込みするため、音声やアニメーションが最初から始まる場合があります。一時停止の対象はp5描画・アニメーションフレーム・CSSアニメーションで、通常のタイマーや無関係な非同期処理は続きます。",
+            "Normal reruns and asset changes reload the preview and may restart audio or animation. Pause covers p5 drawing, animation frames, and CSS animations; plain timers and unrelated asynchronous tasks continue."
+          ],
+          "sources": [
+            "EditorScreen.kt",
+            "EditorArea.kt",
+            "EditorWorkspaceLayout.kt",
+            "PreviewControls.kt",
+            "SettingsScreen.kt"
+          ],
+          "demo": "run",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・直径を書き換えて再実行",
+                "p5.js 2.3.4 · edit the diameter and rerun"
+              ],
+              "code": "let diameter = 100;\nfunction setup() {\n  createCanvas(400, 280);\n}\nfunction draw() {\n  background('#F1F1EA');\n  noStroke();\n  fill('#B85338');\n  circle(200, 140, diameter);\n}\n",
+              "runtime": "run"
+            }
+          ],
+          "live": "run"
+        },
+        {
+          "id": "layout",
+          "title": [
+            "プレビューとエディターの配置を変える",
+            "Arrange the preview and editor"
+          ],
+          "lead": [
+            "画面の向きと、プレビュー・エディターの面積を調整します。",
+            "Adjust orientation and the space given to the preview and editor."
+          ],
+          "path": [
+            "設定 → 外観／画面と実行",
+            "Settings → Appearance / Display and run"
+          ],
+          "steps": [
+            [
+              "サイズ調整バーを有効にし、仕切りを動かします。",
+              "Enable resize handles and move the divider."
+            ],
+            [
+              "横画面のプレビュー幅と、エディターを左に置くかを選びます。",
+              "Choose the landscape preview width and whether the editor goes on the left."
+            ],
+            [
+              "必要なら画面の向きを固定し、回転ボタンで切り替えます。",
+              "Lock orientation if desired and switch it with the rotation button."
+            ]
+          ],
+          "result": [
+            "コードと作品を見比べやすい配置になります。",
+            "The arrangement makes it easier to compare source and output."
+          ],
+          "note": [
+            "ノッチ領域の使用、ステータスバー、ナビゲーションバーの表示は外観設定で調整します。",
+            "Appearance settings control cutout use and the status and navigation bars."
+          ],
+          "sources": [
+            "EditorScreen.kt",
+            "EditorWorkspaceLayout.kt",
+            "PreviewControls.kt",
+            "SettingsScreen.kt"
+          ]
+        },
+        {
+          "id": "pip-controls",
+          "title": [
+            "PiP小窓の移動・サイズ・透明度",
+            "Move, resize, and fade the PiP preview"
+          ],
+          "lead": [
+            "縦画面で編集中も小窓で作品を確認できます。",
+            "Keep a small preview visible while editing in portrait."
+          ],
+          "path": [
+            "設定 → 画面と実行 → 編集時のPiP小窓プレビュー",
+            "Settings → Display and run → PiP floating preview while editing"
+          ],
+          "steps": [
+            [
+              "PiP小窓を有効にし、コード欄の編集に入ります。",
+              "Enable PiP and begin editing the code."
+            ],
+            [
+              "小窓をドラッグして四隅のいずれかへ移動します。",
+              "Drag the floating preview toward a corner."
+            ],
+            [
+              "小窓の操作でサイズ・半透明表示・最小化を切り替えます。",
+              "Use its controls to change size, translucency, or minimization."
+            ]
+          ],
+          "result": [
+            "上部プレビューを隠している間も、実行結果を確認できます。",
+            "You can see the output while the upper preview is hidden."
+          ],
+          "note": [
+            "アプリ内に表示する小窓です。Androidの他のアプリの上に表示するPiPとは異なります。",
+            "This is a floating window inside Edit:RiN, rather than an overlay above other Android apps."
+          ],
+          "sources": [
+            "EditorScreen.kt",
+            "EditorWorkspaceLayout.kt",
+            "PreviewControls.kt",
+            "SettingsScreen.kt"
+          ],
+          "demo": "pip"
+        },
+        {
+          "id": "preview-ratio",
+          "title": [
+            "プレビュー比率とキャンバスサイズ",
+            "Preview ratio and canvas dimensions"
+          ],
+          "lead": [
+            "作品の表示枠を用途に合う比率に変えます。",
+            "Choose an aspect ratio for the work’s preview frame."
+          ],
+          "path": [
+            "作品メニュー → プレビュー比率",
+            "Work menu → Preview aspect ratio"
+          ],
+          "steps": [
+            [
+              "1:1、16:9、4:3、9:16、端末に合わせた比率から選びます。",
+              "Choose 1:1, 16:9, 4:3, 9:16, or a device-based ratio."
+            ],
+            [
+              "枠に合わせる作品ではwindowWidthとwindowHeightでサイズを決めます。",
+              "Use windowWidth and windowHeight when the canvas should fit the frame."
+            ],
+            [
+              "windowResized()でresizeCanvas()を呼び、枠の変更にも対応します。",
+              "Call resizeCanvas() in windowResized() to respond to frame changes."
+            ]
+          ],
+          "result": [
+            "表示枠とコード側のサイズ指定を確認できます。",
+            "You can check how the frame and source dimensions interact."
+          ],
+          "note": [
+            "比率変更だけではcreateCanvas()の固定サイズは変わりません。",
+            "Changing the ratio does not change fixed dimensions passed to createCanvas()."
+          ],
+          "sources": [
+            "AspectRatioDialog.kt",
+            "EditorWorkspaceLayout.kt"
+          ]
+        },
+        {
+          "id": "expanded-preview",
+          "title": [
+            "プレビューを拡大する",
+            "Expand the preview"
+          ],
+          "lead": [
+            "作品を大きく表示して、描画の細部を確認します。",
+            "Inspect the artwork in a larger preview."
+          ],
+          "path": [
+            "プレビュー操作 → 拡大／設定 → 画面と実行",
+            "Preview controls → expand / Settings → Display and run"
+          ],
+          "steps": [
+            [
+              "プレビュー操作を開き、拡大表示に切り替えます。",
+              "Open preview controls and expand the preview."
+            ],
+            [
+              "描画サイズを維持したい場合は「全画面でも描画サイズを維持」を有効にします。",
+              "Enable Preserve work size in full screen to keep the drawing dimensions."
+            ],
+            [
+              "通常表示に戻して編集を続けます。",
+              "Return to the normal layout to continue editing."
+            ]
+          ],
+          "result": [
+            "コードの表示領域を減らして、作品を確認できます。",
+            "More screen space is available for inspecting the work."
+          ],
+          "note": [
+            "HTML内のfullscreen()と、アプリのプレビュー拡大は入口が異なります。",
+            "An HTML fullscreen() request and the app’s expanded preview have different entry points."
+          ],
+          "sources": [
+            "EditorScreen.kt",
+            "EditorWorkspaceLayout.kt",
+            "PreviewControls.kt",
+            "SettingsScreen.kt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parameters",
+      "title": [
+        "パラメーター・ウォッチ",
+        "Parameters & live values"
+      ],
+      "summary": [
+        "コメントを使って操作項目や値のバッジを追加します。",
+        "Use comments to create controls and inspect values in the editor."
+      ],
+      "sources": [
+        "WorkParameters.kt",
+        "WorkParameterPanel.kt",
+        "LiveParameterSheet.kt",
+        "InlineWatchInstrumentation.kt"
+      ],
+      "topics": [
+        {
+          "id": "watch",
+          "title": [
+            "//?で実行中の値を見る",
+            "Inspect running values with //?"
+          ],
+          "lead": [
+            "対象行が実行されたときの値を、エディター内に表示します。",
+            "Show the value of a line when that line executes."
+          ],
+          "path": [
+            "設定 → エディター → インライン変数ウォッチ",
+            "Settings → Editor → Inline variable watch"
+          ],
+          "steps": [
+            [
+              "ウォッチを有効にします。",
+              "Enable inline watch."
+            ],
+            [
+              "確認したい単純な宣言・代入・式の行末に //? または // ? を付けます。",
+              "Append //? or // ? to a simple declaration, assignment, or expression."
+            ],
+            [
+              "実行し、値のバッジを確認します。変化を追う場合はdraw()内の行を使います。",
+              "Run the work and inspect the badge. Use a line in draw() to watch changes."
+            ]
+          ],
+          "result": [
+            "行が実行されるたびに、表示する値を更新します。",
+            "The displayed value updates when the line executes."
+          ],
+          "note": [
+            "setup()で一度だけ実行する行は一度だけ更新します。複雑な構文は分け、確認したい式を一行に置いてください。",
+            "A line executed once in setup() updates once. Split complex statements and put the expression to inspect on its own line."
+          ],
+          "sources": [
+            "WorkParameters.kt",
+            "WorkParameterPanel.kt",
+            "LiveParameterSheet.kt",
+            "InlineWatchInstrumentation.kt"
+          ],
+          "demo": "watch",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・実行する行の値を確認",
+                "p5.js 2.3.4 · inspect the executed line"
+              ],
+              "code": "function setup() { createCanvas(400, 280); }\nfunction draw() {\n  background('#F1F1EA');\n  noStroke();\n  fill('#B85338');\n  let x = 200 + sin(frameCount * 0.03) * 100; //?\n  circle(x, 140, 60);\n}\n",
+              "runtime": "watch"
+            }
+          ],
+          "live": "watch"
+        },
+        {
+          "id": "inline",
+          "title": [
+            "変数に操作用コメントを付ける",
+            "Add inline parameter comments"
+          ],
+          "lead": [
+            "変数宣言の末尾から、スライダー・色・スイッチ・選択肢を作れます。",
+            "Create sliders, colors, switches, and choices beside variable declarations."
+          ],
+          "path": [
+            "コードの変数宣言 → プレビューのパラメーター操作",
+            "Variable declaration → preview parameter controls"
+          ],
+          "steps": [
+            [
+              "数値は@slider(最小, 最大, 刻み)または@int(最小, 最大)を指定します。",
+              "Use @slider(min, max, step) or @int(min, max) for numbers."
+            ],
+            [
+              "色は@color、真偽値は@toggle、列挙値は@choice(...)を指定します。",
+              "Use @color for colors, @toggle for booleans, and @choice(...) for choices."
+            ],
+            [
+              "実行後に操作パネルを開き、値を動かして結果を見ます。",
+              "Run the work, open the parameter panel, and adjust the controls."
+            ]
+          ],
+          "result": [
+            "ソース内の値と実行中の変数を変更できます。",
+            "The source value and the running variable can be updated."
+          ],
+          "note": [
+            "表示名はコメント末尾に指定できます。保存や出力の前に現在の値を確認してください。",
+            "You can add a display label at the end of the comment. Check current values before saving or exporting."
+          ],
+          "sources": [
+            "WorkParameters.kt",
+            "WorkParameterPanel.kt",
+            "LiveParameterSheet.kt",
+            "InlineWatchInstrumentation.kt"
+          ],
+          "demo": "inline",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・インライン形式の全5種類",
+                "p5.js 2.3.4 · all five inline control types"
+              ],
+              "code": "let size = 100; // @slider(20, 200, 10) \"Size\"\nlet count = 3; // @int(1, 6) \"Count\"\nlet ink = '#B85338'; // @color \"Ink\"\nlet moving = false; // @toggle \"Rotate\"\nlet shape = 'circle'; // @choice(circle, square, triangle) \"Shape\"\nfunction setup() { createCanvas(400, 280); }\nfunction draw() {\n  background('#F1F1EA');\n  translate(200, 140);\n  if (moving) rotate(frameCount * 0.015);\n  noStroke();\n  fill(ink);\n  for (let i = 0; i < count; i++) {\n    push();\n    rotate(TWO_PI * i / count);\n    translate(count === 1 ? 0 : 65, 0);\n    if (shape === 'circle') circle(0, 0, size);\n    else if (shape === 'square') { rectMode(CENTER); square(0, 0, size); }\n    else triangle(0, -size / 2, size / 2, size / 2, -size / 2, size / 2);\n    pop();\n  }\n}\n",
+              "runtime": "inline"
+            }
+          ],
+          "live": "inline"
+        },
+        {
+          "id": "rin-declarations",
+          "title": [
+            "@rinとrinParamsで操作パネルを作る",
+            "Build controls with @rin and rinParams"
+          ],
+          "lead": [
+            "コード先頭などに操作項目を宣言し、rinParamsから値を参照します。",
+            "Declare controls in comments and read their values through rinParams."
+          ],
+          "path": [
+            "// @rin宣言 → プレビューのパラメーター操作",
+            "// @rin declaration → preview parameter controls"
+          ],
+          "steps": [
+            [
+              "// @rin 種類 名前 \"表示名\" 値 の形式で項目を書きます。",
+              "Write each control as // @rin type name \"Label\" values."
+            ],
+            [
+              "numberは最小・最大・初期値・刻み、choiceは初期値と選択肢を指定します。",
+              "For number, specify min, max, default, and step; for choice, specify the default and choices."
+            ],
+            [
+              "描画コードでrinParams.名前を読み、パネルから値を変更します。",
+              "Read rinParams.name in the drawing code and adjust the panel."
+            ]
+          ],
+          "result": [
+            "作品ごとの操作パネルで描画を調整できます。値は作品のコピーやバックアップにも含まれます。",
+            "Each work has its own controls. Values are included in copies and backups."
+          ],
+          "note": [
+            "colorは#RRGGBB、booleanはtrue／falseです。操作の確定時には宣言値も更新されます。「初期値に戻す」と「現在値を初期値にする」を使い分けます。",
+            "Use #RRGGBB for color and true / false for boolean. Committing a control also updates declaration values. Distinguish Restore default from Set as defaults."
+          ],
+          "sources": [
+            "WorkParameters.kt",
+            "WorkParameterPanel.kt",
+            "LiveParameterSheet.kt",
+            "InlineWatchInstrumentation.kt"
+          ],
+          "demo": "params",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・@rin形式の4種類",
+                "p5.js 2.3.4 · all four @rin types"
+              ],
+              "code": "// @rin number size \"Size\" 20 200 100 10\n// @rin number count \"Count\" 1 6 3 1\n// @rin color ink \"Ink\" #B85338\n// @rin boolean moving \"Rotate\" false\n// @rin choice shape \"Shape\" circle circle square triangle\nfunction setup() { createCanvas(400, 280); }\nfunction draw() {\n  background('#F1F1EA');\n  translate(200, 140);\n  if (rinParams.moving) rotate(frameCount * 0.015);\n  noStroke();\n  fill(rinParams.ink);\n  for (let i = 0; i < rinParams.count; i++) {\n    push();\n    rotate(TWO_PI * i / rinParams.count);\n    translate(rinParams.count === 1 ? 0 : 65, 0);\n    let s = rinParams.size;\n    if (rinParams.shape === 'circle') circle(0, 0, s);\n    else if (rinParams.shape === 'square') { rectMode(CENTER); square(0, 0, s); }\n    else triangle(0, -s / 2, s / 2, s / 2, -s / 2, s / 2);\n    pop();\n  }\n}\n",
+              "runtime": "params"
+            }
+          ],
+          "live": "params"
+        },
+        {
+          "id": "parameter-rules",
+          "title": [
+            "宣言の条件と表示されない場合",
+            "Declaration rules and missing controls"
+          ],
+          "lead": [
+            "操作項目が出ないときは、上限・名前・値の書式を確認します。",
+            "Check limits, names, and value syntax when a control is missing."
+          ],
+          "path": [
+            "JavaScriptプロジェクトファイルのパラメーター宣言",
+            "Parameter declarations in JavaScript project files"
+          ],
+          "steps": [
+            [
+              "インライン形式と@rin形式を合わせて16個以内にします。",
+              "Keep inline and @rin declarations within the combined limit of 16."
+            ],
+            [
+              "名前の重複を除き、数値の最小値を最大値より小さく、刻みを正にします。",
+              "Remove duplicate names, use min < max, and specify a positive step."
+            ],
+            [
+              "@rinの表示名を1〜40文字の二重引用符付きにし、初期値と選択肢を確認します。",
+              "For @rin, quote the 1–40 character label and check defaults and choices."
+            ]
+          ],
+          "result": [
+            "有効な宣言を操作パネルに表示できます。",
+            "Valid declarations can appear in the control panel."
+          ],
+          "note": [
+            "同名では最初の宣言を使います。@rinの選択肢は2個以上、各32文字以内の英数字・_・.・-です。不正な宣言は表示されません。",
+            "The first declaration with a given name wins. @rin choices need at least two entries, each up to 32 characters using letters, digits, _, ., or -. Invalid declarations are omitted."
+          ],
+          "sources": [
+            "WorkParameters.kt",
+            "WorkParameterPanel.kt",
+            "LiveParameterSheet.kt",
+            "InlineWatchInstrumentation.kt"
+          ],
+          "table": {
+            "headers": [
+              [
+                "種類",
+                "Type"
+              ],
+              [
+                "記述例",
+                "Declaration"
+              ],
+              [
+                "値",
+                "Value"
+              ]
+            ],
+            "rows": [
+              [
+                [
+                  "数値",
+                  "Number"
+                ],
+                [
+                  "let size = 100; // @slider(20, 200, 10)",
+                  "let size = 100; // @slider(20, 200, 10)"
+                ],
+                [
+                  "20〜200、刻み10",
+                  "20–200, step 10"
+                ]
+              ],
+              [
+                [
+                  "整数",
+                  "Integer"
+                ],
+                [
+                  "let count = 3; // @int(1, 6)",
+                  "let count = 3; // @int(1, 6)"
+                ],
+                [
+                  "刻み1",
+                  "Step 1"
+                ]
+              ],
+              [
+                [
+                  "色",
+                  "Color"
+                ],
+                [
+                  "let ink = '#B85338'; // @color",
+                  "let ink = '#B85338'; // @color"
+                ],
+                [
+                  "6桁の色コード",
+                  "Six-digit hex"
+                ]
+              ],
+              [
+                [
+                  "真偽値",
+                  "Boolean"
+                ],
+                [
+                  "let moving = false; // @toggle",
+                  "let moving = false; // @toggle"
+                ],
+                [
+                  "true / false",
+                  "true / false"
+                ]
+              ],
+              [
+                [
+                  "選択肢",
+                  "Choice"
+                ],
+                [
+                  "let shape = 'circle'; // @choice(circle, square)",
+                  "let shape = 'circle'; // @choice(circle, square)"
+                ],
+                [
+                  "列挙した値",
+                  "Listed values"
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "id": "parameter-panel",
+          "title": [
+            "追加・ランダム変更・固定・比較",
+            "Add, randomize, pin, and compare"
+          ],
+          "lead": [
+            "パネルから宣言を追加し、複数の値を試せます。",
+            "Add declarations from the panel and explore combinations of values."
+          ],
+          "path": [
+            "パラメーター操作パネル",
+            "Parameter panel"
+          ],
+          "steps": [
+            [
+              "「＋ パラメータ追加」で項目を追加します。数値はスライダーと−／＋で調整します。",
+              "Choose Add parameter. Adjust numbers with sliders or minus / plus buttons."
+            ],
+            [
+              "サイコロでランダムに変更し、変更したくない項目をピンで固定します。",
+              "Randomize with the dice button and pin values you want to keep."
+            ],
+            [
+              "比較ボタンを押している間は初期値を確認し、離して調整後に戻します。",
+              "Hold Compare to view defaults; release it to return to adjusted values."
+            ]
+          ],
+          "result": [
+            "現在の調整と初期値の違いを確認できます。",
+            "You can compare the current adjustment against the defaults."
+          ],
+          "note": [
+            "項目名から宣言行へ移動できます。追加操作の変数名は半角英字で始め、英数字と_を使います。",
+            "A control label can take you to its declaration. Names entered through Add parameter start with a Latin letter and use letters, digits, and _."
+          ],
+          "sources": [
+            "WorkParameters.kt",
+            "WorkParameterPanel.kt",
+            "LiveParameterSheet.kt",
+            "InlineWatchInstrumentation.kt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "files-assets",
+      "title": [
+        "ファイル・素材・実行環境",
+        "Files, assets & runtime"
+      ],
+      "summary": [
+        "補助ファイルの構成と、ライブラリの読み込みを設定します。",
+        "Organize supporting files and configure how libraries are loaded."
+      ],
+      "sources": [
+        "ProjectFilesDialog.kt",
+        "AssetManagerDialog.kt",
+        "WorkRuntimeDialog.kt",
+        "WorkLibraries.kt",
+        "ProjectDocument.kt"
+      ],
+      "topics": [
+        {
+          "id": "project-files",
+          "title": [
+            "複数ファイルを作成・編集する",
+            "Create and edit project files"
+          ],
+          "lead": [
+            "メインコードに加え、JavaScript・HTML・CSS・データを管理できます。",
+            "Manage scripts, HTML, CSS, and data alongside the main code."
+          ],
+          "path": [
+            "作品設定（上部バーのフォルダーアイコン） → プロジェクトファイル",
+            "Work settings (folder icon in top bar) → Project files"
+          ],
+          "steps": [
+            [
+              "ファイルを追加し、lib/math.mjsなどの相対パスを指定します。",
+              "Add a file with a relative path such as lib/math.mjs."
+            ],
+            [
+              "エディターのタブで編集するファイルを切り替えます。",
+              "Switch files with the editor tabs."
+            ],
+            [
+              "実行環境で実行方式と開始ファイル、必要な読み込み順を指定します。",
+              "Choose the execution mode, entry file, and any required load order in Runtime."
+            ]
+          ],
+          "result": [
+            "複数ファイルを含む一つの作品として編集・保存できます。",
+            "Edit and save multiple files as one work."
+          ],
+          "note": [
+            "ファイルを追加しただけではすべての方式で自動実行されるわけではありません。HTMLやモジュールからの参照を確認します。",
+            "Adding a file does not make it run automatically in every mode. Check HTML and module references."
+          ],
+          "sources": [
+            "WorkManagementSheets.kt",
+            "ProjectFilesDialog.kt",
+            "AssetManagerDialog.kt",
+            "WorkRuntimeDialog.kt",
+            "WorkLibraries.kt",
+            "ProjectDocument.kt"
+          ],
+          "demo": "files"
+        },
+        {
+          "id": "asset-inspector",
+          "title": [
+            "素材の取り込み・プレビュー・読み込みコード",
+            "Import, inspect, and load assets"
+          ],
+          "lead": [
+            "画像・音声・フォント・データを取り込み、使うパスを確認します。",
+            "Import images, audio, fonts, and data, and inspect their paths."
+          ],
+          "path": [
+            "作品設定（上部バーのフォルダーアイコン） → 作品の素材 → 素材を選択",
+            "Work settings (folder icon in top bar) → Work assets → select an asset"
+          ],
+          "steps": [
+            [
+              "素材をインポートして一覧から選びます。",
+              "Import an asset and select it in the list."
+            ],
+            [
+              "対応する画像・フォントの表示や音声の再生で内容を確認します。",
+              "Preview supported images and fonts, or play supported audio."
+            ],
+            [
+              "読み込みコードを挿入し、assets/photo.pngなどのパスで参照します。",
+              "Insert loading code and reference the path, for example assets/photo.png."
+            ]
+          ],
+          "result": [
+            "素材の名前・パスとコードの参照先をそろえられます。",
+            "The source code can reference the correct asset path."
+          ],
+          "note": [
+            "すべての形式をプレビューできるわけではありません。p5.jsの版に合う読み込み方を使ってください。",
+            "Not every format has a preview. Use the loading pattern for the selected p5.js version."
+          ],
+          "sources": [
+            "WorkManagementSheets.kt",
+            "AssetPreviewDialog.kt",
+            "AssetManagerDialog.kt"
+          ]
+        },
+        {
+          "id": "asset-rename",
+          "title": [
+            "素材の名前とコードの参照を変更する",
+            "Rename assets and update references"
+          ],
+          "lead": [
+            "素材のリネーム時に、コード内の一致するパスも確認できます。",
+            "Review matching source paths when renaming an asset."
+          ],
+          "path": [
+            "作品の素材 → 名前変更",
+            "Work assets → Rename"
+          ],
+          "steps": [
+            [
+              "変更する素材と新しい名前を指定します。",
+              "Select the asset and enter its new name."
+            ],
+            [
+              "提示されたコード内の一致箇所を確認し、更新する参照を選びます。",
+              "Review the listed matches and select the references to update."
+            ],
+            [
+              "確定後に実行し、素材が読み込まれることを確認します。",
+              "Confirm, run the work, and check that the asset loads."
+            ]
+          ],
+          "result": [
+            "選んだリテラルの参照先を新しい名前に合わせられます。",
+            "Selected literal references can follow the new asset name."
+          ],
+          "note": [
+            "文字列の連結などで動的に作るパスは、自動検出できない場合があります。",
+            "Paths built dynamically, for example with string concatenation, may not be detected."
+          ],
+          "sources": [
+            "AssetRename.kt",
+            "AssetManagerDialog.kt"
+          ]
+        },
+        {
+          "id": "runtime-versions",
+          "title": [
+            "p5.js・p5.sound・外部ライブラリ",
+            "Choose p5.js, p5.sound, and external libraries"
+          ],
+          "lead": [
+            "作品ごとにp5.jsの版と追加ライブラリを選びます。",
+            "Choose the p5.js version and libraries for each work."
+          ],
+          "path": [
+            "作品設定（上部バーのフォルダーアイコン） → 実行環境",
+            "Work settings (folder icon in top bar) → Runtime"
+          ],
+          "steps": [
+            [
+              "標準の2.3.4、または従来作品向けの1.11.5を選びます。",
+              "Select the current 2.3.4 or legacy 1.11.5 runtime."
+            ],
+            [
+              "音声を使う場合はp5.soundを有効にします。",
+              "Enable p5.sound if the work uses audio."
+            ],
+            [
+              "必要な同梱ライブラリや外部HTTPSライブラリを設定して保存します。",
+              "Configure bundled or external HTTPS libraries as needed and save."
+            ]
+          ],
+          "result": [
+            "選択した環境で作品を実行できます。",
+            "The work runs with the selected environment."
+          ],
+          "note": [
+            "p5.soundは初期状態ではオフです。2.3.3の既存指定は2.3.4になります。外部p5.jsを使う場合は、読み込み設定の「p5.jsのHTTPS URL」に指定します。空欄では同梱版を使います。Processing／Javaの実行環境はありません。",
+            "p5.sound is off by default. Existing 2.3.3 selections resolve to 2.3.4. Set p5.js HTTPS URL under loading settings to use a remote runtime; leave it empty for the bundled one. Processing / Java is not included."
+          ],
+          "sources": [
+            "ProjectFilesDialog.kt",
+            "AssetManagerDialog.kt",
+            "WorkRuntimeDialog.kt",
+            "WorkLibraries.kt",
+            "ProjectDocument.kt",
+            "EditorSessionViewModel.kt"
+          ]
+        },
+        {
+          "id": "loading",
+          "title": [
+            "自動・通常JS・モジュール・HTMLの読み込み",
+            "Automatic, classic JS, module, and HTML loading"
+          ],
+          "lead": [
+            "作品の構成に合わせ、開始ファイルと読み込み順を選びます。",
+            "Choose an entry file and load order for the project structure."
+          ],
+          "path": [
+            "実行環境 → プロジェクトの読み込み設定",
+            "Runtime → Project loading settings"
+          ],
+          "steps": [
+            [
+              "HTML作品では開始HTML、モジュール作品では開始モジュールを指定します。",
+              "Choose the HTML entry document or the module entry."
+            ],
+            [
+              "通常JSではファイル順と外部HTTPSライブラリの順序を指定します。外部ライブラリは通常JS／モジュールを選べます。HTMLではscriptタグを使います。",
+              "Set file order and external HTTPS library order for classic JS. External libraries can be classic scripts or modules. In HTML, use script tags."
+            ],
+            [
+              "モジュールのimportには相対パス、URL、またはHTMLのimport mapを使います。",
+              "Use relative paths, URLs, or an HTML import map for module imports."
+            ]
+          ],
+          "result": [
+            "設定はedit-rin.jsonにも保存されます。",
+            "The configuration is also stored in edit-rin.json."
+          ],
+          "note": [
+            "「自動」はindex.htmlを優先します。メインコードの静的import/export、またはメインと通常JSが空で.mjsが一つだけの場合はモジュールになります。npm名からの自動インストールはありません。",
+            "Automatic mode prefers index.html. Static import/export in the main code, or exactly one .mjs file with empty main and classic JS, selects modules. npm package names are not automatically installed."
+          ],
+          "sources": [
+            "ProjectFilesDialog.kt",
+            "AssetManagerDialog.kt",
+            "WorkRuntimeDialog.kt",
+            "WorkLibraries.kt",
+            "ProjectDocument.kt"
+          ],
+          "examples": [
+            {
+              "label": [
+                "lib/math.mjsを追加",
+                "Add lib/math.mjs"
+              ],
+              "code": "export const diameter = 120;\n",
+              "runtime": "manual"
+            },
+            {
+              "label": [
+                "開始モジュール：main.mjs",
+                "Module entry: main.mjs"
+              ],
+              "code": "import { diameter } from './lib/math.mjs';\n\nwindow.setup = function () { createCanvas(400, 280); };\nwindow.draw = function () {\n  background(242);\n  circle(200, 140, diameter);\n};\n",
+              "runtime": "manual"
+            }
+          ]
+        },
+        {
+          "id": "limits",
+          "title": [
+            "ファイル数・容量・読み込みの制約",
+            "File counts, sizes, and loading limits"
+          ],
+          "lead": [
+            "読み込みに失敗したら、対象のファイル構成と容量を確認します。",
+            "Check project structure and size when loading fails."
+          ],
+          "path": [
+            "プロジェクトファイル／作品の素材／ログ",
+            "Project files / Work assets / log"
+          ],
+          "steps": [
+            [
+              "テキストは500ファイル・合計16 MiB以内にします。",
+              "Keep project text within 500 files and 16 MiB total."
+            ],
+            [
+              "素材は1ファイル50 MiB、100ファイル・合計200 MiB以内にします。",
+              "Keep assets within 50 MiB each, 100 files, and 200 MiB total."
+            ],
+            [
+              "外部URLのCORSと、HTMLのCSPによる制限も確認します。",
+              "Also check external URL CORS and the HTML document’s CSP."
+            ]
+          ],
+          "result": [
+            "容量と読み込み方式のどちらを見直すか判断できます。",
+            "You can identify whether to adjust capacity or loading configuration."
+          ],
+          "note": [
+            "__edit-rin__/は内部用の予約パスです。HTMLのCSPで補助スクリプトを禁止すると、プレビュー操作やAndroidへの保存が制限される場合があります。",
+            "__edit-rin__/ is reserved for internal use. A CSP blocking helper scripts can restrict preview controls and saving through Android."
+          ],
+          "sources": [
+            "ProjectPaths.kt",
+            "ProjectAssets.kt",
+            "ProjectDocument.kt",
+            "AssetWebClient.kt"
+          ]
+        },
+        {
+          "id": "bundled-libraries",
+          "title": [
+            "p5.brush・Matter.jsを使う",
+            "Use p5.brush and Matter.js"
+          ],
+          "lead": [
+            "水彩や鉛筆の表現、剛体・重力・衝突を追加できます。",
+            "Add watercolor and pencil effects, or rigid bodies, gravity, and collisions."
+          ],
+          "path": [
+            "実行環境 → 作品のライブラリ",
+            "Runtime → Work libraries"
+          ],
+          "steps": [
+            [
+              "p5.brush 2.2.1、matter-js 0.20.0から必要なものを有効にします。",
+              "Enable p5.brush 2.2.1 or matter-js 0.20.0 as needed."
+            ],
+            [
+              "p5.brushではp5.js 2.3.4とWEBGLを使います。",
+              "Use p5.js 2.3.4 and WEBGL for p5.brush."
+            ],
+            [
+              "対応するサンプルやテンプレートで構成を確認してから編集します。",
+              "Inspect a corresponding sample or template before editing."
+            ]
+          ],
+          "result": [
+            "追加したライブラリのAPIをコードから使えます。",
+            "The library’s APIs become available in the source."
+          ],
+          "note": [
+            "HTML作品ではscriptタグで読み込みます。ライブラリを有効にするだけでは、描画や物理演算のコードは追加されません。",
+            "HTML works load libraries with script tags. Enabling a library does not insert drawing or physics code."
+          ],
+          "sources": [
+            "WorkLibraries.kt",
+            "SampleGuides.kt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drawing",
+      "title": [
+        "描画・入力",
+        "Drawing & interaction"
+      ],
+      "summary": [
+        "2Dから3D、シェーダー、物理演算、入力イベントまで。",
+        "Explore 2D, 3D, shaders, physics, and input events."
+      ],
+      "sources": [
+        "ProjectDocument.kt",
+        "PreviewBrowserFeatures.kt",
+        "UserGuideReference.kt"
+      ],
+      "topics": [
+        {
+          "id": "basic-drawing",
+          "title": [
+            "2Dの図形とアニメーション",
+            "2D shapes and animation"
+          ],
+          "lead": [
+            "setup()でキャンバスを作り、draw()で描画を繰り返します。",
+            "Create a canvas in setup() and draw repeatedly in draw()."
+          ],
+          "path": [
+            "新規作成 → 2D／アニメーション",
+            "Create work → 2D / Animation"
+          ],
+          "steps": [
+            [
+              "2Dテンプレートから作品を作成します。",
+              "Create a work from the 2D template."
+            ],
+            [
+              "createCanvas()、background()、circle()などを編集します。",
+              "Edit calls such as createCanvas(), background(), and circle()."
+            ],
+            [
+              "実行し、frameCountを使って位置や色を変えます。",
+              "Run it and use frameCount to vary position or color."
+            ]
+          ],
+          "result": [
+            "コードの値と描画の関係を確かめられます。",
+            "You can observe the relation between source values and drawing."
+          ],
+          "note": [
+            "draw()は繰り返し実行します。noLoop()で止めた作品は、必要に応じてredraw()を使います。",
+            "draw() runs repeatedly. For a sketch stopped with noLoop(), use redraw() when needed."
+          ],
+          "sources": [
+            "ProjectDocument.kt",
+            "PreviewBrowserFeatures.kt",
+            "UserGuideReference.kt"
+          ],
+          "demo": "basic",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・追加ライブラリ不要",
+                "p5.js 2.3.4 · no additional libraries"
+              ],
+              "code": "function setup() {\n  createCanvas(400, 280);\n}\nfunction draw() {\n  background('#F1F1EA');\n  noStroke();\n  fill('#B85338');\n  let x = 200 + sin(frameCount * 0.025) * 100;\n  circle(x, 140, 70);\n}\n",
+              "runtime": "basic"
+            }
+          ],
+          "live": "basic"
+        },
+        {
+          "id": "canvas-modes",
+          "title": [
+            "WebGL・3D描画・物理演算",
+            "WebGL, 3D, and physics"
+          ],
+          "lead": [
+            "WEBGLでは3D描画、Matter.jsでは2D物理演算を使えます。",
+            "Use WEBGL for 3D and Matter.js for 2D physics."
+          ],
+          "path": [
+            "新規作成 → WebGL／物理演算テンプレート",
+            "Create work → WebGL / physics template"
+          ],
+          "steps": [
+            [
+              "WebGLテンプレートでcreateCanvas(..., WEBGL)を確認します。",
+              "Inspect createCanvas(..., WEBGL) in a WebGL template."
+            ],
+            [
+              "物理演算ではMatter.jsを有効にし、物体と床をワールドへ追加します。",
+              "For physics, enable Matter.js and add a body and floor to the world."
+            ],
+            [
+              "実行し、回転や重力の変化を確認します。",
+              "Run the work and inspect rotation or gravity."
+            ]
+          ],
+          "result": [
+            "3Dの描画と、物理演算による位置の更新を確認できます。",
+            "Observe 3D drawing and positions updated by a physics engine."
+          ],
+          "note": [
+            "WEBGLの原点は通常キャンバス中央です。Matter.jsの計算結果を描画する処理は作品側で記述します。",
+            "WEBGL normally places the origin at the center. The sketch must draw the results of Matter.js calculations."
+          ],
+          "sources": [
+            "WorkLibraries.kt"
+          ],
+          "demo": "webgl",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・WEBGL",
+                "p5.js 2.3.4 · WEBGL"
+              ],
+              "code": "function setup() { createCanvas(400, 280, WEBGL); }\nfunction draw() {\n  background('#F1F1EA');\n  rotateX(frameCount * 0.008);\n  rotateY(frameCount * 0.012);\n  normalMaterial();\n  box(110);\n}\n",
+              "runtime": "webgl"
+            }
+          ],
+          "live": "webgl"
+        },
+        {
+          "id": "shaders",
+          "title": [
+            "シェーダーでピクセルを描画する",
+            "Draw pixels with shaders"
+          ],
+          "lead": [
+            "頂点・フラグメントシェーダーから画面の色を計算できます。",
+            "Calculate output colors with vertex and fragment shaders."
+          ],
+          "path": [
+            "新規作成 → シェーダーテンプレート",
+            "Create work → shader template"
+          ],
+          "steps": [
+            [
+              "WEBGLのキャンバスを作ります。",
+              "Create a WEBGL canvas."
+            ],
+            [
+              "createShader()で頂点とフラグメントのソースを指定します。",
+              "Pass vertex and fragment sources to createShader()."
+            ],
+            [
+              "shader()で適用し、描画する図形を指定します。",
+              "Apply it with shader() and draw geometry."
+            ]
+          ],
+          "result": [
+            "フラグメントの計算がキャンバスの色として表示されます。",
+            "The fragment calculations appear as colors on the canvas."
+          ],
+          "note": [
+            "GLSLのコンパイルエラーはログで確認します。端末やWebViewによって利用できるGPU機能が異なります。",
+            "Check the log for GLSL compilation errors. GPU capabilities vary by device and WebView."
+          ],
+          "sources": [
+            "UserGuideReference.kt"
+          ],
+          "demo": "shader",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・WEBGL／GLSL",
+                "p5.js 2.3.4 · WEBGL / GLSL"
+              ],
+              "code": "const vertexSource = `\nprecision highp float;\nattribute vec3 aPosition;\nvarying vec2 uv;\nvoid main() {\n  uv = (aPosition.xy + 1.0) * 0.5;\n  gl_Position = vec4(aPosition, 1.0);\n}`;\nconst fragment = `\nprecision highp float;\nvarying vec2 uv;\nvoid main() {\n  gl_FragColor = vec4(uv.x, 0.3, uv.y, 1.0);\n}`;\nlet gradient;\nfunction setup() {\n  createCanvas(400, 280, WEBGL);\n  gradient = createShader(vertexSource, fragment);\n  noStroke();\n}\nfunction draw() {\n  shader(gradient);\n  beginShape(TRIANGLE_STRIP);\n  vertex(-1, -1, 0); vertex(1, -1, 0);\n  vertex(-1, 1, 0); vertex(1, 1, 0);\n  endShape();\n}\n",
+              "runtime": "shader"
+            }
+          ],
+          "live": "shader"
+        },
+        {
+          "id": "physics",
+          "title": [
+            "重力と衝突を試す",
+            "Try gravity and collisions"
+          ],
+          "lead": [
+            "Matter.jsのエンジンを進め、計算した物体の位置を描画します。",
+            "Advance a Matter.js engine and draw the calculated body positions."
+          ],
+          "path": [
+            "実行環境 → 作品のライブラリ → matter-js",
+            "Runtime → Work libraries → matter-js"
+          ],
+          "steps": [
+            [
+              "エンジン、動く物体、固定した床を作成します。",
+              "Create an engine, a moving body, and a static floor."
+            ],
+            [
+              "すべてをワールドに追加します。",
+              "Add them to the world."
+            ],
+            [
+              "draw()でエンジンを更新し、物体の位置を描画します。",
+              "Update the engine in draw() and draw the body at its calculated position."
+            ]
+          ],
+          "result": [
+            "物体が落下し、床との衝突に応じて動きます。",
+            "The body falls and responds to collisions with the floor."
+          ],
+          "note": [
+            "p5.jsの描画ループとは別にMatter.Runnerも動かすと、二重更新になる場合があります。更新方法を一つにそろえてください。",
+            "Running Matter.Runner as well as updating from draw() can advance the simulation twice. Choose one update method."
+          ],
+          "sources": [
+            "WorkLibraries.kt"
+          ],
+          "demo": "physics",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4＋matter-js 0.20.0を有効化",
+                "p5.js 2.3.4 + enable matter-js 0.20.0"
+              ],
+              "code": "let engine, ball;\nfunction setup() {\n  createCanvas(400, 280);\n  engine = Matter.Engine.create();\n  ball = Matter.Bodies.circle(200, 40, 24, { restitution: 0.75 });\n  const floor = Matter.Bodies.rectangle(200, 270, 400, 20, { isStatic: true });\n  Matter.Composite.add(engine.world, [ball, floor]);\n}\nfunction draw() {\n  Matter.Engine.update(engine, 1000 / 60);\n  background('#F1F1EA');\n  noStroke();\n  fill('#426B5D'); rect(0, 260, 400, 20);\n  fill('#B85338'); circle(ball.position.x, ball.position.y, 48);\n}\n",
+              "runtime": "physics"
+            }
+          ],
+          "live": "physics"
+        },
+        {
+          "id": "webgpu",
+          "title": [
+            "WebGPUの対応状況を確認する",
+            "Check WebGPU support"
+          ],
+          "lead": [
+            "同梱の公式WebGPUアドオンを使う作品を実行できます。",
+            "Run works using the bundled official WebGPU addon."
+          ],
+          "path": [
+            "サンプル／新規作成 → WebGPU",
+            "Samples / Create work → WebGPU"
+          ],
+          "steps": [
+            [
+              "p5.js 2.3.4のWebGPU作品を開きます。",
+              "Open a WebGPU work using p5.js 2.3.4."
+            ],
+            [
+              "実行して描画とログを確認します。",
+              "Run it and check the drawing and log."
+            ],
+            [
+              "未対応なら端末とAndroid WebViewの対応状況を確認します。",
+              "If unsupported, check the device and Android WebView capabilities."
+            ]
+          ],
+          "result": [
+            "その端末で作品を実行できるか確認できます。",
+            "Determine whether the work runs on that device."
+          ],
+          "note": [
+            "2DやWebGLが動いてもWEBGPUが利用できるとは限りません。このWebガイドのWebGLデモは、AndroidのWebGPU対応を保証しません。",
+            "2D or WebGL support does not imply WEBGPU support. A WebGL demo in this guide does not establish Android WebGPU compatibility."
+          ],
+          "sources": [
+            "AssetWebClient.kt",
+            "WorkRuntimeDialog.kt"
+          ]
+        },
+        {
+          "id": "touch-input",
+          "title": [
+            "タッチ・マウス・キーボード入力",
+            "Touch, mouse, and keyboard input"
+          ],
+          "lead": [
+            "プレビューの操作を、作品のイベントと座標として利用できます。",
+            "Use preview interactions as events and coordinates in the work."
+          ],
+          "path": [
+            "新規作成 → マウス／タッチ",
+            "Create work → Mouse / Touch"
+          ],
+          "steps": [
+            [
+              "mouseX・mouseY、またはtouchesから座標を読みます。",
+              "Read coordinates from mouseX / mouseY or touches."
+            ],
+            [
+              "mousePressed()・touchStarted()などでタップ時の処理を書きます。",
+              "Handle presses or taps in mousePressed() or touchStarted()."
+            ],
+            [
+              "外付けキーボードを使う作品では、入力フォーカスとkeyPressed()も確認します。",
+              "For an external keyboard, check input focus and keyPressed()."
+            ]
+          ],
+          "result": [
+            "入力に応じて位置や色を変える作品を作れます。",
+            "Create works that change position or color in response to input."
+          ],
+          "note": [
+            "端末のタッチとPCのマウスではイベントが異なる場合があります。デモのキャンバスをタップまたはクリックして試してください。",
+            "Touch and desktop mouse events can differ. Tap or click the demo canvas to try it."
+          ],
+          "sources": [
+            "ProjectDocument.kt",
+            "PreviewBrowserFeatures.kt",
+            "UserGuideReference.kt"
+          ],
+          "demo": "touch",
+          "examples": [
+            {
+              "label": [
+                "p5.js 2.3.4・キャンバスを操作",
+                "p5.js 2.3.4 · interact with the canvas"
+              ],
+              "code": "let ink = '#B85338';\nfunction setup() { createCanvas(400, 280); }\nfunction draw() {\n  background('#F1F1EA');\n  noStroke(); fill(ink);\n  circle(mouseX, mouseY, 70);\n}\nfunction mousePressed() { ink = ink === '#B85338' ? '#426B5D' : '#B85338'; }\nfunction touchStarted() { mousePressed(); return false; }\n",
+              "runtime": "touch"
+            }
+          ],
+          "live": "touch"
+        },
+        {
+          "id": "instances",
+          "title": [
+            "インスタンスと複数キャンバス",
+            "Instances and multiple canvases"
+          ],
+          "lead": [
+            "new p5(...)で独立した描画を同じ作品に配置できます。",
+            "Use new p5(...) for independent sketches in one work."
+          ],
+          "path": [
+            "プロジェクトファイル／HTML作品",
+            "Project files / HTML work"
+          ],
+          "steps": [
+            [
+              "それぞれのインスタンスでsetup()とdraw()を定義します。",
+              "Define setup() and draw() for each instance."
+            ],
+            [
+              "HTMLでは配置先を作り、CSSでレイアウトを指定します。",
+              "In HTML, create mount points and arrange them with CSS."
+            ],
+            [
+              "複数キャンバスを表示し、一時停止や画像出力を確認します。",
+              "Display the canvases and inspect pause and capture behavior."
+            ]
+          ],
+          "result": [
+            "複数の描画領域を持つ作品になります。",
+            "The work has multiple drawing surfaces."
+          ],
+          "note": [
+            "PNGと録画は表示中の複数キャンバスを合成します。HTMLのボタンやテキストなど、キャンバス外のDOMは含みません。noLoop()で止めたインスタンスの状態は停止・再開時も維持します。",
+            "PNG and recording combine visible canvases. DOM elements outside canvases, such as HTML buttons and text, are excluded. Pause and resume preserve instances originally stopped with noLoop()."
+          ],
+          "sources": [
+            "ProjectDocument.kt",
+            "PreviewBrowserFeatures.kt",
+            "UserGuideReference.kt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "device",
+      "title": [
+        "カメラ・音声・センサー",
+        "Camera, audio & sensors"
+      ],
+      "summary": [
+        "必要な設定と、端末の権限・対応条件を確認します。",
+        "Check settings, device permissions, and compatibility requirements."
+      ],
+      "sources": [
+        "PreviewBrowserFeatures.kt",
+        "P5Runtime.kt",
+        "PreviewSession.kt"
+      ],
+      "topics": [
+        {
+          "id": "camera",
+          "title": [
+            "カメラ映像を描画する",
+            "Draw a camera feed"
+          ],
+          "lead": [
+            "createCapture(VIDEO)から映像を受け取り、キャンバスに描画します。",
+            "Receive a feed through createCapture(VIDEO) and draw it on the canvas."
+          ],
+          "path": [
+            "作品コード → Androidのカメラ権限",
+            "Work code → Android camera permission"
+          ],
+          "steps": [
+            [
+              "createCapture(VIDEO)で映像を作り、必要なら元のvideo要素をhide()します。",
+              "Create a feed with createCapture(VIDEO), optionally hiding its video element with hide()."
+            ],
+            [
+              "Androidの権限確認でカメラへのアクセスを許可します。",
+              "Allow camera access in the Android permission prompt."
+            ],
+            [
+              "draw()でimage()を使い、映像を描画します。",
+              "Draw the feed with image() in draw()."
+            ]
+          ],
+          "result": [
+            "カメラの映像を作品の描画に使えます。",
+            "The work can incorporate camera input."
+          ],
+          "note": [
+            "拒否した場合はAndroidのアプリ権限とログを確認します。このガイドでは操作図を使い、実際のカメラにはアクセスしません。",
+            "If access is denied, inspect Android app permissions and the log. This guide uses a diagram and does not access your camera."
+          ],
+          "sources": [
+            "PreviewBrowserFeatures.kt",
+            "PreviewSession.kt"
+          ],
+          "demo": "camera",
+          "examples": [
+            {
+              "label": [
+                "コード例",
+                "Code example"
+              ],
+              "code": "let camera;\nfunction setup() {\n  createCanvas(400, 300);\n  camera = createCapture(VIDEO);\n  camera.size(400, 300);\n  camera.hide();\n}\nfunction draw() {\n  background(242);\n  image(camera, 0, 0, width, height);\n}",
+              "runtime": "manual"
+            }
+          ]
+        },
+        {
+          "id": "sound",
+          "title": [
+            "音声ファイルの再生とp5.sound",
+            "Play audio with p5.sound"
+          ],
+          "lead": [
+            "素材として追加した音声を読み込み、ユーザー操作から再生します。",
+            "Load an audio asset and start playback from a user action."
+          ],
+          "path": [
+            "実行環境 → p5.sound／作品の素材",
+            "Runtime → p5.sound / Work assets"
+          ],
+          "steps": [
+            [
+              "p5.soundを有効にし、音声ファイルを素材に追加します。",
+              "Enable p5.sound and add an audio asset."
+            ],
+            [
+              "2.xではasync setup()でawait loadSound()、1.xではpreload()で読み込みます。",
+              "In 2.x, await loadSound() in async setup(); in 1.x, load it in preload()."
+            ],
+            [
+              "プレビューをタップするなどの操作から音声を開始します。",
+              "Start audio from an action such as tapping the preview."
+            ]
+          ],
+          "result": [
+            "描画と音声を組み合わせて実行できます。",
+            "Run a work combining visuals and sound."
+          ],
+          "note": [
+            "2.xと従来版のp5.soundはAPIが異なります。p5.Part、p5.Phrase、p5.PolySynth、SoundRecorder、saveSoundなどの従来APIは1.11.5側の対応を確認します。",
+            "The 2.x and legacy p5.sound APIs differ. Check legacy support under 1.11.5 for APIs such as p5.Part, p5.Phrase, p5.PolySynth, SoundRecorder, and saveSound."
+          ],
+          "sources": [
+            "WorkRuntimeDialog.kt"
+          ],
+          "examples": [
+            {
+              "label": [
+                "コード例",
+                "Code example"
+              ],
+              "code": "// p5.js 2.x + p5.sound; add assets/music.mp3 first.\nlet sound;\nasync function setup() {\n  createCanvas(400, 400);\n  sound = await loadSound('assets/music.mp3');\n}\nfunction mousePressed() {\n  if (sound && !sound.isPlaying()) sound.play();\n}",
+              "runtime": "manual"
+            }
+          ]
+        },
+        {
+          "id": "microphone",
+          "title": [
+            "マイク音量で描画を変える",
+            "Draw in response to microphone level"
+          ],
+          "lead": [
+            "入力音量を読み取り、図形の大きさなどに使います。",
+            "Read input level and use it to control shapes or other drawing values."
+          ],
+          "path": [
+            "実行環境 → p5.sound／Androidのマイク権限",
+            "Runtime → p5.sound / Android microphone permission"
+          ],
+          "steps": [
+            [
+              "コードに対応したp5.jsとp5.soundの組み合わせを選びます。",
+              "Select matching p5.js and p5.sound versions."
+            ],
+            [
+              "ユーザー操作からマイク入力を開始し、Androidの権限を許可します。",
+              "Start microphone input from a user action and allow the Android permission."
+            ],
+            [
+              "取得した入力レベルをdraw()内の描画に使います。",
+              "Use the input level in draw()."
+            ]
+          ],
+          "result": [
+            "音量に応じて作品の見た目が変わります。",
+            "The artwork responds to input loudness."
+          ],
+          "note": [
+            "掲載コードは1.11.5と従来版p5.sound向けです。ガイドのデモは音量スライダーを使い、実際のマイクにはアクセスしません。",
+            "The code example targets 1.11.5 and legacy p5.sound. The guide substitutes a slider and does not access your microphone."
+          ],
+          "sources": [
+            "PreviewBrowserFeatures.kt",
+            "PreviewSession.kt"
+          ],
+          "demo": "mic",
+          "examples": [
+            {
+              "label": [
+                "コード例",
+                "Code example"
+              ],
+              "code": "// p5.js 1.11.5 + legacy p5.sound\nlet mic;\nfunction setup() {\n  createCanvas(400, 400);\n  mic = new p5.AudioIn();\n}\nfunction mousePressed() {\n  userStartAudio();\n  mic.start();\n}\nfunction draw() {\n  background(242);\n  circle(200, 200, 30 + (mic ? mic.getLevel() : 0) * 300);\n}",
+              "runtime": "manual"
+            }
+          ]
+        },
+        {
+          "id": "orientation",
+          "title": [
+            "傾き・加速度・シェイクを使う",
+            "Use tilt, acceleration, and shake"
+          ],
+          "lead": [
+            "端末の向きや動きを、数値やイベントとして作品に渡します。",
+            "Use device orientation and movement as values and events."
+          ],
+          "path": [
+            "作品コード → センサーの変数・イベント",
+            "Work code → sensor variables and events"
+          ],
+          "steps": [
+            [
+              "rotationX／Y／ZやaccelerationX／Y／Zを描画で参照します。",
+              "Read rotationX / Y / Z or accelerationX / Y / Z in drawing code."
+            ],
+            [
+              "deviceMoved()・deviceTurned()・deviceShaken()で動作を指定します。",
+              "Define reactions in deviceMoved(), deviceTurned(), or deviceShaken()."
+            ],
+            [
+              "実機で端末を動かし、値とイベントを確認します。",
+              "Move the physical device to check values and events."
+            ]
+          ],
+          "result": [
+            "端末の動きに応じた作品を作れます。",
+            "Create works responding to device motion."
+          ],
+          "note": [
+            "利用できる値は端末のセンサーに依存します。デモではスライダーとシェイクボタンで入力を置き換えます。",
+            "Available values depend on device sensors. The demo substitutes sliders and a shake button."
+          ],
+          "sources": [
+            "PreviewBrowserFeatures.kt",
+            "PreviewSession.kt"
+          ],
+          "demo": "sensors",
+          "examples": [
+            {
+              "label": [
+                "コード例",
+                "Code example"
+              ],
+              "code": "let ink = '#D67856';\nfunction setup() { createCanvas(400, 400); }\nfunction draw() {\n  background(242);\n  let x = map(constrain(rotationY, -45, 45), -45, 45, 30, 370);\n  let y = map(constrain(rotationX, -45, 45), -45, 45, 30, 370);\n  fill(ink);\n  circle(x, y, 40 + min(abs(accelerationX) * 3, 60));\n}\nfunction deviceShaken() {\n  ink = ink === '#D67856' ? '#678C76' : '#D67856';\n}",
+              "runtime": "manual"
+            }
+          ]
+        },
+        {
+          "id": "file-fullscreen",
+          "title": [
+            "ファイル選択・全画面・リンク",
+            "File picker, fullscreen, and links"
+          ],
+          "lead": [
+            "作品から端末の選択画面や全画面表示を利用できます。",
+            "Open a device file picker or request fullscreen from a work."
+          ],
+          "path": [
+            "createFileInput()／fullscreen()／HTMLリンク",
+            "createFileInput() / fullscreen() / HTML links"
+          ],
+          "steps": [
+            [
+              "createFileInput()のコールバックで選択結果を受け取ります。",
+              "Receive selected files in the createFileInput() callback."
+            ],
+            [
+              "全画面表示はタップなどのユーザー操作から要求します。",
+              "Request fullscreen from a user gesture such as a tap."
+            ],
+            [
+              "外部HTTPSリンクと作品内HTMLへのリンクを使い分けます。",
+              "Distinguish external HTTPS links from links to project HTML."
+            ]
+          ],
+          "result": [
+            "外部リンクは端末のブラウザー、作品内HTMLはプレビューで開けます。",
+            "External links can open in the device browser; project HTML opens in the preview."
+          ],
+          "note": [
+            "選択可能な提供元や全画面表示は端末・WebViewにも依存します。入力側で指定すれば複数ファイルの選択も可能です。",
+            "Available file providers and fullscreen behavior depend on the device and WebView. Inputs can request multiple selection."
+          ],
+          "sources": [
+            "PreviewBrowserFeatures.kt",
+            "PreviewSession.kt"
+          ],
+          "examples": [
+            {
+              "label": [
+                "コード例",
+                "Code example"
+              ],
+              "code": "function setup() {\n  createCanvas(400, 400);\n  createFileInput(file => {\n    console.log(file.name, file.type);\n  }, true);\n  createButton('Fullscreen').mousePressed(() => fullscreen(true));\n}",
+              "runtime": "manual"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "storage-safety",
+      "title": [
+        "保存・履歴・復旧",
+        "Save, history & recovery"
+      ],
+      "summary": [
+        "現在の保存、過去の版、未保存の下書きを区別します。",
+        "Distinguish current saves, earlier versions, and unsaved drafts."
+      ],
+      "sources": [
+        "WorkSnapshotPersistence.kt",
+        "WorkRecoveryDialogs.kt",
+        "DraftSnapshotRepository.kt"
+      ],
+      "topics": [
+        {
+          "id": "save-history",
+          "title": [
+            "保存と保存済みへの復帰",
+            "Save and revert to the last save"
+          ],
+          "lead": [
+            "編集中の作品を保存し、必要なら最後の保存状態に戻します。",
+            "Save the work, or return to its last saved state."
+          ],
+          "path": [
+            "保存ボタン／同じ操作エリアの履歴メニュー",
+            "Save button / History in the same control area"
+          ],
+          "steps": [
+            [
+              "保存ボタンを押し、完了状態を確認します。",
+              "Press Save and check that saving completes."
+            ],
+            [
+              "最後の保存へ戻す場合は、履歴から「保存済み状態に戻す」を選びます。",
+              "To return to the last save, choose Revert to saved in History."
+            ],
+            [
+              "破棄する変更を確認してから確定します。",
+              "Check which edits will be discarded before confirming."
+            ]
+          ],
+          "result": [
+            "保存は作品の全ファイルを対象にします。復帰すると最後に保存した内容になります。",
+            "Saving covers all work files. Reverting returns to the last saved contents."
+          ],
+          "note": [
+            "「保存済み状態に戻す」では未保存の変更を失います。過去の版を残したい場合はスナップショットも使います。",
+            "Revert to saved discards unsaved edits. Use snapshots to keep earlier versions."
+          ],
+          "sources": [
+            "WorkSnapshotPersistence.kt",
+            "WorkRecoveryDialogs.kt",
+            "DraftSnapshotRepository.kt"
+          ],
+          "demo": "history"
+        },
+        {
+          "id": "snapshots",
+          "title": [
+            "スナップショットの作成・差分・復元",
+            "Create, compare, and restore snapshots"
+          ],
+          "lead": [
+            "作品の過去の状態を、名前やメモ付きで保持できます。",
+            "Keep earlier work states with names and notes."
+          ],
+          "path": [
+            "履歴 → スナップショット",
+            "History → Snapshots"
+          ],
+          "steps": [
+            [
+              "残したい状態でスナップショットを作成します。",
+              "Create a snapshot at the state you want to retain."
+            ],
+            [
+              "名前やメモを付け、現在の内容との差分を確認します。",
+              "Add a name or note and inspect differences from the current contents."
+            ],
+            [
+              "戻したい版を選び、確認して復元します。",
+              "Select the version to restore and confirm."
+            ]
+          ],
+          "result": [
+            "選んだ版の内容を再び編集できます。",
+            "Resume editing from the selected version."
+          ],
+          "note": [
+            "Undoは編集操作、スナップショットは保持した版を戻す機能です。作品全体の移行にはバックアップも作成してください。",
+            "Undo reverses edits; snapshots restore retained versions. Also make a backup for moving the whole collection."
+          ],
+          "sources": [
+            "WorkSnapshotPersistence.kt"
+          ]
+        },
+        {
+          "id": "saved-revisions",
+          "title": [
+            "保存時の変更履歴を開く",
+            "Inspect saved revision history"
+          ],
+          "lead": [
+            "過去に保存したコードを確認し、選んだ保存状態へ戻せます。",
+            "Inspect previously saved code and return to a chosen revision."
+          ],
+          "path": [
+            "作品メニュー → 変更履歴",
+            "Work menu → Revision history"
+          ],
+          "steps": [
+            [
+              "保存履歴がある自分の作品を開きます。",
+              "Open one of your works with saved revisions."
+            ],
+            [
+              "変更履歴から過去の保存状態を選び、内容を確認します。",
+              "Select a revision in history and inspect its contents."
+            ],
+            [
+              "復元したい状態を確認して適用します。",
+              "Check the desired state and apply the restore."
+            ]
+          ],
+          "result": [
+            "選んだ保存履歴のコードへ戻れます。",
+            "Return to the code in the selected saved revision."
+          ],
+          "note": [
+            "保存履歴がない場合、メニューは選べません。ファイルや設定も含む版を手動で残す場合は、スナップショットを使います。",
+            "The menu is unavailable when no saved revisions exist. Use snapshots to retain a version including files and settings."
+          ],
+          "sources": [
+            "WorkHistorySheets.kt",
+            "WorkManagementSheets.kt",
+            "WorkManagementViewModel.kt"
+          ]
+        },
+        {
+          "id": "draft-recovery",
+          "title": [
+            "下書き復旧・自動保存・保存失敗",
+            "Draft recovery, auto-save, and failed saves"
+          ],
+          "lead": [
+            "未保存の変更を復旧し、保存エラーが起きた場合も内容を確認できます。",
+            "Recover unsaved edits and review recovery options after a save error."
+          ],
+          "path": [
+            "設定 → 保存 → 未保存のコードを復元／アプリを離れるときに自動保存",
+            "Settings → Save → Recover unsaved edits / Auto-save when leaving the app"
+          ],
+          "steps": [
+            [
+              "必要な復旧・自動保存の設定を有効にします。",
+              "Enable the recovery and auto-save settings you need."
+            ],
+            [
+              "復旧確認が出たら、作品名と内容を確認して適用します。",
+              "When prompted for recovery, check the work and contents before applying."
+            ],
+            [
+              "保存に失敗したら表示された再試行や復旧方法を使います。",
+              "If saving fails, use the retry or recovery actions shown."
+            ]
+          ],
+          "result": [
+            "互換性のある下書きから編集を再開できます。",
+            "Resume editing from a compatible draft."
+          ],
+          "note": [
+            "下書きは作品や保存内容との一致を確認して復旧します。未保存の内容がある間はアプリのデータを消去せず、通常の保存とバックアップも使ってください。",
+            "Recovery checks the draft against the work and saved contents. Do not clear app data while unsaved work is pending; use regular saves and backups as well."
+          ],
+          "sources": [
+            "WorkSnapshotPersistence.kt",
+            "WorkRecoveryDialogs.kt",
+            "DraftSnapshotRepository.kt"
+          ],
+          "demo": "recovery"
+        }
+      ]
+    },
+    {
+      "id": "export-media",
+      "title": [
+        "書き出し・共有",
+        "Export & share"
+      ],
+      "summary": [
+        "画像・動画・コード・作品一式を、用途に合わせて書き出します。",
+        "Choose media, source, or project exports for the task."
+      ],
+      "sources": [
+        "PreviewMediaActions.kt",
+        "AuthoringDialogs.kt",
+        "SketchDownloads.kt",
+        "EditorAuthoringDialogs.kt"
+      ],
+      "topics": [
+        {
+          "id": "png",
+          "title": [
+            "PNGを1倍・2倍・4倍で保存する",
+            "Capture PNG at 1×, 2×, or 4×"
+          ],
+          "lead": [
+            "表示中のキャンバスをPNG画像として保存します。",
+            "Save the visible canvases as a PNG image."
+          ],
+          "path": [
+            "プレビュー操作 → カメラ → PNG画像書き出し",
+            "Preview controls → camera → Export PNG image"
+          ],
+          "steps": [
+            [
+              "出力倍率を1倍・2倍・4倍から選びます。",
+              "Choose 1×, 2×, or 4× output."
+            ],
+            [
+              "出力を実行して保存完了を待ちます。",
+              "Export and wait for saving to complete."
+            ],
+            [
+              "保存した画像を開くか、他のアプリへ共有します。",
+              "Open the saved image or share it through another app."
+            ]
+          ],
+          "result": [
+            "複数キャンバスがある場合は、表示中のキャンバスを合成します。",
+            "Visible canvases are combined when there are several."
+          ],
+          "note": [
+            "上限は1600万画素です。高解像度では再描画するため、アニメーションや乱数でフレームが変わる場合があります。キャンバス外のHTML要素は含みません。",
+            "Output is capped at 16 megapixels. High-resolution export redraws the work, so animation or randomness can change the frame. HTML outside canvases is excluded."
+          ],
+          "sources": [
+            "PreviewMediaActions.kt",
+            "AuthoringDialogs.kt",
+            "SketchDownloads.kt",
+            "EditorAuthoringDialogs.kt"
+          ],
+          "demo": "export"
+        },
+        {
+          "id": "recording",
+          "title": [
+            "MP4・GIF録画と保存の再試行",
+            "Record MP4 / GIF and retry saving"
+          ],
+          "lead": [
+            "作品の動きを録画して保存・共有できます。",
+            "Record the work’s motion, then save and share it."
+          ],
+          "path": [
+            "プレビュー操作 → 録画／設定 → 録画と共有",
+            "Preview controls → recording / Settings → Recording and sharing"
+          ],
+          "steps": [
+            [
+              "MP4またはGIFを選び、録画を開始します。",
+              "Select MP4 or GIF and start recording."
+            ],
+            [
+              "必要な動きを記録して停止し、保存結果を確認します。",
+              "Record the desired motion, stop, and check the save result."
+            ],
+            [
+              "保存失敗時は「もう一度保存」か「別の保存先を選ぶ」を選びます。",
+              "If saving fails, choose Retry saving or Choose another destination."
+            ]
+          ],
+          "result": [
+            "保存した録画を開くか、他のアプリへ渡せます。",
+            "Open the saved recording or share it through another app."
+          ],
+          "note": [
+            "「録画を破棄」は保留中の録画を削除します。カウントダウンとMP4ビットレートは設定で変更でき、コーデック対応は端末・WebViewにも依存します。",
+            "Discard recording removes the pending recording. Configure countdown and MP4 bitrate in Settings; codec support also depends on the device and WebView."
+          ],
+          "sources": [
+            "PreviewMediaActions.kt",
+            "AuthoringDialogs.kt",
+            "SketchDownloads.kt",
+            "EditorAuthoringDialogs.kt"
+          ]
+        },
+        {
+          "id": "project-export",
+          "title": [
+            "JS・作品ZIP・単一HTMLを選ぶ",
+            "Choose JavaScript, work ZIP, or single HTML"
+          ],
+          "lead": [
+            "書き出したい内容と利用先に合わせて形式を選びます。",
+            "Select a format based on the contents and destination."
+          ],
+          "path": [
+            "作品メニュー → JSを書き出す・作品ZIPを書き出す・HTMLを書き出す（単一HTML）／設定 → 保存 → Export .js",
+            "Work menu → Export JS, Export work ZIP, Export HTML (single HTML) / Settings → Save → Export .js"
+          ],
+          "steps": [
+            [
+              "コード単体には.js、補助ファイル・素材・設定も移す場合は作品ZIPを使います。",
+              "Use .js for code alone or work ZIP to include supporting files, assets, and settings."
+            ],
+            [
+              "ブラウザーで使う場合は単一HTMLを書き出します。",
+              "Export single HTML for browser use."
+            ],
+            [
+              "出力先で開き、依存ファイルとライブラリの読み込みを確認します。",
+              "Open the export at its destination and check dependencies and library loading."
+            ]
+          ],
+          "result": [
+            "目的に合った形式で作品を渡せます。",
+            "You can transfer the work in an appropriate format."
+          ],
+          "note": [
+            "単一HTMLはライブラリをCDNから読む場合があります。すべての素材や依存関係を必ず含む形式ではなく、完全オフライン実行は保証されません。",
+            "Single HTML may load libraries from a CDN. It does not guarantee every asset and dependency is embedded or that execution is fully offline."
+          ],
+          "sources": [
+            "WorkManagementSheets.kt",
+            "StandaloneHtmlGenerator.kt",
+            "WorkStoreRepository.kt",
+            "SettingsScreen.kt"
+          ],
+          "table": {
+            "headers": [
+              [
+                "形式",
+                "Format"
+              ],
+              [
+                "含めたいもの・用途",
+                "Contents / use"
+              ],
+              [
+                "確認点",
+                "Check"
+              ]
+            ],
+            "rows": [
+              [
+                [
+                  ".js",
+                  ".js"
+                ],
+                [
+                  "コード単体",
+                  "Source code alone"
+                ],
+                [
+                  "素材や実行設定は別途必要",
+                  "Assets and runtime settings are separate"
+                ]
+              ],
+              [
+                [
+                  "作品ZIP",
+                  "Work ZIP"
+                ],
+                [
+                  "一作品のコード・補助ファイル・素材・設定",
+                  "One work’s source, files, assets, and settings"
+                ],
+                [
+                  "Edit:RiNへの取り込み後に実行確認",
+                  "Check execution after import into Edit:RiN"
+                ]
+              ],
+              [
+                [
+                  "単一HTML",
+                  "Single HTML"
+                ],
+                [
+                  "ブラウザーで使う作品",
+                  "Browser use"
+                ],
+                [
+                  "CDN・外部素材・依存関係",
+                  "CDNs, remote assets, dependencies"
+                ]
+              ],
+              [
+                [
+                  "全体バックアップ",
+                  "Full backup"
+                ],
+                [
+                  "作品集・自作テンプレート・設定",
+                  "Collection, custom templates, settings"
+                ],
+                [
+                  "復元できるファイルを保管",
+                  "Retain the restorable file"
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "id": "downloads",
+          "title": [
+            "p5.jsの保存関数とダウンロード",
+            "p5.js save functions and downloads"
+          ],
+          "lead": [
+            "作品のコードから画像やデータの保存を要求できます。",
+            "Request image or data downloads from sketch code."
+          ],
+          "path": [
+            "saveCanvas()など／HTMLのdownloadリンク",
+            "saveCanvas() and related APIs / HTML download links"
+          ],
+          "steps": [
+            [
+              "タップなどの操作から、対象に合う保存関数を呼びます。",
+              "Call the appropriate save function from an action such as a tap."
+            ],
+            [
+              "Android側で保存が終わったことを確認します。",
+              "Check that saving finishes on Android."
+            ],
+            [
+              "Download/Edit-RiNで保存したファイルを確認します。",
+              "Check the saved file in Download/Edit-RiN."
+            ]
+          ],
+          "result": [
+            "画像、JSON、文字列、表などを対応する形式で保存できます。",
+            "Save images, JSON, strings, tables, and other supported formats."
+          ],
+          "note": [
+            "saveFrames、saveGif、従来版saveSoundなどの可否はp5.jsとWebViewに従います。1ファイル256 MiBまでで、同時処理数とキューにも上限があります。大量出力は回数やサイズを減らします。",
+            "Availability of saveFrames, saveGif, legacy saveSound, and other APIs follows p5.js and WebView. Files are capped at 256 MiB, with concurrency and queue limits. Reduce size or frequency for large batches."
+          ],
+          "sources": [
+            "SketchDownloads.kt",
+            "SketchDownloadAdmission.kt"
+          ],
+          "examples": [
+            {
+              "label": [
+                "コード例",
+                "Code example"
+              ],
+              "code": "function setup() { createCanvas(400, 400); }\nfunction draw() { background(242); circle(200, 200, 120); }\nfunction mousePressed() { saveCanvas('my-work', 'png'); }",
+              "runtime": "manual"
+            }
+          ]
+        },
+        {
+          "id": "tweet-golf",
+          "title": [
+            "投稿用にコードを圧縮する",
+            "Compress code for posting"
+          ],
+          "lead": [
+            "投稿向けにコードを短くし、結果を試してから適用できます。",
+            "Shorten code for posting and test the result before applying it."
+          ],
+          "path": [
+            "作品メニュー → Minify & シェア",
+            "Work menu → Minify & Share"
+          ],
+          "steps": [
+            [
+              "圧縮画面を開き、結果を読みます。",
+              "Open compression and inspect the output."
+            ],
+            [
+              "「試す」で圧縮後のコードを実行します。",
+              "Choose Test to execute the compressed code."
+            ],
+            [
+              "動作を確認してから「本文に反映」または「コピー & 共有」を選びます。",
+              "After checking behavior, choose Apply to Editor or Copy & Share."
+            ]
+          ],
+          "result": [
+            "確認した圧縮結果を編集や投稿に使えます。",
+            "Use the reviewed result for editing or posting."
+          ],
+          "note": [
+            "圧縮前と同じ見た目・動作になるか確認してください。#つぶやきProcessingなどのハッシュタグを含むコードも扱えます。",
+            "Check that appearance and behavior match the original. Code containing hashtags such as #つぶやきProcessing is also supported."
+          ],
+          "sources": [
+            "EditorAuthoringDialogs.kt"
+          ]
+        },
+        {
+          "id": "tweet-options",
+          "title": [
+            "文字数・改行・ハッシュタグの設定",
+            "Character targets, newlines, and hashtags"
+          ],
+          "lead": [
+            "圧縮の条件と文字数の目標を変更できます。",
+            "Configure compression options and character targets."
+          ],
+          "path": [
+            "作品メニュー → #つぶやきProcessingモード／Minify & シェア",
+            "Work menu → #つぶやきProcessing mode / Minify & Share"
+          ],
+          "steps": [
+            [
+              "目標を140または280文字から選びます。",
+              "Choose a target of 140 or 280 characters."
+            ],
+            [
+              "改行優先とハッシュタグの埋め込み方法を設定します。",
+              "Configure newline preference and hashtag embedding."
+            ],
+            [
+              "結果の文字数とコードを確認し、実行してから共有します。",
+              "Inspect count and source, run the result, then share."
+            ]
+          ],
+          "result": [
+            "投稿用の条件に合わせて圧縮結果を調整できます。",
+            "Adjust the compressed output for posting constraints."
+          ],
+          "note": [
+            "目標文字数は、すべての作品が必ず収まることを保証しません。",
+            "A character target does not guarantee every work will fit."
+          ],
+          "sources": [
+            "EditorAuthoringDialogs.kt"
+          ]
+        },
+        {
+          "id": "share-cards",
+          "title": [
+            "画像・コード・QRの共有カード",
+            "Share cards with artwork, code, and QR"
+          ],
+          "lead": [
+            "作品画像に作者名やコードを添えた共有用の画像を作れます。",
+            "Create a shareable image combining artwork, author, and code."
+          ],
+          "path": [
+            "プレビュー操作 → シェアカード",
+            "Preview controls → Share card"
+          ],
+          "steps": [
+            [
+              "シェアカード画面で作者クレジットとQRリンクを指定します。",
+              "Set the author credit and QR URL in the Share card sheet."
+            ],
+            [
+              "コードの表示、行範囲、テーマ（ダーク・ライト・墨）を調整します。",
+              "Adjust code visibility, line range, and theme (Dark, Light, or Sumi)."
+            ],
+            [
+              "プレビューを確認して保存・共有します。",
+              "Inspect the preview, then save or share it."
+            ]
+          ],
+          "result": [
+            "作品紹介用の画像を作れます。",
+            "Create an image for presenting the work."
+          ],
+          "note": [
+            "QRには指定したURLを入れます。作品の全ファイルをQRへ格納したり、旧Web Playerへ作品を自動公開したりする機能ではありません。",
+            "The QR code contains the specified URL. It does not embed the whole project or automatically publish it to the retired Web Player."
+          ],
+          "sources": [
+            "ShareCardSheet.kt",
+            "ShareCardGenerator.kt",
+            "AuthoringDialogs.kt"
+          ],
+          "demo": "share"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": [
+        "整理・バックアップ・設定",
+        "Organize, back up & configure"
+      ],
+      "summary": [
+        "作品を整理し、移行に備え、使いやすい表示や保存方法を選びます。",
+        "Organize works, prepare for migration, and configure appearance and saving."
+      ],
+      "sources": [
+        "WorkGallery.kt",
+        "SettingsScreen.kt",
+        "SettingsAboutSection.kt"
+      ],
+      "topics": [
+        {
+          "id": "organize",
+          "title": [
+            "作品の名前・複製・フォルダー・タグ",
+            "Names, copies, folders, and tags"
+          ],
+          "lead": [
+            "作品一覧と作品メニューから分類・一括操作を行えます。",
+            "Classify works and perform batch actions in the work picker and work menu."
+          ],
+          "path": [
+            "作品名 → 自分の作品／作品メニュー → テンプレート・ピン・タグ・名前・複製",
+            "Work title → My works / Work menu → Templates, pin, tags, rename, duplicate"
+          ],
+          "steps": [
+            [
+              "名前変更や複製を使い、作品を区別します。",
+              "Rename or duplicate works to distinguish them."
+            ],
+            [
+              "フォルダー・タグ・検索・並べ替えで絞り込みます。",
+              "Use folders, tags, search, and sorting to narrow the list."
+            ],
+            [
+              "複数選択し、移動・タグ付け・ZIP出力・削除をまとめて行います。",
+              "Select multiple works to move, tag, export as ZIP, or delete."
+            ]
+          ],
+          "result": [
+            "目的の作品を見つけ、まとめて管理できます。",
+            "Find and manage the desired works together."
+          ],
+          "note": [
+            "ピン留めした作品は上部に固定できます。フォルダーの削除では作品は「未分類」に移ります。作品自体の削除とは異なるため、確認画面の対象を読んでください。",
+            "Pinned works stay at the top. Deleting a folder moves its works to Unfiled. This differs from deleting works; check the confirmation target."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "SettingsScreen.kt",
+            "SettingsAboutSection.kt",
+            "WorkManagementSheets.kt"
+          ],
+          "demo": "organize"
+        },
+        {
+          "id": "backup",
+          "title": [
+            "全体バックアップを作成・復元する",
+            "Create and restore a full backup"
+          ],
+          "lead": [
+            "自分の作品・自作テンプレート・設定をまとめて移せます。",
+            "Transfer your works, custom templates, and settings together."
+          ],
+          "path": [
+            "設定 → バックアップ → ZIP保存／復元",
+            "Settings → Backup → Save ZIP / Restore"
+          ],
+          "steps": [
+            [
+              "機種変更や再インストールの前にバックアップをエクスポートします。",
+              "Export a full backup before migration or reinstallation."
+            ],
+            [
+              "出力ファイルができたことを確認し、別の場所に保管します。",
+              "Check that the output exists and keep a copy elsewhere."
+            ],
+            [
+              "復元先でインポートを選び、そのバックアップファイルを指定します。",
+              "Choose import on the destination and select that backup file."
+            ]
+          ],
+          "result": [
+            "作品一式と関連する設定を復元できます。",
+            "Restore the collection and related settings."
+          ],
+          "note": [
+            "作品ZIPは一作品の移行、全体バックアップは作品集と設定の移行に使います。復元結果を確認するまで元のバックアップを残してください。",
+            "A work ZIP transfers one work; full backup transfers the collection and settings. Keep the original backup until restoration is checked."
+          ],
+          "sources": [
+            "ProjectAssets.kt",
+            "SettingsScreen.kt",
+            "WorkStoreRepository.kt"
+          ],
+          "demo": "backup"
+        },
+        {
+          "id": "storage-folder",
+          "title": [
+            "外部保存先とクラウド同期",
+            "External storage and cloud synchronization"
+          ],
+          "lead": [
+            "作品を保存するフォルダーを選択できます。",
+            "Choose the folder where works are saved."
+          ],
+          "path": [
+            "設定 → 保存 → 作品フォルダー → 保存先を変更",
+            "Settings → Save → Work folder → Change folder"
+          ],
+          "steps": [
+            [
+              "現在の保存先を確認し、先にバックアップを作ります。",
+              "Check the current location and create a backup first."
+            ],
+            [
+              "保存先を変更し、Androidのフォルダー選択画面でアクセスを許可します。",
+              "Change the destination and grant access in Android’s folder picker."
+            ],
+            [
+              "作品の読み込みと保存を確認します。",
+              "Check that works load and save."
+            ]
+          ],
+          "result": [
+            "選択したフォルダーを保存先として利用できます。",
+            "Use the selected folder for work storage."
+          ],
+          "note": [
+            "保存先の変更だけでクラウドへアップロードすることはありません。同期には、そのフォルダーを扱える別のツールが必要です。",
+            "Changing the destination does not upload to cloud storage. Synchronization requires a separate tool that can access the folder."
+          ],
+          "sources": [
+            "WorkRecoveryDialogs.kt",
+            "SettingsScreen.kt",
+            "WorkStoreRepository.kt"
+          ]
+        },
+        {
+          "id": "appearance",
+          "title": [
+            "テーマ・言語・フォント・システムバー",
+            "Theme, language, fonts, and system bars"
+          ],
+          "lead": [
+            "画面の配色と文字、端末のバー表示を調整します。",
+            "Configure colors, text, and system bar visibility."
+          ],
+          "path": [
+            "設定 → 外観",
+            "Settings → Appearance"
+          ],
+          "steps": [
+            [
+              "自動・ダーク・ライト・Sumi・カスタムからテーマを選びます。",
+              "Choose Automatic, Dark, Light, Sumi, or Custom."
+            ],
+            [
+              "日本語・英語・簡体字中国語、または端末に合わせる言語設定を選びます。",
+              "Choose Japanese, English, Simplified Chinese, or system language."
+            ],
+            [
+              "必要ならTTF・OTF・TTCを読み込み、連字やバーの表示を調整します。",
+              "Optionally import TTF, OTF, or TTC fonts and configure ligatures and bars."
+            ]
+          ],
+          "result": [
+            "自分の読みやすい表示で編集できます。",
+            "Edit with your preferred presentation."
+          ],
+          "note": [
+            "カスタムでは背景色とアクセント色を指定できます。連字は対応フォントで利用でき、表示が変わってもソース文字列は変わりません。",
+            "Custom themes set background and accent colors. Ligatures require a compatible font and do not change source text."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "SettingsScreen.kt",
+            "SettingsAboutSection.kt"
+          ]
+        },
+        {
+          "id": "editor-settings",
+          "title": [
+            "文字サイズ・インデント・編集キーの設定",
+            "Font size, indentation, and accessory settings"
+          ],
+          "lead": [
+            "エディターの表示と入力補助をまとめて調整します。",
+            "Configure editor presentation and input assistance."
+          ],
+          "path": [
+            "設定 → エディター",
+            "Settings → Editor"
+          ],
+          "steps": [
+            [
+              "文字サイズ、自動インデント、行番号、折り返しを選びます。",
+              "Choose font size, auto-indent, line numbers, and wrapping."
+            ],
+            [
+              "入力候補とインライン変数ウォッチを必要に応じて切り替えます。",
+              "Toggle completion and inline watch as needed."
+            ],
+            [
+              "編集キー、移動キー、記号キーとキーの表示幅を調整します。",
+              "Configure accessory, navigation, and symbol keys and their compact layout."
+            ]
+          ],
+          "result": [
+            "入力時の表示量と補助機能を調整できます。",
+            "Adjust visible source and the assistance offered while typing."
+          ],
+          "note": [
+            "表示設定と、作品のコードや実行環境の設定は別に管理します。",
+            "Display preferences are separate from work source and runtime configuration."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "SettingsScreen.kt",
+            "SettingsAboutSection.kt"
+          ]
+        },
+        {
+          "id": "recording-settings",
+          "title": [
+            "録画条件・X共有文の設定",
+            "Recording and X sharing preferences"
+          ],
+          "lead": [
+            "録画のカウントダウン、画質、X共有時の定型文を設定します。",
+            "Configure recording countdown, quality, and preset text for X sharing."
+          ],
+          "path": [
+            "設定 → 録画と共有",
+            "Settings → Recording and sharing"
+          ],
+          "steps": [
+            [
+              "録画のカウントダウン秒数（オフ・3秒・5秒）を選びます。",
+              "Choose the recording countdown (Off, 3s, or 5s)."
+            ],
+            [
+              "MP4のビットレートを調整します。",
+              "Adjust the MP4 bitrate."
+            ],
+            [
+              "X共有の定型文（ハッシュタグなど）を入力します。",
+              "Enter the preset text (such as hashtags) for X sharing."
+            ]
+          ],
+          "result": [
+            "以後の録画・共有操作で設定を使えます。",
+            "The preferences are available for subsequent recording and sharing."
+          ],
+          "note": [
+            "高いビットレートではファイルが大きくなります。共有カードの作者クレジットやQRリンクは、プレビュー操作の「シェアカード」画面で設定します。",
+            "Higher bitrate increases file size. Author credit and QR URL for share cards are configured in the Share card sheet under Preview controls."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "SettingsScreen.kt",
+            "ShareCardSheet.kt"
+          ]
+        },
+        {
+          "id": "tours-updates",
+          "title": [
+            "アプリ内ガイド・ツアー・更新",
+            "In-app guide, tours, and updates"
+          ],
+          "lead": [
+            "アプリ内で操作を学び、更新情報を確認できます。",
+            "Learn controls in the app and inspect updates."
+          ],
+          "path": [
+            "設定 → About → 使い方ガイド・ツアー・アップデートを確認",
+            "Settings → About → User Guide, tours, Check for updates"
+          ],
+          "steps": [
+            [
+              "使い方ガイド、または入門ツアーを開きます。",
+              "Open the user guide or introductory tour."
+            ],
+            [
+              "実践ツアーでウォッチ・パラメーター・圧縮の操作を試します。",
+              "Try watch values, parameters, and compression in the practice tour."
+            ],
+            [
+              "更新を確認し、ダウンロードとAndroidのインストール案内に従います。",
+              "Check for updates and follow the download and Android installation prompts."
+            ]
+          ],
+          "result": [
+            "機能の使い方と、利用中の版・更新内容を確認できます。",
+            "Inspect how features work, the installed version, and update information."
+          ],
+          "note": [
+            "更新の確認・ダウンロードにはネット接続が必要です。APKのインストールには端末側の許可が必要な場合があります。",
+            "Update checks and downloads require internet access. Android may require permission to install an APK."
+          ],
+          "sources": [
+            "SettingsAboutSection.kt",
+            "UpdateDialog.kt",
+            "UpdateViewModel.kt",
+            "UserGuide.kt"
+          ]
+        },
+        {
+          "id": "offline",
+          "title": [
+            "オフラインで使える機能と必要環境",
+            "Offline use and requirements"
+          ],
+          "lead": [
+            "ネット接続が必要な処理と、端末内で完結する作業を確認します。",
+            "Distinguish local work from operations requiring internet access."
+          ],
+          "path": [
+            "Android 11以降／端末のAndroid WebView",
+            "Android 11 or later / installed Android WebView"
+          ],
+          "steps": [
+            [
+              "同梱ランタイムで作品を作り、編集・実行します。",
+              "Create, edit, and run using bundled runtimes."
+            ],
+            [
+              "外部素材やCDNを使う作品では接続を確認します。",
+              "Check connectivity when a work uses remote assets or CDNs."
+            ],
+            [
+              "公開作品の取り込みやアプリの更新では、ネット接続を使います。",
+              "Connect when importing public sketches or downloading updates."
+            ]
+          ],
+          "result": [
+            "基本の編集・実行と同梱ライブラリはオフラインで使えます。",
+            "Basic editing, execution, and bundled libraries work offline."
+          ],
+          "note": [
+            "WebGPU、音声、動画形式などは端末・WebViewにも依存します。このガイドのブラウザデモでAndroid実機の動作を保証することはありません。",
+            "WebGPU, audio, and video formats also depend on the device and WebView. Browser demos in this guide do not establish physical Android device behavior."
+          ],
+          "sources": [
+            "AssetWebClient.kt",
+            "WorkRuntimeDialog.kt",
+            "@android/variables.gradle"
+          ]
+        },
+        {
+          "id": "troubleshooting",
+          "title": [
+            "症状から確認する",
+            "Troubleshoot by symptom"
+          ],
+          "lead": [
+            "起きている症状から、確認する設定と説明へ進めます。",
+            "Start from a symptom to find settings and relevant instructions."
+          ],
+          "path": [
+            "ログ／設定／該当機能の説明",
+            "Log / Settings / the relevant feature instructions"
+          ],
+          "steps": [
+            [
+              "変更が出ない場合は実行操作とAuto-Run、エラー時はログの最初の行を確認します。",
+              "For stale output, check Run changes and Auto-Run. For errors, read the first log entry."
+            ],
+            [
+              "音声はp5.sound・版・開始操作、カメラとマイクはAndroidの権限を確認します。",
+              "For audio, check p5.sound, version, and start gesture. For camera and microphone, check Android permissions."
+            ],
+            [
+              "保存失敗時は編集内容を残し、再試行や復旧の案内に従います。",
+              "For failed saves, keep the editor content and follow retry or recovery guidance."
+            ]
+          ],
+          "result": [
+            "原因に関係する項目を順番に確認できます。",
+            "Check the relevant areas in sequence."
+          ],
+          "note": [
+            "パラメーターは書式と16個の上限、ウォッチは対象行の実行状況、モジュールはパスとimport map、HTMLの操作制限はCSPも確認します。",
+            "Also check declaration syntax and the 16-control limit, watched line execution, module paths and import maps, and CSP for restricted HTML controls."
+          ],
+          "sources": [
+            "WorkGallery.kt",
+            "SettingsScreen.kt",
+            "SettingsAboutSection.kt"
+          ],
+          "links": [
+            "run-pause",
+            "parameter-rules",
+            "watch",
+            "sound",
+            "camera",
+            "microphone",
+            "loading",
+            "draft-recovery",
+            "recording"
+          ],
+          "table": {
+            "headers": [
+              [
+                "症状",
+                "Symptom"
+              ],
+              [
+                "最初に確認すること",
+                "First checks"
+              ]
+            ],
+            "rows": [
+              [
+                [
+                  "変更が反映されない",
+                  "Preview is stale"
+                ],
+                [
+                  "変更を実行／Auto-Run",
+                  "Run changes / Auto-Run"
+                ]
+              ],
+              [
+                [
+                  "パラメーターが出ない",
+                  "Missing parameter"
+                ],
+                [
+                  "コメントの書式・重複・合計16個の上限",
+                  "Comment syntax, duplicates, combined limit of 16"
+                ]
+              ],
+              [
+                [
+                  "バッジが更新されない",
+                  "Badge does not update"
+                ],
+                [
+                  "ウォッチ設定・対象行が実行されるか",
+                  "Watch setting and whether the line executes"
+                ]
+              ],
+              [
+                [
+                  "音が出ない",
+                  "No sound"
+                ],
+                [
+                  "p5.sound・対応バージョン・開始のタップ",
+                  "p5.sound, matching version, start gesture"
+                ]
+              ],
+              [
+                [
+                  "映像・マイクが使えない",
+                  "Camera / microphone unavailable"
+                ],
+                [
+                  "Androidの権限・開始操作・ログ",
+                  "Android permission, start gesture, log"
+                ]
+              ],
+              [
+                [
+                  "素材が読めない",
+                  "Asset does not load"
+                ],
+                [
+                  "相対パス・大文字小文字・読み込み方式",
+                  "Relative path, letter case, loading mode"
+                ]
+              ],
+              [
+                [
+                  "モジュールが読めない",
+                  "Module does not load"
+                ],
+                [
+                  "開始ファイル・相対import・URL・import map",
+                  "Entry file, relative import, URL, import map"
+                ]
+              ],
+              [
+                [
+                  "HTMLの操作・保存が使えない",
+                  "HTML controls or saving fail"
+                ],
+                [
+                  "CSPで補助スクリプトを禁止していないか",
+                  "Whether CSP blocks helper scripts"
+                ]
+              ],
+              [
+                [
+                  "録画を保存できない",
+                  "Recording cannot be saved"
+                ],
+                [
+                  "保留中のデータを保持し、再試行か別の保存先",
+                  "Keep pending data; retry or choose another destination"
+                ]
+              ],
+              [
+                [
+                  "WebGPUが動かない",
+                  "WebGPU unavailable"
+                ],
+                [
+                  "端末のGPUとAndroid WebViewの対応",
+                  "Device GPU and Android WebView support"
+                ]
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

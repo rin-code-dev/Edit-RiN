@@ -152,6 +152,7 @@
     back.hidden = scene === 'home';
     status.textContent = scene === 'home' ? 'Interactive artwork. Choose Write, Tune, or Keep.' : `${scene[0].toUpperCase() + scene.slice(1)}. App information and recording are open.`;
     syncVideos();
+    window.scrollTo({top:0, behavior:'instant'});
     if (scene !== 'home' && focusHeading) document.querySelector(`#${scene}-title`).focus({preventScroll:true});
     if (scene === 'home' && focusHeading) (returnFocus || glyphs[0]).focus({preventScroll:true});
   }
@@ -166,6 +167,7 @@
 
   // Keep browser zoom, horizontal gestures, and native controls available.
   experience.addEventListener('wheel', event => {
+    if (current !== 'home' && window.innerWidth <= 700) return;
     if (event.ctrlKey || event.metaKey || drag || document.querySelector('dialog[open]')) return;
     if (event.target.closest('input, textarea, select, video, .video-toggle')) return;
     if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
@@ -178,6 +180,7 @@
   let scrollTouch = null;
   experience.addEventListener('touchstart', event => {
     scrollTouch = null;
+    if (current !== 'home' && window.innerWidth <= 700) return;
     if (event.touches.length !== 1 || document.querySelector('dialog[open]')) return;
     if (event.target.closest('button, a, input, textarea, select, video')) return;
     const touch = event.touches[0];

@@ -123,6 +123,8 @@ button:focus-visible,a:focus-visible,input:focus-visible {
   gap:36px
 }
 .plain-link {
+  display:inline-flex;
+  align-items:center;
   font-size:13px;
   min-height:44px;
   letter-spacing:-.15px
@@ -578,9 +580,16 @@ input[type="range"]::-moz-range-thumb {
 }
 .dialog-links {
   display:flex;
-  gap:25px;
-  margin-top:30px;
+  flex-wrap:wrap;
+  gap:8px 25px;
+  margin-top:24px;
   font-size:12px
+}
+.dialog-links a {
+  display:inline-flex;
+  align-items:center;
+  min-height:44px;
+  font-weight:600
 }
 .dialog-links a:hover {
   color:var(--accent)
@@ -692,8 +701,24 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 @media(max-width:700px) {
+  html:has(.experience:not([data-scene="home"])),
+  body:has(.experience:not([data-scene="home"])) {
+    height:auto;
+    min-height:100dvh;
+    overflow-x:hidden;
+    overflow-y:auto
+  }
   .experience {
     padding:18px 22px
+  }
+  .experience:not([data-scene="home"]) {
+    display:flex;
+    flex-direction:column;
+    height:auto;
+    min-height:100dvh;
+    overflow:visible;
+    gap:22px;
+    padding:18px 22px 28px
   }
   .wordmark {
     font-size:22px
@@ -702,7 +727,7 @@ input[type="range"]::-moz-range-thumb {
     gap:19px
   }
   .plain-link {
-    font-size:11px
+    font-size:12px
   }
   .app-link span {
     font-size:15px;
@@ -711,15 +736,26 @@ input[type="range"]::-moz-range-thumb {
   .stage {
     inset:99px 24px 97px
   }
+  .experience:not([data-scene="home"]) .stage {
+    position:static;
+    inset:auto;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+    flex:1
+  }
   .home-caption {
     top:0
   }
+  .experience:not([data-scene="home"]) .home-caption {
+    display:none
+  }
   .home-caption .eyebrow {
-    font-size:7px;
+    font-size:8px;
     letter-spacing:.7px
   }
   .home-caption p {
-    font-size:21px
+    font-size:22px
   }
   .sculpture {
     width:88%;
@@ -738,80 +774,95 @@ input[type="range"]::-moz-range-thumb {
     display:none
   }
   .experience:not([data-scene="home"]) .sculpture {
-    left:50%;
-    top:48px;
-    width:170px;
-    gap:8%
+    position:static;
+    transform:none;
+    width:180px;
+    margin:2px auto 0;
+    gap:10%;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line)
   }
   .experience:not([data-scene="home"]) .glyph-label {
-    margin-top:7px;
-    font-size:10px;
-    min-height:34px
+    margin-top:8px;
+    font-size:11px;
+    min-height:32px
   }
   .chapter {
-    left:0;
-    right:0;
-    top:136px;
-    bottom:0;
-    gap:18px;
-    grid-template-columns:minmax(0,1.08fr) minmax(0,.85fr)
+    position:static;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:26px
   }
   .eyebrow {
-    font-size:7px;
-    letter-spacing:.65px;
-    margin-bottom:17px
+    font-size:9px;
+    letter-spacing:.8px;
+    margin-bottom:12px
   }
   .chapter h2 {
-    font-size:clamp(28px,7.9vw,44px);
+    font-size:clamp(32px,8.5vw,42px);
     letter-spacing:-1.6px;
-    margin-bottom:18px
+    margin-bottom:16px
   }
   .description {
-    font-size:11px;
+    font-size:14px;
     line-height:1.65;
-    margin-bottom:18px
+    margin-bottom:16px
   }
   .description br {
     display:none
   }
   .code-note {
-    font-size:8px;
-    margin-bottom:17px
+    font-size:11px;
+    margin-bottom:14px
   }
   .detail {
-    font-size:9px
+    font-size:12px;
+    line-height:1.6
   }
   .demo {
-    width:100%;
-    max-width:190px
+    align-self:center;
+    justify-self:center;
+    width:min(100%,270px);
+    max-width:270px
+  }
+  .video-surface {
+    border-radius:14px;
+    box-shadow:0 10px 28px #2b282514;
+    border:1px solid var(--line)
   }
   .demo figcaption {
-    font-size:6px;
-    letter-spacing:.2px;
-    margin-top:9px
+    font-size:8px;
+    letter-spacing:.3px;
+    margin-top:10px
   }
-  .video-toggle {
-    bottom:8px;
-    right:8px;
-    width:32px;
-    height:32px
-  }
-  .tune-control {
-    margin-bottom:17px
-  }
-  .tune-control label {
-    font-size:7px
-  }
-  .tune-control p {
+  .demo figcaption span:last-child {
+    display:inline;
     font-size:8px
   }
+  .video-toggle {
+    bottom:10px;
+    right:10px;
+    width:38px;
+    height:38px
+  }
+  .tune-control {
+    margin-bottom:16px;
+    max-width:100%
+  }
+  .tune-control label {
+    font-size:9px
+  }
+  .tune-control p {
+    font-size:11px
+  }
   .save-link {
-    font-size:10px;
-    gap:9px;
-    margin-bottom:13px
+    font-size:13px;
+    gap:12px;
+    margin-bottom:14px
   }
   .save-link>span:last-child {
-    font-size:15px
+    font-size:17px
   }
   .edge {
     left:22px;
@@ -820,17 +871,34 @@ input[type="range"]::-moz-range-thumb {
     grid-template-columns:1fr 1fr;
     gap:6px
   }
+  .experience:not([data-scene="home"]) .edge {
+    position:static;
+    margin-top:auto;
+    padding-top:16px;
+    border-top:1px solid var(--line);
+    gap:10px
+  }
+  .experience:not([data-scene="home"]) .back-link {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-height:44px;
+    padding:8px 16px;
+    border:1px solid var(--line);
+    font-size:12px
+  }
   .edge-meta {
-    font-size:6px
+    font-size:8px
   }
   .edge-center {
     grid-row:1;
     grid-column:1/-1;
-    font-size:10px;
+    font-size:11px;
     margin-bottom:5px
   }
   .motion-toggle {
-    font-size:7px;
+    font-size:8px;
     grid-row:2;
     grid-column:2
   }
@@ -911,59 +979,15 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 @media(max-height:700px) and (max-width:700px) {
-  .stage {
+  .experience[data-scene="home"] .stage {
     inset:80px 22px 90px
   }
-  .home-caption p {
-    font-size:17px
+  .experience[data-scene="home"] .home-caption p {
+    font-size:18px
   }
-  .sculpture {
+  .experience[data-scene="home"] .sculpture {
     width:78%;
     top:55%
-  }
-  .experience:not([data-scene="home"]) .sculpture {
-    top:34px;
-    width:120px
-  }
-  .experience:not([data-scene="home"]) .glyph-label {
-    font-size:9px;
-    margin-top:4px;
-    min-height:30px
-  }
-  .chapter {
-    top:103px;
-    gap:16px
-  }
-  .chapter h2 {
-    font-size:28px;
-    margin-bottom:12px;
-    letter-spacing:-1.4px
-  }
-  .eyebrow {
-    margin-bottom:10px;
-    font-size:6px
-  }
-  .description {
-    font-size:10px;
-    margin-bottom:12px
-  }
-  .detail {
-    font-size:8px
-  }
-  .code-note {
-    font-size:7px;
-    margin-bottom:10px
-  }
-  .demo {
-    width:min(100%,calc((100dvh - 282px)*.4868))
-  }
-  .tune-control {
-    margin-bottom:10px
-  }
-  .save-link {
-    margin-bottom:8px;
-    min-height:36px;
-    font-size:9px
   }
 }
 @media(prefers-reduced-motion:reduce) {
@@ -980,11 +1004,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .experience:not([data-scene="home"]) .glyph svg {
   aspect-ratio:260/320
-}
-@media(max-height:700px) and (max-width:700px) {
-  .experience:not([data-scene="home"]) .sculpture {
-    width:170px
-  }
 }
 @media(max-height:480px) and (orientation:landscape) {
   .experience {
@@ -1136,15 +1155,10 @@ body {
 }
 @media(max-width:700px) {
   .chapter h2 {
-    font-size:clamp(24px,6.1vw,34px)
+    font-size:clamp(30px,8vw,38px)
   }
   .info-dialog h2 {
     font-size:30px
-  }
-}
-@media(max-height:700px) and (max-width:700px) {
-  .chapter h2 {
-    font-size:24px
   }
 }
 @media(max-height:480px) and (orientation:landscape) {
