@@ -55,3 +55,9 @@ GITHUB_RELEASE_GUIDE.md
 EDIT_RIN_IMPLEMENTATION_SPEC.txt
 .agents/
 .codex/
+
+# Private implementation and review records
+docs/GUIDE_UI_REFERENCE.md
+docs/GUIDE_COVERAGE.md
+docs/DEVICE_DEBUG_OPTIMIZATION_JA.md
+docs/archive/EDIT_RIN_IMPLEMENTATION_SPEC.txt

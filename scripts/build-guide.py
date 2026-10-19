@@ -160,35 +160,19 @@ def render(data):
             '<p class="sr-only" id="announcement" role="status" aria-live="polite"></p></body></html>']
     return '\n'.join(out) + '\n'
 
-def coverage(data):
-    lines = ['# Web manual implementation coverage', '', 'The manual describes user-facing Android functionality. Browser simulations do not verify device behavior.', '',
-             'Source paths below are relative to `android/app/src/main/java/com/hikariatelier/app/`; `@` marks a repository-relative path.', '',
-             '| Chapter / anchor | Implementation inspected |', '| --- | --- |']
-    for c in data['chapters']:
-        for t in c['topics']:
-            lines.append(f'| {c["title"][1]} / `#{t["id"]}` | '+', '.join(f'`{s}`' for s in t['sources'])+' |')
-    lines += ['', '## Review rules', '',
-              '- Review menu labels and access paths alongside the source behavior when updating the app.',
-              '- Update `scripts/guide-content.json` and regenerate with `python3 scripts/build-guide.py`.',
-              '- Run `python3 scripts/build-guide.py --check` and the guide browser test after changes.',
-              '- Keep source examples executable, preserve existing anchors, and keep Japanese/English steps equivalent.',
-              '- Preserve conditions for reruns, single-HTML dependencies, canvas-only capture, device permissions, and external synchronization.',
-              '- Android minimum: `android/variables.gradle`; runtime versions: `EditorSessionViewModel.kt`; limits: `ProjectAssets.kt`, `ProjectPaths.kt`, `SketchDownloadAdmission.kt`.', '']
-    return '\n'.join(lines)
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
     data = json.loads(CONTENT.read_text())
-    outputs = {ROOT / 'website/guide.html': render(data), ROOT / 'docs/GUIDE_COVERAGE.md': coverage(data)}
+    outputs = {ROOT / 'website/guide.html': render(data)}
     for path, content in outputs.items():
         if args.check:
             if not path.is_file() or path.read_text() != content:
                 raise SystemExit(f'Out of date: {path.relative_to(ROOT)}; run python3 scripts/build-guide.py')
         else:
             path.write_text(content)
-    print('Guide HTML and coverage are current.' if args.check else 'Generated guide HTML and coverage.')
+    print('Guide HTML is current.' if args.check else 'Generated guide HTML.')
 
 if __name__ == '__main__':
     main()
