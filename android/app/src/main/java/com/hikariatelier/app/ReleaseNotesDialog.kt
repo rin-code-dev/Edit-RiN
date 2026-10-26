@@ -39,6 +39,42 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "4.0.0",
+        versionCode = 39,
+        titleEn = "What's New in v4.0.0",
+        titleJa = "v4.0.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_folder_code,
+                titleEn = "JavaScript Block Mode",
+                titleJa = "ブロックによるJavaScript編集（ブロックモード）",
+                descEn = "Build and edit p5.js sketches visually with blocks while keeping sketch.js as the single source of truth. Includes direct color/number capsule editing, a bottom block dock, function navigation, and floating PiP preview.",
+                descJa = "sketch.jsを唯一の正本として保ったまま、ブロックで視覚的にコードを組み立て・編集できます。色スウォッチや数値カプセルの直接操作、下部ブロックドック、関数一覧・検索、PiP小窓プレビューに対応しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_history,
+                titleEn = "Unified History & Snapshots",
+                titleJa = "保存履歴とスナップショットの統合",
+                descEn = "Browse auto-save history and named snapshots in a single sheet with category filters, clear restoration scope badges (code, extra files, parameters, block layout), and a preview of the code to restore with an indication of whether it matches the current code.",
+                descJa = "自動保存履歴と名前付きスナップショットを1つのシートに統合しました。種別フィルターや復元対象範囲（コード・追加ファイル・パラメータ・ブロック配置）の明示、復元するコードの表示と、現在のコードとの一致確認を行えます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Unified Inspector & Safe Action Guards",
+                titleJa = "作品設定の統合 ＆ 操作前確認の共通化",
+                descEn = "Select all 6 preview aspect ratios directly in the project inspector, return smoothly from sub-dialogs, and automatically flush active block edits before saving, running, or switching files.",
+                descJa = "作品設定シートで全6種類のプレビュー比率を直接切り替え可能にし、子画面から元の設定画面へ自然に戻れる階層遷移を導入しました。保存・実行・ファイル切替時のブロック編集確定と安全性チェックも共通化しています。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_help,
+                titleEn = "Expanded Onboarding & User Guide",
+                titleJa = "入門ツアー ＆ 使い方ガイドの拡充",
+                descEn = "Added an interactive Block Mode step to the 9-step onboarding tour and updated the built-in user guide to cover block editing and the unified history workflow.",
+                descJa = "初回入門ツアー（全9ステップ）とアプリ内の使い方ガイドに、ブロックモードの模擬操作と統合履歴シートの解説を追加しました。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "3.2.1",
         versionCode = 38,
         titleEn = "What's New in v3.2.1",

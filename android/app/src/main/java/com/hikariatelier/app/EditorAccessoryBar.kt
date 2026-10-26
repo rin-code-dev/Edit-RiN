@@ -633,7 +633,7 @@ internal fun CompletionBar(
                     val chipShape = RoundedCornerShape(8.dp)
                     Box(
                         modifier = Modifier
-                            .height(28.dp)
+                            .defaultMinSize(minHeight = 28.dp)
                             .clip(chipShape)
                             .border(1.dp, colors.outlineVariant.copy(alpha = 0.75f), chipShape)
                             .clickable {
@@ -646,7 +646,7 @@ internal fun CompletionBar(
                                     )
                                 )
                             }
-                            .padding(horizontal = 9.dp),
+                            .padding(horizontal = 9.dp, vertical = 2.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(

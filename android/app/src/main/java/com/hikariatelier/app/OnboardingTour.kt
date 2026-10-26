@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 /** Raise this only when the tour is redesigned and should be shown again to everyone. */
 internal const val ONBOARDING_VERSION = 2
 
-internal const val ONBOARDING_STEP_COUNT = 8
+internal const val ONBOARDING_STEP_COUNT = 9
 
 internal data class OnboardingStep(val title: String, val body: String)
 
@@ -40,6 +40,12 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
             t("コードを編集したら、「実行」を押してプレビューに変更を反映しましょう。",
                 "Edit the code and press Run to see your changes in the preview.",
                 "编辑代码后，点击“运行”即可把更改应用到预览。")
+        ),
+        OnboardingStep(
+            t("ブロックで組み立てる", "Build with blocks", "用积木搭建"),
+            t("ブロックモードに切り替えれば、下部の「＋ ブロックを追加」やブロック上の色スウォッチから、タッチ操作で直感的に作品を組み立てられます。全画面プレビューも1タップで開けます。",
+                "Switch to Block mode to assemble JavaScript visually. Add blocks from the bottom dock, tap color swatches on blocks, or open the full-screen preview in one tap.",
+                "切换到积木模式即可可视化搭建 JavaScript。可从底部栏添加积木、直接点击积木上的色块换色，或一键打开全屏预览。")
         ),
         OnboardingStep(
             t("記号と数値の調整", "Symbols and scrubbing", "符号输入与数值微调"),
@@ -61,9 +67,9 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
         ),
         OnboardingStep(
             t("一時停止と履歴", "Pause and History", "暂停与恢复"),
-            t("作品の動きを一時停止したり、「履歴」からスナップショット作成や保存済み状態への復元ができます。",
-                "Pause the artwork at any time. From History, you can take snapshots or revert to your saved work.",
-                "可以随时暂停作品。在“历史”中可以创建快照，或恢复到已保存的状态。")
+            t("作品の動きを一時停止したり、「履歴」から自動保存の履歴やスナップショットを確認して過去の状態へ復元できます。",
+                "Pause the artwork at any time. From History, you can inspect revisions or snapshots and restore past versions.",
+                "可以随时暂停作品。在“历史”中可以查看自动保存记录或快照，并恢复到过去的状态。")
         ),
         OnboardingStep(
             t("記録して、共有", "Capture and share", "导出与分享"),
@@ -149,7 +155,7 @@ internal fun OnboardingTour(
                 t("ステップ ${step + 1} / ${steps.size}", "Step ${step + 1} of ${steps.size}", "第 ${step + 1} 步，共 ${steps.size} 步"),
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(steps[step].title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.testTag("onboarding-title"))
+            Text(steps[step].title, style = if (landscape) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium, modifier = Modifier.testTag("onboarding-title"))
             Text(steps[step].body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

@@ -81,7 +81,7 @@ internal class UpdateViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun checkAtStartup() {
-        if (startupChecked) return
+        if (BuildConfig.DEBUG || startupChecked) return
         startupChecked = true
         check(silent = true)
     }

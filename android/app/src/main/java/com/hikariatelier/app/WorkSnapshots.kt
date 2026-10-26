@@ -281,9 +281,10 @@ internal fun SnapshotSheet(
     }
 
     diffTarget?.let { target ->
-        val difference by produceState<String?>(null, target, current) {
+        val blockStateLabel = text("ブロック編集の状態")
+        val difference by produceState<String?>(null, target, current, blockStateLabel) {
             value = null
-            value = withContext(Dispatchers.Default) { snapshotDifference(current, target) }
+            value = withContext(Dispatchers.Default) { snapshotDifference(current, target, blockStateLabel) }
         }
         AlertDialog(
             onDismissRequest = { diffTarget = null },

@@ -30,9 +30,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,16 +51,22 @@ private val MockPaper = Color(0xFFF2EFE7)
 private val MockInk = Color(0xFF2B2B2B)
 private val MockInks = listOf(Color(0xFFD67856), Color(0xFF3F6F8F), Color(0xFF4F7D5C))
 
+private fun mockUiTranslator(language: String): (String, Array<out Any?>) -> String = { source, args ->
+    val translated = translateUi(source, language)
+    if (args.isEmpty()) translated else String.format(java.util.Locale.ROOT, translated, *args)
+}
+
 @Composable
 internal fun OnboardingMock(step: Int, language: String, animate: Boolean) {
     when (step) {
         0 -> MockGallery(language, animate)
         1 -> MockRun(language, animate)
-        2 -> MockEditorTools(language, animate)
-        3 -> MockPipPreview(language, animate)
-        4 -> MockParameters(language)
-        5 -> MockPauseHistory(language, animate)
-        6 -> MockCapture(language, animate)
+        2 -> MockBlockMode(language, animate)
+        3 -> MockEditorTools(language, animate)
+        4 -> MockPipPreview(language, animate)
+        5 -> MockParameters(language)
+        6 -> MockPauseHistory(language, animate)
+        7 -> MockCapture(language, animate)
         else -> MockFinish()
     }
 }
@@ -174,30 +183,366 @@ private fun MockGallery(language: String, animate: Boolean) {
 private fun MockRun(language: String, animate: Boolean) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     var ran by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
     val grow = remember { Animatable(0.3f) }
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.surface.luminance() < 0.5f
+    val uiTranslator = remember(language) { mockUiTranslator(language) }
     LaunchedEffect(ran) {
         if (ran) withContext(FullSpeedMotion) {
             if (animate) grow.animateTo(0.8f, tween(450)) else grow.snapTo(0.8f)
         }
     }
     val fraction = grow.value
+    val codeSource = "function draw() {\n  background('#F2EFE7');\n  circle(width / 2, height / 2, 160);\n}"
+    val highlightedCode = remember(codeSource, dark) {
+        JavaScriptHighlighter(dark).filter(AnnotatedString(codeSource)).text
+    }
     MockFrame {
-        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        EditorDocumentBar(
+            files = listOf("sketch.js"),
+            selectedFile = "sketch.js",
+            dirtyFiles = if (!ran) setOf("sketch.js") else emptySet(),
+            showingBlocks = false,
+            allowBlocks = true,
+            enabled = true,
+            readOnly = false,
+            autoRunEnabled = false,
+            previewHasChanges = !ran,
+            onSelectFile = {},
+            onSelectBlocks = {},
+            onAddFile = null,
+            onToggleAutoRun = {},
+            onRunChanges = { ran = true },
+            textTranslator = uiTranslator
+        )
+        Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceContainerHigh) {
             Text(
-                "function draw() {\n  background('#F2EFE7');\n  circle(width / 2, height / 2, 160);\n}",
+                highlightedCode,
                 Modifier.fillMaxWidth().padding(12.dp),
                 fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall
             )
         }
         MockCanvas(fraction, MockInks[0])
-        Button(onClick = { ran = true }, modifier = Modifier.fillMaxWidth().tapHint(!ran, animate)) {
-            Icon(painterResource(R.drawable.ic_reload), contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(t("実行", "Run", "运行"))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RunStatusControls(
+                isError = false,
+                isPaused = paused,
+                hasPendingChanges = !ran,
+                colors = colors,
+                height = 38.dp,
+                buttonSize = 32.dp,
+                iconSize = 17.dp,
+                onTogglePause = { paused = !paused },
+                onReload = { ran = true },
+                textTranslator = uiTranslator
+            )
+            Button(onClick = { ran = true }, modifier = Modifier.weight(1f).tapHint(!ran, animate)) {
+                Icon(painterResource(R.drawable.ic_reload), contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(t("実行", "Run", "运行"))
+            }
         }
         MockCaption(
             if (ran) t("プレビューが更新されました（練習用）", "The preview is updated (practice)", "预览已更新（练习）")
             else t("コードを変更しました。「実行」を押して反映しましょう", "Code edited. Press Run to see the update!", "代码已修改，点击“运行”查看效果")
+        )
+    }
+}
+
+@Composable
+private fun MockBlockMode(language: String, animate: Boolean) {
+    fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.surface.luminance() < 0.5f
+    val uiTranslator = remember(language) { mockUiTranslator(language) }
+    var showingBlocks by remember { mutableStateOf(true) }
+    var autoRun by remember { mutableStateOf(true) }
+    var paletteOpen by remember { mutableStateOf(false) }
+    var fullPreviewOpen by remember { mutableStateOf(false) }
+    var inkIndex by remember { mutableIntStateOf(0) }
+    var circleSize by remember { mutableIntStateOf(120) }
+    var hasExtraRing by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+
+    val swatchColors = remember {
+        listOf(Color(0xFFD67856), Color(0xFF3F6F8F), Color(0xFF4F7D5C), Color(0xFFE5A93B))
+    }
+    val swatchHexes = remember {
+        listOf("#D67856", "#3F6F8F", "#4F7D5C", "#E5A93B")
+    }
+    val chromeModel = remember(paletteOpen) {
+        BlockEditorChromeModel().apply {
+            state = BlockChromeState(editable = true, busy = false, palette = paletteOpen)
+        }
+    }
+
+    MockFrame {
+        EditorDocumentBar(
+            files = listOf("sketch.js"),
+            selectedFile = "sketch.js",
+            dirtyFiles = if (hasExtraRing || inkIndex != 0 || circleSize != 120) setOf("sketch.js") else emptySet(),
+            showingBlocks = showingBlocks,
+            allowBlocks = true,
+            enabled = true,
+            readOnly = false,
+            autoRunEnabled = autoRun,
+            previewHasChanges = !autoRun,
+            onSelectFile = {},
+            onSelectBlocks = { next ->
+                showingBlocks = next
+                note = if (next) {
+                    t("ブロックモードへ切り替えました（練習用）", "Switched to Block mode (practice)", "已切换到积木模式（练习）")
+                } else {
+                    t("コード表示へ切り替えました（練習用）", "Switched to Code view (practice)", "已切换到代码视图（练习）")
+                }
+            },
+            onAddFile = null,
+            onToggleAutoRun = { autoRun = !autoRun },
+            onRunChanges = { note = t("変更を実行しました（練習用）", "Ran changes (practice)", "已运行更改（练习）") },
+            textTranslator = uiTranslator,
+            onOpenFullPreview = {
+                fullPreviewOpen = true
+                note = t("全画面プレビューを開きました（練習用）", "Opened full-screen preview (practice)", "已打开全屏预览（练习）")
+            }
+        )
+
+        if (fullPreviewOpen) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MockPaper,
+                border = BorderStroke(1.dp, colors.outlineVariant),
+                modifier = Modifier.fillMaxWidth().height(190.dp).testTag("onboarding-block-full-preview")
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCircle(swatchColors[inkIndex], radius = size.minDimension * (circleSize / 320f))
+                        if (hasExtraRing) {
+                            drawCircle(
+                                color = swatchColors[(inkIndex + 1) % swatchColors.size],
+                                radius = size.minDimension * 0.42f,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx())
+                            )
+                        }
+                    }
+                    FilledTonalButton(
+                        onClick = { fullPreviewOpen = false },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                    ) {
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(t("全画面表示を閉じる", "Exit full screen", "退出全屏"))
+                    }
+                }
+            }
+        } else if (!showingBlocks) {
+            val codeSource = buildString {
+                append("function draw() {\n  background('#F2EFE7');\n")
+                append("  fill('${swatchHexes[inkIndex]}');\n")
+                append("  circle(200, 200, $circleSize);\n")
+                if (hasExtraRing) append("  circle(200, 200, 220);\n")
+                append("}")
+            }
+            val highlighted = remember(codeSource, dark) {
+                JavaScriptHighlighter(dark).filter(AnnotatedString(codeSource)).text
+            }
+            Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                Text(highlighted, Modifier.padding(12.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.surfaceContainerHigh)
+                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp))
+                    .padding(10.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFD97724),
+                        contentColor = Color.White
+                    ) {
+                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("function draw()", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Surface(
+                                onClick = {
+                                    inkIndex = (inkIndex + 1) % swatchColors.size
+                                    note = t("ブロックの色スウォッチを変更しました（練習用）", "Changed block color swatch (practice)", "已修改积木颜色色块（练习）")
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF8B5CF6),
+                                contentColor = Color.White,
+                                modifier = Modifier.semantics {
+                                    contentDescription = t("ブロックの色を変更", "Change block color", "修改积木颜色")
+                                }
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("fill", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    Box(
+                                        Modifier
+                                            .size(15.dp)
+                                            .clip(CircleShape)
+                                            .background(swatchColors[inkIndex])
+                                            .border(1.5.dp, Color.White, CircleShape)
+                                    )
+                                    Text(swatchHexes[inkIndex], style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                            Surface(
+                                onClick = {
+                                    circleSize = if (circleSize >= 160) 80 else circleSize + 40
+                                    note = t("直径カプセルを $circleSize に変更しました（練習用）", "Updated circle size to $circleSize (practice)", "已将直径胶囊更新为 $circleSize（练习）")
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF2E8B8B),
+                                contentColor = Color.White
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("circle", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.22f)) {
+                                        Text("200, 200", Modifier.padding(horizontal = 7.dp, vertical = 2.dp), fontSize = 11.sp, color = Color.White)
+                                    }
+                                    Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.32f)) {
+                                        Text("$circleSize", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
+                            if (hasExtraRing) {
+                                Surface(
+                                    onClick = { hasExtraRing = false },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF2E8B8B),
+                                    contentColor = Color.White
+                                ) {
+                                    Text(
+                                        t("外側のリング", "Outer ring", "外圈圆环"),
+                                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (paletteOpen) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colors.surface,
+                            border = BorderStroke(1.dp, colors.outlineVariant),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    t("挿入先: draw() の最後 · タップで追加", "Insert at: end of draw() · Tap to insert", "插入位置：draw() 末尾 · 点击插入"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                OutlinedCard(
+                                    onClick = {
+                                        hasExtraRing = true
+                                        paletteOpen = false
+                                        note = t("ブロックを1タップで追加しました（練習用）", "Inserted block in one tap (practice)", "已一键插入积木（练习）")
+                                    },
+                                    modifier = Modifier.fillMaxWidth().testTag("onboarding-insert-ring-block")
+                                ) {
+                                    Row(
+                                        Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(t("外側のリングを追加", "Add outer ring", "添加外圈圆环"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                        Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = colors.primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Floating PiP preview window in top-right corner
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.surface,
+                    border = BorderStroke(1.dp, colors.outlineVariant),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.align(Alignment.TopEnd).size(width = 100.dp, height = 84.dp)
+                ) {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(
+                            Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("AUTO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.primary)
+                            Icon(
+                                painter = painterResource(R.drawable.ic_fullscreen),
+                                contentDescription = null,
+                                tint = colors.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp).clickable { fullPreviewOpen = true }
+                            )
+                        }
+                        Canvas(Modifier.fillMaxWidth().weight(1f).background(MockPaper)) {
+                            drawCircle(swatchColors[inkIndex], radius = size.minDimension * (circleSize / 320f))
+                            if (hasExtraRing) {
+                                drawCircle(
+                                    color = swatchColors[(inkIndex + 1) % swatchColors.size],
+                                    radius = size.minDimension * 0.42f,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            BlockEditorFloatingDock(
+                model = chromeModel,
+                ready = true,
+                fullscreen = true,
+                canUndo = hasExtraRing || inkIndex != 0 || circleSize != 120,
+                canRedo = false,
+                text = { uiTranslator(it, emptyArray()) },
+                onCommand = { cmd ->
+                    when (cmd) {
+                        "add" -> paletteOpen = true
+                        "dismiss" -> paletteOpen = false
+                        "undo" -> {
+                            hasExtraRing = false
+                            inkIndex = 0
+                            circleSize = 120
+                        }
+                    }
+                },
+                onSearch = {},
+                onDisplay = {},
+                onFullscreen = { fullPreviewOpen = !fullPreviewOpen },
+                modifier = Modifier.tapHint(note == null && !paletteOpen, animate)
+            )
+        }
+
+        MockCaption(
+            note ?: t(
+                "「＋ ブロックを追加」やブロック内の色・数値、全画面ボタンをタップしてみましょう",
+                "Try tapping + Add block, the inline color swatch, or the full-screen preview button",
+                "试试点击“＋ 添加积木”、积木内的色块或全屏预览按钮"
+            )
         )
     }
 }
@@ -230,69 +575,89 @@ private fun MockEditorTools(language: String, animate: Boolean) {
 
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
-            Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                Text(
-                    "function draw() {\n  background('#F2EFE7');\n  fill('$colorHex');",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(Modifier.fillMaxWidth()) {
+                EditorDocumentBar(
+                    files = listOf("sketch.js"),
+                    selectedFile = "sketch.js",
+                    dirtyFiles = if (lastAction != null) setOf("sketch.js") else emptySet(),
+                    showingBlocks = false,
+                    allowBlocks = true,
+                    enabled = true,
+                    readOnly = false,
+                    autoRunEnabled = true,
+                    previewHasChanges = false,
+                    onSelectFile = {},
+                    onSelectBlocks = {},
+                    onAddFile = null,
+                    onToggleAutoRun = {},
+                    onRunChanges = {},
+                    textTranslator = { s, _ -> translateUi(s, language) }
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
-                ) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text(
-                        "  circle(width / 2, height / 2, ",
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("function draw() {\n  background('#F2EFE7');\n  fill('$colorHex');")
+                        ).text,
                         fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
+                        style = MaterialTheme.typography.bodySmall
                     )
-                    Surface(
-                        onClick = {
-                            val next = if (diameter >= 160f) 50f else diameter + 30f
-                            diameter = next
-                            lastAction = t("数値を変更: ${next.toInt()}", "Changed value: ${next.toInt()}", "数值已修改: ${next.toInt()}")
-                        },
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-                        modifier = Modifier.tapHint(lastAction == null && diameter == 80f, animate)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        Text(
+                            JavaScriptHighlighter(false).filter(AnnotatedString("  circle(width / 2, height / 2, ")).text,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Surface(
+                            onClick = {
+                                val next = if (diameter >= 160f) 50f else diameter + 30f
+                                diameter = next
+                                lastAction = t("数値を変更: ${next.toInt()}", "Changed value: ${next.toInt()}", "数值已修改: ${next.toInt()}")
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                            modifier = Modifier.tapHint(lastAction == null && diameter == 80f, animate)
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_scrub),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(Modifier.width(3.dp))
-                            Text(
-                                "${diameter.toInt()}",
-                                fontFamily = FontFamily.Monospace,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_scrub),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    "${diameter.toInt()}",
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
+                        Text(
+                            ");",
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                     Text(
-                        ");",
+                        "}",
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text(
-                    "}",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -403,18 +768,38 @@ private fun MockPipPreview(language: String, animate: Boolean) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(216.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
         ) {
-            Column(Modifier.fillMaxSize().padding(10.dp)) {
-                Text(
-                    "// Fullscreen Code\nfunction setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  background('#F2EFE7');\n  circle(200, 200, 80);\n}",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+            Column(Modifier.fillMaxSize()) {
+                EditorDocumentBar(
+                    files = listOf("sketch.js"),
+                    selectedFile = "sketch.js",
+                    dirtyFiles = emptySet(),
+                    showingBlocks = false,
+                    allowBlocks = true,
+                    enabled = true,
+                    readOnly = false,
+                    autoRunEnabled = true,
+                    previewHasChanges = false,
+                    onSelectFile = {},
+                    onSelectBlocks = {},
+                    onAddFile = null,
+                    onToggleAutoRun = {},
+                    onRunChanges = {},
+                    textTranslator = { s, _ -> translateUi(s, language) }
                 )
+                Column(Modifier.fillMaxSize().padding(10.dp)) {
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("// Fullscreen Code\nfunction setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  background('#F2EFE7');\n  circle(200, 200, 80);\n}")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
             Box(
@@ -661,7 +1046,22 @@ private fun MockParameters(language: String) {
     val colors = MaterialTheme.colorScheme
     MockFrame {
         MockCanvas(diameter / 240f, MockInks[ink])
-        Text(t("直径  ${diameter.toInt()}", "Diameter  ${diameter.toInt()}", "直径  ${diameter.toInt()}"), style = MaterialTheme.typography.labelLarge)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ParameterButton(
+                parameterCount = 2,
+                colors = colors,
+                height = 36.dp,
+                minWidth = 36.dp,
+                iconSize = 18.dp,
+                onClick = {},
+                textTranslator = { s, _ -> translateUi(s, language) },
+                active = true
+            )
+            Text(t("直径  ${diameter.toInt()}", "Diameter  ${diameter.toInt()}", "直径  ${diameter.toInt()}"), style = MaterialTheme.typography.labelLarge)
+        }
         StudioSlider(value = diameter, onValueChange = { diameter = it }, valueRange = 20f..240f)
         Text(t("インク", "Ink", "颜色"), style = MaterialTheme.typography.labelLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -684,17 +1084,29 @@ private fun MockPauseHistory(language: String, animate: Boolean) {
     var paused by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    val colors = MaterialTheme.colorScheme
     val pulse = rememberLoopPhase(animate && !paused, 1600, true, FastOutSlowInEasing, 0.5f)
     MockFrame {
         MockCanvas(0.3f + 0.4f * pulse, MockInks[1])
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilledTonalIconButton(
-                onClick = { paused = !paused },
+            RunStatusControls(
+                isError = false,
+                isPaused = paused,
+                colors = colors,
+                height = 38.dp,
+                buttonSize = 32.dp,
+                iconSize = 17.dp,
+                onTogglePause = { paused = !paused },
+                onReload = { paused = false },
+                textTranslator = { source, _ ->
+                    when (source) {
+                        "再生" -> t("再開", "Resume", "继续")
+                        "一時停止" -> t("一時停止", "Pause", "暂停")
+                        else -> translateUi(source, language)
+                    }
+                },
                 modifier = Modifier.tapHint(!paused && !menu && message == null, animate)
-            ) {
-                Icon(painterResource(if (paused) R.drawable.ic_play else R.drawable.ic_pause),
-                    contentDescription = if (paused) t("再開", "Resume", "继续") else t("一時停止", "Pause", "暂停"))
-            }
+            )
             FilledTonalIconButton(onClick = { menu = !menu }) {
                 Icon(painterResource(R.drawable.ic_history), contentDescription = t("履歴", "History", "历史"))
             }
@@ -725,6 +1137,7 @@ private fun MockCapture(language: String, animate: Boolean) {
     var captured by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
+    val colors = MaterialTheme.colorScheme
     MockFrame {
         MockCanvas(0.55f, MockInks[0]) {
             if (recording) {
@@ -736,6 +1149,14 @@ private fun MockCapture(language: String, animate: Boolean) {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PreviewActionsToggleButton(
+                isRecordingOrCountingDown = recording,
+                previewActionsExpanded = true,
+                isLandscape = false,
+                colors = colors,
+                onClick = {},
+                textTranslator = { s, _ -> translateUi(s, language) }
+            )
             FilledTonalIconButton(
                 onClick = {
                     captured = true

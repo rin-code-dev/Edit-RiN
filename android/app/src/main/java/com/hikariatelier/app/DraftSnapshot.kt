@@ -6,5 +6,6 @@ internal data class DraftSnapshot(
     val updatedAt: Long,
     val storeKey: String? = null,
     val baseHash: String? = null,
-    val bases: Map<String, String> = emptyMap()
+    val bases: Map<String, String> = emptyMap(),
+    val blockEditorDrafts: Map<String, String?> = emptyMap()
 )

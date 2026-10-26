@@ -261,7 +261,8 @@ internal fun snapshotWork(work: Work, assets: Map<String, ProjectAsset> = work.a
     libraries = work.libraries.toMap(),
     parameterValues = work.parameterValues.toMap(),
     createdAt = work.createdAt, updatedAt = work.updatedAt,
-    isPinned = work.isPinned, tags = work.tags.toList(), folderName = work.folderName, isSample = work.isSample
+    isPinned = work.isPinned, tags = work.tags.toList(), folderName = work.folderName, isSample = work.isSample,
+    blockEditorState = work.blockEditorState
 ).also { it.bodyLoaded = work.bodyLoaded }
 
 private val knownAssetMimeTypes = mapOf("png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif",

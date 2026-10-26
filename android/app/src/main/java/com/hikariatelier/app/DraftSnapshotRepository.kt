@@ -18,17 +18,19 @@ import java.security.MessageDigest
 internal fun draftStoreKey(folderUri: Uri?): String = folderUri?.toString() ?: "local"
 
 /** Length-prefixed, deterministic authored content; metadata-only updates do not invalidate edits. */
-internal fun draftBaseHash(work: Work): String = draftBaseHash(work.code, work.files.toMap())
+internal fun draftBaseHash(work: Work): String = draftBaseHash(work.code, work.files.toMap(), work.blockEditorState)
 
-internal fun draftBaseHash(code: String, files: Map<String, String>): String {
+internal fun draftBaseHash(code: String, files: Map<String, String>, blockEditorState: String? = null): String {
     val digest = MessageDigest.getInstance("SHA-256")
     fun add(value: String) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
         digest.update(bytes)
     }
+    if (blockEditorState != null) add("edit-rin-draft-blocks-v1")
     add(code)
     files.toSortedMap().forEach { (name, content) -> add(name); add(content) }
+    blockEditorState?.let { add("blockEditorState"); add(it) }
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
@@ -62,13 +64,19 @@ internal class DraftSnapshotRepository(private val file: File) {
         val bases = root.optJSONObject("bases")?.let { json ->
             json.keys().asSequence().associateWith(json::getString)
         }.orEmpty()
+        val blockDrafts = root.optJSONObject("blockEditorDrafts")?.let { json ->
+            json.keys().asSequence().associateWith { id ->
+                require(json.isNull(id) || json.get(id) is String)
+                if (json.isNull(id)) null else json.getString(id)
+            }
+        }.orEmpty()
         DraftSnapshot(
             root.optString("workId"),
             root.optString("code"),
             root.optLong("updatedAt"),
             root.optString("storeKey").takeIf { it.isNotEmpty() },
             root.optString("baseHash").takeIf { it.isNotEmpty() },
-            bases
+            bases, blockDrafts
         ) to files
     }.getOrNull()
 
@@ -83,7 +91,11 @@ internal class DraftSnapshotRepository(private val file: File) {
             val work = works.firstOrNull { key.startsWith("${it.id}/") && key.removePrefix("${it.id}/") in it.files }
             work != null && (snapshot.bases[work.id] ?: snapshot.baseHash.takeIf { work.id == snapshot.workId }) == draftBaseHash(work)
         }
-        return snapshot to compatibleFiles
+        val compatibleBlocks = snapshot.blockEditorDrafts.filter { (id, _) ->
+            val work = works.firstOrNull { it.id == id }
+            work != null && (snapshot.bases[id] ?: snapshot.baseHash.takeIf { id == snapshot.workId }) == draftBaseHash(work)
+        }
+        return snapshot.copy(blockEditorDrafts = compatibleBlocks) to compatibleFiles
     }
 
     fun save(
@@ -93,16 +105,18 @@ internal class DraftSnapshotRepository(private val file: File) {
         storeKey: String? = null,
         baseHash: String? = null,
         bases: Map<String, String> = emptyMap(),
-        generationToken: Long = beginGeneration()
+        generationToken: Long = beginGeneration(),
+        blockEditorDrafts: Map<String, String?> = emptyMap()
     ) {
         if (workId.isBlank()) return
         val capturedFiles = files.toMap()
         val capturedBases = bases.toMap()
+        val capturedBlocks = blockEditorDrafts.toMap()
         val updatedAt = System.currentTimeMillis()
         enqueue(generationToken) {
             runCatching {
                 val json = JSONObject()
-                    .put("version", 2)
+                    .put("version", 3)
                     .put("workId", workId)
                     .put("code", code)
                     .put("fileDrafts", JSONObject(capturedFiles))
@@ -110,6 +124,7 @@ internal class DraftSnapshotRepository(private val file: File) {
                     .put("storeKey", storeKey)
                     .put("baseHash", baseHash)
                     .put("bases", JSONObject(capturedBases))
+                    .put("blockEditorDrafts", JSONObject().apply { capturedBlocks.forEach { (id, state) -> put(id, state ?: JSONObject.NULL) } })
                     .toString()
                 synchronized(this) { SnapshotAtomicFile(file).write(json) }
             }.onFailure { Log.w(LOG_TAG, "Draft save failed", it) }

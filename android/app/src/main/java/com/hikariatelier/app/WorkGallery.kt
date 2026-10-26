@@ -867,20 +867,6 @@ private fun WorkGalleryContent(
                                             openWork(false)
                                         }
                                     )
-                                    DropdownMenuItem(
-                                        text = { Text(text("作品メニュー")) },
-                                        leadingIcon = {
-                                            Icon(
-                                                painterResource(R.drawable.ic_settings),
-                                                null,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            state.cardMenuWorkId = null
-                                            openWork(true)
-                                        }
-                                    )
                                 }
                             }
                         }

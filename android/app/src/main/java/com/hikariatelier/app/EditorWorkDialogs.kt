@@ -13,7 +13,12 @@ import androidx.compose.ui.text.font.FontFamily
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevision?, onRevisionChange: (WorkRevision?) -> Unit) {
+internal fun EditorWorkDialogs(
+    models: EditorModels,
+    pendingRevision: WorkRevision?,
+    dialogCoordinator: WorkDialogCoordinator? = null,
+    onRevisionChange: (WorkRevision?) -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -63,40 +68,56 @@ internal fun EditorWorkDialogs(models: EditorModels, pendingRevision: WorkRevisi
         onDelete = { workManagementViewModel.deleteUserTemplate(it) },
         onDismiss = { workManagementViewModel.showTemplateManager = false }
     )
-    if (showSnapshotSheet) {
+    val showUnifiedHistory = showSnapshotSheet || showHistoryDialog ||
+        dialogCoordinator?.isCurrent<WorkDialogDestination.HistoryAndSnapshots>() == true
+    val historyFilter = when {
+        showHistoryDialog -> HistoryFilter.REVISIONS
+        showSnapshotSheet -> HistoryFilter.SNAPSHOTS
+        dialogCoordinator?.currentAs<WorkDialogDestination.HistoryAndSnapshots>()?.initialTab == 1 -> HistoryFilter.REVISIONS
+        dialogCoordinator?.currentAs<WorkDialogDestination.HistoryAndSnapshots>()?.initialTab == 2 -> HistoryFilter.SNAPSHOTS
+        else -> HistoryFilter.ALL
+    }
+
+    if (showUnifiedHistory) {
         val currentContent = activeWork?.let {
             currentSnapshotContent(workManagementViewModel.workForSnapshot(it), editorText, sessionViewModel.fileDrafts)
         } ?: SnapshotContent(editorText, emptyMap(), emptyMap())
-        WorkSnapshotSheet(
-            title = uiText("スナップショット"),
-            subtitle = activeWork?.title ?: uiText("作品未選択"),
+
+        UnifiedHistorySheet(
+            workId = activeWorkId,
+            workTitle = activeWork?.title ?: uiText("作品未選択"),
+            revisions = activeWork?.revisions.orEmpty(),
             snapshots = currentSnapshots,
-            current = currentContent,
+            currentCode = editorText,
+            initialFilter = historyFilter,
             loading = snapshotsLoading,
-            busy = snapshotBusy || assetBusy,
+            busy = snapshotBusy || assetBusy || sessionViewModel.snapshotRestoring,
             error = snapshotError,
             codeFontFamily = codeFontFamily,
             colors = colors,
-            isLandscape = isLandscape,
-            dismissEnabled = !sessionViewModel.snapshotRestoring,
-            onRetry = { snapshotViewModel.load() },
-            onCreateSnapshot = { title, note -> snapshotViewModel.create(title, note) },
-            onUpdateSnapshotDetails = { snapshot, title, note -> snapshotViewModel.updateDetails(snapshot, title, note) },
-            onRestoreSnapshot = { snapshotViewModel.restore(it) },
-            onDeleteSnapshot = { snapshotViewModel.delete(it) },
-            onDismiss = { if (!sessionViewModel.snapshotRestoring) showSnapshotSheet = false },
-            textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive() }
-        )
-    }
-
-    if (showHistoryDialog) {
-        WorkHistoryDialog(
-            revisions = activeWork?.revisions.orEmpty(),
-            colors = colors,
-            codeFontFamily = codeFontFamily,
-            onSelectRevision = { onRevisionChange(it) },
-            onDismiss = { showHistoryDialog = false },
+            onRestoreRevision = { revision ->
+                workManagementViewModel.restoreRevision(revision)
+            },
+            onRestoreSnapshot = { snapshot ->
+                snapshotViewModel.restore(snapshot)
+            },
+            onCreateSnapshot = { title, note ->
+                snapshotViewModel.create(title, note)
+            },
+            onUpdateSnapshot = { snapshot, title, note ->
+                snapshotViewModel.updateDetails(snapshot, title, note)
+            },
+            onDeleteSnapshot = { snapshot ->
+                snapshotViewModel.delete(snapshot)
+            },
+            onRetryLoad = { snapshotViewModel.load() },
+            onDismiss = {
+                if (!sessionViewModel.snapshotRestoring) {
+                    showSnapshotSheet = false
+                    showHistoryDialog = false
+                    dialogCoordinator?.pop()
+                }
+            },
             textTranslator = { s, args -> uiText(s, *args) }
         )
     }

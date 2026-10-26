@@ -81,7 +81,7 @@ class EditorFoldingUiTest {
         compose.setContent {
             MaterialTheme {
                 val value = session.editorValueState.value
-                EditorArea(work, work.id, "sketch.js", {}, {}, "sketch.js", "sample/sketch.js",
+                EditorArea(work, work.id, "sketch.js", {}, "sketch.js", "sample/sketch.js",
                     value.text, value, { session.editorValueState.value = it }, { error("Source edit") },
                     false, {}, remember { FocusRequester() }, LocalFocusManager.current, emptyList(), session,
                     FontFamily.Monospace, 14f, false, false, true, "", 0, null, {}, MaterialTheme.colorScheme,

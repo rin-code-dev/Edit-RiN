@@ -398,6 +398,8 @@ internal fun EditorScreen(
             val saved = sessionViewModel.worksState.value.firstOrNull { it.id == selected }
             sessionViewModel.editorValueState.value.text != sessionViewModel.lastSavedTextState.value ||
                 saved?.files?.any { (name, code) -> sessionViewModel.fileDrafts["$selected/$name"]?.let { it != code } == true } == true ||
+                sessionViewModel.blockEditorDrafts.containsKey(selected) ||
+                sessionViewModel.blockEditorHasPendingInput ||
                 workManagementViewModel.hasPendingMetadata(selected)
         }
     }
@@ -473,6 +475,42 @@ internal fun EditorScreen(
         }
     }
 
+    val editorToolScope = rememberCoroutineScope()
+    val currentGalleryPresent by rememberUpdatedState(galleryPresent)
+    val actionCoordinator = remember(sessionViewModel) {
+        EditorActionCoordinator(
+            session = sessionViewModel,
+            scope = editorToolScope,
+            folderUriProvider = { workManagementViewModel.selectedFolderUri },
+            onSampleCopyRequested = { workManagementViewModel.requestSampleCopy() }
+        )
+    }
+    val dialogCoordinator = remember { WorkDialogCoordinator() }
+    LaunchedEffect(activeWorkId, sessionViewModel.blockEditorActivationGeneration) {
+        dialogCoordinator.invalidateForWorkChange(activeWorkId, sessionViewModel.blockEditorActivationGeneration)
+    }
+
+    suspend fun flushOwnedBlockEditor(owner: String, activation: Long, requireEditable: Boolean = false): Boolean =
+        sessionViewModel.flushBlockEditor() && sessionViewModel.canApplyBlockAction(owner, activation, requireEditable = requireEditable)
+
+    fun openCodeTool(action: () -> Unit) {
+        actionCoordinator.launchAction<Unit>(
+            kind = ActionKind.SWITCH_BLOCK_MODE,
+            requireEditable = false,
+            requireFlush = true
+        ) { ctx ->
+            if (currentGalleryPresent) return@launchAction CoordinatorResult.Cancelled("Gallery present")
+            sessionViewModel.blockModeState(ctx.workId).value = false
+            // Give the text field a frame to attach before a code-only tool requests its focus.
+            withFrameNanos { }
+            withFrameNanos { }
+            if (sessionViewModel.canApplyBlockAction(ctx.workId, ctx.activationGeneration, requireEditable = false) && !currentGalleryPresent) {
+                action()
+            }
+            CoordinatorResult.Success(Unit)
+        }
+    }
+
     fun applyEditorChange(
         nextValue: TextFieldValue
     ) {
@@ -531,19 +569,47 @@ internal fun EditorScreen(
     }
 
     fun undoEditorChange() {
-        if (sessionViewModel.editorInputLocked) return
-        if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
-        val restored = sessionViewModel.undo(editingValue, undoStack, redoStack) ?: return
-        editingValue = restored
-        editorFocusRequester.requestFocus()
+        actionCoordinator.launchAction<Unit>(
+            kind = ActionKind.UNDO,
+            requireEditable = true,
+            requireFlush = editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value
+        ) { ctx ->
+            if (currentGalleryPresent) return@launchAction CoordinatorResult.Cancelled("Gallery present")
+            if (editingFile == "sketch.js" && sessionViewModel.blockModeState(ctx.workId).value) {
+                sessionViewModel.undo(sessionViewModel.editorValueState.value)?.let {
+                    sessionViewModel.editorValueState.value = it
+                }
+            } else {
+                val restored = sessionViewModel.undo(editingValue, undoStack, redoStack)
+                if (restored != null) {
+                    editingValue = restored
+                    editorFocusRequester.requestFocus()
+                }
+            }
+            CoordinatorResult.Success(Unit)
+        }
     }
 
     fun redoEditorChange() {
-        if (sessionViewModel.editorInputLocked) return
-        if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
-        val restored = sessionViewModel.redo(editingValue, undoStack, redoStack) ?: return
-        editingValue = restored
-        editorFocusRequester.requestFocus()
+        actionCoordinator.launchAction<Unit>(
+            kind = ActionKind.REDO,
+            requireEditable = true,
+            requireFlush = editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value
+        ) { ctx ->
+            if (currentGalleryPresent) return@launchAction CoordinatorResult.Cancelled("Gallery present")
+            if (editingFile == "sketch.js" && sessionViewModel.blockModeState(ctx.workId).value) {
+                sessionViewModel.redo(sessionViewModel.editorValueState.value)?.let {
+                    sessionViewModel.editorValueState.value = it
+                }
+            } else {
+                val restored = sessionViewModel.redo(editingValue, undoStack, redoStack)
+                if (restored != null) {
+                    editingValue = restored
+                    editorFocusRequester.requestFocus()
+                }
+            }
+            CoordinatorResult.Success(Unit)
+        }
     }
 
     BackHandler(enabled = editorFocused && !galleryPresent && !showSettings && !showUserGuide) {
@@ -602,6 +668,8 @@ internal fun EditorScreen(
         editorText,
         activeWorkId,
         sessionViewModel.fileDrafts.hashCode(),
+        sessionViewModel.blockEditorDrafts.hashCode(),
+        sessionViewModel.blockEditorInputGeneration,
         draftRecovery
     ) {
 
@@ -623,8 +691,9 @@ internal fun EditorScreen(
     var navigationTarget by remember { mutableStateOf<EditorNavigationTarget?>(null) }
     var navigationRequestsFocus by remember { mutableStateOf(true) }
 
-    fun navigateToSource(file: String, line: Int, selection: TextRange? = null) {
+    fun applySourceNavigation(file: String, line: Int, selection: TextRange? = null) {
         if (line <= 0 || (file != "sketch.js" && file !in activeWork?.files.orEmpty())) return
+        if (file == "sketch.js") sessionViewModel.blockModeState(activeWorkId).value = false
         val state = if (file == "sketch.js") sessionViewModel.editorValueState else {
             val key = "$activeWorkId/$file"
             sessionViewModel.fileEditorValues.getOrPut(key) {
@@ -644,6 +713,18 @@ internal fun EditorScreen(
         consoleExpanded = false
     }
 
+    fun navigateToSource(file: String, line: Int, selection: TextRange? = null) {
+        if (sessionViewModel.blockModeState(activeWorkId).value && sessionViewModel.blockEditorFlusher != null) {
+            val owner = activeWorkId
+            val activation = sessionViewModel.blockEditorActivationGeneration
+            editorToolScope.launch {
+                if (flushOwnedBlockEditor(owner, activation) && !currentGalleryPresent) {
+                    applySourceNavigation(file, line, selection)
+                }
+            }
+        } else applySourceNavigation(file, line, selection)
+    }
+
     fun jumpToLine(line: Int) = navigateToSource(editingFile, line)
 
     fun updateActiveWorkPreviewRatio(value: String, persist: Boolean = true) {
@@ -652,7 +733,50 @@ internal fun EditorScreen(
     }
 
 
-    fun runSketch(awaitTransition: (suspend () -> Unit)? = null) = preview.runSketch(awaitTransition = awaitTransition)
+    fun runSketch(
+        awaitStage: PreviewStage? = null,
+        awaitTransition: (suspend () -> Unit)? = null,
+        onResult: ((PreviewExecutionResult) -> Unit)? = null
+    ): kotlinx.coroutines.Job {
+        return actionCoordinator.launchAction<PreviewExecutionResult>(
+            kind = ActionKind.RUN_SKETCH,
+            requireEditable = false,
+            requireFlush = true,
+            onResult = { res ->
+                when (res) {
+                    is CoordinatorResult.Success -> onResult?.invoke(res.value)
+                    is CoordinatorResult.Rejected -> onResult?.invoke(PreviewExecutionResult.Rejected(res.reason))
+                    is CoordinatorResult.Cancelled -> onResult?.invoke(PreviewExecutionResult.Cancelled(null, null))
+                    is CoordinatorResult.Superseded -> onResult?.invoke(PreviewExecutionResult.Superseded(null, null))
+                    is CoordinatorResult.Failed -> onResult?.invoke(PreviewExecutionResult.Failed(null, null, res.message, res.cause))
+                }
+            }
+        ) { ctx ->
+            val result = preview.runSketch(awaitTransition = awaitTransition)
+            if (awaitStage != null && result is PreviewExecutionResult.Accepted) {
+                val stageResult = preview.executionCoordinator.awaitStage(result.token, awaitStage)
+                CoordinatorResult.Success(stageResult)
+            } else {
+                CoordinatorResult.Success(result)
+            }
+        }
+    }
+
+    fun openFullPreviewFromEditor() {
+        previewActionsExpanded = false
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        actionCoordinator.launchAction<Unit>(
+            kind = ActionKind.RUN_FULL_PREVIEW,
+            requireEditable = false,
+            requireFlush = true
+        ) { ctx ->
+            if (currentGalleryPresent) return@launchAction CoordinatorResult.Cancelled("Gallery present")
+            if (previewHasChanges && !preview.isLoading) preview.runSketch()
+            showExpandedPreview = true
+            CoordinatorResult.Success(Unit)
+        }
+    }
 
     LaunchedEffect(sessionViewModel.assetPreviewRevision) {
         if (sessionViewModel.assetPreviewRevision > 0) runSketch()
@@ -801,7 +925,17 @@ internal fun EditorScreen(
             manualRotation = manualRotation,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
-            onClick = { workMenuExpanded = true },
+            onClick = {
+                val owner = activeWorkId
+                val activation = sessionViewModel.blockEditorActivationGeneration
+                if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+                    workMenuExpanded = true
+                } else {
+                    editorToolScope.launch {
+                        if (flushOwnedBlockEditor(owner, activation)) workMenuExpanded = true
+                    }
+                }
+            },
             saveLabel = when {
                 workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存内容の競合")
                 workManagementViewModel.operationState == WorkOperationState.FAILED -> uiText("保存失敗")
@@ -1077,22 +1211,41 @@ internal fun EditorScreen(
             },
             onOpenUserGuide = { showUserGuide = true },
             onOpenSettings = {
-                showSettings = true
-                workManagementViewModel.saveCurrentWork(blockUi = false)
+                val owner = activeWorkId
+                val activation = sessionViewModel.blockEditorActivationGeneration
+                if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+                    workManagementViewModel.saveCurrentWork(blockUi = false)
+                    showSettings = true
+                } else {
+                    editorToolScope.launch {
+                        if (flushOwnedBlockEditor(owner, activation)) {
+                            workManagementViewModel.saveCurrentWork(blockUi = false)?.join()
+                            if (sessionViewModel.canApplyBlockAction(owner, activation, requireEditable = false)) showSettings = true
+                        }
+                    }
+                }
             },
             onUndo = { undoEditorChange() },
             onRedo = { redoEditorChange() },
-            onSearch = { editUserWork { searchReplaceViewModel.openSearch(editingValue) } },
+            onSearch = {
+                if (editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value) {
+                    sessionViewModel.blockEditorSearch?.invoke()
+                } else openCodeTool { editUserWork { searchReplaceViewModel.openSearch(editingValue) } }
+            },
             onFormat = {
-                formatEditingFile()
+                openCodeTool { formatEditingFile() }
             },
             onSnippets = {
-                if (editingJavaScript) showSnippets = true
-                else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
+                openCodeTool {
+                    if (editingJavaScript) showSnippets = true
+                    else Toast.makeText(context, uiText("JavaScriptファイルを選択してください"), Toast.LENGTH_LONG).show()
+                }
             },
             onReference = {
-                referenceSearchQuery = currentWordOrSelection()
-                showReferenceDialog = true
+                openCodeTool {
+                    referenceSearchQuery = currentWordOrSelection()
+                    showReferenceDialog = true
+                }
             },
             onSnapshot = { editUserWork { showSnapshotSheet = true } },
             onHistory = { editUserWork { showHistoryDialog = true } },
@@ -1125,12 +1278,10 @@ internal fun EditorScreen(
                 )
             },
             onDelete = { editUserWork { showDeleteDialog = true } },
-            onOpenProjectFiles = { editUserWork { showProjectFilesDialog = true } },
-            onOpenAssets = { editUserWork { focusManager.clearFocus(force = true); showAssets = true } },
-            onOpenRuntime = { editUserWork { showRuntimeDialog = true } },
+            onOpenWorkSettings = { editUserWork { sessionViewModel.showInspectorSheet = true } },
             tweetModeEnabled = sessionViewModel.tweetModeEnabled,
             onToggleTweetMode = { sessionViewModel.tweetModeEnabled = !sessionViewModel.tweetModeEnabled },
-            onOpenMinify = { sessionViewModel.showMinifySheet = true },
+            onOpenMinify = { openCodeTool { sessionViewModel.showMinifySheet = true } },
             textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }
         )
@@ -1353,7 +1504,6 @@ internal fun EditorScreen(
                     onScreenshot = ::showScreenshotOptions,
                     onShareCard = ::sharePreviewCard,
                     onOpenParameters = ::openPreviewParameters,
-                    onOpenInspector = { sessionViewModel.showInspectorSheet = true },
                     onToggleRecording = ::togglePreviewRecording,
                     onCancelCountdown = { cancelRecordingCountdown() },
                     onToggleFullscreen = {
@@ -1514,6 +1664,7 @@ internal fun EditorScreen(
         modifier: Modifier = Modifier
     ) {
         if (sessionViewModel.sampleReadOnly) return
+        if (editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value) return
         com.hikariatelier.app.EditorAccessoryBar(
             editingValue = editingValue,
             compactAccessoryKeys = compactAccessoryKeys,
@@ -1598,7 +1749,6 @@ internal fun EditorScreen(
             activeWorkId = activeWorkId,
             selectedEditorFile = selectedEditorFile,
             onSelectEditorFile = { selectedEditorFile = it },
-            onOpenSnapshotSheet = { showSnapshotSheet = true },
             editingFile = editingFile,
             editingKey = editingKey,
             editingText = editingText,
@@ -1666,6 +1816,29 @@ internal fun EditorScreen(
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
             devicePreviewRatio = devicePreviewRatio,
+            blockLanguage = sampleLanguage,
+            onOpenBlockCode = { start, end ->
+                val currentSource = sessionViewModel.editorValueState.value.text
+                val first = start.coerceIn(0, currentSource.length)
+                val last = end.coerceIn(first, currentSource.length)
+                navigateToSource("sketch.js", 1 + currentSource.take(first).count { it == '\n' }, TextRange(first, last))
+            },
+            onOpenBlockRuntime = { editUserWork { showRuntimeDialog = true } },
+            onBlockUndo = {
+                if (!sessionViewModel.editorInputLocked && !sessionViewModel.sampleReadOnly && !galleryPresent) {
+                    sessionViewModel.undo(sessionViewModel.editorValueState.value)?.let {
+                        sessionViewModel.editorValueState.value = it
+                    }
+                }
+            },
+            onBlockRedo = {
+                if (!sessionViewModel.editorInputLocked && !sessionViewModel.sampleReadOnly && !galleryPresent) {
+                    sessionViewModel.redo(sessionViewModel.editorValueState.value)?.let {
+                        sessionViewModel.editorValueState.value = it
+                    }
+                }
+            },
+            onOpenFullPreview = { openFullPreviewFromEditor() },
             modifier = modifier
         )
     }
@@ -1701,7 +1874,15 @@ internal fun EditorScreen(
                         showSettings = false
                         workGalleryState.changeFolder(SAMPLE_FOLDER)
                         workGalleryState.closeSearch(); workGalleryState.finishSelection()
-                        workMenuExpanded = true
+                        val owner = activeWorkId
+                        val activation = sessionViewModel.blockEditorActivationGeneration
+                        if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+                            workMenuExpanded = true
+                        } else {
+                            editorToolScope.launch {
+                                if (flushOwnedBlockEditor(owner, activation)) workMenuExpanded = true
+                            }
+                        }
                     },
                     onImportFont = { fontPicker.launch(arrayOf("*/*")) },
                     onResetFont = { settingsViewModel.resetFont() },
@@ -1763,7 +1944,11 @@ internal fun EditorScreen(
                     pipTranslucent = sessionViewModel.pipTranslucent,
                     pipMinimized = sessionViewModel.pipMinimized,
                     pipSnapCorner = sessionViewModel.pipSnapCorner,
-                    pipAutoGhosted = sessionViewModel.pipAutoGhosted
+                    pipAutoGhosted = sessionViewModel.pipAutoGhosted,
+                    blockModeFullscreen = editingFile == "sketch.js" &&
+                        sessionViewModel.blockModeState(activeWorkId).value &&
+                        !sessionViewModel.blockSplitView &&
+                        !galleryPresent
                 ),
                 actions = EditorWorkspaceActions(
                     onSplitChanged = { landscapePreviewFraction = it },
@@ -1780,7 +1965,8 @@ internal fun EditorScreen(
                     onPipSnapCornerChanged = { sessionViewModel.pipSnapCorner = it },
                     onPipCanvasTap = { coords, offset ->
                         sessionViewModel.pipCanvasTapHandler?.invoke(coords, offset)
-                    }
+                    },
+                    onExpandPipFullscreen = { openFullPreviewFromEditor() }
                 ),
                 slots = EditorWorkspaceSlots(
                     workBar = { WorkBar() }, landscapeBar = { LandscapeUnifiedBar() },
@@ -1924,7 +2110,7 @@ internal fun EditorScreen(
 
     PreviewMediaSheets(models, preview, mediaActions, editorValue)
 
-    EditorWorkDialogs(models, pendingRevision) { pendingRevision = it }
+    EditorWorkDialogs(models, pendingRevision, dialogCoordinator) { pendingRevision = it }
 
     EditorProjectDialogs(
         models = models,
@@ -1965,17 +2151,54 @@ internal fun EditorScreen(
             work = activeWork,
             autoRunEnabled = sessionViewModel.autoRunEnabled,
             onToggleAutoRun = { sessionViewModel.autoRunEnabled = it },
-            onOpenProjectFilesDialog = { editUserWork { showProjectFilesDialog = true } },
-            onOpenAssetManagerDialog = { editUserWork { focusManager.clearFocus(force = true); showAssets = true } },
-            onOpenRuntimeDialog = { editUserWork { showRuntimeDialog = true } },
-            onOpenAspectRatioDialog = { editUserWork { showAspectRatioDialog = true } },
-            onOpenSnapshotSheet = { editUserWork { showSnapshotSheet = true } },
-            onOpenHistoryDialog = { editUserWork { showHistoryDialog = true } },
-            onOpenTagsDialog = { editUserWork { workManagementViewModel.editingTagsWorkId = activeWork?.id } },
+            onOpenProjectFilesDialog = {
+                editUserWork {
+                    dialogCoordinator.push(WorkDialogDestination.ProjectFiles(activeWorkId, sessionViewModel.blockEditorActivationGeneration))
+                    showProjectFilesDialog = true
+                }
+            },
+            onOpenAssetManagerDialog = {
+                editUserWork {
+                    focusManager.clearFocus(force = true)
+                    dialogCoordinator.push(WorkDialogDestination.AssetManager(activeWorkId, sessionViewModel.blockEditorActivationGeneration))
+                    showAssets = true
+                }
+            },
+            onOpenRuntimeDialog = {
+                editUserWork {
+                    dialogCoordinator.push(WorkDialogDestination.RuntimeSettings(activeWorkId, sessionViewModel.blockEditorActivationGeneration))
+                    showRuntimeDialog = true
+                }
+            },
+            onOpenAspectRatioDialog = {
+                editUserWork {
+                    dialogCoordinator.push(WorkDialogDestination.AspectRatio(activeWorkId, sessionViewModel.blockEditorActivationGeneration))
+                    showAspectRatioDialog = true
+                }
+            },
+            onOpenSnapshotSheet = {
+                editUserWork {
+                    dialogCoordinator.push(WorkDialogDestination.HistoryAndSnapshots(activeWorkId, sessionViewModel.blockEditorActivationGeneration, initialTab = 2))
+                    showSnapshotSheet = true
+                }
+            },
+            onOpenHistoryDialog = {
+                editUserWork {
+                    dialogCoordinator.push(WorkDialogDestination.HistoryAndSnapshots(activeWorkId, sessionViewModel.blockEditorActivationGeneration, initialTab = 1))
+                    showHistoryDialog = true
+                }
+            },
+            onOpenTagsDialog = {
+                editUserWork {
+                    dialogCoordinator.push(WorkDialogDestination.Tags(activeWorkId, sessionViewModel.blockEditorActivationGeneration))
+                    workManagementViewModel.editingTagsWorkId = activeWork?.id
+                }
+            },
             onSelectAspectRatio = { ratio -> updateActiveWorkPreviewRatio(ratio) },
             onDismiss = { sessionViewModel.showInspectorSheet = false },
             codeFontFamily = codeFontFamily,
-            textTranslator = { s, args -> uiText(s, *args) }
+            textTranslator = { s, args -> uiText(s, *args) },
+            currentAspectRatio = workManagementViewModel.previewRatio(activeWork)
         )
     }
 

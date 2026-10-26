@@ -156,5 +156,5 @@ internal fun completionHelp(name: String, text: (String) -> String): String {
         "text" -> "(str, x, y)" to "文字を描画"
         else -> return name
     }
-    return name + detail.first + "\n" + text(detail.second)
+    return name + detail.first + " · " + text(detail.second)
 }

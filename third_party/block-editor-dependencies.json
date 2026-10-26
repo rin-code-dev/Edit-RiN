@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Offline block editor runtime and JavaScript parser. Vendored distribution files are unmodified. No user source is executed by this editor.",
+  "dependencies": [
+    {
+      "name": "blockly",
+      "version": "13.4.0",
+      "license": "Apache-2.0",
+      "homepage": "https://blockly.com",
+      "repository": "https://github.com/RaspberryPiFoundation/blockly",
+      "distribution": "https://registry.npmjs.org/blockly/-/blockly-13.4.0.tgz",
+      "integrity": "sha512-cWZJV5nocL+VWOG9Vfm6j8shdOLGyvKkyoGOS2bk9u6PKb4qqLp50NeL8YoNMTEi7fHmY37eBYT1yC6Y7/yZ7w==",
+      "source": "https://codeload.github.com/RaspberryPiFoundation/blockly/tar.gz/refs/tags/blockly-v13.4.0",
+      "licenseFile": "third_party/licenses/blockly-Apache-2.0.txt",
+      "sourceTag": "blockly-v13.4.0",
+      "sourceCommit": "f88a57024f78465dcf75294c4dc450e550fb7fbf"
+    },
+    {
+      "name": "acorn",
+      "version": "8.19.0",
+      "license": "MIT",
+      "repository": "https://github.com/acornjs/acorn",
+      "distribution": "https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz",
+      "integrity": "sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==",
+      "source": "https://codeload.github.com/acornjs/acorn/tar.gz/refs/tags/8.19.0",
+      "licenseFile": "third_party/licenses/acorn-MIT.txt",
+      "sourceTag": "8.19.0",
+      "sourceCommit": "0e0ece7cc7202624d4aca531be4b515b0114b5d0",
+      "authorsFile": "third_party/licenses/acorn-AUTHORS.txt"
+    }
+  ],
+  "files": [
+    {
+      "path": "www/blocks/vendor/acorn.js",
+      "sha256": "b95392d79457d0357555c5ed3e56302d074b92dff119bcf3b44179500b10e9df",
+      "size": 246643
+    },
+    {
+      "path": "www/blocks/vendor/blockly.js",
+      "sha256": "cc761aa447e0d4990e6f7a22a5e173d3a67d7d2775960ef10f80d647e6fe4841",
+      "size": 640950
+    },
+    {
+      "path": "www/blocks/vendor/media/1x1.gif",
+      "sha256": "a1d88b2c952b790f5f23473c63ef99473327d02e11ebe174799ad912db08f629",
+      "size": 43
+    },
+    {
+      "path": "www/blocks/vendor/media/click.mp3",
+      "sha256": "1048f2539ac47e4eaa4bd1688968c0d7b9956bd6fef507644ee5131924c6517c",
+      "size": 2304
+    },
+    {
+      "path": "www/blocks/vendor/media/delete-icon.svg",
+      "sha256": "3eee02b06f476ce746566808178543389e53cd4e9d7fd32b69e329eff4fc71ef",
+      "size": 315
+    },
+    {
+      "path": "www/blocks/vendor/media/delete.mp3",
+      "sha256": "6ea0afab062cb3ba5409dc65d7a9fdf85d602b1870d231d80bdf3cc5b32432b6",
+      "size": 3123
+    },
+    {
+      "path": "www/blocks/vendor/media/disconnect.mp3",
+      "sha256": "849465a8968836ab5b24b68a7289ee76ca1a6a50ba87a295a32efe1e507e3451",
+      "size": 1586
+    },
+    {
+      "path": "www/blocks/vendor/media/drop.mp3",
+      "sha256": "6c76cac85b42494683549938729f9994eec9ce03a940e5b4e1ef18279dea01ff",
+      "size": 5434
+    },
+    {
+      "path": "www/blocks/vendor/media/dropdown-arrow.svg",
+      "sha256": "bc3873b086b25a01c417cb3b5fe61fd7eef360b8f7c85c2c7f7b802a2626faf9",
+      "size": 569
+    },
+    {
+      "path": "www/blocks/vendor/media/foldout-icon.svg",
+      "sha256": "0ac7478b56f5e5cc583c26710cb7ee5edcedb563cde65cd2385f4dd3e9e08c64",
+      "size": 150
+    },
+    {
+      "path": "www/blocks/vendor/media/handclosed.cur",
+      "sha256": "4a1637e16f33e1b02f96f699ada695edededfd089530372126d375ad9ed2f0a5",
+      "size": 326
+    },
+    {
+      "path": "www/blocks/vendor/media/handdelete.cur",
+      "sha256": "e53ef200d76fef617bd2e307a100d778834ad49784f80c1abc6da547e50b8040",
+      "size": 766
+    },
+    {
+      "path": "www/blocks/vendor/media/handopen.cur",
+      "sha256": "d2ec9a81d9a76b0f64b7168e5f05ee660ffb6ba7e35695caaf9851e6b01a04fd",
+      "size": 198
+    },
+    {
+      "path": "www/blocks/vendor/media/pilcrow.png",
+      "sha256": "4e4aa37ce0c162b0239203e538a7ae8eee706554514ff611cfb3a94baaa66167",
+      "size": 1010
+    },
+    {
+      "path": "www/blocks/vendor/media/quote0.png",
+      "sha256": "a06f7a05d9c86851266e55357090d3af37ff24e116258c94d52c4f436c614c7c",
+      "size": 771
+    },
+    {
+      "path": "www/blocks/vendor/media/quote1.png",
+      "sha256": "56c52fc75cf7d2926d7502aaa7e95efb46c229aa266306d932795325722aba35",
+      "size": 738
+    },
+    {
+      "path": "www/blocks/vendor/media/resize-handle.svg",
+      "sha256": "c95d07b3fb3aaa088e6665061b01952e7ea9dda462b7032a85e095bf8a12855b",
+      "size": 218
+    },
+    {
+      "path": "www/blocks/vendor/media/sprites.svg",
+      "sha256": "862de0ee081fa9baf504e673736d7446439c15246452258cab964a82566ef40f",
+      "size": 1775
+    },
+    {
+      "path": "www/blocks/vendor/msg/en.js",
+      "sha256": "d7d8d619120f722a204365f3d7794fbc19a1994df30730770eee7ce719755088",
+      "size": 49746
+    },
+    {
+      "path": "www/blocks/vendor/msg/ja.js",
+      "sha256": "81647ef6b769cf7b3516c142ac08175dc06b570c1050fdb07e8afc290613dc05",
+      "size": 56776
+    },
+    {
+      "path": "www/blocks/vendor/msg/zh-hans.js",
+      "sha256": "6ce5de06e2e86a453b26cfe3fb036942c7ed5b9bceeb4f046512ca8811616dbd",
+      "size": 51814
+    },
+    {
+      "path": "third_party/licenses/acorn-AUTHORS.txt",
+      "sha256": "509b2d8f739a34ab8cf91c5f75653af633b421ca8913162ccad5271277e68c38",
+      "size": 1826
+    },
+    {
+      "path": "third_party/licenses/acorn-MIT.txt",
+      "sha256": "76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7",
+      "size": 1099
+    },
+    {
+      "path": "third_party/licenses/blockly-Apache-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "size": 11358
+    },
+    {
+      "path": "third_party/sources/acorn-8.19.0-full-source.tar.gz",
+      "sha256": "193aef4eaf143ca8e0ef954a252ea5eaeee3c188df43b3816e33d7bd04e7b63c",
+      "size": 1273781
+    },
+    {
+      "path": "third_party/sources/acorn-8.19.0-source.tgz",
+      "sha256": "c6fad21ffa1f2ba20338bf1dde1de911c2093c1aaf7b3af17c477661bd3bfaaf",
+      "size": 134282
+    },
+    {
+      "path": "third_party/sources/blockly-13.4.0-full-source.tar.gz",
+      "sha256": "b2456208c96ecf3d4572b2facd74c83f7f19c9815bc71ced757da69991da9b85",
+      "size": 37229106
+    },
+    {
+      "path": "third_party/sources/blockly-13.4.0-source.tgz",
+      "sha256": "9c191ff35384acdc334cfd3757aeafcf4c74e3021b3a10046346338ec7fd1f9c",
+      "size": 3359243
+    }
+  ]
+}

@@ -28,7 +28,8 @@ internal fun mergeConcurrentWorks(base: List<Work>, local: List<Work>, remote: L
                         files = it.files.toMutableMap(), assets = it.assets.toMap(), revisions = it.revisions.toMutableList(),
                         previewAspectRatio = it.previewAspectRatio, p5Version = it.p5Version,
                         p5SoundEnabled = it.p5SoundEnabled, libraries = it.libraries.toMap(),
-                        parameterValues = it.parameterValues.toMap(), isPinned = it.isPinned, tags = it.tags.toList(), folderName = it.folderName)
+                        parameterValues = it.parameterValues.toMap(), isPinned = it.isPinned, tags = it.tags.toList(), folderName = it.folderName,
+                        blockEditorState = it.blockEditorState)
                     merged += copy
                     copies++
                     if (selected == id) selected = copy.id

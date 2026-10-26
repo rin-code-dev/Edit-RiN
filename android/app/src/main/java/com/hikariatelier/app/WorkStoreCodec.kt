@@ -9,6 +9,7 @@ internal fun serializeWorkJson(work: Work): JSONObject {
         .put("id", work.id)
         .put("title", work.title)
         .put("code", work.code)
+        .apply { work.blockEditorState?.let { put("blockEditorState", it) } }
         .put("files", JSONObject(work.files as Map<*, *>))
         .put("assets", JSONObject().apply {
             work.assets.forEach { (name, asset) ->
@@ -70,6 +71,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
         val id = item.getString("id")
         require(id.isNotBlank() && ids.add(id)) { "作品IDが空、または重複しています" }
         require(!item.has("files") || item.get("files") is JSONObject)
+        require(!item.has("blockEditorState") || item.isNull("blockEditorState") || item.get("blockEditorState") is String)
         require(!item.has("revisions") || item.get("revisions") is JSONArray)
         require(!item.has("assets") || item.get("assets") is JSONObject)
         val assetMap = item.optJSONObject("assets")?.let { assets ->
@@ -85,6 +87,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
             title = item.getString("title"),
             assets = assetMap,
             code = item.getString("code"),
+            blockEditorState = if (item.has("blockEditorState") && !item.isNull("blockEditorState")) item.getString("blockEditorState") else null,
             files = item.optJSONObject("files")?.let { files ->
                 files.keys().asSequence().associateWith { files.getString(it) }.toMutableMap()
             } ?: mutableMapOf(),

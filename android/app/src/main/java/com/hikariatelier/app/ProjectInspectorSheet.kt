@@ -1,7 +1,9 @@
 package com.hikariatelier.app
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,9 +46,11 @@ internal fun ProjectInspectorSheet(
     onSelectAspectRatio: (String) -> Unit,
     onDismiss: () -> Unit,
     codeFontFamily: FontFamily,
-    textTranslator: (String, Array<out Any?>) -> String
+    textTranslator: (String, Array<out Any?>) -> String,
+    currentAspectRatio: String = work?.previewAspectRatio ?: "1:1",
+    initialTab: Int = 0
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(InspectorTab.FILES_AND_ASSETS) }
+    var selectedTab by rememberSaveable { mutableStateOf(InspectorTab.entries.getOrElse(initialTab) { InspectorTab.FILES_AND_ASSETS }) }
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg args: Any?): String = textTranslator(source, args)
 
@@ -188,17 +192,19 @@ internal fun ProjectInspectorSheet(
                             color = colors.onSurfaceVariant
                         )
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            listOf("1:1", "4:3", "16:9", "9:16", "device").forEach { ratio ->
-                                val selected = work?.previewAspectRatio == ratio
+                            PREVIEW_ASPECT_RATIOS.forEach { ratio ->
+                                val selected = currentAspectRatio == ratio
                                 FilterChip(
                                     selected = selected,
                                     onClick = { onSelectAspectRatio(ratio) },
                                     label = {
                                         Text(
-                                            text = if (ratio == "device") uiText("端末") else ratio,
+                                            text = previewAspectRatioLabel(ratio) { uiText(it) },
                                             fontFamily = codeFontFamily,
                                             fontSize = 11.sp
                                         )

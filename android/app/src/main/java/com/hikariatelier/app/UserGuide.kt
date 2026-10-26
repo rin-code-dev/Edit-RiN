@@ -21,11 +21,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -74,7 +79,8 @@ internal val userGuideSections by lazy { listOf(
             "Tap the code to edit. Undo and Redo are available. The editing toolbar provides navigation keys, symbols, and code snippets.",
             "Tap the triangle beside a line number to fold or expand a code block. Folding changes the display without deleting any source code.",
             "With code wrapping off, long source lines scroll horizontally. Settings → Editor → Wrap code at screen width enables wrapping without changing source line breaks.",
-            "Use search to find text, formatting to organize supported code, and the p5.js reference to inspect APIs. Run changes when the preview is outdated; use console errors to jump to their source."
+            "Use search to find text, formatting to organize supported code, and the p5.js reference to inspect APIs. Run changes when the preview is outdated; use console errors to jump to their source.",
+            "In sketch.js, use the document bar to switch between Code and Blocks. The block mode visualizes JavaScript through blocks; your code remains the single source of truth."
         )
     ),
     GuideSection(
@@ -88,6 +94,18 @@ internal val userGuideSections by lazy { listOf(
             "Declare a number, color, or boolean using a // @rin comment, or use Add parameter in the panel. Read the value through rinParams.<name>.",
             "Move sliders or choose colors to update the artwork. Number controls also have minus and plus buttons for small adjustments.",
             "Reset individual controls or all controls to code defaults. Parameter values belong to each work and are included when copying or backing it up."
+        )
+    ),
+    GuideSection(
+        title = "Build with blocks",
+        summary = "Assemble and edit JavaScript visually while keeping your source code intact.",
+        iconRes = R.drawable.ic_folder_code,
+        tag = "Blocks",
+        steps = listOf(
+            "In sketch.js, use the document bar to switch the editing mode from Code to Blocks. The workspace opens full-screen with a floating PiP preview so you have plenty of room to build.",
+            "Tap Add block in the bottom floating dock to open the half-sheet palette. Check the Where to insert bar at the top of the sheet, then tap any block card to insert it in one tap.",
+            "Tap a color swatch or value capsule on a block to edit colors and numbers directly in place. Tap a block to open its action bar for duplicating, deleting, or inspecting its JavaScript.",
+            "Tap the full-screen preview button in the top document bar or PiP header to test your artwork at full size, or choose Back to split view from More actions when you want the main preview alongside the blocks."
         )
     ),
     GuideSection(
@@ -108,8 +126,8 @@ internal val userGuideSections by lazy { listOf(
         iconRes = R.drawable.ic_history,
         tag = "Save",
         steps = listOf(
-            "Save and History share one control. Save stores all work files; History opens Snapshots and Revert to saved. Auto-save when leaving the app is available in Settings.",
-            "In History, choose Snapshots to keep earlier versions, add names or notes, inspect differences, or restore a version. Revert to saved returns to your last save; check the confirmation before discarding unsaved edits.",
+            "Save and History share one control. Save stores all work files; History opens the unified history sheet with auto-save revisions and manual snapshots. Auto-save when leaving the app is available in Settings.",
+            "In History, filter between revisions and snapshots, preview the code to restore and check whether it matches the current code, add names or notes, or restore an earlier version. Check the confirmation before replacing unsaved edits.",
             "Draft recovery can restore compatible unsaved edits or offer a recovery prompt. Confirm the work and content before applying a recovered draft.",
             "If saving fails, keep the current editor content and use the retry or recovery options shown. Avoid clearing app data while unsaved work is waiting."
         )
@@ -172,19 +190,48 @@ internal fun UserGuideScreen(
         scope.launch { contentState.scrollToItem(0) }
     }
     val showBack = !landscape && current != GUIDE_LIST
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    // The guide opens in a dialog window, which has no enter animation of its own.
+    val enter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { enter.animateTo(1f, tween(180)) }
+    Surface(
+        Modifier.fillMaxSize().graphicsLayer { alpha = enter.value },
+        color = MaterialTheme.colorScheme.background
+    ) {
         Column(Modifier.fillMaxSize().padding(WindowInsets.safeDrawing.asPaddingValues())) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // A sideways phone is only ~360dp tall: a two-line headline would take a fifth of it.
+            val compactHeight = configuration.screenHeightDp < 480
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (compactHeight) 0.dp else 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (showBack) {
-                    IconButton({ selected = GUIDE_LIST }) { Icon(painterResource(R.drawable.ic_back), t("目次へ戻る", "Back to contents", "返回目录")) }
+                    IconButton({ selected = GUIDE_LIST }, Modifier.then(if (compactHeight) Modifier.size(40.dp) else Modifier)) {
+                        Icon(painterResource(R.drawable.ic_back), t("目次へ戻る", "Back to contents", "返回目录"))
+                    }
                 } else {
                     Spacer(Modifier.width(8.dp))
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(t("使い方ガイド", "User Guide", "使用指南"), style = MaterialTheme.typography.headlineSmall)
-                    Text(t("操作を試して、使い方を確かめる", "Practice controls and explore each feature", "试用操作，了解各项功能"), style = MaterialTheme.typography.bodySmall)
+                if (compactHeight) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(t("使い方ガイド", "User Guide", "使用指南"), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            t("操作を試して、使い方を確かめる", "Practice controls and explore each feature", "试用操作，了解各项功能"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Column(Modifier.weight(1f)) {
+                        Text(t("使い方ガイド", "User Guide", "使用指南"), style = MaterialTheme.typography.headlineSmall)
+                        Text(t("操作を試して、使い方を確かめる", "Practice controls and explore each feature", "试用操作，了解各项功能"), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                IconButton(onClose) { Icon(painterResource(R.drawable.ic_close), t("閉じる", "Close", "关闭")) }
+                IconButton(onClose, Modifier.then(if (compactHeight) Modifier.size(40.dp) else Modifier)) {
+                    Icon(painterResource(R.drawable.ic_close), t("閉じる", "Close", "关闭"))
+                }
             }
             HorizontalDivider()
             if (landscape) {
@@ -197,10 +244,15 @@ internal fun UserGuideScreen(
                         GuideBody(language, sections, current, contentState, ::open, maxContentWidth = 720)
                     }
                 }
-            } else if (current == GUIDE_LIST) {
-                GuideContents(language, sections, current, query, { query = it }, ::open, onStartPracticeTour)
             } else {
-                GuideBody(language, sections, current, contentState, ::open, maxContentWidth = 720)
+                // Contents <-> chapter: a short cross-fade instead of a hard cut.
+                Crossfade(targetState = current == GUIDE_LIST, animationSpec = tween(160), label = "guidePane") { showList ->
+                    if (showList) {
+                        GuideContents(language, sections, current, query, { query = it }, ::open, onStartPracticeTour)
+                    } else {
+                        GuideBody(language, sections, current, contentState, ::open, maxContentWidth = 720)
+                    }
+                }
             }
         }
     }
@@ -305,11 +357,13 @@ private fun GuideBody(
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     val context = LocalContext.current
+    val compactHeight = LocalConfiguration.current.screenHeightDp < 480
+    val headingStyle = if (compactHeight) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall
     LazyColumn(
         state = state,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(if (compactHeight) 12.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compactHeight) 12.dp else 16.dp)
     ) {
         if (current == GUIDE_PRACTICE) {
             item { Box(Modifier.widthIn(max = maxContentWidth.dp)) { GuideQuickStart(language) } }
@@ -323,9 +377,12 @@ private fun GuideBody(
             val section = sections[current]
             item(key = "chapter-$current") {
                 Column(Modifier.widthIn(max = maxContentWidth.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(section.title, style = MaterialTheme.typography.headlineSmall)
+                    Text(section.title, style = headingStyle)
                     Text(section.summary, style = MaterialTheme.typography.bodyLarge)
-                    if (guideHighlightedControls(section.iconRes).isNotEmpty()) {
+                    if (section.iconRes == R.drawable.ic_folder_code) {
+                        Text(t("ここで操作を試せます。変更は練習用の画面だけに反映されます。", "Try the controls here. Changes only affect this practice screen.", "在这里试用操作，修改仅影响练习画面。"), style = MaterialTheme.typography.bodySmall)
+                        GuideBlockModeIllustration(language)
+                    } else if (guideHighlightedControls(section.iconRes).isNotEmpty()) {
                         Text(t("ここで操作を試せます。変更は練習用の画面だけに反映されます。", "Try the controls here. Changes only affect this practice screen.", "在这里试用操作，修改仅影响练习画面。"), style = MaterialTheme.typography.bodySmall)
                         GuideControlIllustration(section.iconRes, language)
                     }

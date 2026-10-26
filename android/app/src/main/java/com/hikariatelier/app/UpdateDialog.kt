@@ -37,13 +37,14 @@ internal data class DisplayHighlight(val iconRes: Int, val title: String, val de
 internal fun resolveHighlightIcon(title: String, desc: String): Int {
     val text = "$title $desc".lowercase(Locale.ROOT)
     return when {
-        text.contains("param") || text.contains("slider") || text.contains("パラメータ") || text.contains("スライダー") -> R.drawable.ic_tune
+        text.contains("block") || text.contains("ブロック") || text.contains("积木") -> R.drawable.ic_folder_code
+        text.contains("param") || text.contains("slider") || text.contains("パラメータ") || text.contains("スライダー") || text.contains("設定") || text.contains("inspector") || text.contains("インスペクター") -> R.drawable.ic_tune
         text.contains("tweet") || text.contains("つぶやき") || text.contains("golf") || text.contains("短縮") || text.contains("圧縮") || text.contains("share") || text.contains("共有") -> R.drawable.ic_share_card
         text.contains("pip") || text.contains("window") || text.contains("小窓") || text.contains("浮遊") || text.contains("ゴースト") -> R.drawable.ic_pip_opacity
         text.contains("sound") || text.contains("audio") || text.contains("音声") || text.contains("音") -> R.drawable.ic_play
         text.contains("asset") || text.contains("image") || text.contains("素材") || text.contains("画像") -> R.drawable.ic_assets
         text.contains("tour") || text.contains("guide") || text.contains("ツアー") || text.contains("ガイド") || text.contains("入門") -> R.drawable.ic_help
-        text.contains("history") || text.contains("undo") || text.contains("履歴") -> R.drawable.ic_history
+        text.contains("history") || text.contains("undo") || text.contains("snapshot") || text.contains("履歴") || text.contains("スナップショット") -> R.drawable.ic_history
         text.contains("watch") || text.contains("バッジ") || text.contains("診断") || text.contains("変数") -> R.drawable.ic_quick_fix
         else -> R.drawable.ic_code
     }

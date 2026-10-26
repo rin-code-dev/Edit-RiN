@@ -101,6 +101,7 @@ internal class PreviewController(
         }
     }
     private val downloads = ViewModelProvider(activity)[SketchDownloadsViewModel::class.java]
+    val executionCoordinator = PreviewExecutionCoordinator()
     private val browserFeatures = PreviewBrowserFeatures(
         activity,
         currentOwner = { session.assets.token.takeIf { !disposed && session.isCurrent(it) } },
@@ -177,12 +178,12 @@ internal class PreviewController(
         supportingFiles: Map<String, String> = currentWork()?.files.orEmpty(),
         sourceAssets: Map<String, ProjectAsset> = currentWork()?.assets.orEmpty(),
         awaitTransition: (suspend () -> Unit)? = null
-    ) {
-        if (disposed) return
+    ): PreviewExecutionResult {
+        if (disposed) return PreviewExecutionResult.Rejected("Preview controller is disposed")
         val recording = models.recording
         if (recording.isPreviewRecording || recording.isRecordingSaving || recording.pendingRecordingFormat != null) {
             Toast.makeText(activity, text("録画を停止してから再実行してください"), Toast.LENGTH_SHORT).show()
-            return
+            return PreviewExecutionResult.Rejected(text("録画を停止してから再実行してください"))
         }
         runCatching { webView?.evaluateJavascript("(window.__editRinDisposeInternal || window.rinDispose)?.()", null) }
         transfer.abort()
@@ -210,6 +211,7 @@ internal class PreviewController(
             work?.let { models.works.parameterValues(it) }.orEmpty()
         )
         session.request(input.token)
+        executionCoordinator.registerRequest(input.token, input.workId)
         beginLoading(input.workId, input.token)
         isPaused = false
         isError = false
@@ -235,13 +237,17 @@ internal class PreviewController(
                 updateSensorPlayback()
                 webView?.loadUrl(previewUrl(preparedRun.assets)) ?: run { generation++ }
             } catch (cancelled: CancellationException) {
+                executionCoordinator.notifyCancelled(input.token)
                 throw cancelled
             } catch (error: Exception) {
                 if (!disposed && session.isRequested(input.token)) {
-                    append(ConsoleLevel.ERROR, error.message ?: text("プレビューを準備できませんでした"))
+                    val msg = error.message ?: text("プレビューを準備できませんでした")
+                    executionCoordinator.notifyError(input.token, msg, error)
+                    append(ConsoleLevel.ERROR, msg)
                 }
             }
         }
+        return PreviewExecutionResult.Accepted(input.token, input.workId)
     }
 
     private fun setupWebMessagePort(view: WebView, token: String) {
@@ -389,6 +395,7 @@ internal class PreviewController(
         if (disposed || !session.isCurrent(token) || isError) return
         loadingFallbackJob?.cancel()
         isLoading = false
+        executionCoordinator.notifyVisualReady(token)
         schedulePassThroughThumbnailCapture(token)
     }
 
@@ -550,6 +557,7 @@ internal class PreviewController(
     fun close() {
         if (disposed) return
         disposed = true
+        executionCoordinator.notifyDisposed()
         performance.close()
         images.close()
         sensors.destroy()
@@ -589,6 +597,7 @@ internal class PreviewController(
         @JavascriptInterface
         fun onPreviewReady(token: String) {
             onMain(token) {
+                executionCoordinator.notifyRuntimeReady(token)
                 webView?.let { setupWebMessagePort(it, token) }
                 if (!isError && isLoading) {
                     performance.measurements.record(

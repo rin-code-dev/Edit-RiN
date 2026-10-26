@@ -17,13 +17,13 @@ private data class SavedWork(
     val assets: Map<String, ProjectAsset>, val revisions: List<WorkRevision>,
     val ratio: String, val runtime: String, val sound: Boolean, val libraries: Map<String, String>,
     val parameters: Map<String, String>, val createdAt: Long, val updatedAt: Long,
-    val pinned: Boolean, val tags: List<String>, val folder: String
+    val pinned: Boolean, val tags: List<String>, val folder: String, val blockEditorState: String?
 ) {
     companion object {
         fun of(work: Work) = SavedWork(work.id, work.title, work.code, work.files.toMap(), work.assets.toMap(),
             work.revisions.takeLast(3), work.previewAspectRatio, work.p5Version, work.p5SoundEnabled,
             work.libraries.toMap(), work.parameterValues.toMap(), work.createdAt, work.updatedAt,
-            work.isPinned, work.tags.toList(), work.folderName)
+            work.isPinned, work.tags.toList(), work.folderName, work.blockEditorState)
     }
 }
 
@@ -189,6 +189,7 @@ internal class SplitWorkStore(
         if (incoming.p5Version != base.runtime) p5Version = incoming.p5Version
         if (incoming.p5SoundEnabled != base.sound) p5SoundEnabled = incoming.p5SoundEnabled
         if (incoming.code != base.code) code = incoming.code
+        if (incoming.blockEditorState != base.blockEditorState) blockEditorState = incoming.blockEditorState
         if (incoming.files.toMap() != base.files) { files.clear(); files.putAll(incoming.files) }
         if (incoming.assets.toMap() != base.assets) { assets.clear(); assets.putAll(incoming.assets) }
         if (incoming.revisions.takeLast(3) != base.revisions) { revisions.clear(); revisions.addAll(incoming.revisions) }

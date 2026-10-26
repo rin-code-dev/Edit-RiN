@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=3,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; worker-src 'self'; connect-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
+  <title>Edit:RiN · Blocks</title>
+  <link rel="stylesheet" href="editor.css">
+  <script defer src="vendor/blockly.js"></script>
+  <script defer src="catalogue.js"></script>
+  <script defer src="presentation.js"></script>
+  <script defer src="chrome.js"></script>
+  <script defer src="editor.js"></script>
+</head>
+<body>
+  <!-- Icons mirror the app's vector drawables (24dp viewport, 1.65 stroke). -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-add" viewBox="0 0 24 24"><path d="M12 4V20 M4 12H20"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M8 4L3 9L8 14 M3 9H14Q21 9 21 15Q21 20 15 20H12"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M16 4L21 9L16 14 M21 9H10Q3 9 3 15Q3 20 9 20H12"/></symbol>
+    <symbol id="i-fullscreen" viewBox="0 0 24 24"><path d="M9 3H3V9 M15 3H21V9 M3 15V21H9 M21 15V21H15"/></symbol>
+    <symbol id="i-split" viewBox="0 0 24 24"><path d="M3 9H9V3 M21 9H15V3 M9 21V15H3 M15 21V15H21"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M3 5H21C21.55 5 22 5.45 22 6V18C22 18.55 21.55 19 21 19H3C2.45 19 2 18.55 2 18V6C2 5.45 2.45 5 3 5Z M7 9H9V7 M15 17H17V15"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M12 5.2V5.21 M12 12V12.01 M12 18.8V18.81" stroke-width="2.6"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><path d="M2.8,12 A9.2,9.2 0 1,0 21.2,12 A9.2,9.2 0 1,0 2.8,12 Z M9.1,9 A2.9,2.9 0 0,1 12,6.1 A2.9,2.9 0 0,1 14.9,9 C14.9,10.6 13.5,11.5 12,12.5 L12,13.5"/><path d="M12,17.2 L12.01,17.2" stroke-width="2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12,15C13.66,15 15,13.66 15,12C15,10.34 13.66,9 12,9C10.34,9 9,10.34 9,12C9,13.66 10.34,15 12,15Z M19.4,15a1.65,1.65 0 0,0 0.33,1.82l0.06,0.06a2,2 0 0,1 0,2.83 2,2 0 0,1 -2.830,0l-0.06,-0.06a1.65,1.65 0 0,0 -1.82,-0.33 1.65,1.65 0 0,0 -1,1.51V21a2,2 0 0,1 -2,2 2,2 0 0,1 -2,-2v-0.09A1.65,1.65 0 0,0 9,19.4a1.65,1.65 0 0,0 -1.82,0.33l-0.06,0.06a2,2 0 0,1 -2.83,0 2,2 0 0,1 0,-2.83l0.06,-0.06a1.65,1.65 0 0,0 0.33,-1.82 1.65,1.65 0 0,0 -1.51,-1H3a2,2 0 0,1 -2,-2 2,2 0 0,1 2,-2h0.09A1.65,1.65 0 0,0 4.6,9a1.65,1.65 0 0,0 -0.33,-1.82l-0.06,-0.06a2,2 0 0,1 0,-2.83 2,2 0 0,1 2.83,0l0.06,0.06a1.65,1.65 0 0,0 1.82,0.33H9a1.65,1.65 0 0,0 1,-1.51V3a2,2 0 0,1 2,-2 2,2 0 0,1 2,2v0.09a1.65,1.65 0 0,0 1,1.51 1.65,1.65 0 0,0 1.82,-0.33l0.06,-0.06a2,2 0 0,1 2.83,0 2,2 0 0,1 0,2.83l-0.06,0.06a1.65,1.65 0 0,0 -0.33,1.82V9a1.65,1.65 0 0,0 1.51,1H21a2,2 0 0,1 2,2 2,2 0 0,1 -2,2h-0.09a1.65,1.65 0 0,0 -1.51,1z"/></symbol>
+    <symbol id="i-snippet" viewBox="0 0 24 24"><path d="M8 3H5V9L2 12L5 15V21H8 M16 3H19V9L22 12L19 15V21H16 M10 12H14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><path d="M3.5,10 A6.5,6.5 0,1 0 16.5,10 A6.5,6.5 0,1 0 3.5,10 Z M15 15L21 21"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M5 5L19 19 M19 5L5 19"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M7 6L2 12L7 18 M17 6L22 12L17 18 M14 3L10 21"/></symbol>
+    <symbol id="i-duplicate" viewBox="0 0 24 24"><path d="M8 7V3H19L21 5V16H17 M3 8H13L16 11V21H3Z"/></symbol>
+    <symbol id="i-delete" viewBox="0 0 24 24"><path d="M3 6H21 M9 6V3H15V6 M5 9L6 21H18L19 9 M10 11V17 M14 11V17"/></symbol>
+    <symbol id="i-items" viewBox="0 0 24 24"><path d="M9 5H21 M9 12H21 M9 19H21 M3.5 5H4.5 M3.5 12H4.5 M3.5 19H4.5"/></symbol>
+    <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 21V14 M4 10V3 M12 21V12 M12 8V3 M20 21V16 M20 12V3 M1 14H7 M9 8H15 M17 16H23"/></symbol>
+    <symbol id="i-rename" viewBox="0 0 24 24"><path d="M4 18L5 13L15 3L20 8L10 18Z M12 6L17 11 M4 21H20"/></symbol>
+    <symbol id="i-fold" viewBox="0 0 24 24"><path d="M3 3H21 M3 21H21 M8 6L12 10L16 6 M8 18L12 14L16 18"/></symbol>
+    <symbol id="i-unfold" viewBox="0 0 24 24"><path d="M3 3H21 M3 21H21 M8 10L12 6L16 10 M8 14L12 18L16 14"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3A9 9 0 0 0 12 21C13.2 21 13.8 20.2 13.8 19.3C13.8 18.2 13 17.8 13 16.8C13 15.8 13.8 15 14.8 15H17A4 4 0 0 0 21 11C21 6.6 17 3 12 3Z M7.5 11.5V11.51 M10 7.5V7.51 M14.5 7.5V7.51" /></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12H19"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5L10 17.5L19 7"/></symbol>
+    <symbol id="i-zoom-reset" viewBox="0 0 24 24"><path d="M3.5,10 A6.5,6.5 0,1 0 16.5,10 A6.5,6.5 0,1 0 3.5,10 Z M15 15L21 21 M7.5 10H12.5"/></symbol>
+    <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8V12 M12 16V16.01" stroke-width="2.2"/></symbol>
+    <symbol id="i-display" viewBox="0 0 24 24"><path d="M3 5H21V18H3Z M8 22H16 M12 18V22 M7 14L10 8L13 14 M8 12H12 M16 9H18 M17 8V14"/></symbol>
+  </svg>
+  <main id="editor" aria-label="Block editor">
+    <header id="tools">
+      <button id="paletteToggle" class="tonal" type="button" aria-expanded="false" aria-controls="palette"><svg class="icon"><use href="#i-add"/></svg><span class="label" id="paletteToggleLabel">追加</span></button>
+      <button id="undo" class="icon-button" type="button" aria-label="Undo"><svg class="icon"><use href="#i-undo"/></svg></button>
+      <button id="redo" class="icon-button" type="button" aria-label="Redo"><svg class="icon"><use href="#i-redo"/></svg></button>
+      <span class="spacer"></span>
+      <button id="workspaceSearch" class="icon-button" type="button" aria-label="作品内を探す"><svg class="icon"><use href="#i-search"/></svg></button>
+      <button id="codePreview" class="icon-button secondary-tool" type="button" aria-label="コードプレビュー" title="コードプレビュー"><svg class="icon"><use href="#i-code"/></svg></button>
+      <button id="fit" class="icon-button secondary-tool" type="button" aria-label="Fit blocks"><svg class="icon"><use href="#i-fit"/></svg></button>
+      <button id="fullscreen" class="icon-button" type="button" aria-pressed="false"><svg class="icon"><use href="#i-fullscreen"/></svg><span class="sr-only" id="fullscreenLabel">全画面</span></button>
+      <button id="more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu"><svg class="icon"><use href="#i-more"/></svg></button>
+    </header>
+    <div id="moreMenu" class="menu" role="menu" hidden>
+      <button id="menuCodePreview" class="compact-action" type="button" role="menuitem"><svg class="icon"><use href="#i-code"/></svg><span id="menuCodePreviewLabel"></span></button>
+      <button id="menuFit" class="compact-action" type="button" role="menuitem"><svg class="icon"><use href="#i-fit"/></svg><span id="menuFitLabel"></span></button>
+      <button id="outline" type="button" role="menuitem"><svg class="icon"><use href="#i-items"/></svg><span id="outlineLabel"></span></button>
+      <button id="displaySettings" type="button" role="menuitem"><svg class="icon"><use href="#i-display"/></svg><span id="displaySettingsLabel"></span></button>
+      <button id="examples" type="button" role="menuitem"><svg class="icon"><use href="#i-snippet"/></svg><span id="examplesLabel">Examples</span></button>
+      <button id="zoomReset" type="button" role="menuitem"><svg class="icon"><use href="#i-zoom-reset"/></svg><span id="zoomResetLabel">100%</span></button>
+      <button id="runtime" type="button" role="menuitem"><svg class="icon"><use href="#i-settings"/></svg><span id="runtimeLabel">Runtime settings</span></button>
+      <button id="help" type="button" role="menuitem"><svg class="icon"><use href="#i-help"/></svg><span id="helpLabel">Help</span></button>
+    </div>
+    <div id="statusArea">
+      <p id="status" role="status" aria-live="polite">Connecting…</p>
+      <button id="partsBadge" type="button" hidden></button>
+      <button id="statusDismiss" type="button" hidden aria-label="閉じる">×</button>
+    </div>
+    <div id="workspaceArea">
+      <div id="workspace" aria-label="JavaScript blocks"></div>
+      <div id="blockActions" role="toolbar" hidden></div>
+    </div>
+    <div id="sheetScrim" hidden></div>
+    <aside id="palette" hidden aria-label="Blocks">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <div class="search-field">
+          <svg class="icon"><use href="#i-search"/></svg>
+          <label id="searchLabel" for="search" class="sr-only">Search blocks</label>
+          <input id="search" type="search" autocomplete="off" spellcheck="false">
+        </div>
+        <button id="paletteClose" class="icon-button" type="button"><svg class="icon"><use href="#i-close"/></svg></button>
+      </div>
+      <div id="paletteTargetBar" class="palette-target-bar">
+        <span id="paletteTargetLabel" class="palette-target-label"></span>
+        <button id="paletteTargetModeBtn" class="palette-target-mode-btn" type="button"></button>
+      </div>
+      <div id="categories" role="group" aria-label="Categories"></div>
+      <div id="paletteItems"></div>
+    </aside>
+    <dialog id="actionDialog"><form method="dialog"><h2 id="dialogTitle"></h2><p id="dialogDescription"></p><div id="dialogChoices"></div><div class="dialog-actions"><button id="dialogCancel" class="text-button" type="submit" value="cancel">Cancel</button></div></form></dialog>
+    <dialog id="navigatorDialog" class="navigator-dialog" aria-labelledby="navigatorTitle">
+      <h2 id="navigatorTitle"></h2>
+      <label id="navigatorSearchLabel" class="sr-only" for="navigatorSearch"></label>
+      <input id="navigatorSearch" type="search" autocomplete="off" spellcheck="false">
+      <p id="navigatorHint"></p>
+      <div id="navigatorResults"></div>
+      <div class="dialog-actions"><button id="navigatorClose" type="button" class="text-button"></button></div>
+    </dialog>
+    <dialog id="codeDialog" class="code-dialog">
+      <div class="code-dialog-header">
+        <div class="code-dialog-title-group">
+          <h2 id="codeDialogTitle">JavaScript コードプレビュー</h2>
+          <p id="codeDialogSubtitle" class="code-dialog-sub"></p>
+        </div>
+        <button id="codeDialogClose" class="icon-button" type="button" aria-label="閉じる"><svg class="icon"><use href="#i-close"/></svg></button>
+      </div>
+      <div id="codeScopeToggle" class="code-scope-toggle" hidden>
+        <button id="codeScopeBlock" type="button" class="scope-button" aria-pressed="true">選択ブロック</button>
+        <button id="codeScopeAll" type="button" class="scope-button" aria-pressed="false">作品全体</button>
+      </div>
+      <div class="code-container">
+        <pre><code id="codeDialogContent"></code></pre>
+      </div>
+      <div class="dialog-actions code-dialog-actions">
+        <button id="codeDialogCopy" class="text-button" type="button"><svg class="icon"><use href="#i-duplicate"/></svg><span>コピー</span></button>
+        <button id="codeDialogJump" class="text-button" type="button">テキストで編集</button>
+        <button id="codeDialogDone" class="filled" type="button">閉じる</button>
+      </div>
+    </dialog>
+    <div id="announcement" class="sr-only" role="alert" aria-live="assertive"></div>
+  </main>
+</body>
+</html>

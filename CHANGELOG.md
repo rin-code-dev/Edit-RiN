@@ -1,5 +1,47 @@
 # Changelog
 
+## 4.0.0 — 2026-10-27
+
+## English
+
+Requires Android 11 or later.
+
+- JavaScript Block Mode: Build and edit p5.js code visually with blocks while keeping `sketch.js` as the single source of truth, with direct color/number capsule controls, a bottom block dock, function navigation, and floating PiP preview.
+- Unified History & Snapshots: Browse auto-save history and named snapshots in a single sheet with category filters, restoration scope badges (code only vs. extra files, parameters, and block layout), and a preview of the code to restore with an indication of whether it matches the current code.
+- Unified Inspector & Safe Action Guards: Select all 6 preview aspect ratios directly in the project inspector, return to the inspector from sub-dialogs, and automatically flush pending block edits before saving, running, or switching files.
+- Coordinated Preview Execution: Track runtime and visual readiness and superseded runs with execution tokens, and prevent sketch reruns during recording or recording export.
+- Expanded Onboarding & User Guide: Added an interactive Block Mode step to the 9-step onboarding tour and updated the built-in user guide for block editing and unified history.
+- Third-Party Libraries: Bundled Blockly 13.4.0 (Apache-2.0) and Acorn 8.19.0 (MIT) for the block editor, with corresponding licenses and checksums.
+
+Block Mode edits JavaScript source ranges directly. Unsupported syntax is preserved as code-holding blocks, and disconnected block parts are stored in project metadata without running until connected to a function or top-level flow.
+
+## 日本語
+
+Android 11以降に対応しています。
+
+- ブロックモードの新設: `sketch.js` を唯一の正本（Source of truth）として保ったまま、ブロックでJavaScriptを組み立て・編集できるモードを追加しました。色スウォッチや数値カプセルの直接操作、下部ブロックドック、関数一覧・検索、PiP小窓プレビューに対応しています。
+- 保存履歴とスナップショットの統合: 自動保存履歴と名前付きスナップショットを1つのシートに統合し、種別フィルター、復元対象範囲（コードのみ／追加ファイル・パラメータ・ブロック配置を含む）の表示、復元するコードの表示と、現在のコードとの一致判定を追加しました。
+- 作品設定と操作前確認の共通化: 作品設定シートで全6種類のプレビュー比率（正方形・横長・縦長・4:3・端末横・端末縦）を直接切り替えられるようにし、子画面から元の設定シートへ戻る階層遷移と、保存・実行・ファイル切替時のブロック編集確定処理を共通化しました。
+- プレビュー実行状態の管理: 実行トークンを用いて実行環境・描画の準備完了と新しい実行への切り替えを管理し、録画中や録画の保存中は再実行を制限します。
+- 入門ツアーと使い方ガイドの拡充: 初回入門ツアー（全9ステップ）とアプリ内の使い方ガイドに、ブロックモードの模擬操作と統合履歴シートの説明を追加しました。
+- 第三者ライブラリの同梱: ブロック編集基盤として Blockly 13.4.0（Apache-2.0）および Acorn 8.19.0（MIT）を同梱し、対応するライセンス表記とチェックサムを追加しました。
+
+ブロックモードはJavaScriptの該当範囲を直接更新します。未対応の構文はコードを保持するブロックとして保護され、関数やトップレベルに接続していないブロック部品は作品の補助メタデータに保存され、接続するまで実行されません。
+
+## 中文
+
+需要 Android 11 或更高版本。
+
+- JavaScript 积木模式: 在保持 `sketch.js` 为唯一真实来源（Source of truth）的同时，通过积木可视化构建和编辑代码，支持颜色与数值胶囊直接调节、底部积木栏、函数导航以及浮动小窗预览。
+- 历史记录与快照整合: 将自动保存历史与命名快照整合到同一面板，提供分类筛选、恢复范围标识（仅代码或包含附加文件、参数与积木布局）以及待恢复代码预览和与当前代码是否一致的提示。
+- 作品设置与操作前检查统一: 支持在作品设置面板直接切换全部 6 种预览比例，从子对话框返回原设置面板，并在保存、运行或切换文件前自动提交未完成的积木编辑。
+- 预览运行状态管理: 通过运行令牌跟踪运行环境与画面的就绪状态以及新运行的替换，并在录制或保存录制结果期间限制重新运行。
+- 入门导览与使用指南扩展: 在 9 步入门导览和内置使用指南中新增了积木模式互动演示与整合历史面板说明。
+- 第三方库集成: 内置 Blockly 13.4.0（Apache-2.0）与 Acorn 8.19.0（MIT）用于积木编辑，并附上对应的许可证与校验和。
+
+积木模式直接更新对应的 JavaScript 源码范围。暂不支持的语法会作为保留代码的积木块受到保护；未连接到函数或顶层流程的积木部件会保存在作品附加元数据中，连接前不会执行。
+
+
 ## 3.2.1 — 2026-10-17
 
 ## English

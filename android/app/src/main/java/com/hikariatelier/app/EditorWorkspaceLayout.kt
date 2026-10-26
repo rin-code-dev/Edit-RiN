@@ -63,7 +63,8 @@ internal data class EditorWorkspaceState(
     val pipTranslucent: Boolean = false,
     val pipMinimized: Boolean = true,
     val pipSnapCorner: PipCorner = PipCorner.TOP_END,
-    val pipAutoGhosted: Boolean = false
+    val pipAutoGhosted: Boolean = false,
+    val blockModeFullscreen: Boolean = false
 )
 
 internal data class EditorWorkspaceActions(
@@ -79,7 +80,8 @@ internal data class EditorWorkspaceActions(
     val onPipTranslucentChanged: (Boolean) -> Unit = {},
     val onPipMinimizedChanged: (Boolean) -> Unit = {},
     val onPipSnapCornerChanged: (PipCorner) -> Unit = {},
-    val onPipCanvasTap: ((LayoutCoordinates, Offset) -> Unit)? = null
+    val onPipCanvasTap: ((LayoutCoordinates, Offset) -> Unit)? = null,
+    val onExpandPipFullscreen: (() -> Unit)? = null
 )
 
 internal data class EditorWorkspaceSlots(
@@ -111,6 +113,10 @@ internal fun EditorWorkspaceLayout(
     val colors = MaterialTheme.colorScheme
     val hapticFeedback = LocalHapticFeedback.current
     val density = LocalDensity.current
+    // The editor owns a WebView. Moving between split/full/portrait layouts must
+    // move its composition, rather than dispose it and create a new renderer.
+    val currentEditor = rememberUpdatedState(slots.editor)
+    val editorContent = remember { movableContentOf<Modifier> { currentEditor.value(it) } }
     var portraitBodySize by remember(state.isLandscape, density) { mutableStateOf(IntSize.Zero) }
     var landscapeWorkspaceSize by remember(state.isLandscape, density) { mutableStateOf(IntSize.Zero) }
     val currentLandscapePreviewFraction = rememberUpdatedState(state.landscapePreviewFraction)
@@ -137,10 +143,10 @@ internal fun EditorWorkspaceLayout(
         // In portrait mode, editing ("そのまま" & "縮小" removed -> "隠す" only by default)
         // always hides the top preview viewport and shows the floating PiP window when enabled.
         val isPortraitEditing = !state.isLandscape &&
-            (state.editorFocused || state.keyboardVisible) &&
+            (state.editorFocused || state.keyboardVisible || state.blockModeFullscreen) &&
             !state.galleryVisible
 
-        val useFloatingPipInPortrait = isPortraitEditing && state.pipModeWhenEditing
+        val useFloatingPipInPortrait = isPortraitEditing && (state.pipModeWhenEditing || state.blockModeFullscreen)
 
         val previewHeightLimit = availableForEditing * 0.65f
         var portraitPreviewHeightLimit by remember(state.isLandscape, density) {
@@ -169,7 +175,7 @@ internal fun EditorWorkspaceLayout(
                 )
         ) {
             AnimatedVisibility(
-                visible = !state.isLandscape && !state.editorFocused,
+                visible = !state.isLandscape && !state.editorFocused && !state.blockModeFullscreen,
                 enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
                 exit = fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
             ) {
@@ -179,6 +185,7 @@ internal fun EditorWorkspaceLayout(
             if (state.isLandscape) {
                 val galleryProgress = state.galleryProgress.coerceIn(0f, 1f)
                 val galleryPresent = state.galleryVisible
+                val useFloatingPipInLandscape = state.blockModeFullscreen && !galleryPresent
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -206,12 +213,12 @@ internal fun EditorWorkspaceLayout(
                         val editorPane: @Composable RowScope.() -> Unit = {
                             Column(
                                 modifier = Modifier
-                                    .weight(1f - state.animatedLandscapePreviewFraction)
+                                    .weight(if (useFloatingPipInLandscape) 1f else (1f - state.animatedLandscapePreviewFraction))
                                     .fillMaxHeight()
                                     .clipToBounds()
                             ) {
                                 AnimatedVisibility(
-                                    visible = !state.editorFocused,
+                                    visible = !state.editorFocused && !useFloatingPipInLandscape,
                                     enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
                                     exit = fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
                                 ) {
@@ -246,7 +253,7 @@ internal fun EditorWorkspaceLayout(
                                     if (isParameter) {
                                         slots.parameterPanel(Modifier.fillMaxSize())
                                     } else {
-                                        slots.editor(Modifier.fillMaxSize())
+                                        editorContent(Modifier.fillMaxSize())
                                     }
                                 }
 
@@ -293,7 +300,9 @@ internal fun EditorWorkspaceLayout(
                             }
                         }
 
-                        if (state.landscapeEditorOnLeft) {
+                        if (useFloatingPipInLandscape) {
+                            editorPane()
+                        } else if (state.landscapeEditorOnLeft) {
                             editorPane()
                             dividerHandle()
                             previewPane()
@@ -301,6 +310,36 @@ internal fun EditorWorkspaceLayout(
                             previewPane()
                             dividerHandle()
                             editorPane()
+                        }
+                    }
+                    if (useFloatingPipInLandscape) {
+                        val bottomReserved = 72.dp
+                        FloatingPipPreviewHost(
+                            aspectRatio = state.workPreviewRatio,
+                            containerWidthDp = containerMaxWidthDp,
+                            containerHeightDp = (containerMaxHeightDp - bottomReserved.value).coerceAtLeast(160f),
+                            autoRunEnabled = state.autoRunEnabled,
+                            onToggleAutoRun = actions.onToggleAutoRun,
+                            previewHasChanges = state.previewHasChanges,
+                            onRunNow = actions.onRunNow,
+                            colors = colors,
+                            textTranslator = textTranslator,
+                            sizePreset = state.pipSizePreset,
+                            onSizePresetChange = actions.onPipSizePresetChanged,
+                            translucent = state.pipTranslucent,
+                            onTranslucentChange = actions.onPipTranslucentChanged,
+                            minimized = state.pipMinimized,
+                            onMinimizedChange = actions.onPipMinimizedChanged,
+                            snapCorner = state.pipSnapCorner,
+                            onSnapCornerChange = actions.onPipSnapCornerChanged,
+                            isGhosted = state.pipAutoGhosted,
+                            onTapCanvas = actions.onPipCanvasTap,
+                            onExpandFullscreen = actions.onExpandPipFullscreen,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 6.dp, start = 16.dp, end = 16.dp, bottom = bottomReserved)
+                        ) { pipPreviewModifier ->
+                            (slots.pipPreview ?: slots.preview)(pipPreviewModifier)
                         }
                     }
                     if (galleryPresent) {
@@ -363,7 +402,7 @@ internal fun EditorWorkspaceLayout(
                         }
 
                         Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                            if (state.showResizeHandles && !state.editorFocused) {
+                            if (state.showResizeHandles && !state.editorFocused && !state.blockModeFullscreen) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -478,7 +517,7 @@ internal fun EditorWorkspaceLayout(
                             }
 
                             AnimatedVisibility(
-                                visible = !state.editorFocused,
+                                visible = !state.editorFocused && !state.blockModeFullscreen,
                                 enter = fadeIn(tween(180)) + expandVertically(tween(220)),
                                 exit = fadeOut(tween(140)) + shrinkVertically(tween(220))
                             ) {
@@ -514,7 +553,7 @@ internal fun EditorWorkspaceLayout(
                             }
 
                             val editorBottomPadding by animateDpAsState(
-                                targetValue = if (!state.isSample && state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
+                                targetValue = if (state.blockModeFullscreen) 6.dp else if (!state.isSample && state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
                                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                 label = "editorBottomPadding"
                             )
@@ -533,7 +572,7 @@ internal fun EditorWorkspaceLayout(
                                 if (isParameter) {
                                     slots.parameterPanel(Modifier.fillMaxSize())
                                 } else {
-                                    slots.editor(Modifier.fillMaxSize())
+                                    editorContent(Modifier.fillMaxSize())
                                 }
                             }
 
@@ -559,7 +598,7 @@ internal fun EditorWorkspaceLayout(
 
                     // Floating PiP Preview Window when the top preview is hidden during portrait editing
                     if (useFloatingPipInPortrait) {
-                        val bottomReserved = (if (state.showEditorAccessoryBar && !state.isSample) 54.dp else 12.dp) +
+                        val bottomReserved = (if (state.blockModeFullscreen) 72.dp else if (state.showEditorAccessoryBar && !state.isSample) 54.dp else 12.dp) +
                             (if (hasVisibleCompletions) 44.dp else 0.dp)
                         FloatingPipPreviewHost(
                             aspectRatio = state.workPreviewRatio,
@@ -581,6 +620,7 @@ internal fun EditorWorkspaceLayout(
                             onSnapCornerChange = actions.onPipSnapCornerChanged,
                             isGhosted = state.pipAutoGhosted,
                             onTapCanvas = actions.onPipCanvasTap,
+                            onExpandFullscreen = actions.onExpandPipFullscreen,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(top = 6.dp, start = 8.dp, end = 8.dp, bottom = bottomReserved)

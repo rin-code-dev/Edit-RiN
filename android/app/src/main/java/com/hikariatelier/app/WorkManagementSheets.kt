@@ -320,9 +320,10 @@ internal fun WorkActionsMenu(
     onExportJs: () -> Unit,
     onExportHtml: () -> Unit = {},
     onDelete: () -> Unit,
-    onOpenProjectFiles: () -> Unit,
-    onOpenAssets: () -> Unit,
-    onOpenRuntime: () -> Unit,
+    onOpenWorkSettings: () -> Unit = {},
+    onOpenProjectFiles: () -> Unit = {},
+    onOpenAssets: () -> Unit = {},
+    onOpenRuntime: () -> Unit = {},
     tweetModeEnabled: Boolean = false,
     onToggleTweetMode: () -> Unit = {},
     onOpenMinify: () -> Unit = {},
@@ -619,7 +620,7 @@ internal fun WorkActionsMenu(
             enabled = activeWork != null,
             onClick = {
                 viewModel.workActionsMenuExpanded = false
-                viewModel.workSettingsMenuExpanded = true
+                onOpenWorkSettings()
             },
             modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 2).size(actionButtonSize)
         ) {
@@ -640,53 +641,6 @@ internal fun WorkActionsMenu(
                 tint = colors.onSurface,
                 modifier = Modifier.size(actionIconSize)
             )
-        }
-    }
-
-    if (viewModel.workSettingsMenuExpanded) {
-        WorkSheet(
-            title = uiText("作品設定"),
-            subtitle = activeWork?.title ?: uiText("作品未選択"),
-            onDismiss = { viewModel.workSettingsMenuExpanded = false },
-            colors = colors,
-            textTranslator = textTranslator,
-            windowSetup = windowSetup
-        ) {
-            Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                    .padding(bottom = 16.dp)
-            ) {
-                ActionRow(
-                    iconRes = R.drawable.ic_folder_code,
-                    title = uiText("プロジェクトファイル"),
-                    subtitle = uiText("追加JavaScriptファイルを管理"),
-                    colors = colors,
-                    onClick = {
-                        viewModel.workSettingsMenuExpanded = false
-                        onOpenProjectFiles()
-                    }
-                )
-                ActionRow(
-                    iconRes = R.drawable.ic_assets,
-                    title = uiText("作品の素材"),
-                    subtitle = uiText("画像・音声・フォントなどの素材を管理"),
-                    colors = colors,
-                    onClick = {
-                        viewModel.workSettingsMenuExpanded = false
-                        onOpenAssets()
-                    }
-                )
-                ActionRow(
-                    iconRes = R.drawable.ic_terminal,
-                    title = uiText("実行環境"),
-                    subtitle = uiText("p5.jsとライブラリを作品ごとに設定"),
-                    colors = colors,
-                    onClick = {
-                        viewModel.workSettingsMenuExpanded = false
-                        onOpenRuntime()
-                    }
-                )
-            }
         }
     }
 

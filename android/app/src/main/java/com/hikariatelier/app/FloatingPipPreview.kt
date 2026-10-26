@@ -257,6 +257,7 @@ internal fun FloatingPipPreviewHost(
     onSnapCornerChange: (PipCorner) -> Unit = {},
     isGhosted: Boolean = false,
     onTapCanvas: ((LayoutCoordinates, Offset) -> Unit)? = null,
+    onExpandFullscreen: (() -> Unit)? = null,
     previewContent: @Composable (Modifier) -> Unit
 ) {
     val density = LocalDensity.current
@@ -266,13 +267,13 @@ internal fun FloatingPipPreviewHost(
     val safeRatio = aspectRatio.coerceIn(0.45f, 2.2f)
     val baseSize = sizePreset.baseDp.dp
     val headerHeight = 32.dp
-    val minHeaderWidth = 138.dp
+    val minHeaderWidth = if (onExpandFullscreen != null) 164.dp else 138.dp
 
     val rawCanvasWidth = if (safeRatio >= 1f) baseSize else (baseSize.value * safeRatio).dp
     val rawCanvasHeight = if (safeRatio >= 1f) (baseSize.value / safeRatio).dp else baseSize
 
-    // Guarantee minimum width of 138.dp so the 4 buttons never clip in S size or 9:16 aspect ratio
-    val targetWidth = if (minimized) 138.dp else maxOf(minHeaderWidth, rawCanvasWidth)
+    // Guarantee minimum width so all header buttons never clip in S size or 9:16 aspect ratio
+    val targetWidth = if (minimized) minHeaderWidth else maxOf(minHeaderWidth, rawCanvasWidth)
     val targetHeight = if (minimized) headerHeight else rawCanvasHeight + headerHeight
 
     val animatedWidth by animateDpAsState(
@@ -475,6 +476,18 @@ internal fun FloatingPipPreviewHost(
                                     }
                                     onSizePresetChange(nextPreset)
                                 }
+                            )
+                        }
+
+                        if (onExpandFullscreen != null) {
+                            // Full-screen Preview Button
+                            PipFlatIconButton(
+                                iconRes = R.drawable.ic_fullscreen,
+                                description = uiText("プレビューを全画面表示"),
+                                colors = colors,
+                                active = false,
+                                enabled = true,
+                                onClick = onExpandFullscreen
                             )
                         }
 

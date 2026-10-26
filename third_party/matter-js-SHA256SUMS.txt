@@ -1,0 +1,3 @@
+72d30be0f579eb02ce1e0b6f9d359a4f392e6837e5a26ba8be5dbee7f88e24ae  www/matter-0.20.0.min.js
+ed182087be5b26734aa6d4789743de3a97417950e8c1e3ff2e3d19c6462720d3  third_party/licenses/matter-js-MIT.txt
+ada89fe9c3a61e4bdb8c48c9ad781e7b61288453fcbb6b96c14dcdf6263551a4  third_party/sources/matter-js-0.20.0-source.tar.gz

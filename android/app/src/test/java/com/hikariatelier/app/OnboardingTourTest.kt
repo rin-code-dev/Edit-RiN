@@ -19,24 +19,27 @@ import org.robolectric.annotation.GraphicsMode
 
 class OnboardingTourTest {
     @Test fun everyLanguageHasTheSameEightCompleteSteps() {
-        assertEquals(8, ONBOARDING_STEP_COUNT)
+        assertEquals(9, ONBOARDING_STEP_COUNT)
         for (language in listOf("ja", "en", "zh")) {
             val steps = onboardingSteps(language)
-            assertEquals(8, steps.size)
+            assertEquals(9, steps.size)
             assertTrue(steps.all { it.title.isNotBlank() && it.body.isNotBlank() })
             assertEquals(steps.size, steps.map { it.title }.distinct().size)
         }
         val jaSteps = onboardingSteps("ja")
-        assertEquals("記号と数値の調整", jaSteps[2].title)
-        assertEquals("PiP小窓プレビュー", jaSteps[3].title)
+        assertEquals("ブロックで組み立てる", jaSteps[2].title)
+        assertEquals("記号と数値の調整", jaSteps[3].title)
+        assertEquals("PiP小窓プレビュー", jaSteps[4].title)
 
         val enSteps = onboardingSteps("en")
-        assertEquals("Symbols and scrubbing", enSteps[2].title)
-        assertEquals("PiP floating preview", enSteps[3].title)
+        assertEquals("Build with blocks", enSteps[2].title)
+        assertEquals("Symbols and scrubbing", enSteps[3].title)
+        assertEquals("PiP floating preview", enSteps[4].title)
 
         val zhSteps = onboardingSteps("zh")
-        assertEquals("符号输入与数值微调", zhSteps[2].title)
-        assertEquals("画中画悬浮预览", zhSteps[3].title)
+        assertEquals("用积木搭建", zhSteps[2].title)
+        assertEquals("符号输入与数值微调", zhSteps[3].title)
+        assertEquals("画中画悬浮预览", zhSteps[4].title)
 
         // Unsupported languages use the English source text, like the user guide.
         assertEquals(onboardingSteps("en"), onboardingSteps("unsupported"))
@@ -164,7 +167,14 @@ class OnboardingTourUiTest {
         // Step 1: Run
         compose.onNodeWithText("Run").performClick()
         compose.onNodeWithTag("onboarding-next").performClick()
-        // Step 2: Editor Tools (Symbols and scrubbing)
+        // Step 2: Build with blocks
+        compose.onNodeWithContentDescription("Change block color").performClick()
+        compose.onNodeWithContentDescription("Add block").performScrollTo().performClick()
+        compose.onNodeWithTag("onboarding-insert-ring-block").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Full-screen preview").performScrollTo().performClick()
+        compose.onNodeWithTag("onboarding-block-full-preview").assertExists()
+        compose.onNodeWithTag("onboarding-next").performClick()
+        // Step 3: Editor Tools (Symbols and scrubbing)
         compose.onNodeWithText("{ }").performClick()
         compose.onNodeWithContentDescription("Color 3").performClick()
         compose.onNodeWithText("80").performClick()

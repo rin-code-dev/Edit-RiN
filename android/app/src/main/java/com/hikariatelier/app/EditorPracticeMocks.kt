@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -150,52 +151,77 @@ private fun MockPracticeWatch(language: String, animate: Boolean) {
     PracticeMockFrame {
         Text(t("リアルタイム変数ウォッチ", "Live Variable Watch", "实时变量监听"), style = MaterialTheme.typography.titleSmall)
 
-        // Mock Code Block
+        // Real EditorDocumentBar + syntax-highlighted Code Block
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    "function draw() {\n  background('#F2EFE7');",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
+            Column(Modifier.fillMaxWidth()) {
+                EditorDocumentBar(
+                    files = listOf("sketch.js"),
+                    selectedFile = "sketch.js",
+                    dirtyFiles = if (watched) setOf("sketch.js") else emptySet(),
+                    showingBlocks = false,
+                    allowBlocks = true,
+                    enabled = true,
+                    readOnly = false,
+                    autoRunEnabled = true,
+                    previewHasChanges = false,
+                    onSelectFile = {},
+                    onSelectBlocks = {},
+                    onAddFile = null,
+                    onToggleAutoRun = {},
+                    onRunChanges = {},
+                    textTranslator = { s, _ -> translateUi(s, language) }
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                ) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        if (watched) "  let frame = frameCount; // ?" else "  let frame = frameCount;",
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("function draw() {\n  background('#F2EFE7');")
+                        ).text,
                         fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = if (watched) FontWeight.Bold else FontWeight.Normal,
-                        color = if (watched) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        style = MaterialTheme.typography.bodySmall
                     )
-                    if (watched) {
-                        Spacer(Modifier.width(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.testTag("practice-watch-badge")
-                        ) {
-                            Text(
-                                "⇒ frame = $frameCountVal",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            JavaScriptHighlighter(false).filter(
+                                AnnotatedString(if (watched) "  let frame = frameCount; // ?" else "  let frame = frameCount;")
+                            ).text,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (watched) FontWeight.Bold else FontWeight.Normal
+                        )
+                        if (watched) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.testTag("practice-watch-badge")
+                            ) {
+                                Text(
+                                    "⇒ frame = $frameCountVal",
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
                         }
                     }
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("  circle(200, 200, (frame % 80) + 40);\n}")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
-                Text(
-                    "  circle(200, 200, (frame % 80) + 40);\n}",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
-                )
             }
         }
 
@@ -282,32 +308,56 @@ private fun MockPracticeInlineParameters(language: String, animate: Boolean) {
     PracticeMockFrame {
         Text(t("インラインパラメータ", "Inline Parameters", "行内实时参数"), style = MaterialTheme.typography.titleSmall)
 
-        // Mock Code Block
+        // Real EditorDocumentBar + syntax-highlighted Code Block
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    "let size = ${sizeVal.toInt()}; // @slider(40, 200, 10)",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
+            Column(Modifier.fillMaxWidth()) {
+                EditorDocumentBar(
+                    files = listOf("sketch.js"),
+                    selectedFile = "sketch.js",
+                    dirtyFiles = if (userInteracted) setOf("sketch.js") else emptySet(),
+                    showingBlocks = false,
+                    allowBlocks = true,
+                    enabled = true,
+                    readOnly = false,
+                    autoRunEnabled = true,
+                    previewHasChanges = false,
+                    onSelectFile = {},
+                    onSelectBlocks = {},
+                    onAddFile = null,
+                    onToggleAutoRun = {},
+                    onRunChanges = {},
+                    textTranslator = { s, _ -> translateUi(s, language) }
                 )
-                Text(
-                    "let ink = \"${selectedColor.toHexRgb()}\"; // @color",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = selectedColor,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    "fill(ink);\ncircle(200, 200, size);",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("let size = ${sizeVal.toInt()}; // @slider(40, 200, 10)")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("let ink = \"${selectedColor.toHexRgb()}\"; // @color")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("fill(ink);\ncircle(200, 200, size);")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
 
@@ -386,26 +436,49 @@ private fun MockPracticeRinParameters(language: String, animate: Boolean) {
     PracticeMockFrame {
         Text(t("作品設定パネル (// @rin)", "Custom Settings Panel (// @rin)", "作品设置面板 (// @rin)"), style = MaterialTheme.typography.titleSmall)
 
-        // Mock Code Block
+        // Real EditorDocumentBar + syntax-highlighted Code Block
         val shapeLabel = t("形状", "Shape", "图形")
         val sizeLabel = t("サイズ", "Size", "大小")
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    "// @rin choice shape \"$shapeLabel\" circle square triangle\n// @rin number size \"$sizeLabel\" 60 160 100 1",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+            Column(Modifier.fillMaxWidth()) {
+                EditorDocumentBar(
+                    files = listOf("sketch.js"),
+                    selectedFile = "sketch.js",
+                    dirtyFiles = if (userInteracted) setOf("sketch.js") else emptySet(),
+                    showingBlocks = false,
+                    allowBlocks = true,
+                    enabled = true,
+                    readOnly = false,
+                    autoRunEnabled = true,
+                    previewHasChanges = false,
+                    onSelectFile = {},
+                    onSelectBlocks = {},
+                    onAddFile = null,
+                    onToggleAutoRun = {},
+                    onRunChanges = {},
+                    textTranslator = { s, _ -> translateUi(s, language) }
                 )
-                Text(
-                    "function draw() {\n  background('#F2EFE7');\n  fill('#D67856');\n  drawShape(rinParams.shape, rinParams.size);\n}",
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("// @rin choice shape \"$shapeLabel\" circle square triangle\n// @rin number size \"$sizeLabel\" 60 160 100 1")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        JavaScriptHighlighter(false).filter(
+                            AnnotatedString("function draw() {\n  background('#F2EFE7');\n  fill('#D67856');\n  drawShape(rinParams.shape, rinParams.size);\n}")
+                        ).text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
 
@@ -511,54 +584,77 @@ private fun MockPracticeGolf(language: String, animate: Boolean) {
     PracticeMockFrame {
         Text(t("つぶやきコード圧縮", "Tweet Code Compression", "推文代码压缩"), style = MaterialTheme.typography.titleSmall)
 
-        // Mock Code Block
+        // Real EditorDocumentBar + syntax-highlighted Code Block
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (golfed) {
-                    Text(
-                        "// #つぶやきProcessing\ndraw=_=>{createCanvas(W=400,W);background(0);circle(200,200,sin(frameCount*.05)*150)}",
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                } else {
-                    Text(
-                        "// #つぶやきProcessing\nfunction setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  background(0);\n  circle(200, 200, sin(frameCount * 0.05) * 150);\n}",
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        if (golfed) t("88 / 280 文字", "88 / 280 chars", "88 / 280 字符")
-                        else t("158 / 280 文字", "158 / 280 chars", "158 / 280 字符"),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = if (golfed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            Column(Modifier.fillMaxWidth()) {
+                EditorDocumentBar(
+                    files = listOf("sketch.js"),
+                    selectedFile = "sketch.js",
+                    dirtyFiles = if (golfed) setOf("sketch.js") else emptySet(),
+                    showingBlocks = false,
+                    allowBlocks = true,
+                    enabled = true,
+                    readOnly = false,
+                    autoRunEnabled = true,
+                    previewHasChanges = false,
+                    onSelectFile = {},
+                    onSelectBlocks = {},
+                    onAddFile = null,
+                    onToggleAutoRun = {},
+                    onRunChanges = {},
+                    textTranslator = { s, _ -> translateUi(s, language) }
+                )
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (golfed) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFE8F5E9)
-                        ) {
-                            Text(
-                                t("-70文字 (圧縮成功!)", "-70 chars (Compressed!)", "-70 字符 (压缩成功!)"),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
-                            )
+                        Text(
+                            JavaScriptHighlighter(false).filter(
+                                AnnotatedString("// #つぶやきProcessing\ndraw=_=>{createCanvas(W=400,W);background(0);circle(200,200,sin(frameCount*.05)*150)}")
+                            ).text,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    } else {
+                        Text(
+                            JavaScriptHighlighter(false).filter(
+                                AnnotatedString("// #つぶやきProcessing\nfunction setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  background(0);\n  circle(200, 200, sin(frameCount * 0.05) * 150);\n}")
+                            ).text,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            if (golfed) t("88 / 280 文字", "88 / 280 chars", "88 / 280 字符")
+                            else t("158 / 280 文字", "158 / 280 chars", "158 / 280 字符"),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (golfed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (golfed) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFE8F5E9)
+                            ) {
+                                Text(
+                                    t("-70文字 (圧縮成功!)", "-70 chars (Compressed!)", "-70 字符 (压缩成功!)"),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
                         }
                     }
                 }

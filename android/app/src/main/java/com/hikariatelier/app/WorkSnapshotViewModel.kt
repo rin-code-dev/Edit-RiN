@@ -59,11 +59,17 @@ internal class WorkSnapshotViewModel(
         if (session.snapshotOperationWorkId != null || session.assetBusy || loading || error != null) return
         val work = session.worksState.value.find { it.id == session.activeWorkIdState.value } ?: return
         if (work.isSample) return
-        session.snapshotOperationWorkId = work.id
-        session.snapshotRestoring = restoring
-        if (restoring) { session.assetBusy = true; session.editorInputLocked = true }
+        val activation = session.blockEditorActivationGeneration
         viewModelScope.launch {
-            try { action(work) }
+            // Flush before reserving the editor: a pending block transaction needs to remain editable.
+            if (!session.flushBlockEditor()) { notices.send(errorMessage); return@launch }
+            if (session.blockEditorActivationGeneration != activation || session.activeWorkIdState.value != work.id || session.snapshotOperationWorkId != null ||
+                session.assetBusy || loading || error != null) return@launch
+            val readyWork = session.worksState.value.find { it.id == work.id && !it.isSample } ?: return@launch
+            session.snapshotOperationWorkId = work.id
+            session.snapshotRestoring = restoring
+            if (restoring) { session.assetBusy = true; session.editorInputLocked = true }
+            try { action(readyWork) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { notices.send(errorMessage) }
             finally {

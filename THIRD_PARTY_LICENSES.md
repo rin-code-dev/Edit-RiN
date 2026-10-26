@@ -3,6 +3,19 @@
 Edit:RiN's own code and original icons are licensed under the GNU General Public License, version 3 (GPL-3.0-or-later).
 Third-party software retains its own license terms.
 
+## Blockly 13.4.0 and Acorn 8.19.0
+
+The offline block editor bundles unmodified Blockly distributions, locales and
+media under the Apache License 2.0, and Acorn under the MIT License.
+
+- Blockly upstream: https://github.com/RaspberryPiFoundation/blockly
+- Acorn upstream: https://github.com/acornjs/acorn
+- Licenses: third_party/licenses/blockly-Apache-2.0.txt and third_party/licenses/acorn-MIT.txt
+- Bundled assets: www/blocks/vendor/
+- Distribution archives: third_party/sources/blockly-13.4.0-source.tgz and third_party/sources/acorn-8.19.0-source.tgz
+- Upstream source archives: third_party/sources/blockly-13.4.0-full-source.tar.gz and third_party/sources/acorn-8.19.0-full-source.tar.gz
+- Pinned provenance and checksums: www/blocks/DEPENDENCIES.json
+
 ## p5.js 1.11.5
 
 p5.js is created by the Processing Foundation and p5.js contributors.
@@ -67,6 +80,15 @@ third_party/resolved. They do not change the upstream terms.
 - Upstream: https://github.com/acamposuribe/p5.brush/tree/v2.2.1
 - Runtime: www/p5.brush-2.2.1.js (requires p5.js 2.3.4 and a WEBGL canvas in Edit:RiN)
 - Distribution: https://registry.npmjs.org/p5.brush/-/p5.brush-2.2.1.tgz
+
+## Matter.js 0.20.0
+
+- Copyright: Liam Brummitt and contributors. License: MIT, third_party/licenses/matter-js-MIT.txt
+- Upstream: https://github.com/liabru/matter-js/tree/0.20.0
+- Runtime: www/matter-0.20.0.min.js (byte-identical to the official npm distribution)
+- Distribution: https://registry.npmjs.org/matter-js/-/matter-js-0.20.0.tgz
+- Corresponding source and build scripts: third_party/sources/matter-js-0.20.0-source.tar.gz
+- Checksums: third_party/matter-js-SHA256SUMS.txt
 
 ## Website fonts
 

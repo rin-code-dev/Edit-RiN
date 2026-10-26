@@ -109,4 +109,14 @@ class UpdateCheckerTest {
         val body = "## English\n```md\n## 日本語\n- Example: Ignore\n```\n---\n- Actual: Show"
         assertEquals("Actual", parseReleaseHighlights(body, "en").single().title)
     }
+
+    @Test fun latestEmbeddedReleaseNoteMatchesV400() {
+        val latest = APP_RELEASE_NOTES.first()
+        assertEquals("4.0.0", latest.versionName)
+        assertEquals(39, latest.versionCode)
+        assertTrue(latest.features.size >= 3)
+        assertEquals(R.drawable.ic_folder_code, resolveHighlightIcon("ブロックモードの新設", "sketch.jsを唯一の正本として保持"))
+        assertEquals(R.drawable.ic_history, resolveHighlightIcon("保存履歴とスナップショットの統合", "自動保存履歴と名前付きスナップショット"))
+        assertEquals(R.drawable.ic_tune, resolveHighlightIcon("作品設定と操作前確認の共通化", "プレビュー比率"))
+    }
 }

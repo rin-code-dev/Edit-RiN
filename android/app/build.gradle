@@ -23,8 +23,8 @@ android {
         applicationId "com.hikariatelier.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 38
-        versionName "3.2.1"
+        versionCode 39
+        versionName "4.0.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -105,6 +105,7 @@ def syncWebAssets = tasks.register("syncWebAssets", Sync) {
         include 'matter-0.20.0.min.js'
         include 'samples/*.js'
         include 'sample-previews/*'
+        include 'blocks/**'
     }
     into new File(generatedWebAssetsDir, "public")
 }

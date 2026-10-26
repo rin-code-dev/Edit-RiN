@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -292,6 +293,18 @@ internal fun RunStatusControls(
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
+    val haptic = LocalHapticFeedback.current
+    val dotColor by animateColorAsState(
+        when {
+            hasPendingChanges -> colors.tertiary
+            isError -> colors.error
+            isPaused -> colors.outline
+            else -> colors.primary
+        },
+        tween(200),
+        label = "runBarStatusDot"
+    )
+
     Row(
         modifier = modifier
             .height(height)
@@ -307,14 +320,7 @@ internal fun RunStatusControls(
             modifier = Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(
-                    when {
-                        hasPendingChanges -> colors.tertiary
-                        isError -> colors.error
-                        isPaused -> colors.outline
-                        else -> colors.primary
-                    }
-                )
+                .background(dotColor)
         )
         Spacer(Modifier.width(5.dp))
         Text(
@@ -339,7 +345,10 @@ internal fun RunStatusControls(
             modifier = Modifier
                 .size(buttonSize)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onTogglePause)
+                .clickable(onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onTogglePause()
+                })
                 .semantics { contentDescription = uiText(if (isPaused) "再生" else "一時停止") },
             contentAlignment = Alignment.Center
         ) {
@@ -354,7 +363,10 @@ internal fun RunStatusControls(
             modifier = Modifier
                 .size(buttonSize)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onReload)
+                .clickable(onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onReload()
+                })
                 .semantics { contentDescription = uiText(if (hasPendingChanges) "変更を実行" else "再読み込み") },
             contentAlignment = Alignment.Center
         ) {
@@ -491,6 +503,7 @@ internal fun SaveRestoreControls(
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
     var historyExpanded by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
     val controlShape = RoundedCornerShape(12.dp)
 
     Row(
@@ -530,10 +543,13 @@ internal fun SaveRestoreControls(
                 )
             }
         }
-        Box {
+        Box(contentAlignment = Alignment.Center) {
             TooltipIconButton(
                 label = uiText("作品の全ファイルを保存"),
-                onClick = onSave,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSave()
+                },
                 modifier = Modifier.size(buttonSize)
             ) {
                 Icon(
@@ -541,6 +557,20 @@ internal fun SaveRestoreControls(
                     contentDescription = uiText("作品の全ファイルを保存"),
                     tint = if (hasUnsavedChanges) colors.primary else colors.onSurface,
                     modifier = Modifier.size(iconSize)
+                )
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = hasUnsavedChanges,
+                modifier = Modifier.align(Alignment.TopEnd),
+                enter = scaleIn(tween(160)) + fadeIn(tween(160)),
+                exit = scaleOut(tween(160)) + fadeOut(tween(160))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 3.dp, end = 3.dp)
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(colors.primary)
                 )
             }
         }
@@ -567,7 +597,6 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
     onScreenshot: () -> Unit,
     onShareCard: () -> Unit = {},
     onOpenParameters: () -> Unit,
-    onOpenInspector: (() -> Unit)? = null,
     onToggleRecording: () -> Unit,
     onCancelCountdown: () -> Unit,
     onToggleFullscreen: () -> Unit,
@@ -608,15 +637,6 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                 colors = colors,
                 onClick = onOpenParameters
             )
-
-            if (onOpenInspector != null) {
-                PreviewOverlayButton(
-                    iconRes = R.drawable.ic_code,
-                    description = uiText("プロジェクト診断"),
-                    colors = colors,
-                    onClick = onOpenInspector
-                )
-            }
 
             PreviewOverlayButton(
                 iconRes = if (isRecordingOrCountingDown) {

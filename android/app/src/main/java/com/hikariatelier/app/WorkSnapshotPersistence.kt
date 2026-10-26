@@ -29,40 +29,44 @@ data class WorkSnapshot(
     val note: String? = null,
     // Legacy revisions only recorded sketch.js; do not erase other files when restoring them.
     val mainCodeOnly: Boolean = false,
-    val title: String? = null
+    val title: String? = null,
+    val blockEditorState: String? = null
 )
 
 internal data class SnapshotContent(
     val code: String,
     val files: Map<String, String>,
-    val parameterValues: Map<String, String>
+    val parameterValues: Map<String, String>,
+    val blockEditorState: String? = null
 )
 
 internal fun currentSnapshotContent(work: Work, code: String, drafts: Map<String, String>) = SnapshotContent(
     code,
     work.files.mapValues { (name, saved) -> drafts["${work.id}/$name"] ?: saved },
-    work.parameterValues.toMap()
+    work.parameterValues.toMap(), work.blockEditorState
 )
 
 internal fun WorkSnapshot.matches(current: SnapshotContent): Boolean = code == current.code &&
-    (mainCodeOnly || (files == current.files && parameterValues == current.parameterValues))
+    (mainCodeOnly || (files == current.files && parameterValues == current.parameterValues && blockEditorState == current.blockEditorState))
 
 internal fun restoredSnapshotWork(work: Work, snapshot: WorkSnapshot, current: SnapshotContent): Work =
     snapshotWork(work).also { restored ->
         restored.code = snapshot.code
         restored.files.clear()
         restored.files.putAll(if (snapshot.mainCodeOnly) current.files else snapshot.files)
+        restored.blockEditorState = if (snapshot.mainCodeOnly) current.blockEditorState else snapshot.blockEditorState
         restored.parameterValues.clear()
         restored.parameterValues.putAll(if (snapshot.mainCodeOnly) current.parameterValues else snapshot.parameterValues)
         restored.updatedAt = System.currentTimeMillis()
     }
 
-internal fun snapshotDifference(current: SnapshotContent, target: WorkSnapshot): String = buildString {
+internal fun snapshotDifference(current: SnapshotContent, target: WorkSnapshot, blockStateLabel: String = "Blocks"): String = buildString {
     if (current.code != target.code) {
         appendLine("sketch.js")
         appendLine(revisionDifference(current.code, target.code))
     }
     if (!target.mainCodeOnly) {
+        if (current.blockEditorState != target.blockEditorState) appendLine(blockStateLabel)
         (current.files.keys + target.files.keys).sorted().forEach { name ->
             if (current.files[name] != target.files[name]) {
                 appendLine("${if (name !in current.files) "+ " else if (name !in target.files) "− " else ""}$name")
@@ -88,6 +92,7 @@ internal fun encodeSnapshots(snapshots: List<WorkSnapshot>): JSONArray = JSONArr
             .put("mainCodeOnly", snapshot.mainCodeOnly).apply {
                 snapshot.note?.let { put("note", it) }
                 snapshot.title?.let { put("title", it) }
+                snapshot.blockEditorState?.let { put("blockEditorState", it) }
             })
     }
 }
@@ -109,10 +114,12 @@ internal fun decodeSnapshots(array: JSONArray): List<WorkSnapshot> {
         require(obj.get("code") is String)
         val files = stringMap(obj.optJSONObject("files"), obj.has("files"))
         val params = stringMap(obj.optJSONObject("parameterValues"), obj.has("parameterValues"))
+        require(!obj.has("blockEditorState") || obj.isNull("blockEditorState") || obj.get("blockEditorState") is String)
         WorkSnapshot(id, obj.optLong("savedAt", 0), obj.getString("code"), files, params,
             obj.optString("note").takeIf { it.isNotBlank() },
             obj.optBoolean("mainCodeOnly", id.startsWith("migrated_") && files.isEmpty() && params.isEmpty()),
-            obj.optString("title").takeIf { it.isNotBlank() })
+            obj.optString("title").takeIf { it.isNotBlank() },
+            if (obj.has("blockEditorState") && !obj.isNull("blockEditorState")) obj.getString("blockEditorState") else null)
     }.sortedByDescending { it.savedAt }
 }
 
@@ -203,7 +210,7 @@ internal object WorkSnapshotStore {
         val details = normalizedSnapshotDetails(title, note)
         val current = loadSnapshots(filesDir, workId, fallbackRevisions)
         val updated = (listOf(WorkSnapshot(code = content.code, files = content.files,
-            parameterValues = content.parameterValues, title = details.first, note = details.second)) + current).take(MAX_SNAPSHOTS)
+            parameterValues = content.parameterValues, title = details.first, note = details.second, blockEditorState = content.blockEditorState)) + current).take(MAX_SNAPSHOTS)
         saveSnapshots(filesDir, workId, updated)
         return updated
     }

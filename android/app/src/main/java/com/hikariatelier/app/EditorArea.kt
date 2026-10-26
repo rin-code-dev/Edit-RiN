@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * Forces Android IMEs (Gboard, Samsung Keyboard, Simeji, etc.) to NEVER enter the full-screen
@@ -97,7 +99,6 @@ internal fun EditorArea(
     activeWorkId: String,
     selectedEditorFile: String,
     onSelectEditorFile: (String) -> Unit,
-    onOpenSnapshotSheet: () -> Unit,
     editingFile: String,
     editingKey: String,
     editingText: String,
@@ -136,8 +137,17 @@ internal fun EditorArea(
     onOpenProjectFiles: (() -> Unit)? = null,
     watchValues: Map<Int, String> = emptyMap(),
     onSwitchRuntimeVersion: ((String) -> Unit)? = null,
-    devicePreviewRatio: Float = 1f
+    devicePreviewRatio: Float = 1f,
+    blockLanguage: String = "ja",
+    onOpenBlockCode: (Int, Int) -> Unit = { _, _ -> },
+    onOpenBlockRuntime: () -> Unit = {},
+    onBlockUndo: () -> Unit = {},
+    onBlockRedo: () -> Unit = {},
+    onOpenFullPreview: (() -> Unit)? = null
 ) {
+    val blockMode = remember(activeWorkId, sessionViewModel.auxiliaryEditorGeneration) { sessionViewModel.blockModeState(activeWorkId) }
+    val modeScope = rememberCoroutineScope()
+    val showingBlocks = selectedEditorFile == "sketch.js" && blockMode.value && activeWork != null
     val copyToClipboard = rememberClipboardCopy()
     val keyboardController = LocalSoftwareKeyboardController.current
     var textLayoutCoordinates by remember(editingKey) { mutableStateOf<LayoutCoordinates?>(null) }
@@ -283,9 +293,78 @@ internal fun EditorArea(
         }.mapValues { (_, regions) -> regions.first() }
     }
     val lineNumberDigits = maxOf(1, logicalLineStarts.size.toString().length)
+    val projectFileList = remember(activeWorkId, activeWork?.files?.keys) {
+        listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted()
+    }
+
+    @Composable
+    fun DocumentHeader(enabled: Boolean = true) {
+        if (activeWork != null) EditorDocumentBar(
+            files = projectFileList,
+            selectedFile = selectedEditorFile,
+            dirtyFiles = dirtyFiles,
+            showingBlocks = showingBlocks,
+            allowBlocks = selectedEditorFile == "sketch.js",
+            enabled = enabled && !sessionViewModel.editorInputLocked,
+            readOnly = readOnly,
+            autoRunEnabled = sessionViewModel.autoRunEnabled,
+            previewHasChanges = previewHasChanges,
+            onSelectFile = { nextFile ->
+                if (selectedEditorFile != nextFile) {
+                    focusManager.clearFocus(force = true)
+                    onFocusChange(false)
+                    if (sessionViewModel.blockEditorFlusher == null || !showingBlocks) {
+                        onSelectEditorFile(nextFile)
+                    } else {
+                        val activation = sessionViewModel.blockEditorActivationGeneration
+                        modeScope.launch {
+                            if (sessionViewModel.flushBlockEditor() &&
+                                sessionViewModel.canApplyBlockAction(activeWorkId, activation, requireEditable = false)) onSelectEditorFile(nextFile)
+                        }
+                    }
+                }
+            },
+            onSelectBlocks = { blocks ->
+                if (blocks) {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    onFocusChange(false)
+                    sessionViewModel.blockSplitView = false
+                    sessionViewModel.pipMinimized = false
+                    blockMode.value = true
+                } else {
+                    if (sessionViewModel.blockEditorFlusher == null) {
+                        blockMode.value = false
+                    } else {
+                        val activation = sessionViewModel.blockEditorActivationGeneration
+                        modeScope.launch {
+                            if (sessionViewModel.flushBlockEditor() &&
+                                sessionViewModel.canApplyBlockAction(activeWorkId, activation, requireEditable = false)) blockMode.value = false
+                        }
+                    }
+                }
+            },
+            onAddFile = onOpenProjectFiles?.let { open -> {
+                if (sessionViewModel.blockEditorFlusher == null || !showingBlocks) {
+                    open()
+                } else {
+                    val activation = sessionViewModel.blockEditorActivationGeneration
+                    modeScope.launch {
+                        if (sessionViewModel.flushBlockEditor() &&
+                            sessionViewModel.canApplyBlockAction(activeWorkId, activation)) open()
+                    }
+                }
+            } },
+            onToggleAutoRun = { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled },
+            onRunChanges = onRunChanges,
+            textTranslator = textTranslator,
+            onOpenFullPreview = onOpenFullPreview
+        )
+    }
 
     Card(
-        modifier = modifier.pointerInput(Unit) {
+        modifier = modifier.pointerInput(showingBlocks) {
+            if (showingBlocks) return@pointerInput
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 var startDistance = 0f
@@ -356,48 +435,8 @@ internal fun EditorArea(
                         Text(textTranslator("コピーして編集", emptyArray()))
                     }
                 }
-                val projectFiles = listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted()
-                val hasMultipleFiles = projectFiles.size > 1
-                if (hasMultipleFiles) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(end = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            FileTabs(
-                                projectFiles,
-                                selectedEditorFile,
-                                dirtyFiles = dirtyFiles,
-                                unsavedDescription = textTranslator("未保存の変更あり", emptyArray()),
-                                enabled = !sessionViewModel.editorInputLocked
-                            ) {
-                                if (selectedEditorFile != it) {
-                                    focusManager.clearFocus(force = true)
-                                    onFocusChange(false)
-                                    onSelectEditorFile(it)
-                                }
-                            }
-                        }
-                        if (!readOnly && onOpenProjectFiles != null) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(enabled = !sessionViewModel.editorInputLocked) { onOpenProjectFiles() }
-                                    .semantics { contentDescription = textTranslator("ファイルを追加", emptyArray()) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_add),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = colors.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-                inlineSearch()
+                if (!showingBlocks) DocumentHeader()
+                if (!showingBlocks) inlineSearch()
                 if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
                     Text(
                         textTranslator("前回の実行時に発生したエラーです", emptyArray()),
@@ -427,7 +466,29 @@ internal fun EditorArea(
                         onCopyError = { copyToClipboard(it) }
                     )
                 }
-                BoxWithConstraints(
+                if (showingBlocks && activeWork != null) {
+                    BlockWorkspaceView(
+                        work = activeWork,
+                        source = editingText,
+                        session = sessionViewModel,
+                        language = blockLanguage,
+                        dark = darkEditorTheme,
+                        readOnly = readOnly,
+                        errors = if (errorsCurrent) consoleEntries.filter {
+                            it.level == ConsoleLevel.ERROR && it.workId == activeWorkId && it.file == "sketch.js"
+                        } else emptyList(),
+                        onOpenCode = { start, end ->
+                            blockMode.value = false
+                            onOpenBlockCode(start, end)
+                        },
+                        onOpenRuntime = onOpenBlockRuntime,
+                        onUndo = onBlockUndo,
+                        onRedo = onBlockRedo,
+                        documentBar = { enabled -> DocumentHeader(enabled) },
+                        textTranslator = textTranslator,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else BoxWithConstraints(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }

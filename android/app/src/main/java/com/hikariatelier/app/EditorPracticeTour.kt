@@ -239,7 +239,7 @@ internal fun EditorPracticeTour(
             )
             Text(
                 steps[step].title,
-                style = MaterialTheme.typography.headlineMedium,
+                style = if (landscape) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.testTag("practice-tour-title")
             )
             Text(

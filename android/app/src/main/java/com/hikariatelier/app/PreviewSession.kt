@@ -3,6 +3,17 @@ package com.hikariatelier.app
 import org.json.JSONObject
 import java.util.UUID
 
+/** The block parser and runtime must resolve exactly the same saved-plus-draft project files. */
+internal fun effectiveProjectFiles(workId: String?, files: Map<String, String>, drafts: Map<String, String>): Map<String, String> =
+    files.mapValues { (name, saved) -> drafts["$workId/$name"] ?: saved }
+
+internal fun blockEditorSourceType(workId: String, source: String, files: Map<String, String>, drafts: Map<String, String>): String =
+    runCatching {
+        val effective = effectiveProjectFiles(workId, files, drafts)
+        val run = resolveProjectRun(effective, readProjectDocumentConfig(effective), source)
+        if (run.moduleMode && run.modulePath == "sketch.js") "module" else "script"
+    }.getOrDefault("script")
+
 /** Capture Compose-owned values before background parsing; never retain a mutable Work. */
 internal data class PreviewRunInput(
     val token: String, val workId: String?, val source: String,
@@ -24,7 +35,7 @@ internal fun capturePreviewRun(
     token: String = UUID.randomUUID().toString()
 ): PreviewRunInput = PreviewRunInput(
     token, work?.id, source,
-    files.mapValues { (name, saved) -> drafts["${work?.id}/$name"] ?: saved }, assets.toMap(),
+    effectiveProjectFiles(work?.id, files, drafts), assets.toMap(),
     normalizedP5Version(work?.p5Version), work?.p5SoundEnabled == true,
     work?.libraries.orEmpty().toMap(), parameterValues.toMap()
 )

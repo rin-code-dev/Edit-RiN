@@ -143,14 +143,11 @@ internal fun SettingsScreen(
                     ) {
                         Row(
                             Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.Start,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = actions.onBack) {
                                 Icon(painterResource(R.drawable.ic_back), uiText("戻る"), Modifier.size(20.dp))
-                            }
-                            IconButton(onClick = { showUserGuide = true }) {
-                                Icon(painterResource(R.drawable.ic_help), uiText("使い方ガイド"), Modifier.size(20.dp), tint = colors.onSurface)
                             }
                         }
                         Text(uiText("設定"), Modifier.padding(horizontal = 8.dp),
@@ -276,17 +273,6 @@ internal fun SettingsScreen(
                                 .labelMedium,
                         color =
                             colors.onSurfaceVariant
-                    )
-                }
-
-                IconButton(
-                    onClick = { showUserGuide = true }
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_help),
-                        contentDescription = uiText("使い方ガイド"),
-                        tint = colors.onSurface,
-                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

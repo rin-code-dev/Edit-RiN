@@ -12,6 +12,12 @@ internal const val DEFAULT_X_SHARE_TEXT = "Created with Edit:RiN\n\n#EditRiN #p5
 internal fun normalizedPreviewAspectRatio(value: String?): String =
     value?.takeIf(PREVIEW_ASPECT_RATIOS::contains) ?: "1:1"
 
+internal fun previewAspectRatioLabel(ratio: String, uiText: (String) -> String = { it }): String = when (ratio) {
+    "device_landscape" -> uiText("端末・横")
+    "device" -> uiText("端末・縦")
+    else -> ratio
+}
+
 internal fun previewAspectRatioValue(value: String, deviceRatio: Float = 1f): Float {
     val validDeviceRatio = deviceRatio.takeIf { it.isFinite() && it > 0f } ?: 1f
     val landscapeDeviceRatio = if (validDeviceRatio >= 1f) validDeviceRatio else 1f / validDeviceRatio

@@ -12,7 +12,7 @@ internal fun sampleCatalog(definitions: List<Work>, users: List<Work>): List<Wor
             previewAspectRatio = source.previewAspectRatio, p5Version = source.p5Version,
             p5SoundEnabled = source.p5SoundEnabled, libraries = source.libraries.toMap(),
             parameterValues = source.parameterValues.toMap(), createdAt = source.createdAt,
-            updatedAt = source.updatedAt, isSample = true)
+            updatedAt = source.updatedAt, isSample = true, blockEditorState = source.blockEditorState)
     }
 }
 

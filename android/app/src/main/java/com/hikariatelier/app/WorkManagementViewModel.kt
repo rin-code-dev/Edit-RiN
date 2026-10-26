@@ -301,7 +301,7 @@ internal class WorkManagementViewModel(
         var works = store.works
         if (rawDraft != null && rawDraft.first.storeKey == draftStoreKey(selectedFolderUri)) {
             val needed = works.filter { work -> work.id == rawDraft.first.workId ||
-                rawDraft.second.keys.any { it.startsWith("${work.id}/") } }.map { it.id }.toSet()
+                work.id in rawDraft.first.blockEditorDrafts || rawDraft.second.keys.any { it.startsWith("${work.id}/") } }.map { it.id }.toSet()
             works = withContext(io) { works.map { work ->
                 if (work.id in needed && work.id in deferredWorkIds) runCatching { persistence.loadWork(selectedFolderUri, work.id) }.getOrNull() ?: work else work
             } }
@@ -309,8 +309,12 @@ internal class WorkManagementViewModel(
         }
         val compatible = if (rawDraft != null) withContext(io) { drafts?.loadCompatible(draftStoreKey(selectedFolderUri), works.filter { it.bodyLoaded }) } else null
         if (rawDraft != null && (compatible == null || compatible.second != rawDraft.second ||
+                compatible.first.blockEditorDrafts != rawDraft.first.blockEditorDrafts ||
                 (compatible.first.workId != activeId && compatible.first.code != works.firstOrNull { it.id == compatible.first.workId }?.code))) pendingDraft = rawDraft
         compatible?.second?.let(session.fileDrafts::putAll)
+        compatible?.first?.blockEditorDrafts?.filter { (id, state) ->
+            state != works.firstOrNull { it.id == id }?.blockEditorState
+        }?.let(session.blockEditorDrafts::putAll)
         session.initialize(if (loadFailure == null) works + officialSamples else works, activeId, compatible?.first?.takeIf { it.workId == activeId }?.code)
         if (initialWeave != null) {
             persistence.rememberSelectedWork(selectedFolderUri, initialWeave.id)
@@ -323,28 +327,59 @@ internal class WorkManagementViewModel(
     }
 
     // Identity, rather than timestamps, also detects restored/external bodies with unchanged dates.
-    private data class HashBase(val work: Work, val code: String, val files: Map<String, String>)
+    private data class HashBase(val work: Work, val code: String, val files: Map<String, String>, val blockEditorState: String?)
     private val baseHashCache = java.util.concurrent.ConcurrentHashMap<Work, Pair<HashBase, String>>()
 
-    private fun captureHashBase(work: Work) = HashBase(work, work.code, work.files.toMap())
+    private fun captureHashBase(work: Work) = HashBase(work, work.code, work.files.toMap(), work.blockEditorState)
     private fun cachedBaseHash(base: HashBase): String {
-        baseHashCache[base.work]?.takeIf { it.first.code == base.code && it.first.files == base.files }?.let { return it.second }
-        val hash = draftBaseHash(base.code, base.files)
+        baseHashCache[base.work]?.takeIf { it.first.code == base.code && it.first.files == base.files &&
+            it.first.blockEditorState == base.blockEditorState }?.let { return it.second }
+        val hash = draftBaseHash(base.code, base.files, base.blockEditorState)
         baseHashCache[base.work] = base to hash
         return hash
     }
 
+    private var draftFlushJob: Job? = null
+    private var draftFlushSequence = 0L
+
     fun saveDraft() {
+        val sequence = ++draftFlushSequence
+        if (session.blockEditorFlusher == null) {
+            saveDraftNow()
+            return
+        }
+        val workId = session.activeWorkIdState.value
+        val activation = session.blockEditorActivationGeneration
+        val folder = selectedFolderUri
+        draftFlushJob = scope.launch {
+            val flushed = session.flushBlockEditor(hideChaff = false)
+            if (sequence != draftFlushSequence || workId != session.activeWorkIdState.value ||
+                activation != session.blockEditorActivationGeneration || folder != selectedFolderUri) return@launch
+            // A suspended/failed renderer must not prevent recovery of edits already
+            // acknowledged by the native session. Unacknowledged browser edits stay pending.
+            saveDraftNow()
+            if (!flushed) {
+                runCatching { android.util.Log.d("WorkManagementViewModel", "Auto-draft block flush postponed or timed out") }
+            }
+        }
+    }
+
+    private fun saveDraftNow() {
         if (settings?.draftRecovery != false && session.initialized && pendingDraft == null && loadFailure == null) {
             val repository = drafts ?: return
             val activeId = session.activeWorkIdState.value
             val work = session.worksState.value.firstOrNull { it.id == activeId } ?: return
             if (work.isSample) return
-            val codeText = session.editorValueState.value.text
+            val inputDraft = session.currentBlockInputDraft(activeId)
+            val codeText = inputDraft?.first ?: session.editorValueState.value.text
             val capturedFiles = session.fileDrafts.toMap()
+            val capturedBlocks = session.blockEditorDrafts.toMutableMap().apply {
+                // Pair the active code with its full authoring state, including unchanged state.
+                put(activeId, if (inputDraft != null) inputDraft.second else session.currentBlockEditorState(activeId))
+            }
             val folderUri = selectedFolderUri
             val bases = session.worksState.value.filter { saved ->
-                saved.bodyLoaded && (saved.id == work.id || capturedFiles.keys.any { it.startsWith("${saved.id}/") })
+                saved.bodyLoaded && (saved.id == work.id || saved.id in capturedBlocks || capturedFiles.keys.any { it.startsWith("${saved.id}/") })
             }.map(::captureHashBase)
             val activeBase = captureHashBase(work)
             baseHashCache.keys.retainAll(session.worksState.value.toSet())
@@ -353,26 +388,32 @@ internal class WorkManagementViewModel(
                 val activeHash = cachedBaseHash(activeBase)
                 val hashes = bases.associate { it.work.id to cachedBaseHash(it) }
                 repository.save(activeId, codeText, capturedFiles, draftStoreKey(folderUri), activeHash, hashes,
-                    generationToken = generation)
+                    generationToken = generation, blockEditorDrafts = capturedBlocks)
             }
         }
     }
 
-    internal suspend fun awaitDraftSave() { withContext(io) { drafts?.awaitPendingWrites() } }
+    internal suspend fun awaitDraftSave() {
+        draftFlushJob?.join()
+        withContext(io) { drafts?.awaitPendingWrites() }
+    }
 
     fun clearDraft() {
         if (pendingDraft != null || loadFailure != null) return
         if (settings?.draftRecovery != false &&
-            (session.fileDrafts.isNotEmpty() || session.editorValueState.value.text != session.lastSavedTextState.value)) {
+            (session.fileDrafts.isNotEmpty() || session.blockEditorDrafts.isNotEmpty() || session.blockEditorHasPendingInput ||
+                session.editorValueState.value.text != session.lastSavedTextState.value)) {
             saveDraft()
         } else {
+            ++draftFlushSequence
+            draftFlushJob?.cancel()
             drafts?.clear()
         }
     }
 
     private data class CommandRequest(
         val workId: String, val folder: Uri?, val editorText: String, val editedText: String?,
-        val files: Map<String, String>, val parameters: Map<String, Map<String, String>>,
+        val files: Map<String, String>, val blocks: Map<String, String?>, val parameters: Map<String, Map<String, String>>,
         val ratios: Map<String, String>, val workContent: Work?, val acceptedAtNanos: Long,
         val requestedFolderName: String, val sampleId: String?
     )
@@ -386,7 +427,7 @@ internal class WorkManagementViewModel(
             previewAspectRatio = previewRatio(work)
         } }
         return CommandRequest(id, selectedFolderUri, text, text.takeIf { work != null && !work.isSample && it != work.code },
-            session.fileDrafts.toMap(), parameterDrafts.mapValues { it.value.toMap() }, ratioDrafts.toMap(), content, System.nanoTime(), newWorkFolder, copySampleId)
+            session.fileDrafts.toMap(), session.blockEditorDrafts.toMap(), parameterDrafts.mapValues { it.value.toMap() }, ratioDrafts.toMap(), content, System.nanoTime(), newWorkFolder, copySampleId)
     }
     private data class QueuedOperation(
         val errorText: String, val blockUi: Boolean, val progressDelayMillis: Long,
@@ -472,22 +513,48 @@ internal class WorkManagementViewModel(
         }
     }
 
+    /** Do not capture stale code or lock the editor until the browser has committed its edit. */
+    private fun afterBlockEditorFlush(errorText: String, enqueue: () -> Job?): Job? {
+        // Retain synchronous acceptance and queue ordering for the normal code editor.
+        if (session.blockEditorFlusher == null) return enqueue()
+        val workId = session.activeWorkIdState.value
+        val activation = session.blockEditorActivationGeneration
+        val folder = selectedFolderUri
+        return scope.launch {
+            val flushed = session.flushBlockEditor()
+            if (workId != session.activeWorkIdState.value ||
+                activation != session.blockEditorActivationGeneration || folder != selectedFolderUri) {
+                emit(WorkEvent(message = errorText, failure = true))
+                return@launch
+            }
+            if (!flushed) {
+                // In particular, ON_STOP can arrive after WebView animation frames stop.
+                // Preserve acknowledged state without claiming the requested save succeeded.
+                saveDraftNow()
+                emit(WorkEvent(message = errorText, failure = true))
+                return@launch
+            }
+            enqueue()?.join()
+        }
+    }
+
     private fun execute(errorText: String = "保存できませんでした。保存先を確認して再試行してください",
                         blockUi: Boolean = true, progressDelayMillis: Long = 350L, locksEditor: Boolean = false,
-                        action: suspend CommandRequest.() -> Unit): Job? {
+                        action: suspend CommandRequest.() -> Unit): Job? = afterBlockEditorFlush(errorText) {
         val operation = QueuedOperation(errorText, blockUi, progressDelayMillis, locksEditor, captureCommand(), action = action)
         synchronized(queueLock) { operationQueue.addLast(operation) }
         ensureQueueProcessing()
-        return queueProcessorJob
+        queueProcessorJob
     }
 
-    private fun executeNavigation(command: suspend CommandRequest.() -> Unit): Job? {
-        val operation = QueuedOperation("作品を読み込めませんでした。編集内容は残っています", true, 350L,
-            true, captureCommand(), action = command)
-        synchronized(queueLock) { pendingNavigation = operation }
-        ensureQueueProcessing()
-        return queueProcessorJob
-    }
+    private fun executeNavigation(command: suspend CommandRequest.() -> Unit): Job? =
+        afterBlockEditorFlush("作品を読み込めませんでした。編集内容は残っています") {
+            val operation = QueuedOperation("作品を読み込めませんでした。編集内容は残っています", true, 350L,
+                true, captureCommand(), action = command)
+            synchronized(queueLock) { pendingNavigation = operation }
+            ensureQueueProcessing()
+            queueProcessorJob
+        }
 
     private fun snapshots(includeEdits: Boolean = false, copyIds: Set<String>? = null,
                           request: CommandRequest? = null): List<Work> {
@@ -496,6 +563,7 @@ internal class WorkManagementViewModel(
         val capturedParameters = request?.parameters ?: parameterDrafts
         val capturedRatios = request?.ratios ?: ratioDrafts
         val capturedFiles = request?.files ?: session.fileDrafts
+        val capturedBlocks = request?.blocks ?: session.blockEditorDrafts
         return session.worksState.value.map { original ->
             // Committed Work objects are replaced by commands, never mutated in place.
             // Reuse untouched works; copy anything this command will edit or commit.
@@ -503,6 +571,7 @@ internal class WorkManagementViewModel(
             val dirty = includeEdits && (
                 (original.id == selected && code != null && original.code != code) ||
                     capturedParameters.containsKey(original.id) || capturedRatios.containsKey(original.id) ||
+                    (capturedBlocks.containsKey(original.id) && capturedBlocks[original.id] != original.blockEditorState) ||
                     original.files.any { (name, saved) ->
                         capturedFiles["${original.id}/$name"]?.let { it != saved } == true
                     })
@@ -511,6 +580,10 @@ internal class WorkManagementViewModel(
                 if (includeEdits) {
                     capturedParameters[copy.id]?.let { copy.parameterValues.clear(); copy.parameterValues.putAll(it) }
                     capturedRatios[copy.id]?.let { copy.previewAspectRatio = it }
+                    if (capturedBlocks.containsKey(copy.id)) {
+                        copy.blockEditorState = capturedBlocks[copy.id]
+                        if (copy.blockEditorState != original.blockEditorState) copy.updatedAt = System.currentTimeMillis()
+                    }
                     if (copy.id == selected && code != null && copy.code != code) {
                         copy.code = code; copy.updatedAt = System.currentTimeMillis()
                     }
@@ -639,6 +712,7 @@ internal class WorkManagementViewModel(
         if (savedEdits) works.forEach { work ->
             if (parameterDrafts[work.id] == work.parameterValues.toMap()) parameterDrafts.remove(work.id)
             if (ratioDrafts[work.id] == work.previewAspectRatio) ratioDrafts.remove(work.id)
+            session.rebaseBlockEditorDraft(work.id)
             work.files.forEach { (name, code) ->
                 val key = "${work.id}/$name"
                 if (session.fileDrafts[key] == code) session.fileDrafts.remove(key)
@@ -652,7 +726,7 @@ internal class WorkManagementViewModel(
         val targetFolder = selectedFolderUri
         return execute(blockUi = blockUi, progressDelayMillis = progressDelayMillis) {
             check(selectedFolderUri == targetFolder)
-            if (!needsInitialSave && editedText == null && files.isEmpty() && parameters.isEmpty() && ratios.isEmpty() && !conflictPending) {
+            if (!needsInitialSave && editedText == null && files.isEmpty() && blocks.isEmpty() && parameters.isEmpty() && ratios.isEmpty() && !conflictPending) {
                 operationState = WorkOperationState.SAVED
                 emit(then)
                 return@execute
@@ -678,6 +752,7 @@ internal class WorkManagementViewModel(
         return works.filterNot { it.isSample }.any { work ->
             parameterDrafts[work.id]?.let { it != work.parameterValues.toMap() } == true ||
                 ratioDrafts[work.id]?.let { it != work.previewAspectRatio } == true ||
+                (session.blockEditorDrafts.containsKey(work.id) && session.blockEditorDrafts[work.id] != work.blockEditorState) ||
                 work.files.any { (name, code) ->
                     session.fileDrafts["${work.id}/$name"]?.let { it != code } == true
                 }
@@ -807,7 +882,7 @@ internal class WorkManagementViewModel(
             files = current.files.toMutableMap(), assets = current.assets.toMap(),
             previewAspectRatio = previewRatio(current), p5Version = current.p5Version,
             p5SoundEnabled = current.p5SoundEnabled, libraries = current.libraries.toMap(),
-            parameterValues = current.parameterValues.toMap(), createdAt = previous.createdAt)
+            parameterValues = current.parameterValues.toMap(), createdAt = previous.createdAt, blockEditorState = current.blockEditorState)
         val next = userTemplates.map { if (it.id == templateId) replacement else it }
         withContext(io) { checkNotNull(templatePersistence).captureAssets(replacement); templatePersistence.save(next) }
         userTemplates = next
@@ -938,7 +1013,8 @@ internal class WorkManagementViewModel(
             code = current.code, files = current.files.toMutableMap(), assets = current.assets.toMap(),
             previewAspectRatio = current.previewAspectRatio, p5Version = current.p5Version,
             p5SoundEnabled = current.p5SoundEnabled, libraries = current.libraries.toMap(),
-            parameterValues = current.parameterValues.toMap(), isPinned = current.isPinned, tags = current.tags.toList(), folderName = current.folderName)
+            parameterValues = current.parameterValues.toMap(), isPinned = current.isPinned, tags = current.tags.toList(), folderName = current.folderName,
+            blockEditorState = current.blockEditorState)
         val next = snapshots(includeEdits = true, request = this) + duplicate
         persistAndSwitch(next, duplicate.id)
         emit(WorkEvent(rerun = true))
@@ -1095,9 +1171,10 @@ internal class WorkManagementViewModel(
     }
     internal fun workForSnapshot(work: Work): Work = snapshotWork(work).also { copy ->
         copy.parameterValues.clear(); copy.parameterValues.putAll(parameterValues(work))
+        copy.blockEditorState = session.currentBlockEditorState(work.id)
     }
     fun requestRestoreCurrentWork() {
-        if (hasEditsToSave()) showRestoreConfirmation = true else restoreCurrentWork()
+        if (session.blockEditorHasPendingInput || hasEditsToSave()) showRestoreConfirmation = true else restoreCurrentWork()
     }
 
     fun restoreCurrentWork() = execute(locksEditor = true) {
