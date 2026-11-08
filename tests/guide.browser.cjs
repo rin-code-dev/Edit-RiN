@@ -8,6 +8,16 @@ const {spawnSync} = require('node:child_process');
 const {chromium} = require('playwright');
 const root = path.resolve(__dirname, '../website');
 const repo = path.resolve(__dirname, '..');
+// Desktop and drawer controls coexist; use the control actually presented to the user.
+async function selectLanguage(page, language) {
+  const header = page.locator(`.topbar > .language [data-lang="${language}"]`);
+  if (await header.isVisible()) { await header.click(); return; }
+  const menu = page.locator('#menu-toggle');
+  const opened = await menu.getAttribute('aria-expanded') === 'true';
+  if (!opened) await menu.click();
+  await page.locator(`#sidebar .drawer-language [data-lang="${language}"]`).click();
+  if (!opened) await menu.click();
+}
 const content = JSON.parse(fs.readFileSync(path.join(repo, 'scripts/guide-content.json')));
 const topics = content.chapters.flatMap(c => c.topics);
 const legacy = ['samples','create','imports','input-tools','number-scrub','fold-wrap','search-format','diagnostics','p5-reference','run-pause','layout','pip-controls','preview-ratio','watch','inline','rin-declarations','parameter-rules','parameter-panel','project-files','runtime-versions','loading','limits','asset-inspector','bundled-libraries','canvas-modes','webgpu','touch-input','instances','camera','sound','microphone','orientation','file-fullscreen','save-history','draft-recovery','organize','backup','png','recording','project-export','downloads','tweet-golf','tweet-options','appearance','tours-updates','troubleshooting'];
@@ -52,7 +62,15 @@ const server = http.createServer((req, res) => {
     const url = `http://127.0.0.1:${server.address().port}/guide.html`;
     const goto = async id => { await page.goto(url + (id ? '#' + id : '')); await page.locator('.js').waitFor(); };
     const open = async id => {
-      await page.evaluate(id => document.querySelector(`a[href="#${id}"]`).click(), id);
+      if (await page.evaluate(id => innerWidth <= 760 && document.getElementById(id)?.matches('[data-chapter]'), id)) {
+        const menu = page.locator('#menu-toggle');
+        if (await menu.getAttribute('aria-expanded') !== 'true') await menu.click();
+        const chapter = page.locator(`#sidebar [data-chapter-link="${id}"]`);
+        if (await chapter.getAttribute('aria-expanded') !== 'true') await chapter.click();
+        await page.locator(`#sidebar .drawer-top-link[href="#${id}"]`).click();
+      } else {
+        await page.evaluate(id => document.querySelector(`a[href="#${id}"]`).click(), id);
+      }
       await page.locator(`#${id}`).waitFor({state:'visible'});
     };
     const click = async (host, name) => {
@@ -185,13 +203,13 @@ const server = http.createServer((req, res) => {
     await range(params, 'count', 1); await range(params, 'size', 200);
     const beforeLanguage = await frames(params);
     const hash = await page.evaluate(()=>location.hash);
-    await page.locator('[data-lang=en]').click();
+    await selectLanguage(page, 'en');
     assert.equal(await page.locator('html').getAttribute('lang'), 'en');
     assert.equal(await page.evaluate(()=>location.hash), hash);
     assert.equal(await params.locator('[data-control=size]').inputValue(), '200');
     assert.equal(await page.locator('main [lang=ja]:visible').count(), 0);
     assert(await frames(params) >= beforeLanguage, 'language switch retains live runtime');
-    await page.locator('[data-lang=ja]').click();
+    await selectLanguage(page, 'ja');
     await params.locator('[data-action=compare]').focus(); await page.keyboard.down('Space');
     assert.equal(await params.locator('[data-action=compare]').getAttribute('aria-pressed'), 'true');
     await page.keyboard.up('Space');
@@ -241,8 +259,8 @@ const server = http.createServer((req, res) => {
     await open('organize'); await sim('organize').locator('[data-control=a]').check(); await click(sim('organize'),'move'); await click(sim('organize'),'tag'); assert.match(await sim('organize').locator('[data-location]').innerText(),/A → 練習.*#study/); await click(sim('organize'),'delete-folder'); assert.match(await sim('organize').locator('[data-location]').innerText(),/A → 未分類/);
     await open('backup'); await click(sim('backup'),'backup'); await click(sim('backup'),'clear'); await click(sim('backup'),'restore'); assert.match(await sim('backup').locator('[data-result]').innerText(),/作品A・作品B/);
     await open('share-cards'); await sim('share').locator('[data-control=author]').fill('Artist'); assert.equal(await sim('share').locator('[data-author]').innerText(),'Artist'); await sim('share').locator('[data-control=show-code]').uncheck(); assert.equal(await sim('share').locator('[data-card-code]').isVisible(),false);
-    await sim('share').locator('[data-value=sumi]').click(); assert(await sim('share').locator('[data-share-card].sumi-card').isVisible());
-    await sim('share').locator('[data-value=light]').click(); assert(await sim('share').locator('[data-share-card].light-card').isVisible());
+    await sim('share').locator('[data-value=sumi]').click(); assert(await sim('share').locator('.share-card-preview.sumi-card').isVisible());
+    await sim('share').locator('[data-value=light]').click(); assert(await sim('share').locator('.share-card-preview:not(.dark-card):not(.sumi-card)').isVisible());
     // Every simulation resets and stays explicitly labelled as a simulation.
     for (const host of await page.locator('[data-sim]').all()) {
       const id=await host.evaluate(el=>el.closest('[data-topic]').id); await open(id); await click(host,'reset'); assert.match(await host.locator('.demo-tag').innerText(),/模擬操作/);
@@ -286,9 +304,9 @@ const server = http.createServer((req, res) => {
     await open('rin-declarations'); const appParams=live('params');
     await click(appParams,'reset');
     assert(await page.locator('symbol[id^="app-icon-"]').count()>=24,'inline SVG sprite symbols are present');
-    await page.locator('[data-lang=en]').click();
+    await selectLanguage(page, 'en');
     assert.equal(await appParams.locator('.app-color-swatch').getAttribute('aria-label'),'Edit color');
-    await page.locator('[data-lang=ja]').click();
+    await selectLanguage(page, 'ja');
     assert.equal(await appParams.locator('.app-color-swatch').getAttribute('aria-label'),'色を編集');
     await appParams.locator('[data-control=size]').locator('..').locator('button').last().click();
     assert.equal(await appParams.locator('[data-control=size]').inputValue(),'110');
@@ -351,7 +369,7 @@ const server = http.createServer((req, res) => {
       await page.setViewportSize({width,height:1000}); await goto();
       assert((await page.locator('#guide-search').boundingBox()).y<240,'search is close to the top');
       for(const lang of ['ja','en']) {
-        await page.locator(`[data-lang=${lang}]`).click();
+        await selectLanguage(page, lang);
         for(const chapter of content.chapters) {
           await open(chapter.id);
           assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${chapter.id} ${lang} at ${width}`);
@@ -364,7 +382,7 @@ const server = http.createServer((req, res) => {
       }
       if(artifacts) {
         await page.addStyleTag({content:'.topbar{position:relative!important}'});
-        await page.locator('[data-lang=ja]').click(); await goto();
+        await selectLanguage(page, 'ja'); await goto();
         await page.screenshot({path:path.join(artifacts,`guide-${width}-home.png`)});
         await open('rin-declarations'); await live('params').scrollIntoViewIfNeeded();
         await live('params').screenshot({path:path.join(artifacts,`guide-${width}-parameters.png`)});
@@ -389,7 +407,7 @@ const server = http.createServer((req, res) => {
     assert.equal(await plain.locator('[data-topic]:visible').count(),topics.length);
     assert(await plain.locator('h3 [lang=en]').first().isVisible());
     assert.equal(await plain.locator('[data-live]:visible').count(),0); await plainContext.close();
-    const blockedContext=await browser.newContext(); await blockedContext.addInitScript(()=>Object.defineProperty(window,'localStorage',{get(){throw Error('blocked');}})); const blocked=await blockedContext.newPage(); await blocked.goto(url); await blocked.locator('[data-lang=en]').click(); assert.equal(await blocked.locator('html').getAttribute('lang'),'en'); await blockedContext.close();
+    const blockedContext=await browser.newContext(); await blockedContext.addInitScript(()=>Object.defineProperty(window,'localStorage',{get(){throw Error('blocked');}})); const blocked=await blockedContext.newPage(); await blocked.goto(url); await selectLanguage(blocked, 'en'); assert.equal(await blocked.locator('html').getAttribute('lang'),'en'); await blockedContext.close();
     const brokenContext=await browser.newContext(); await brokenContext.route('**/vendor/p5-2.3.4.min.js',route=>route.abort()); const broken=await brokenContext.newPage(); await broken.goto(url+'#basic-drawing'); await broken.locator('[data-live=basic] [data-action=start]').click(); await broken.waitForFunction(()=>document.querySelector('[data-live=basic] .demo-status').textContent.includes('実行できませんでした')); await brokenContext.close();
     assert.deepEqual(errors, [], 'no page errors');
     assert.deepEqual(failedResponses, [], 'all local assets load');

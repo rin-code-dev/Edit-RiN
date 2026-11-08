@@ -477,12 +477,16 @@ internal fun EditorScreen(
 
     val editorToolScope = rememberCoroutineScope()
     val currentGalleryPresent by rememberUpdatedState(galleryPresent)
+    val currentEditingFile by rememberUpdatedState(editingFile)
     val actionCoordinator = remember(sessionViewModel) {
         EditorActionCoordinator(
             session = sessionViewModel,
             scope = editorToolScope,
             folderUriProvider = { workManagementViewModel.selectedFolderUri },
-            onSampleCopyRequested = { workManagementViewModel.requestSampleCopy() }
+            onSampleCopyRequested = { workManagementViewModel.requestSampleCopy() },
+            onFlushFailure = {
+                Toast.makeText(context, uiText("ブロックの編集を確定できませんでした。もう一度お試しください。"), Toast.LENGTH_SHORT).show()
+            }
         )
     }
     val dialogCoordinator = remember { WorkDialogCoordinator() }
@@ -516,8 +520,18 @@ internal fun EditorScreen(
     ) {
         if (sessionViewModel.editorInputLocked) return
         if (sessionViewModel.sampleReadOnly) { workManagementViewModel.requestSampleCopy(); return }
-        sessionViewModel.applyChange(editingValue, nextValue, undoStack, redoStack)
-        editingValue = nextValue
+        val measurements = preview.performance.measurements
+        val started = if (measurements.enabled) System.nanoTime() else 0L
+        try {
+            sessionViewModel.applyChange(editingValue, nextValue, undoStack, redoStack)
+            editingValue = nextValue
+        } finally {
+            if (measurements.enabled) measurements.record(
+                if (nextValue.text.length >= 100_000) PerformanceOperation.EDIT_CHANGE_APPLY_LARGE
+                else PerformanceOperation.EDIT_CHANGE_APPLY,
+                System.nanoTime() - started
+            )
+        }
     }
 
     val formatScope = rememberCoroutineScope()
@@ -569,12 +583,14 @@ internal fun EditorScreen(
     }
 
     fun undoEditorChange() {
+        val requestedFile = editingFile
         actionCoordinator.launchAction<Unit>(
             kind = ActionKind.UNDO,
             requireEditable = true,
             requireFlush = editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value
         ) { ctx ->
             if (currentGalleryPresent) return@launchAction CoordinatorResult.Cancelled("Gallery present")
+            if (currentEditingFile != requestedFile) return@launchAction CoordinatorResult.Superseded
             if (editingFile == "sketch.js" && sessionViewModel.blockModeState(ctx.workId).value) {
                 sessionViewModel.undo(sessionViewModel.editorValueState.value)?.let {
                     sessionViewModel.editorValueState.value = it
@@ -591,12 +607,14 @@ internal fun EditorScreen(
     }
 
     fun redoEditorChange() {
+        val requestedFile = editingFile
         actionCoordinator.launchAction<Unit>(
             kind = ActionKind.REDO,
             requireEditable = true,
             requireFlush = editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value
         ) { ctx ->
             if (currentGalleryPresent) return@launchAction CoordinatorResult.Cancelled("Gallery present")
+            if (currentEditingFile != requestedFile) return@launchAction CoordinatorResult.Superseded
             if (editingFile == "sketch.js" && sessionViewModel.blockModeState(ctx.workId).value) {
                 sessionViewModel.redo(sessionViewModel.editorValueState.value)?.let {
                     sessionViewModel.editorValueState.value = it

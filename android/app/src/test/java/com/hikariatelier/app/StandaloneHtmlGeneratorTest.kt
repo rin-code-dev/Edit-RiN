@@ -5,6 +5,54 @@ import org.junit.Test
 
 class StandaloneHtmlGeneratorTest {
 
+    @Test fun htmlExportPreservesExternalUrlsCommentsAndInlineSource() {
+        val external = "<script defer src=\"https://cdn.jsdelivr.net/npm/p5@1.11.5/lib/addons/p5.sound.min.js?v=1\"></script>"
+        val protocolRelative = "<script src='//example.org/p5-v2.min.js'></script>"
+        val comment = "<!-- <script src='p5-v2.min.js'></script> -->"
+        val inline = "<script>const file = 'p5.sound.min.js'; const tag = '<script src=\"p5-v2.min.js\">';</script>"
+        val externalHost = "<script src='https://example.org/p5_host.js'></script>"
+        val input = "<html><head>$external$protocolRelative$comment$inline$externalHost</head></html>"
+        val work = Work("html-urls", "HTML", "", files = mutableMapOf("index.html" to input))
+        val html = StandaloneHtmlGenerator.generate(work)
+        listOf(external, protocolRelative, comment, inline, externalHost).forEach {
+            assertTrue("Export changed $it", html.contains(it))
+        }
+    }
+
+    @Test fun localLibraryConversionAndScriptInliningKeepOtherAttributes() {
+        val input = """
+            <html><head>
+            <SCRIPT defer SRC = './p5-v2.min.js?v=1&amp;x=2#demo' data-label="p5-v1.min.js"></SCRIPT>
+            <script async src=/__edit-rin__/p5.sound-v1.min.js></script>
+            <script type='text/javascript' src = './helper.js?v=2' nonce='test'></script>
+            <script data-src='p5-v1.min.js'>const name = 'p5-v1.min.js';</script>
+            <script src='/__edit-rin__/p5_host.js'></script>
+            </head></html>
+        """.trimIndent()
+        val work = Work("html-local", "HTML", "", files = mutableMapOf(
+            "index.html" to input, "helper.js" to "const soundFile = 'p5.sound.min.js';"
+        ))
+        val html = StandaloneHtmlGenerator.generate(work)
+        assertTrue(html.contains("<SCRIPT defer SRC = 'https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js?v=1&amp;x=2#demo' data-label=\"p5-v1.min.js\"></SCRIPT>"))
+        assertTrue(html.contains("<script async src=https://cdn.jsdelivr.net/npm/p5@1.11.5/lib/addons/p5.sound.min.js></script>"))
+        assertTrue(html.contains("<script type='text/javascript' nonce='test'>\nconst soundFile = 'p5.sound.min.js';\n</script>"))
+        assertTrue(html.contains("<script data-src='p5-v1.min.js'>const name = 'p5-v1.min.js';</script>"))
+        assertFalse(html.contains("/__edit-rin__/p5_host.js"))
+    }
+
+    @Test fun stylesheetInliningDoesNotRewriteLinksInsideCommentsOrScripts() {
+        val comment = "<!-- <link rel='stylesheet' href='style.css'> -->"
+        val inline = "<script>const tag = \"<link rel='stylesheet' href='style.css'>\";</script>"
+        val external = "<link rel='stylesheet' href='https://example.org/style.css'>"
+        val input = "<html><head>$comment$inline$external<link rel='stylesheet' href='./style.css?v=1'></head></html>"
+        val work = Work("html-css", "HTML", "", files = mutableMapOf(
+            "index.html" to input, "style.css" to "body { color: red; }"
+        ))
+        val html = StandaloneHtmlGenerator.generate(work)
+        listOf(comment, inline, external).forEach { assertTrue(html.contains(it)) }
+        assertTrue(html.contains("<style>\nbody { color: red; }\n</style>"))
+    }
+
     @Test
     fun defaultSketchGeneratesValidP5V2Html() {
         val work = Work(

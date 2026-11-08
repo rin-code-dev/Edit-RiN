@@ -3,6 +3,7 @@ package com.hikariatelier.app
 import android.net.Uri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -69,11 +70,10 @@ internal class EditorActionCoordinator(
     private val session: EditorSessionViewModel,
     private val scope: CoroutineScope,
     private val folderUriProvider: () -> Uri?,
-    private val onSampleCopyRequested: () -> Unit
+    private val onSampleCopyRequested: () -> Unit,
+    private val onFlushFailure: () -> Unit = {}
 ) {
     private val actionMutex = Mutex()
-    private var activeActionJob: Job? = null
-    private var actionSequence = 0L
 
     /**
      * Executes an action requiring block flush and ownership check.
@@ -95,71 +95,77 @@ internal class EditorActionCoordinator(
     ): CoordinatorResult<T> {
         val initialFolder = folderUriProvider()
         val initialActivation = session.blockEditorActivationGeneration
-        val sequence = ++actionSequence
+        return actionMutex.withLock {
+            // A queued request belongs to the activation that received the click.
+            if (session.activeWorkIdState.value != targetWorkId ||
+                session.blockEditorActivationGeneration != initialActivation || folderUriProvider() != initialFolder) {
+                return@withLock CoordinatorResult.Superseded
+            }
 
-        // Precondition 1: Check if work exists
-        val work = session.worksState.value.firstOrNull { it.id == targetWorkId }
-        val isSample = work?.isSample == true || (targetWorkId == session.activeWorkIdState.value && session.sampleReadOnly)
+            // Precondition 1: Check if work exists
+            val work = session.worksState.value.firstOrNull { it.id == targetWorkId }
+                ?: return@withLock CoordinatorResult.Rejected("Work no longer exists.")
+            val isSample = work.isSample || session.sampleReadOnly
 
-        if (requireEditable && isSample) {
-            onSampleCopyRequested()
-            return CoordinatorResult.Rejected("Sample is read-only. Copy requested.")
-        }
+            if (requireEditable && isSample) {
+                onSampleCopyRequested()
+                return@withLock CoordinatorResult.Rejected("Sample is read-only. Copy requested.")
+            }
 
-        // Precondition 2: Check lock state
-        if (session.editorInputLocked && kind != ActionKind.SAVE && kind != ActionKind.SWITCH_WORK) {
-            return CoordinatorResult.Rejected("Editor input is currently locked.")
-        }
+            // Precondition 2: Check lock state
+            if (session.editorInputLocked && kind != ActionKind.SAVE && kind != ActionKind.SWITCH_WORK) {
+                return@withLock CoordinatorResult.Rejected("Editor input is currently locked.")
+            }
 
-        // Flush block editor if requested and block mode is active
-        if (requireFlush && session.blockEditorFlusher != null && session.blockModeState(targetWorkId).value) {
-            val flushSucceeded = session.flushBlockEditor(hideChaff = hideChaff)
-            if (!flushSucceeded) {
-                // If flush failed and we require editable changes, don't execute
-                if (requireEditable) {
-                    return CoordinatorResult.Failed("Block editor flush timed out or failed.")
+            // Flush block editor if requested and block mode is active
+            if (requireFlush && session.blockEditorFlusher != null && session.blockModeState(targetWorkId).value) {
+                val flushSucceeded = session.flushBlockEditor(hideChaff = hideChaff)
+                if (!flushSucceeded) {
+                    if (session.activeWorkIdState.value != targetWorkId ||
+                        session.blockEditorActivationGeneration != initialActivation || folderUriProvider() != initialFolder) {
+                        return@withLock CoordinatorResult.Superseded
+                    }
+                    return@withLock CoordinatorResult.Failed("Block editor flush timed out or failed.")
                 }
             }
-        }
 
-        // Ownership and superseded checks after suspension point
-        if (sequence != actionSequence) {
-            return CoordinatorResult.Superseded
-        }
-        if (session.activeWorkIdState.value != targetWorkId && kind != ActionKind.SWITCH_WORK) {
-            return CoordinatorResult.Superseded
-        }
-        if (session.blockEditorActivationGeneration != initialActivation && kind != ActionKind.SWITCH_WORK) {
-            return CoordinatorResult.Superseded
-        }
-        if (folderUriProvider() != initialFolder) {
-            return CoordinatorResult.Superseded
-        }
+            // Ownership and superseded checks after suspension point
+            if (session.activeWorkIdState.value != targetWorkId) {
+                return@withLock CoordinatorResult.Superseded
+            }
+            if (session.blockEditorActivationGeneration != initialActivation) {
+                return@withLock CoordinatorResult.Superseded
+            }
+            if (folderUriProvider() != initialFolder) {
+                return@withLock CoordinatorResult.Superseded
+            }
+            if (session.worksState.value.none { it.id == targetWorkId } ||
+                (requireEditable && session.sampleReadOnly) ||
+                (session.editorInputLocked && kind != ActionKind.SAVE && kind != ActionKind.SWITCH_WORK)) {
+                return@withLock CoordinatorResult.Superseded
+            }
 
-        val effectiveCode = if (session.activeWorkIdState.value == targetWorkId) {
-            session.editorValueState.value.text
-        } else {
-            work?.code.orEmpty()
-        }
-        val blockState = session.currentBlockEditorState(targetWorkId)
-        val revision = session.currentBlockDocumentRevision(targetWorkId)
+            val effectiveCode = session.editorValueState.value.text
+            val blockState = session.currentBlockEditorState(targetWorkId)
+            val revision = session.currentBlockDocumentRevision(targetWorkId)
 
-        val context = ActionContext(
-            workId = targetWorkId,
-            activationGeneration = initialActivation,
-            folderUri = initialFolder,
-            isSample = isSample,
-            currentCode = effectiveCode,
-            blockEditorState = blockState,
-            revisionToken = revision
-        )
+            val context = ActionContext(
+                workId = targetWorkId,
+                activationGeneration = initialActivation,
+                folderUri = initialFolder,
+                isSample = isSample,
+                currentCode = effectiveCode,
+                blockEditorState = blockState,
+                revisionToken = revision
+            )
 
-        return try {
-            action(context)
-        } catch (e: CancellationException) {
-            CoordinatorResult.Cancelled(e.message ?: "Action cancelled")
-        } catch (e: Throwable) {
-            CoordinatorResult.Failed(e.message ?: "Action failed", e)
+            try {
+                action(context)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                CoordinatorResult.Failed(e.message ?: "Action failed", e)
+            }
         }
     }
 
@@ -175,7 +181,7 @@ internal class EditorActionCoordinator(
         onResult: ((CoordinatorResult<T>) -> Unit)? = null,
         action: suspend (ActionContext) -> CoordinatorResult<T>
     ): Job {
-        return scope.launch {
+        return scope.launch(start = CoroutineStart.UNDISPATCHED) {
             val result = executeAction(
                 kind = kind,
                 targetWorkId = targetWorkId,
@@ -184,6 +190,9 @@ internal class EditorActionCoordinator(
                 hideChaff = hideChaff,
                 action = action
             )
+            if (result is CoordinatorResult.Failed && result.message == "Block editor flush timed out or failed.") {
+                onFlushFailure()
+            }
             onResult?.invoke(result)
         }
     }

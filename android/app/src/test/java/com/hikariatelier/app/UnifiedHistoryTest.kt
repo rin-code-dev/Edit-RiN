@@ -58,10 +58,29 @@ class UnifiedHistoryTest {
         assertEquals(HistoryItemType.REVISION, items[1].type)
         assertEquals("sketch.js 本文のみ復元", items[1].restoreScopeSummary)
 
-        assertEquals(HistoryItemType.LEGACY_SNAPSHOT, items[2].type)
-        assertEquals("コードのみ復元（旧形式）", items[2].restoreScopeSummary)
+        assertEquals(HistoryItemType.SNAPSHOT, items[2].type)
+        assertTrue(items[2].restoreScopeSummary.contains("追加ファイル"))
 
         assertEquals(HistoryItemType.REVISION, items[3].type)
+    }
+
+    @Test
+    fun emptyFullSnapshotAndLegacySnapshotDescribeTheirActualRestoreScope() {
+        val full = WorkSnapshot(id = "full", code = "same")
+        val legacy = WorkSnapshot(id = "legacy", code = "same", mainCodeOnly = true)
+        val items = buildHistoryDisplayItems("work", emptyList(), listOf(full, legacy)) { it }.associateBy { it.id }
+        assertEquals(HistoryItemType.SNAPSHOT, items.getValue("snap_full").type)
+        assertEquals(HistoryItemType.LEGACY_SNAPSHOT, items.getValue("snap_legacy").type)
+        val current = SnapshotContent("same", mapOf("helper.js" to "x"), mapOf("size" to "2"), "{}")
+        val work = Work(id = "work", title = "Work", code = "same")
+        val restoredFull = restoredSnapshotWork(work, full, current)
+        val restoredLegacy = restoredSnapshotWork(work, legacy, current)
+        assertTrue(restoredFull.files.isEmpty())
+        assertTrue(restoredFull.parameterValues.isEmpty())
+        assertEquals(null, restoredFull.blockEditorState)
+        assertEquals(current.files, restoredLegacy.files)
+        assertEquals(current.parameterValues, restoredLegacy.parameterValues)
+        assertEquals(current.blockEditorState, restoredLegacy.blockEditorState)
     }
 
     @Test

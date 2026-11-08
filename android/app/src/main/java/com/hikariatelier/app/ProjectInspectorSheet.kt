@@ -197,7 +197,7 @@ internal fun ProjectInspectorSheet(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            PREVIEW_ASPECT_RATIOS.forEach { ratio ->
+                            previewAspectRatioOptions(currentAspectRatio).forEach { ratio ->
                                 val selected = currentAspectRatio == ratio
                                 FilterChip(
                                     selected = selected,

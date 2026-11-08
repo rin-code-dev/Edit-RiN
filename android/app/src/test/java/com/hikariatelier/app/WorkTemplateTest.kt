@@ -5,7 +5,7 @@ import org.junit.Test
 
 class WorkTemplateTest {
     @Test fun allPresetDimensionsMatchTheirRatio() {
-        assertEquals(listOf("16:9", "4:3", "1:1", "9:16"), workTemplates.map { it.ratio })
+        assertEquals(listOf("16:9", "3:2", "4:3", "1:1", "4:5", "3:4", "9:16"), workTemplates.map { it.ratio })
         workTemplates.forEach {
             val parts = it.ratio.split(":").map(String::toInt)
             assertEquals(parts[0] * it.height, parts[1] * it.width)
@@ -39,18 +39,19 @@ class WorkTemplateTest {
             val responsive = template.code(CanvasSizingMode.RESPONSIVE)
             val expectedCanvas = when (kind) {
                 WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER -> "createCanvas(800, 800, WEBGL)"
-                WorkTemplateKind.WEBGPU -> "createCanvas(800, 800, navigator.gpu ? WEBGPU : WEBGL)"
+                WorkTemplateKind.WEBGPU -> "createCanvas(800, 800, renderer)"
                 else -> "createCanvas(800, 800)"
             }
             assertTrue("$kind must keep its renderer and fixed dimensions", fixed.contains(expectedCanvas))
             assertFalse(fixed.contains("function windowResized()"))
             assertTrue(responsive.contains("resizeCanvas(windowWidth, windowHeight)"))
+            if (kind == WorkTemplateKind.WEBGPU) assertTrue(fixed.contains("navigator.gpu.requestAdapter()"))
             assertEquals(if (kind == WorkTemplateKind.PHYSICS_MATTER) mapOf("matter-js" to "0.20.0") else emptyMap<String, String>(), template.libraries)
         }
     }
 
     @Test fun basicTemplatesStaySmallAndParameterLayoutUsesCanvasDimensions() {
-        assertEquals(4, WorkTemplateKind.entries.count { !it.advanced })
+        assertEquals(6, WorkTemplateKind.entries.count { !it.advanced })
         assertEquals(4, WorkTemplateKind.entries.count { it.advanced })
         listOf(WorkTemplate("9:16", 540, 960), WorkTemplate("16:9", 960, 540)).forEach { size ->
             val code = size.copy(kind = WorkTemplateKind.PARAMETERS).code(CanvasSizingMode.FIXED)

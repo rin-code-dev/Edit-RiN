@@ -11,9 +11,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -68,9 +72,11 @@ internal fun AssetPreviewDialog(
     var playing by remember(file.path) { mutableStateOf(false) }
     var ready by remember(file.path) { mutableStateOf(false) }
     var audioDurationMs by remember(file.path) { mutableStateOf<Int?>(null) }
+    val lifecycle = LocalView.current.findViewTreeLifecycleOwner()?.lifecycle
 
-    DisposableEffect(file.path, asset.mime) {
+    DisposableEffect(file.path, asset.mime, lifecycle) {
         var activePlayer: MediaPlayer? = null
+        var disposed = false
         if (asset.mime.startsWith("audio/")) {
             val media = MediaPlayer()
             activePlayer = media
@@ -78,14 +84,17 @@ internal fun AssetPreviewDialog(
             runCatching {
                 media.setDataSource(file.path)
                 media.setOnPreparedListener { mp ->
+                    if (disposed) return@setOnPreparedListener
                     ready = true
                     audioDurationMs = mp.duration.takeIf { it > 0 }
                 }
-                media.setOnCompletionListener { playing = false }
+                media.setOnCompletionListener { if (!disposed) playing = false }
                 media.setOnErrorListener { _, _, _ ->
-                    details = text("この素材はプレビューできません")
-                    ready = false
-                    playing = false
+                    if (!disposed) {
+                        details = text("この素材はプレビューできません")
+                        ready = false
+                        playing = false
+                    }
                     true
                 }
                 media.prepareAsync()
@@ -94,11 +103,25 @@ internal fun AssetPreviewDialog(
                 ready = false
             }
         }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                if (ready) runCatching { activePlayer?.let { if (it.isPlaying) it.pause() } }
+                playing = false
+            }
+        }
+        lifecycle?.addObserver(observer)
         onDispose {
+            disposed = true
+            lifecycle?.removeObserver(observer)
             player = null
             playing = false
             ready = false
-            runCatching { activePlayer?.release() }
+            activePlayer?.let { media ->
+                media.setOnPreparedListener(null)
+                media.setOnCompletionListener(null)
+                media.setOnErrorListener(null)
+                runCatching { media.release() }
+            }
         }
     }
 

@@ -80,16 +80,12 @@ internal fun buildHistoryDisplayItems(
 
     // Snapshots
     snapshots.forEach { snap ->
-        val isLegacy = snap.mainCodeOnly || (snap.files.isEmpty() && snap.parameterValues.isEmpty() && snap.blockEditorState == null)
+        val isLegacy = snap.mainCodeOnly
         val type = if (isLegacy) HistoryItemType.LEGACY_SNAPSHOT else HistoryItemType.SNAPSHOT
         val summary = if (isLegacy) {
             uiText("コードのみ復元（旧形式）")
         } else {
-            val parts = mutableListOf(uiText("コード"))
-            if (snap.files.isNotEmpty()) parts.add("${uiText("追加ファイル")} (${snap.files.size})")
-            if (snap.parameterValues.isNotEmpty()) parts.add(uiText("パラメータ"))
-            if (snap.blockEditorState != null) parts.add(uiText("ブロック配置"))
-            String.format(java.util.Locale.ROOT, uiText("復元対象: %s"), parts.joinToString("・"))
+            uiText("コード・追加ファイル・パラメータ・ブロック配置を復元")
         }
 
         items.add(
@@ -474,9 +470,12 @@ private fun HistoryDiffDialog(
                             modifier = Modifier.padding(8.dp)
                         )
                     }
-                } else {
+                }
+                if (!isSame || item.type == HistoryItemType.SNAPSHOT) {
                     Text(
-                        text = uiText("この記録の内容に復元します（現在の未保存編集は上書きされます）。"),
+                        text = uiText(if (item.type == HistoryItemType.SNAPSHOT)
+                            "現在の未保存編集を上書きし、追加ファイル・パラメータ・ブロック配置も置き換えます。記録にないものは消去されます。"
+                        else "この記録の内容に復元します（現在の未保存編集は上書きされます）。"),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant
                     )

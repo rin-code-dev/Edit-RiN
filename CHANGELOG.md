@@ -1,5 +1,51 @@
 # Changelog
 
+## 4.0.1 — 2026-11-08
+
+## English
+
+Requires Android 11 or later.
+
+- Standalone HTML Export: Preserves external URLs, code, and comments by resolving only actual tag references.
+- Safe JS Import: Enforces a 16 MiB limit during stream reading, shows localized explanations, and preserves unsaved work.
+- Audio Asset Lifecycle: Pauses playback on backgrounding without resuming on restore, and safely unregisters listeners on disposal.
+
+### Details
+- Standalone HTML Export: Replaced regular-expression replacements with token-aware tag/attribute scanning, ensuring embedded scripts, external CDN URLs, and HTML comments remain intact during export.
+- Safe JS Import: Stream reading now checks `MAX_PROJECT_TEXT_BYTES` (16 MiB) on the fly. If an imported sketch exceeds the limit, a clear message is displayed in English, Japanese, or Chinese, leaving existing editor edits untouched.
+- Audio Asset Lifecycle: `AssetPreviewDialog` binds to the view lifecycle to pause audio when backgrounded, prevents unintended auto-playback upon return, and cleanly detaches media listeners on dialog disposal.
+
+Edit:RiN includes a visual JavaScript block editor built with Blockly and Acorn. Blockly is licensed under Apache-2.0, and Acorn under MIT. Third-party license texts are available in the app's License information and in the corresponding source repository.
+
+## 日本語
+
+Android 11以降に対応しています。
+
+- HTML書き出しの安全性向上: 実際のタグ参照先のみを処理し、外部URL・コード・コメントの破損を防止。
+- JS取り込みの安全性向上: ストリーム読み込み中に16 MiB制限を適用し、超過理由を多言語で表示して現在の編集を保持。
+- 音声素材のライフサイクル管理: アプリ背景移行時に一時停止して復帰時の自動再生を防止し、終了時のリスナー解放を追加。
+
+### 詳細
+- HTML書き出し: 正規表現による一括置換からHTMLトークナイザー（タグ・属性走査）へ移行し、コメントやスクリプト内の誤検知を解消。外部CDNやインラインコードを保持したまま安全に書き出せるように改善しました。
+- JS取り込み: 外部プロバイダからのストリーム読み込み中に上限チェック（16 MiB）を実施。超過時は現在の編集データを破壊せず、日本語・英語・中国語で分かりやすい理由を表示します。
+- 音声素材プレビュー: ライフサイクル監視により、アプリを背景（バックグラウンド）へ移した際の一時停止と、画面復帰時の意図しない自動再生の防止を徹底。ダイアログ破棄時のリスナー解放により安定性を向上させました。
+
+Edit:RiNは、BlocklyとAcornを使用したブロック形式のJavaScript編集機能を備えています。BlocklyはApache-2.0、AcornはMITライセンスで提供されています。第三者ライセンスの全文は、アプリのライセンス情報と対応ソースのリポジトリで確認できます。
+
+## 中文
+
+需要 Android 11 或更高版本。
+
+- 独立 HTML 导出安全性提升: 仅解析实际标签的引用目标，防止外部链接、代码和注释受损。
+- JS 导入安全性提升: 在流式读取过程中应用 16 MiB 限制，以多语言提示超限原因并保护当前编辑内容。
+- 音频素材生命周期管理: 应用切换到后台时自动暂停且返回时不自动播放，并在销毁时注销监听器。
+
+### 详细说明
+- 独立 HTML 导出: 从正则替换改用 HTML 词法分析器，保留注释与内联脚本，安全处理外部 CDN 链接。
+- JS 导入: 在读取流的同时检查 16 MiB 上限，超限时保护当前正在编辑的内容并以多语言提示。
+- 音频素材预览: 监听应用生命周期，在进入后台时暂停播放且恢复时不自动重播，并在对话框关闭时安全注销监听器。
+
+
 ## 4.0.0 — 2026-10-27
 
 ## English

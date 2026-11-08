@@ -7,6 +7,21 @@ import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+
+internal class JsImportTooLargeException : IllegalArgumentException()
+
+/** Bound actual bytes from the provider, even when its size metadata is missing. */
+internal fun readImportedJsSource(input: InputStream): String = input.use {
+    val output = ByteArrayOutputStream()
+    try {
+        copyBounded(it, output, MAX_PROJECT_TEXT_BYTES)
+    } catch (_: IllegalArgumentException) {
+        throw JsImportTooLargeException()
+    }
+    output.toString(Charsets.UTF_8.name())
+}
 
 internal fun documentDisplayName(resolver: ContentResolver, uri: Uri): String? = runCatching {
     resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -39,7 +54,7 @@ internal class WorkTransferRepository(context: Context, private val assetStorage
         }
 
     suspend fun readJs(uri: Uri): Work = withContext(Dispatchers.IO) {
-        val code = resolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        val code = resolver.openInputStream(uri)?.let(::readImportedJsSource)
             ?: error("Cannot read JS file")
         val title = documentDisplayName(resolver, uri)?.removeSuffix(".js")?.removeSuffix(".JS")
             ?.ifBlank { null } ?: "Imported sketch"

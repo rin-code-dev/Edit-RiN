@@ -9,6 +9,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WorkManagementViewModelTest {
+    @Test fun creationRequestsAreNotDuplicatedWhileBlockFlushIsPending() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        val release = CompletableDeferred<Unit>()
+        session.blockEditorFlusher = { release.await(); true }
+        val template = WorkTemplate("3:2", 900, 600)
+        val first = vm.createWork("First", "3:2", CanvasSizingMode.FIXED, template)
+        assertNotNull(first)
+        assertTrue(vm.creationPending)
+        assertNull(vm.createWork("Second", "3:2", CanvasSizingMode.FIXED, template))
+        release.complete(Unit)
+        first!!.join()
+        assertEquals(1, session.worksState.value.count { it.title == "First" })
+        assertFalse(session.worksState.value.any { it.title == "Second" })
+    }
     private class Store : WorkPersistence {
         var succeed = true
         var calls = 0
@@ -85,6 +99,20 @@ class WorkManagementViewModelTest {
         assertEquals(1, session.undoStack.size)
         assertFalse(vm.workSaving); assertFalse(session.assetBusy)
         assertTrue(vm.events.first().failure)
+    }
+    @Test fun failedBlockFlushMarksSaveFailedAndAllowsRetryWithoutLosingEdits() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        session.blockModeState("one").value = true
+        session.blockEditorFlusher = { false }
+        vm.saveCurrentWork()!!.join()
+        assertEquals(WorkOperationState.FAILED, vm.operationState)
+        assertEquals("unsaved", session.editorValueState.value.text)
+        assertEquals("unsaved helper", session.fileDrafts["one/helper.js"])
+        assertEquals(0, store.calls)
+        session.blockEditorFlusher = { true }
+        vm.saveCurrentWork()!!.join()
+        assertEquals(WorkOperationState.SAVED, vm.operationState)
+        assertEquals("unsaved", store.persisted!!.works.first().code)
     }
     @Test fun successfulSaveCommitsBothFilesAndKeepsUndo() = runBlocking {
         val session = session(); val store = Store(); val vm = vm(session, store, this)

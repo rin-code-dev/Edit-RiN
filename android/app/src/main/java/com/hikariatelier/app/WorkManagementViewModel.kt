@@ -91,6 +91,8 @@ internal class WorkManagementViewModel(
     var updatedPreviewId by mutableStateOf<String?>(null)
     var workSaving by mutableStateOf(false)
         private set
+    var creationPending by mutableStateOf(false)
+        private set
     var showBlockingProgress by mutableStateOf(false)
         private set
     var selectedFolderUri by mutableStateOf<Uri?>(null)
@@ -495,11 +497,13 @@ internal class WorkManagementViewModel(
                         conflictPending = true
                         operationState = WorkOperationState.CONFLICT
                         emit(WorkEvent(message = "保存先に別の変更があります。外部変更と統合してください", failure = true))
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
                         failed = true
                         if (conflictPending) operationState = WorkOperationState.CONFLICT
                         else if (operationState == WorkOperationState.SAVING) operationState = WorkOperationState.FAILED
-                        emit(WorkEvent(message = next.errorText, failure = true))
+                        emit(WorkEvent(message = if (error is JsImportTooLargeException)
+                            "JSファイルは16 MiB以下にしてください。現在の編集内容は残っています。"
+                        else next.errorText, failure = true))
                     } finally {
                         progress?.cancel()
                         queueOwnsInteraction = false
@@ -514,7 +518,7 @@ internal class WorkManagementViewModel(
     }
 
     /** Do not capture stale code or lock the editor until the browser has committed its edit. */
-    private fun afterBlockEditorFlush(errorText: String, enqueue: () -> Job?): Job? {
+    private fun afterBlockEditorFlush(errorText: String, onFlushFailure: () -> Unit = {}, enqueue: () -> Job?): Job? {
         // Retain synchronous acceptance and queue ordering for the normal code editor.
         if (session.blockEditorFlusher == null) return enqueue()
         val workId = session.activeWorkIdState.value
@@ -531,6 +535,7 @@ internal class WorkManagementViewModel(
                 // In particular, ON_STOP can arrive after WebView animation frames stop.
                 // Preserve acknowledged state without claiming the requested save succeeded.
                 saveDraftNow()
+                onFlushFailure()
                 emit(WorkEvent(message = errorText, failure = true))
                 return@launch
             }
@@ -540,7 +545,10 @@ internal class WorkManagementViewModel(
 
     private fun execute(errorText: String = "保存できませんでした。保存先を確認して再試行してください",
                         blockUi: Boolean = true, progressDelayMillis: Long = 350L, locksEditor: Boolean = false,
-                        action: suspend CommandRequest.() -> Unit): Job? = afterBlockEditorFlush(errorText) {
+                        markSaveFlushFailure: Boolean = false,
+                        action: suspend CommandRequest.() -> Unit): Job? = afterBlockEditorFlush(errorText, onFlushFailure = {
+        if (markSaveFlushFailure && !workSaving && !conflictPending) operationState = WorkOperationState.FAILED
+    }) {
         val operation = QueuedOperation(errorText, blockUi, progressDelayMillis, locksEditor, captureCommand(), action = action)
         synchronized(queueLock) { operationQueue.addLast(operation) }
         ensureQueueProcessing()
@@ -724,7 +732,7 @@ internal class WorkManagementViewModel(
     fun saveCurrentWork(then: WorkEvent = WorkEvent(), blockUi: Boolean = false, progressDelayMillis: Long = 400): Job? {
         val targetId = session.activeWorkIdState.value
         val targetFolder = selectedFolderUri
-        return execute(blockUi = blockUi, progressDelayMillis = progressDelayMillis) {
+        return execute(blockUi = blockUi, progressDelayMillis = progressDelayMillis, markSaveFlushFailure = true) {
             check(selectedFolderUri == targetFolder)
             if (!needsInitialSave && editedText == null && files.isEmpty() && blocks.isEmpty() && parameters.isEmpty() && ratios.isEmpty() && !conflictPending) {
                 operationState = WorkOperationState.SAVED
@@ -781,7 +789,17 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(rerun = workId != oldId))
     }
 
-    fun createWork(title: String, ratio: String, sizingMode: CanvasSizingMode, template: WorkTemplate) = execute(locksEditor = true) {
+    private fun submitNewWork(action: () -> Job?): Job? {
+        if (creationPending) return null
+        creationPending = true
+        val job = try { action() } catch (error: Throwable) { creationPending = false; throw error }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try { job?.join() } finally { creationPending = false }
+        }
+        return job
+    }
+
+    fun createWork(title: String, ratio: String, sizingMode: CanvasSizingMode, template: WorkTemplate): Job? = submitNewWork { execute(locksEditor = true) {
         val work = Work(id = java.util.UUID.randomUUID().toString(), title = title,
             code = template.code(sizingMode), previewAspectRatio = ratio, libraries = template.libraries,
             folderName = requestedFolderName.takeIf { it in galleryFolders }.orEmpty())
@@ -789,7 +807,7 @@ internal class WorkManagementViewModel(
         persistAndSwitch(next, work.id)
         showAddDialog = false
         emit(WorkEvent(rerun = true))
-    }
+    } }
 
     fun createWorkWithCode(
         title: String,
@@ -889,7 +907,7 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(message = "テンプレートを保存しました"))
     }
 
-    fun createWorkFromUserTemplate(title: String, templateId: String) = execute(locksEditor = true) {
+    fun createWorkFromUserTemplate(title: String, templateId: String): Job? = submitNewWork { execute(locksEditor = true) {
         ensureTemplatesLoaded()
         val repository = checkNotNull(templatePersistence)
         val template = userTemplates.first { it.id == templateId }
@@ -899,7 +917,7 @@ internal class WorkManagementViewModel(
         persistAndSwitch(next, work.id)
         showAddDialog = false
         emit(WorkEvent(rerun = true))
-    }
+    } }
 
     /** Insert into the main file as one Undo operation. Failed saves keep the edit recoverable. */
     fun insertParameterDeclarations(declarations: String): Boolean {

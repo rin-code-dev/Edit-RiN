@@ -170,10 +170,10 @@ internal fun moduleCallbackRegistrationTail(): String {
     } + "});window.__editRinModuleReady?.();\n"
 }
 
-private data class ProjectHtmlTag(val start: Int, val end: Int, val name: String, val closing: Boolean, val text: String)
-private data class ProjectHtmlAttribute(val start: Int, val end: Int, val name: String, val valueStart: Int, val valueEnd: Int)
+internal data class ProjectHtmlTag(val start: Int, val end: Int, val name: String, val closing: Boolean, val text: String)
+internal data class ProjectHtmlAttribute(val start: Int, val end: Int, val name: String, val valueStart: Int, val valueEnd: Int)
 
-private fun projectHtmlAttributes(tag: String): List<ProjectHtmlAttribute> = buildList {
+internal fun projectHtmlAttributes(tag: String): List<ProjectHtmlAttribute> = buildList {
     var cursor = Regex("^<\\s*[^\\s>]+").find(tag)?.range?.last?.plus(1) ?: return@buildList
     while (cursor < tag.length) {
         val start = cursor
@@ -201,7 +201,7 @@ private fun projectHtmlAttributes(tag: String): List<ProjectHtmlAttribute> = bui
 }
 
 /** A small tag scanner leaves author script contents and all script attributes intact. */
-private fun projectHtmlTags(html: String): List<ProjectHtmlTag> = buildList {
+internal fun projectHtmlTags(html: String): List<ProjectHtmlTag> = buildList {
     var cursor = 0
     while (cursor < html.length) {
         val start = html.indexOf('<', cursor).takeIf { it >= 0 } ?: break

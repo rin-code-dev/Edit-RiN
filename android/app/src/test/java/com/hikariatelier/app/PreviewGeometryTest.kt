@@ -5,6 +5,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreviewGeometryTest {
+    @Test fun customRatiosAreBoundedNormalizedAndRetainedAmongOptions() {
+        assertEquals("3:2", ratioFromDimensions(900, 600))
+        assertEquals("41:29", normalizedPreviewAspectRatio("410:290"))
+        assertEquals(41f / 29f, previewAspectRatioValue("410:290"), 0.0001f)
+        assertTrue("41:29" in previewAspectRatioOptions("410:290"))
+        for (invalid in listOf("0:2", "1:0", "8193:1", "-1:2", "2:3:4", "999999:1")) {
+            assertEquals("1:1", normalizedPreviewAspectRatio(invalid))
+        }
+        assertTrue(customCanvasDimensionsValid(1, 8192))
+        assertTrue(customCanvasDimensionsValid(4000, 4000))
+        assertFalse(customCanvasDimensionsValid(4001, 4000))
+        assertFalse(customCanvasDimensionsValid(0, 100))
+        assertFalse(customCanvasDimensionsValid(null, 100))
+        assertFalse(customCanvasDimensionsValid(8193, 1))
+    }
     @Test fun hiddenPreviewReleasesAllSpaceAndRestoresOriginalGeometry() {
         for (compact in listOf(true, false)) {
             assertEquals(0f, portraitPreviewHeight(360f, 240f, 9f / 16f, true, compact), 0f)

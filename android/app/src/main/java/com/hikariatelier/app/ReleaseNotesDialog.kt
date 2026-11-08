@@ -39,6 +39,35 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "4.0.1",
+        versionCode = 40,
+        titleEn = "What's New in v4.0.1",
+        titleJa = "v4.0.1 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_export_js,
+                titleEn = "Safe Standalone HTML Export",
+                titleJa = "HTML書き出しの安全性向上",
+                descEn = "Resolves only actual tag references to preserve external CDN URLs, embedded scripts, and comments without corruption.",
+                descJa = "実際のタグ参照先のみを解析・処理し、外部CDNのURLやインラインコード、コメントの破損を防止します。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_import_js,
+                titleEn = "Safe JS Import with Size Guard",
+                titleJa = "JS取り込みの安全性向上",
+                descEn = "Enforces a 16 MiB limit during stream reading, shows localized error reasons, and preserves active editor code on failure.",
+                descJa = "ストリーム読み込み中に16 MiB制限を適用し、上限超過の理由を多言語で表示して現在の編集内容を保護します。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_assets,
+                titleEn = "Audio Asset Lifecycle Management",
+                titleJa = "音声素材のライフサイクル管理",
+                descEn = "Pauses audio playback upon backgrounding without auto-resuming on return, and cleanly detaches media listeners on disposal.",
+                descJa = "アプリの背景移行時に音声を一時停止して復帰時の自動再生を防止し、ダイアログ終了時のリスナー解放とリソース管理を強化しました。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "4.0.0",
         versionCode = 39,
         titleEn = "What's New in v4.0.0",

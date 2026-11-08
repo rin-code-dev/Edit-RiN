@@ -201,7 +201,7 @@ body.rin-dragging .blocklyTrash{opacity:.85;pointer-events:auto}
   #status:not(.error){min-height:22px;height:22px;padding:2px 12px;font-size:11px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #status.error{max-height:44px;overflow:auto}
   #palette,body.native-chrome #palette{height:calc(100% - 8px);border-radius:20px 20px 0 0;padding-bottom:6px}
-  .palette-target-bar{display:none}
+  .palette-target-bar{margin:0 8px;padding:2px 8px}
   .sheet-handle{margin-top:6px}
   #paletteItems{grid-template-columns:1fr}
   .palette-item{min-height:48px}

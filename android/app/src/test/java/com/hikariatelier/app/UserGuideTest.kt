@@ -18,12 +18,15 @@ class UserGuideTest {
                 assertEquals(source.iconRes, section.iconRes)
                 assertEquals(source.codeSnippet, section.codeSnippet)
             }
-            val code = guide.mapNotNull { it.codeSnippet }.single()
+            val code = guide.mapNotNull { it.codeSnippet }.single { it.contains("@rin number diameter") }
             val parameters = workParameters(mapOf("sketch.js" to code))
             assertEquals(setOf("diameter", "ink"), parameters.map { it.name }.toSet())
             assertTrue(parameters.all { code.contains("rinParams.${it.name}") })
             assertEquals("120.0", parameters.first { it.name == "diameter" }.defaultValue)
             assertEquals("#D67856", parameters.first { it.name == "ink" }.defaultValue)
+            val blockExample = guide.single { it.tag in setOf("Blocks", "ブロック", "积木") }.codeSnippet!!
+            assertTrue(blockExample.contains("function draw()"))
+            assertTrue(blockExample.contains("circle(mouseX, mouseY, 80)"))
         }
         assertEquals(english, localizedUserGuide("unsupported"))
     }

@@ -55,7 +55,7 @@ function draw() {
 }
 ```
 
-### Editing and preview in v4.0.0
+### Editing and preview in v4.0.1
 
 - Switch between Code Mode and Block Mode while keeping `sketch.js` as the single source of truth. In Block Mode, adjust color and number capsules directly, insert blocks from the bottom dock, and jump between functions.
 - Browse auto-save history and named snapshots in a unified sheet with restoration scope indicators and code comparison.
@@ -64,14 +64,14 @@ function draw() {
 - Add `// ?` to a supported expression or assignment to display its value beside the code while it runs.
 - Enable Auto-Run to rerun after typing pauses. Normal code reruns and asset changes reload the preview; animation and audio state may restart.
 - Use the 140/280-character counter and code compression tools for short sketches. Check the compressed sketch before sharing it.
-- Export a single HTML file for browser playback. Libraries may load from a CDN, and assets or module dependencies may need separate files. Use a work ZIP when transferring the complete project.
+- Export a single HTML file for browser playback. Bundled libraries resolve to public CDNs, and local script and stylesheet tags are safely inlined without corrupting embedded code, external URLs, or comments. Use a work ZIP when transferring the complete project.
 - Replay the introductory tour or editor practice tour from Settings.
 
 ---
 
 ## Installation & Requirements
 
-- **Supported OS**: Android 11 (API level 30) or later for the current v4.0.0 release. Older v2.3.1 supports Android 6.0 or later.
+- **Supported OS**: Android 11 (API level 30) or later for the current v4.0.1 release. Older v2.3.1 supports Android 6.0 or later.
 - **Download**: Get the latest signed APK from [GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases).
 - **Updates**: Starting with the v2.3.0 release app, download future updates within the app, then install through Android’s confirmation screen. Download progress and cancellation are available.
 
@@ -130,11 +130,11 @@ Edit:RiN は、Android 端末で p5.js のコードを書き、ジェネラテ�
 - アプリ内更新：v2.3.0以降の正式版では、次回以降の更新用APKをアプリ内でダウンロードできます。進捗の確認や中止に対応し、Androidの確認画面からインストールします。
 - プライバシー：作品の編集・実行はオフラインでも利用できます。広告やトラッキングはありません。公開作品の取り込みや更新確認には通信が必要です。
 
-現在のv4.0.0はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+現在のv4.0.1はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
 
 `sketch.js` を唯一の正本として保ったまま、コードモードとブロックモードを切り替えて編集できます。縦画面では小窓プレビューを表示したまま編集でき、サイズや配置を変えたり最小化したりできます。自動保存履歴と名前付きスナップショットの統合シート、`@slider` などのコメントから作る操作UI、`// ?` による変数ウォッチ、140／280字のカウンターとコード圧縮、2種類の操作ツアーも利用できます。
 
-Auto-Runを有効にすると、入力を止めた後に作品を再実行します。通常のコード再実行や素材変更ではプレビューを読み込み直すため、アニメーションや音声の状態が最初に戻ることがあります。単一HTML書き出しでは、ライブラリの取得に通信が必要な場合や、素材・モジュールのファイルが別途必要な場合があります。プロジェクト全体の移動には作品ZIPを使ってください。
+Auto-Runを有効にすると、入力を止めた後に作品を再実行します。通常のコード再実行や素材変更ではプレビューを読み込み直すため、アニメーションや音声の状態が最初に戻ることがあります。単一HTML書き出しでは、同梱ライブラリがCDNへ安全に解決され、実際のタグ参照先のみをインライン化してコメントやコードの破損を防ぎます。プロジェクト全体の移動には作品ZIPを使ってください。
 
 詳しい使い方は、[素材ガイド](ASSETS.md)や[実行環境とサウンド](P5_RUNTIME_AND_SOUND.md)をご覧ください。
 

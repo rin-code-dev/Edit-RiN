@@ -21,7 +21,7 @@
     program:['作品の処理','Program','程序'], orphan:['外したブロックは実行されません。','Detached blocks do not run.','未连接的积木不会执行。'],
     search:['ブロックを検索','Search blocks','搜索积木'], all:['すべて','All','全部'], examples:['完成例','Examples','示例'], undo:['元に戻す','Undo','撤销'], redo:['やり直す','Redo','重做'], fit:['全体を表示','Fit blocks','适合屏幕'], runtime:['実行環境','Runtime settings','运行环境'], help:['操作の説明','Block editor help','积木编辑帮助'], cancel:['キャンセル','Cancel','取消'],
     fullscreen:['全画面','Full screen','全屏'], exitFullscreen:['分割表示','Split view','分屏'],
-    readOnly:['この作品は閲覧専用です。','This work is read only.','此作品为只读。'], syntax:['コードに構文エラーがあります。コードで修正すると、ブロック編集を再開できます。','The code has a syntax error. Fix it in code to resume block editing.','代码有语法错误。请在代码中修复后继续编辑积木。'],
+    readOnly:['この作品は閲覧専用です。','This work is read only.','此作品为只读。'], syntax:['コードに構文エラーがあります。表示中のブロックは編集できません。ドキュメントバーの「コード」で修正すると再開できます。','The code has a syntax error. The displayed blocks cannot be edited. Switch to Code in the document bar to fix it.','代码有语法错误，当前显示的积木无法编辑。请在文档栏切换到代码并修复。'],
     busy:['変更を反映しています…','Applying change…','正在应用更改…'], rejected:['変更を適用できませんでした。最新のコードから表示を戻しました。','The change could not be applied. Restored blocks from the current code.','无法应用更改。已从当前代码恢复积木。'],
     unsupported:['この接続の変更は安全にコードへ反映できません。コードで編集してください。','This connection cannot be changed safely here. Edit it in code.','无法安全地更改此连接。请在代码中编辑。'],
     code:['コードで編集','Edit in code','在代码中编辑'], insert:['追加する場所','Where to insert','插入位置'], before:['選択した処理の前','Before selected statement','所选语句之前'], after:['選択した処理の後','After selected statement','所选语句之后'], inside:['選択した処理の中','Inside selected statement','所选语句内部'], append:['作品の最後','End of program','程序末尾'], tray:['未接続の部品として置く','Keep as detached block','保留为未连接的积木'], replace:['選択した値を置き換える','Replace selected value','替换所选值'],
@@ -374,6 +374,7 @@
     if(editable&&node.valueType==='number'&&block.getField('F_value'))add('i-tune','actNumber',()=>adjustNumber(block));
     if(editable&&node.kind==='identifier'&&node.visibleNames?.length)add('i-rename','actName',()=>chooseVisibleName(block));
     if(model.bound)add('i-code','actCode',()=>showCodePreview(block));
+    if(model.bound&&node.kind.startsWith('raw_'))add('i-code','code',()=>jumpToCode(block));
     if(editable)add('i-duplicate','actDuplicate',()=>duplicateBlock(block).catch(error=>rollback(error.message)));
     const hasBody=Object.keys(node.inputs||{}).some(key=>node.inputKinds?.[key]==='statement');
     if(editable&&(hasBody||block.isCollapsed()))add(block.isCollapsed()?'i-unfold':'i-fold',block.isCollapsed()?'actExpand':'actCollapse',()=>{block.setCollapsed(!block.isCollapsed());showBlockActions(block);});
@@ -393,6 +394,7 @@
   }
   async function showErrorDetail(block,error){
     if(!error)return;
+    const errorSource=state.source,errorRevision=state.revision,errorWorkId=state.workId;
     const dialog=$('actionDialog');
     const lineText=error.line?(language==='ja'?`行 ${error.line} のエラー`:language==='zh'?`第 ${error.line} 行错误`:`Line ${error.line} Error`):tr('error');
     $('dialogTitle').textContent=lineText;
@@ -406,7 +408,11 @@
     jumpBtn.type='button';
     jumpBtn.className='filled';
     jumpBtn.textContent=tr('jumpToCode');
-    jumpBtn.onclick=()=>{dialog.close('jump');jumpToCode(block,error);};
+    jumpBtn.onclick=()=>{
+      dialog.close('jump');
+      if(errorSource!==state.source||errorRevision!==state.revision||errorWorkId!==state.workId){status(tr('rejected'),true);return;}
+      jumpToCode(block,error);
+    };
     $('dialogChoices').appendChild(jumpBtn);
 
     const prevCancelText=$('dialogCancel').textContent;
@@ -469,26 +475,27 @@
   function nodeFor(block) {const model=modelFor(block);return model?projectionNode(model.projection,model.nodeId):null;}
   async function jumpToCode(block, error = null) {
     const model=modelFor(block);
-    if(!model?.bound){
-      let start=0,end=0;
-      if(error?.line&&state.source){
-        const lines=state.source.split('\n');
-        let offset=0;
-        const targetLine=Math.max(1,Number(error.line));
-        for(let i=0;i<lines.length&&i<targetLine-1;i++){
-          offset+=lines[i].length+1;
-        }
-        start=offset;
-        end=offset+(lines[targetLine-1]||'').length;
-      }
-      if(await flushAll())send({type:'openCode',start,end});
+    if(error){
+      const workId=state.workId,source=state.source,revision=state.revision;
+      if(!await flushAll()||workId!==state.workId||source!==state.source||revision!==state.revision)return;
+      const line=Number(error.line),lines=source.split('\n');
+      if(!Number.isInteger(line)||line<1||line>lines.length){status(tr('rejected'),true);return;}
+      let start=0;for(let i=0;i<line-1;i++)start+=lines[i].length+1;
+      send({type:'openCode',start,end:start+lines[line-1].length});
       return;
     }
-    const id=model.nodeId,workId=state.workId;
-    if(!await flushAll()||workId!==state.workId)return;
+    if(!model?.bound){
+      const workId=state.workId,source=state.source,revision=state.revision;
+      if(!await flushAll()||workId!==state.workId||source!==state.source||revision!==state.revision)return;
+      send({type:'openCode',start:0,end:0});
+      return;
+    }
+    const id=model.nodeId,workId=state.workId,source=state.source,revision=state.revision;
+    // Positional node IDs can be reused when the document changes during flush.
+    if(!await flushAll()||workId!==state.workId||source!==state.source||revision!==state.revision)return;
     const node=state.projection?.nodes.find(n=>n.id===id);
     if(node)send({type:'openCode',start:node.start,end:node.end});
-    else send({type:'openCode',start:0,end:0});
+    else status(tr('rejected'),true);
   }
   const openCode = jumpToCode;
   function showCodePreview(block=null){
@@ -1755,7 +1762,8 @@
     }else{
       summary=resolveStatementInsertion(null).summary;
     }
-    labelEl.textContent=words('挿入先: ','Target: ','插入到: ')+summary;
+    labelEl.textContent=words('処理の追加先: ','Statement target: ','语句插入位置：')+summary;
+    labelEl.title=words('値は選択した値を置き換えるか未接続で追加します。イベントや素材は専用の手順で追加します。','Values replace the selected value or are added detached. Events and assets use their own steps.','值会替换所选值或作为未连接部件添加。事件和素材使用各自的步骤。');
     btnEl.textContent=words('位置変更 ▾','Position ▾','位置 ▾');
   }
   async function choosePaletteInsertMode(){
@@ -1768,7 +1776,7 @@
       {value:'tray',label:tr('tray')},
       {value:'ask',label:words('毎回ダイアログで選ぶ','Ask every time','每次询问')}
     ];
-    const picked=await choose(tr('insert'),words('パレットのブロックをタップしたときの追加先を選べます。','Choose where tapped blocks are inserted.','选择点击积木时的插入位置。'),choices);
+    const picked=await choose(tr('insert'),words('処理ブロックの追加先を選びます。値は選択中の値を置き換えるか未接続で追加します。イベントや素材には専用の手順があります。','Choose where statements are inserted. Values replace the selected value or are added detached; events and assets use their own steps.','选择语句的插入位置。值会替换所选值或作为未连接部件添加；事件和素材使用各自的步骤。'),choices);
     if(picked&&picked!=='cancel'){
       paletteInsertMode=picked;
       updatePaletteTargetBar();

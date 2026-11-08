@@ -24,79 +24,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Automatic Quick Fix transformations for common p5.js 2.x migration & syntax issues.
- */
+/** A runtime switch is offered as an option; source migration must be done by the user. */
 internal data class EditorQuickFix(
     val label: String,
-    val transformedCode: String? = null,
-    val switchP5Version: String? = null
+    val switchP5Version: String
 )
-
-private val PRELOAD_BLOCK_REGEX = Regex("""\bfunction\s+preload\s*\(\s*\)\s*\{([\s\S]*?)\}""")
-private val SETUP_HEADER_REGEX = Regex("""\b(async\s+)?function\s+setup\s*\(\s*\)\s*\{""")
-private val UNWAITED_LOADER_REGEX = Regex("""(?<!await\s)\b(loadImage|loadSound|loadFont|loadJSON|loadTable|loadStrings|loadBytes|loadXML|loadModel|loadShader)\s*\(""")
 
 internal fun buildEditorQuickFixes(
     errorMessage: String,
     sourceCode: String,
     p5Version: String?,
     textTranslator: (String, Array<out Any?>) -> String
-): List<EditorQuickFix> {
-    if (p5Version != null && p5Version != P5_VERSION_CURRENT) return emptyList()
-    val fixes = mutableListOf<EditorQuickFix>()
-    val hasPreload = PRELOAD_BLOCK_REGEX.containsMatchIn(sourceCode)
-    val hasUnwaitedLoader = UNWAITED_LOADER_REGEX.containsMatchIn(sourceCode)
-    val lower = errorMessage.lowercase()
-    val looksLikeAsyncLoaderError = hasPreload || (
-        (lower.contains("promise") || lower.contains("is not a function") || lower.contains("undefined")) &&
-            hasUnwaitedLoader
-        )
-
-    if (looksLikeAsyncLoaderError) {
-        val migrated = migratePreloadToAsyncSetup(sourceCode)
-        if (migrated != sourceCode) {
-            fixes.add(
-                EditorQuickFix(
-                    label = textTranslator("async setup() + await に自動変換", emptyArray()),
-                    transformedCode = migrated
-                )
-            )
-        }
-        fixes.add(
-            EditorQuickFix(
-                label = textTranslator("p5.js 1.11.5 に切替", emptyArray()),
-                switchP5Version = P5_VERSION_LEGACY
-            )
-        )
-    }
-    return fixes
-}
-
-internal fun migratePreloadToAsyncSetup(sourceCode: String): String {
-    var updated = sourceCode
-    val preloadMatch = PRELOAD_BLOCK_REGEX.find(updated)
-    val preloadBody = preloadMatch?.groupValues?.getOrNull(1)?.trim().orEmpty()
-    if (preloadMatch != null) {
-        updated = updated.removeRange(preloadMatch.range).trimStart()
-    }
-    updated = UNWAITED_LOADER_REGEX.replace(updated) { match ->
-        "await ${match.value}"
-    }
-    val setupMatch = SETUP_HEADER_REGEX.find(updated)
-    if (setupMatch != null) {
-        val replacement = buildString {
-            append("async function setup() {")
-            if (preloadBody.isNotEmpty()) {
-                val awaitedPreload = UNWAITED_LOADER_REGEX.replace(preloadBody) { "await ${it.value}" }
-                append("\n  ")
-                append(awaitedPreload)
-            }
-        }
-        updated = updated.replaceRange(setupMatch.range, replacement)
-    }
-    return updated
-}
+): List<EditorQuickFix> = if (p5ErrorDiagnosticHint(errorMessage, sourceCode, p5Version) != null) {
+    listOf(EditorQuickFix(textTranslator("p5.js 1.11.5 に切替", emptyArray()), P5_VERSION_LEGACY))
+} else emptyList()
 
 /**
  * Inline diagnostic card with flat vector Quick Fix buttons (`ic_quick_fix.xml`) and jump-to-line support.
@@ -111,19 +52,18 @@ internal fun InlineDiagnosticBanner(
     colors: ColorScheme,
     textTranslator: (String, Array<out Any?>) -> String,
     onJumpToSource: (String, Int) -> Unit,
-    onApplyQuickFixCode: (TextFieldValue) -> Unit,
     onSwitchRuntimeVersion: ((String) -> Unit)? = null,
     onCopyError: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember(latestError.id) { mutableStateOf(false) }
-    val errorFile = latestError.file ?: editingFile
+    val errorFile = latestError.file?.takeIf { it.isNotBlank() }
     val errorLine = latestError.line
-    val hint = remember(latestError.message, editingValue.text, p5Version) {
-        p5ErrorDiagnosticHint(latestError.message, editingValue.text, p5Version)
+    val hint = remember(latestError.message, errorFile, editingFile, editingValue.text, p5Version) {
+        if (errorFile == editingFile) p5ErrorDiagnosticHint(latestError.message, editingValue.text, p5Version) else null
     }
-    val quickFixes = remember(latestError.message, editingValue.text, p5Version) {
-        buildEditorQuickFixes(latestError.message, editingValue.text, p5Version, textTranslator)
+    val quickFixes = remember(latestError.message, errorFile, editingFile, editingValue.text, p5Version) {
+        if (errorFile == editingFile) buildEditorQuickFixes(latestError.message, editingValue.text, p5Version, textTranslator) else emptyList()
     }
 
     val bannerShape = RoundedCornerShape(12.dp)
@@ -135,7 +75,7 @@ internal fun InlineDiagnosticBanner(
             .background(colors.errorContainer.copy(alpha = 0.85f))
             .border(1.dp, colors.error.copy(alpha = 0.45f), bannerShape)
             .clickable {
-                if (errorLine != null) onJumpToSource(errorFile, errorLine)
+                if (errorLine != null && errorFile != null) onJumpToSource(errorFile, errorLine)
                 else expanded = !expanded
             }
             .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -150,7 +90,7 @@ internal fun InlineDiagnosticBanner(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = (if (errorLine != null) "$errorFile:$errorLine · " else "") +
+                    text = (if (errorLine != null && errorFile != null) "$errorFile:$errorLine · " else "") +
                         latestError.message.lineSequence().firstOrNull().orEmpty(),
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelMedium,
@@ -159,7 +99,7 @@ internal fun InlineDiagnosticBanner(
                     maxLines = if (expanded) 6 else 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (errorLine != null) {
+                if (errorLine != null && errorFile != null) {
                     Spacer(Modifier.width(6.dp))
                     Text(
                         textTranslator("行へ移動", emptyArray()),
@@ -215,18 +155,7 @@ internal fun InlineDiagnosticBanner(
                                         .background(colors.surface.copy(alpha = 0.92f))
                                         .border(1.dp, colors.primary.copy(alpha = 0.65f), chipShape)
                                         .clickable {
-                                            if (fix.transformedCode != null) {
-                                                onApplyQuickFixCode(
-                                                    TextFieldValue(
-                                                        fix.transformedCode,
-                                                        TextRange(
-                                                            editingValue.selection.start.coerceAtMost(fix.transformedCode.length)
-                                                        )
-                                                    )
-                                                )
-                                            } else if (fix.switchP5Version != null) {
-                                                onSwitchRuntimeVersion?.invoke(fix.switchP5Version)
-                                            }
+                                            onSwitchRuntimeVersion?.invoke(fix.switchP5Version)
                                         }
                                         .padding(horizontal = 9.dp),
                                     contentAlignment = Alignment.Center

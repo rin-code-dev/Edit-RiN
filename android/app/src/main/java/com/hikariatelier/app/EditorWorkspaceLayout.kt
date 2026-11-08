@@ -410,14 +410,16 @@ internal fun EditorWorkspaceLayout(
                                         .galleryChrome(galleryProgress, GalleryPart.SECONDARY)
                                         .pointerInput(state.activeWorkId) {
                                             var accumulated = 0f
-                                            var ratioIndex = PREVIEW_ASPECT_RATIOS
+                                            var ratioOptions = previewAspectRatioOptions(currentPreviewRatio.value)
+                                            var ratioIndex = ratioOptions
                                                 .indexOf(currentPreviewRatio.value)
                                                 .coerceAtLeast(0)
                                             val threshold = 38.dp.toPx()
                                             detectVerticalDragGestures(
                                                 onDragStart = {
                                                     accumulated = 0f
-                                                    ratioIndex = PREVIEW_ASPECT_RATIOS
+                                                    ratioOptions = previewAspectRatioOptions(currentPreviewRatio.value)
+                                                    ratioIndex = ratioOptions
                                                         .indexOf(currentPreviewRatio.value)
                                                         .coerceAtLeast(0)
                                                     actions.onPortraitDraggingChanged(true)
@@ -436,10 +438,10 @@ internal fun EditorWorkspaceLayout(
                                                     if (kotlin.math.abs(accumulated) >= threshold) {
                                                         val nextIndex = (
                                                             ratioIndex + if (accumulated > 0f) 1 else -1
-                                                            ).coerceIn(0, PREVIEW_ASPECT_RATIOS.lastIndex)
+                                                            ).coerceIn(0, ratioOptions.lastIndex)
                                                         if (nextIndex != ratioIndex) {
                                                             ratioIndex = nextIndex
-                                                            val selectedRatio = PREVIEW_ASPECT_RATIOS[ratioIndex]
+                                                            val selectedRatio = ratioOptions[ratioIndex]
                                                             actions.onDraftPreviewRatio(selectedRatio)
                                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                                                         }
@@ -457,7 +459,7 @@ internal fun EditorWorkspaceLayout(
                                                     else -> state.previewRatioSelection
                                                 }
                                             )
-                                            customActions = PREVIEW_ASPECT_RATIOS.map { ratio ->
+                                            customActions = previewAspectRatioOptions(state.previewRatioSelection).map { ratio ->
                                                 CustomAccessibilityAction(
                                                     when (ratio) {
                                                         "device_landscape" -> text("端末・横")

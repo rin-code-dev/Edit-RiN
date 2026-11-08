@@ -133,57 +133,67 @@ internal object StandaloneHtmlGenerator {
         files: Map<String, String>,
         mainSource: String
     ): String {
-        // Strip Edit:RiN runtime wrappers
-        var bundled = html
-            .replace(Regex("""<script[^>]*src=["'][^"']*(?:p5_host|p5_bootstrap|p5_sketch)\.js["'][^>]*>\s*</script>""", RegexOption.IGNORE_CASE), "")
-
-        // Replace bundled offline asset URLs with public CDN
-        bundled = bundled
-            .replace("p5-v2.min.js", P5_V2_CDN)
-            .replace("p5-v1.min.js", P5_V1_CDN)
-            .replace("p5.sound.min.js", P5_SOUND_V2_CDN)
-            .replace("p5.sound-v1.min.js", P5_SOUND_V1_CDN)
-            .replace("matter-0.20.0.min.js", MATTER_CDN)
-            .replace("p5.brush-2.2.1.js", BRUSH_CDN)
-            .replace("p5.webgpu.js", P5_WEBGPU_CDN)
-
-        // Inline local JS files referenced via <script src="...">
-        val scriptRegex = Regex("""<script([^>]*)src=["']([^"']+)["']([^>]*)>\s*</script>""", RegexOption.IGNORE_CASE)
-        bundled = scriptRegex.replace(bundled) { match ->
-            val preAttrs = match.groupValues[1]
-            val rawSrc = match.groupValues[2]
-            val postAttrs = match.groupValues[3]
-            val src = rawSrc.substringBefore('?').substringBefore('#').trimStart('.', '/')
-
-            val fileContent = when (src) {
-                "sketch.js" -> mainSource
-                else -> files[src]
-            }
-
-            if (fileContent != null) {
-                "<script$preAttrs$postAttrs>\n${escapeScriptContent(fileContent)}\n</script>"
-            } else {
-                match.value
-            }
-        }
-
-        // Inline local CSS files referenced via <link rel="stylesheet" href="...">
-        val cssRegex = Regex("""<link([^>]*)href=["']([^"']+)["']([^>]*)>""", RegexOption.IGNORE_CASE)
-        bundled = cssRegex.replace(bundled) { match ->
-            val fullTag = match.value
-            if (!fullTag.contains("stylesheet", ignoreCase = true)) return@replace fullTag
-            val rawHref = match.groupValues[2]
-            val href = rawHref.substringBefore('?').substringBefore('#').trimStart('.', '/')
-            val cssContent = files[href]
-            if (cssContent != null) {
-                val safeCss = cssContent.replace(Regex("</style", RegexOption.IGNORE_CASE)) { "<\\/style" }
-                "<style>\n$safeCss\n</style>"
-            } else {
-                fullTag
+        val bundledLibraries = mapOf(
+            "p5-v2.min.js" to P5_V2_CDN, "p5-v1.min.js" to P5_V1_CDN,
+            "p5.sound.min.js" to P5_SOUND_V2_CDN, "p5.sound-v1.min.js" to P5_SOUND_V1_CDN,
+            "matter-0.20.0.min.js" to MATTER_CDN, "p5.brush-2.2.1.js" to BRUSH_CDN,
+            "p5.webgpu.js" to P5_WEBGPU_CDN
+        )
+        val tags = projectHtmlTags(html)
+        val edits = mutableListOf<Triple<Int, Int, String>>()
+        tags.forEachIndexed { index, tag ->
+            if (tag.closing || tag.name != "script") return@forEachIndexed
+            val attribute = projectHtmlAttributes(tag.text).firstOrNull { it.name == "src" }
+                ?: return@forEachIndexed
+            val rawSrc = tag.text.substring(attribute.valueStart, attribute.valueEnd)
+            val uri = runCatching { java.net.URI(rawSrc.replace("&amp;", "&")) }.getOrNull()
+                ?: return@forEachIndexed
+            // External URLs, comments and inline source must survive export verbatim.
+            if (uri.isAbsolute || uri.rawAuthority != null) return@forEachIndexed
+            val src = uri.path.orEmpty().removePrefix("./").removePrefix("/")
+            val alias = src.removePrefix("$PROJECT_RUNTIME_DIRECTORY/")
+            val closing = tags.getOrNull(index + 1)?.takeIf { it.closing && it.name == "script" }
+                ?: return@forEachIndexed
+            if (html.substring(tag.end, closing.start).isNotBlank()) return@forEachIndexed
+            val cdn = bundledLibraries[alias]
+            when {
+                alias in setOf("p5_host.js", "p5_bootstrap.js", "p5_sketch.js") ->
+                    edits += Triple(tag.start, closing.end, "")
+                cdn != null -> {
+                    val suffix = rawSrc.indexOfFirst { it == '?' || it == '#' }.takeIf { it >= 0 }
+                        ?.let(rawSrc::substring).orEmpty()
+                    edits += Triple(tag.start + attribute.valueStart, tag.start + attribute.valueEnd, cdn + suffix)
+                }
+                else -> {
+                    val code = if (src == "sketch.js") mainSource else files[src]
+                    if (code != null) {
+                        val opening = tag.text.removeRange(attribute.start, attribute.end)
+                        edits += Triple(tag.start, closing.end, "$opening\n${escapeScriptContent(code)}\n${closing.text}")
+                    }
+                }
             }
         }
-
-        return bundled
+        // Use the same scanner for stylesheets, so links inside code/comments stay text.
+        tags.filter { it.name == "link" && !it.closing }.forEach { tag ->
+            val attributes = projectHtmlAttributes(tag.text)
+            val rel = attributes.firstOrNull { it.name == "rel" } ?: return@forEach
+            if (!tag.text.substring(rel.valueStart, rel.valueEnd).equals("stylesheet", true)) return@forEach
+            val href = attributes.firstOrNull { it.name == "href" } ?: return@forEach
+            val rawHref = tag.text.substring(href.valueStart, href.valueEnd)
+            val uri = runCatching { java.net.URI(rawHref.replace("&amp;", "&")) }.getOrNull() ?: return@forEach
+            if (uri.isAbsolute || uri.rawAuthority != null) return@forEach
+            val path = uri.path.orEmpty().removePrefix("./").removePrefix("/")
+            val css = files[path] ?: return@forEach
+            val safeCss = css.replace(Regex("</style", RegexOption.IGNORE_CASE)) { "<\\/style" }
+            edits += Triple(tag.start, tag.end, "<style>\n$safeCss\n</style>")
+        }
+        return buildString {
+            var position = 0
+            edits.sortedBy { it.first }.forEach { (start, end, replacement) ->
+                append(html, position, start); append(replacement); position = end
+            }
+            append(html, position, html.length)
+        }
     }
 
     private fun escapeScriptContent(content: String): String {

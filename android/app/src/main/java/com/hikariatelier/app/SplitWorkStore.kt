@@ -54,7 +54,7 @@ private fun decodeIndex(json: String): WorkIndex {
             folderName = item.optString("folderName", ""),
             isPinned = item.optBoolean("isPinned"), tags = item.optJSONArray("tags")?.let { tags ->
                 List(tags.length()) { tags.getString(it) }
-            }.orEmpty(), previewAspectRatio = item.optString("previewAspectRatio", "1:1"),
+            }.orEmpty(), previewAspectRatio = normalizedPreviewAspectRatio(item.optString("previewAspectRatio", "1:1")),
             p5Version = item.optString("p5Version", P5_VERSION_CURRENT),
             p5SoundEnabled = item.optBoolean("p5SoundEnabled")).also { it.bodyLoaded = false }
         val hashes = item.optJSONArray("assetHashes")?.let { hashes ->

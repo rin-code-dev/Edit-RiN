@@ -209,7 +209,7 @@ internal fun EditorWorkDialogs(
         AddWorkDialog(
             worksCount = works.size,
             userTemplates = workManagementViewModel.userTemplates,
-            busy = assetBusy || snapshotBusy,
+            busy = assetBusy || snapshotBusy || workManagementViewModel.creationPending,
             templateLoadFailed = workManagementViewModel.templateLoadFailed,
             onRetryTemplates = { workManagementViewModel.retryUserTemplates() },
             onDeleteTemplate = { workManagementViewModel.deleteUserTemplate(it) },

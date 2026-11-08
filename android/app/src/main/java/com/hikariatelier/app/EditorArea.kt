@@ -458,10 +458,6 @@ internal fun EditorArea(
                         colors = colors,
                         textTranslator = textTranslator,
                         onJumpToSource = onJumpToSource,
-                        onApplyQuickFixCode = { fixedValue ->
-                            onApplyEditorChange(fixedValue)
-                            onRunChanges()
-                        },
                         onSwitchRuntimeVersion = onSwitchRuntimeVersion,
                         onCopyError = { copyToClipboard(it) }
                     )

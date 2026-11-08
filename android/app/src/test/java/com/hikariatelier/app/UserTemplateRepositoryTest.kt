@@ -36,7 +36,7 @@ class UserTemplateRepositoryTest {
 
     @Test fun newWorksPreserveSettingsWithoutSharingMutableStateOrHistory() {
         val source = Work("source", "Original", "main", files = mutableMapOf("helper.js" to "helper"),
-            revisions = mutableListOf(WorkRevision("old", 1)), previewAspectRatio = "9:16",
+            revisions = mutableListOf(WorkRevision("old", 1)), previewAspectRatio = "41:29",
             p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true,
             libraries = mapOf("matter-js" to "0.20.0"), parameterValues = mapOf("speed" to "2"),
             createdAt = 1, updatedAt = 2, isPinned = true, tags = listOf("source tag"))
@@ -46,7 +46,7 @@ class UserTemplateRepositoryTest {
         assertEquals(4, setOf(source.id, template.id, first.id, second.id).size)
         assertEquals("First", first.title)
         assertEquals("main", first.code)
-        assertEquals("9:16", first.previewAspectRatio)
+        assertEquals("41:29", first.previewAspectRatio)
         assertEquals(P5_VERSION_LEGACY, first.p5Version)
         assertTrue(first.p5SoundEnabled)
         assertEquals(source.libraries, first.libraries)

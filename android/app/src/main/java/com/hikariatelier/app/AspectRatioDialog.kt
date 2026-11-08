@@ -92,7 +92,7 @@ internal fun AspectRatioDialog(
                     .verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                PREVIEW_ASPECT_RATIOS.chunked(aspectColumns).forEach { row ->
+                previewAspectRatioOptions(previewRatioSelection).chunked(aspectColumns).forEach { row ->
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)

@@ -7,6 +7,12 @@ import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 
 class EditorImprovementsTest {
+    @Test fun preloadHintOnlyOffersRuntimeSwitchWithoutRewritingSource() {
+        val source = "function preload() { if (ready) { image = loadImage('x'); } }\nfunction setup() {}"
+        val fixes = buildEditorQuickFixes("error", source, P5_VERSION_CURRENT) { text, _ -> text }
+        assertEquals(1, fixes.size)
+        assertEquals(P5_VERSION_LEGACY, fixes.single().switchP5Version)
+    }
     @Test fun differenceShowsOnlyChangedRegion() {
         val difference = revisionDifference("setup\nold\nend", "setup\nnew\nend")
         assertTrue(difference.contains("− old"))
@@ -28,7 +34,7 @@ class EditorImprovementsTest {
             val storage = AssetStorage(directory)
             val asset = storage.put(ByteArrayInputStream(byteArrayOf(1, 2, 3)), "image/png")
             val work = Work("work", "Title", "draw()", files = mutableMapOf("helper.js" to "let x = 1"),
-                assets = mapOf("a.png" to asset), p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true,
+                assets = mapOf("a.png" to asset), previewAspectRatio = "41:29", p5Version = P5_VERSION_LEGACY, p5SoundEnabled = true,
                 libraries = mapOf("p5.brush" to "2.2.1"))
             val output = ByteArrayOutputStream()
             writeAssetBackup(output, listOf(work), work.id, "{}", storage)
@@ -36,6 +42,7 @@ class EditorImprovementsTest {
             assertEquals(work.code, restored.code)
             assertEquals(work.files.toMap(), restored.files.toMap())
             assertEquals(work.assets.toMap(), restored.assets.toMap())
+            assertEquals("41:29", restored.previewAspectRatio)
             assertEquals(P5_VERSION_LEGACY, restored.p5Version)
             assertTrue(restored.p5SoundEnabled)
             assertEquals(work.libraries, restored.libraries)

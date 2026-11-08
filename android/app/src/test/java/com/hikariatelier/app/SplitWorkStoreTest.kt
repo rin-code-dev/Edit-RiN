@@ -15,6 +15,16 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 class SplitWorkStoreTest {
+    @Test fun customRatioSurvivesSplitStorageAndLazyIndex() {
+        val docs = Documents()
+        val first = Work("first", "First", "first()")
+        val custom = Work("custom", "Custom", "draw()", previewAspectRatio = "41:29")
+        assertTrue(SplitWorkStore(docs).save(listOf(first, custom), first.id))
+        val reader = SplitWorkStore(docs)
+        val loaded = reader.load(eager = false, preferredId = first.id)!!
+        assertEquals("41:29", loaded.works.first { it.id == custom.id }.previewAspectRatio)
+        assertEquals("41:29", reader.loadWork(custom.id)!!.previewAspectRatio)
+    }
     @get:Rule val temporary = TemporaryFolder()
     private class Documents : WorkDocuments {
         val files = linkedMapOf<String, String>()

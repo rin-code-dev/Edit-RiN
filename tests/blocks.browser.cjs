@@ -237,6 +237,7 @@ async function run() {
       await evaluate(`document.getElementById('paletteToggle').click()`);
       const palette=await evaluate(`(() => {const p=document.getElementById('palette'),items=document.getElementById('paletteItems');items.scrollTop=items.scrollHeight;const last=items.lastElementChild.getBoundingClientRect(),r=p.getBoundingClientRect();return {hidden:p.hidden,top:r.top,bottom:r.bottom,height:r.height,listHeight:items.clientHeight,listScroll:items.scrollHeight,lastBottom:last.bottom};})()`);
       assert.equal(palette.hidden,false);
+      assert.equal(await evaluate(`getComputedStyle(document.getElementById('paletteTargetBar')).display!=='none' && document.getElementById('paletteTargetModeBtn').getBoundingClientRect().height>0`),true,'statement target controls stay available in a short pane');
       assert.ok(palette.top>=0&&palette.bottom<=250&&palette.listHeight>0&&palette.listScroll>palette.listHeight,JSON.stringify(palette));
       assert.ok(palette.lastBottom<=palette.bottom,JSON.stringify(palette));
       await evaluate(`document.getElementById('paletteToggle').click();document.getElementById('help').click()`);
@@ -490,6 +491,7 @@ async function run() {
       await evaluate('__load({source:"function draw( {",revision:"broken"})');
       await waitFor('RinBlocksEditor.document.editable===false','syntax lock');
       const edits=await evaluate('__native.edits.length');
+      assert.match(await evaluate('document.getElementById("status").textContent'), /ドキュメントバーの「コード」/);
       await sleep(100);
       assert.equal(await evaluate('__native.edits.length'),edits);
     });
@@ -508,9 +510,21 @@ async function run() {
       assert.equal(await evaluate('EditRinBlockCatalogue.EXAMPLES.some(x=>x.id==="sound") && EditRinBlockCatalogue.EXAMPLES.some(x=>x.id==="three")'),true);
       assert.equal(await evaluate('document.documentElement.lang'), 'zh');
       if(process.env.BLOCKS_DARK_SCREENSHOT_PATH){const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(process.env.BLOCKS_DARK_SCREENSHOT_PATH,Buffer.from(shot.data,'base64'));}
-      await evaluate(`(() => {const node=RinBlocksEditor.projection.nodes.find(n=>n.kind==='raw_statement'&&n.raw.startsWith('class Particle'));return Blockly.ContextMenuRegistry.registry.getItem('rin_edit_source').callback({block:RinBlocksEditor.workspace.getBlockById('bound_'+node.id)});})()`);
-      await waitFor('__native.messages.some(m=>m.type==="openCode")','custom code navigation');
+      const previousMessages=await evaluate('__native.messages.filter(m=>m.type==="openCode").length');
+      await evaluate(`(() => {const node=RinBlocksEditor.projection.nodes.find(n=>n.kind==='raw_statement'&&n.raw.startsWith('class Particle'));RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+node.id));const button=Array.from(document.querySelectorAll('#blockActions button')).find(b=>b.textContent==='在代码中编辑');if(!button)throw Error('missing direct code action');button.click();})()`);
+      await waitFor(`__native.messages.filter(m=>m.type==="openCode").length>${previousMessages}`,'custom code navigation');
       assert.equal(await evaluate('__native.messages.filter(m=>m.type==="openCode").at(-1).start===__native.source.indexOf("class Particle")'),true);
+    });
+    await check('code navigation rejects a source changed while flushing and succeeds on retry',async()=>{
+      await loadSource('circle(1,2,3);');
+      const before=await evaluate('__native.messages.filter(m=>m.type==="openCode").length');
+      await evaluate(`(async()=>{const node=RinBlocksEditor.projection.nodes.find(n=>n.kind==='literal'&&n.fields.value.value===1);const block=RinBlocksEditor.workspace.getBlockById('bound_'+node.id);block.setFieldValue('123','F_value');await RinBlocksEditor.jumpToCode(block);})()`);
+      await settled();
+      assert.equal(await evaluate('__native.source'),'circle(123,2,3);');
+      assert.equal(await evaluate('__native.messages.filter(m=>m.type==="openCode").length'),before);
+      await evaluate(`(async()=>{const node=RinBlocksEditor.projection.nodes.find(n=>n.kind==='literal'&&n.fields.value.value===123);await RinBlocksEditor.jumpToCode(RinBlocksEditor.workspace.getBlockById('bound_'+node.id));})()`);
+      await waitFor(`__native.messages.filter(m=>m.type==="openCode").length>${before}`,'retry code navigation');
+      assert.deepEqual(await evaluate(`(()=>{const m=__native.messages.filter(m=>m.type==='openCode').at(-1);return [m.start,m.end];})()`),[7,10]);
     });
     await check('an invalid connection flushed immediately restores the acknowledged workspace',async()=>{
       await loadSource('circle(1,2,3);');
@@ -995,19 +1009,19 @@ async function run() {
       assert.ok((await evaluate(`__native.source`)).includes('スピード = 10;'), 'Source changed from スコア = 10; to スピード = 10;');
     });
     await check('Phase 4 error visualization highlights error block with red outline, friendly Japanese explanation, and auto-clears', async () => {
-      const errorSource = 'function setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  background(240);\n  circle(mouseX, mouseY, 80);\n}\n';
+      const errorSource = 'function setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  background(240);\n  circle(\n    mouseX, mouseY, 80);\n}\n';
       await evaluate(`(() => {
         __native.source = ${JSON.stringify(errorSource)};
-        __load({ source: __native.source, errors: [{ line: 6, message: 'ReferenceError: foo is not defined' }] });
+        __load({ source: __native.source, errors: [{ line: 7, message: 'ReferenceError: foo is not defined' }] });
       })()`);
-      await waitFor('window.RinBlocksEditor.workspace?.getAllBlocks(false).some(b => b.rinRuntimeError)', 'error block attached');
+      await waitFor('RinBlocksEditor.document.source === __native.source && RinBlocksEditor.projection?.source === __native.source && RinBlocksEditor.workspace?.getAllBlocks(false).some(b => b.rinRuntimeError)', 'error block attached');
       await settled();
 
       const blockState = await evaluate(`(() => {
-        const circleNode = RinBlocksEditor.projection.nodes.find(n => n.kind === 'p5_call' && n.calleeName === 'circle');
-        const block = RinBlocksEditor.workspace.getBlockById('bound_' + circleNode.id);
+        const block = RinBlocksEditor.workspace.getAllBlocks(false).find(b => b.rinRuntimeError);
         const svg = block.getSvgRoot();
         return {
+          id: block.id,
           hasErrorClass: svg.classList.contains('rin-error-block'),
           hasRuntimeError: !!block.rinRuntimeError,
           errorLine: block.rinRuntimeError?.line,
@@ -1017,13 +1031,12 @@ async function run() {
       })()`);
       assert.equal(blockState.hasErrorClass, true, 'Circle block should have rin-error-block class');
       assert.equal(blockState.hasRuntimeError, true, 'Circle block should have rinRuntimeError attached');
-      assert.equal(blockState.errorLine, 6, 'Error line should be 6');
-      assert.ok(blockState.statusText && blockState.statusText.includes('行 6: 変数または関数「foo」が見つかりません'), 'Status bar should show friendly explanation');
+      assert.equal(blockState.errorLine, 7, 'Error line should be 6');
+      assert.ok(blockState.statusText && blockState.statusText.includes('行 7: 変数または関数「foo」が見つかりません'), 'Status bar should show friendly explanation');
       assert.equal(blockState.statusHasError, true, 'Status bar should have error class');
 
       await evaluate(`(() => {
-        const circleNode = RinBlocksEditor.projection.nodes.find(n => n.kind === 'p5_call' && n.calleeName === 'circle');
-        const block = RinBlocksEditor.workspace.getBlockById('bound_' + circleNode.id);
+        const block = RinBlocksEditor.workspace.getAllBlocks(false).find(b => b.rinRuntimeError);
         RinBlocksEditor.showBlockActions(block);
       })()`);
       await waitFor('!document.getElementById("blockActions").hidden', 'blockActions visible');
@@ -1036,7 +1049,7 @@ async function run() {
         };
       })()`);
       assert.equal(actionState.exists, true, 'Error action button should exist in blockActions');
-      assert.equal(actionState.text, '行 6', 'Error action button should show line 6');
+      assert.equal(actionState.text, '行 7', 'Error action button should show line 7');
       assert.equal(actionState.isDanger, true, 'Error action button should have danger class');
 
       await evaluate(`document.querySelector('#blockActions button.error-action').click()`);
@@ -1049,15 +1062,18 @@ async function run() {
           hasJump: Array.from(dialog.querySelectorAll('button')).some(b => b.textContent === 'コードで位置を確認')
         };
       })()`);
-      assert.equal(dialogState.title, '行 6 のエラー', 'Dialog title should be 行 6 のエラー');
+      assert.equal(dialogState.title, '行 7 のエラー', 'Dialog title should be 行 7 のエラー');
       assert.ok(dialogState.desc.includes('変数または関数「foo」が見つかりません'), 'Dialog desc should contain friendly text');
       assert.ok(dialogState.desc.includes('ReferenceError: foo is not defined'), 'Dialog desc should contain technical detail');
       assert.equal(dialogState.hasJump, true, 'Dialog should have jump to code button');
 
+      const oldJumpCount = await evaluate(`__native.messages.filter(m => m.type === 'openCode').length`);
       await evaluate(`Array.from(document.querySelectorAll('#actionDialog button')).find(b => b.textContent === 'コードで位置を確認').click()`);
       await waitFor('!document.getElementById("actionDialog").open', 'actionDialog closed');
-      const jumpMsg = await evaluate(`__native.messages.find(m => m.type === 'openCode')`);
-      assert.ok(jumpMsg, 'openCode message should have been sent');
+      await waitFor(`__native.messages.filter(m => m.type === 'openCode').length > ${oldJumpCount}`, 'new error navigation');
+      const jumpMsg = await evaluate(`__native.messages.filter(m => m.type === 'openCode').at(-1)`);
+      assert.equal(jumpMsg.start, errorSource.indexOf('    mouseX, mouseY, 80);'));
+      assert.equal(jumpMsg.end, jumpMsg.start + '    mouseX, mouseY, 80);'.length);
 
       // Tap non-error block: blockActions should NOT have error button, but status bar should still show error
       await evaluate(`(() => {
@@ -1081,15 +1097,14 @@ async function run() {
       await evaluate(`document.getElementById('status').click()`);
       await waitFor('document.getElementById("actionDialog").open', 'actionDialog opened from status bar');
       const statusTitle = await evaluate(`document.getElementById('dialogTitle').textContent`);
-      assert.equal(statusTitle, '行 6 のエラー', 'Status click must target line 6 error, not selected block');
+      assert.equal(statusTitle, '行 7 のエラー', 'Status click must target line 7 error, not selected block');
       await evaluate(`document.getElementById('dialogCancel').click()`);
       await waitFor('!document.getElementById("actionDialog").open', 'actionDialog closed');
 
       await evaluate(`__load({ errors: [] })`);
       await waitFor('!document.getElementById("status").classList.contains("error")', 'status error cleared');
       const clearedState = await evaluate(`(() => {
-        const circleNode = RinBlocksEditor.projection.nodes.find(n => n.kind === 'p5_call' && n.calleeName === 'circle');
-        const block = RinBlocksEditor.workspace.getBlockById('bound_' + circleNode.id);
+        const block = RinBlocksEditor.workspace.getBlockById(${JSON.stringify(blockState.id)});
         const svg = block.getSvgRoot();
         return {
           hasErrorClass: svg.classList.contains('rin-error-block'),
@@ -1368,7 +1383,7 @@ async function run() {
         return {height:r.height,inner:innerHeight,targetText};
       })()`);
       assert.ok(sheetInfo.height<=sheetInfo.inner*0.6,'half-sheet keeps upper canvas visible: '+JSON.stringify(sheetInfo));
-      assert.ok(sheetInfo.targetText.startsWith('挿入先: '),'target bar shows active insertion target: '+sheetInfo.targetText);
+      assert.ok(sheetInfo.targetText.startsWith('処理の追加先: '),'target bar shows the statement insertion target: '+sheetInfo.targetText);
       await evaluate(`(()=>{
         document.getElementById('search').value='circle';
         document.getElementById('search').dispatchEvent(new Event('input'));

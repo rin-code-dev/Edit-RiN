@@ -7,6 +7,8 @@ internal enum class WorkTemplateKind(val title: String, val description: String,
     ANIMATION("アニメーション", "時間に合わせて動く円。速度や動き方を変えてみましょう。", false),
     INPUT("マウス・タッチ", "マウスやタッチの位置に円を描く最小構成。", false),
     PARAMETERS("パラメータ", "円の大きさと色をライブパラメータで変更できます。", false),
+    PATTERN("反復模様", "図形を繰り返して模様を描きます。", false),
+    PARTICLES("パーティクル", "小さな粒が流れるアニメーションです。", false),
     WEBGL_3D("3D WebGL", "回転する立体から3D作品を作り始めます。", true),
     SHADER("シェーダー", "頂点シェーダーとフラグメントシェーダーを使って、色を描画します。", true),
     PHYSICS_MATTER("物理演算", "Matter.jsを使って、落下や跳ね返りを試せます。", true),
@@ -27,6 +29,8 @@ internal data class WorkTemplate(val ratio: String, val width: Int, val height: 
             WorkTemplateKind.SHADER -> SHADER_TEMPLATE
             WorkTemplateKind.PHYSICS_MATTER -> MATTER_TEMPLATE
             WorkTemplateKind.PARAMETERS -> WAVE_PARAMETERS_TEMPLATE
+            WorkTemplateKind.PATTERN -> PATTERN_TEMPLATE
+            WorkTemplateKind.PARTICLES -> PARTICLES_TEMPLATE
             WorkTemplateKind.WEBGPU -> WEBGPU_TEMPLATE
         }
         if (mode == CanvasSizingMode.RESPONSIVE) return source
@@ -40,10 +44,56 @@ internal const val CIRCLE_TEMPLATE = "// 色や円の大きさを変えてみま
 
 internal val workTemplates = listOf(
     WorkTemplate("16:9", 960, 540),
+    WorkTemplate("3:2", 900, 600),
     WorkTemplate("4:3", 800, 600),
     WorkTemplate("1:1", 800, 800),
+    WorkTemplate("4:5", 640, 800),
+    WorkTemplate("3:4", 600, 800),
     WorkTemplate("9:16", 540, 960)
 )
+
+internal val PATTERN_TEMPLATE = """
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  noStroke();
+}
+
+function draw() {
+  background(9, 9, 11);
+  const spacing = min(width, height) / 8;
+  for (let y = spacing / 2; y < height; y += spacing) {
+    for (let x = spacing / 2; x < width; x += spacing) {
+      fill(168, 199, 250, 180);
+      circle(x, y, spacing * (0.3 + 0.2 * sin(millis() / 1000 + x / spacing)));
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val PARTICLES_TEMPLATE = """
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  noStroke();
+}
+
+function draw() {
+  background(9, 9, 11);
+  fill(168, 199, 250, 200);
+  for (let i = 0; i < 48; i++) {
+    const x = (i * 73 + millis() * (0.015 + (i % 4) * 0.01)) % width;
+    const y = ((i * 137) % height + sin(millis() / 1000 + i) * 20 + height) % height;
+    circle(x, y, 3 + i % 5);
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
 
 internal val WEBGL_TEMPLATE = """
 function setup() {
@@ -166,7 +216,15 @@ internal val WEBGPU_TEMPLATE = """
 let t = 0;
 
 async function setup() {
-  await createCanvas(windowWidth, windowHeight, navigator.gpu ? WEBGPU : WEBGL);
+  let renderer = WEBGL;
+  if (navigator.gpu) {
+    try {
+      if (await navigator.gpu.requestAdapter()) renderer = WEBGPU;
+    } catch (_) {
+      // Keep WebGL when a GPU adapter is unavailable.
+    }
+  }
+  await createCanvas(windowWidth, windowHeight, renderer);
   noStroke();
 }
 

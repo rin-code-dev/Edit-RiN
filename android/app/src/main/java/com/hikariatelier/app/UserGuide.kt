@@ -66,6 +66,7 @@ internal val userGuideSections by lazy { listOf(
         steps = listOf(
             "Use the plus button in the work picker to create a work. Give it a name and choose a starting template.",
             "Begin with 2D, Animation, Mouse / Touch, or Parameters. Templates are starting points; samples are finished artworks to explore.",
+            "Select a standard template to see its live example. Choose a preview ratio and a fixed or screen-sized canvas; Custom lets you enter fixed dimensions.",
             "Advanced templates cover WebGL, shaders, physics, and WebGPU. Their required bundled libraries are configured automatically.",
             "Save as template in the work menu stores current code, supporting files, assets, and runtime settings. Choose My templates when creating another work."
         )
@@ -101,10 +102,13 @@ internal val userGuideSections by lazy { listOf(
         summary = "Assemble and edit JavaScript visually while keeping your source code intact.",
         iconRes = R.drawable.ic_folder_code,
         tag = "Blocks",
+        codeSnippet = "function setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(240);\n  circle(mouseX, mouseY, 80);\n}",
         steps = listOf(
             "In sketch.js, use the document bar to switch the editing mode from Code to Blocks. The workspace opens full-screen with a floating PiP preview so you have plenty of room to build.",
             "Tap Add block in the bottom floating dock to open the half-sheet palette. Check the Where to insert bar at the top of the sheet, then tap any block card to insert it in one tap.",
             "Tap a color swatch or value capsule on a block to edit colors and numbers directly in place. Tap a block to open its action bar for duplicating, deleting, or inspecting its JavaScript.",
+            "Create your own work and enter this example in Code. Change the circle size in Blocks, run it, then save. Use a block’s Code action to inspect and edit its source.",
+            "Use Functions and events to locate a function. Unsupported syntax is preserved as code; if there is a syntax error, switch back to Code to fix it.",
             "Tap the full-screen preview button in the top document bar or PiP header to test your artwork at full size, or choose Back to split view from More actions when you want the main preview alongside the blocks."
         )
     ),

@@ -1,6 +1,9 @@
 package com.hikariatelier.app
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -11,6 +14,85 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditorActionCoordinatorTest {
+
+    @Test
+    fun failedFlushDoesNotRunReadOnlyPreviewAction() = runTest {
+        val session = EditorSessionViewModel()
+        session.initialize(listOf(Work(id = "work", title = "Work", code = "draw()")), activeWorkId = "work")
+        session.blockModeState("work").value = true
+        session.blockEditorFlusher = { false }
+        val coordinator = EditorActionCoordinator(session, this, { null }, {})
+        var executed = false
+        val result = coordinator.executeAction(ActionKind.RUN_SKETCH, requireEditable = false) {
+            executed = true
+            CoordinatorResult.Success(Unit)
+        }
+        assertTrue(result is CoordinatorResult.Failed)
+        assertFalse(executed)
+    }
+
+    @Test
+    fun concurrentActionsAreSerializedWithoutDroppingUndo() = runTest {
+        val session = EditorSessionViewModel()
+        session.initialize(listOf(Work(id = "work", title = "Work", code = "draw()")), activeWorkId = "work")
+        val coordinator = EditorActionCoordinator(session, this, { null }, {})
+        val release = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        val first = async { coordinator.executeAction(ActionKind.UNDO, requireFlush = false) {
+            events.add("first start"); release.await(); events.add("first end"); CoordinatorResult.Success(Unit)
+        } }
+        runCurrent()
+        val second = async { coordinator.executeAction(ActionKind.UNDO, requireFlush = false) {
+            events.add("second"); CoordinatorResult.Success(Unit)
+        } }
+        runCurrent()
+        assertEquals(listOf("first start"), events)
+        release.complete(Unit)
+        first.await(); second.await()
+        assertEquals(listOf("first start", "first end", "second"), events)
+    }
+
+    @Test
+    fun queuedActionDoesNotFlushAfterWorkChanges() = runTest {
+        val session = EditorSessionViewModel()
+        session.initialize(listOf(Work(id = "a", title = "A", code = "a()"), Work(id = "b", title = "B", code = "b()")), activeWorkId = "a")
+        val coordinator = EditorActionCoordinator(session, this, { null }, {})
+        val release = CompletableDeferred<Unit>()
+        val first = async { coordinator.executeAction(ActionKind.GENERAL, requireFlush = false) {
+            release.await(); CoordinatorResult.Success(Unit)
+        } }
+        runCurrent()
+        var flushed = false
+        session.blockModeState("a").value = true
+        session.blockEditorFlusher = { flushed = true; true }
+        val second = async { coordinator.executeAction(ActionKind.RUN_SKETCH) { CoordinatorResult.Success(Unit) } }
+        runCurrent()
+        session.activeWorkIdState.value = "b"
+        release.complete(Unit)
+        first.await()
+        assertEquals(CoordinatorResult.Superseded, second.await())
+        assertFalse(flushed)
+    }
+
+    @Test
+    fun returningToSameWorkDuringFlushDoesNotReviveOldAction() = runTest {
+        val session = EditorSessionViewModel()
+        session.initialize(listOf(Work(id = "a", title = "A", code = "a()"), Work(id = "b", title = "B", code = "b()")), activeWorkId = "a")
+        session.blockModeState("a").value = true
+        val release = CompletableDeferred<Unit>()
+        session.blockEditorFlusher = { release.await(); true }
+        val coordinator = EditorActionCoordinator(session, this, { null }, {})
+        var executed = false
+        val result = async { coordinator.executeAction(ActionKind.RUN_SKETCH) {
+            executed = true; CoordinatorResult.Success(Unit)
+        } }
+        runCurrent()
+        session.activateWorkEditor("b", "b()", false, setOf("a", "b"))
+        session.activateWorkEditor("a", "a()", false, setOf("a", "b"))
+        release.complete(Unit)
+        assertTrue(result.await() !is CoordinatorResult.Success)
+        assertFalse(executed)
+    }
 
     @Test
     fun sampleReadOnlyRejectsEditableActions() = runTest {

@@ -222,7 +222,10 @@ internal fun BlockEditorFloatingDock(
                     enabled = usable,
                     shape = RoundedCornerShape(999.dp),
                     color = colors.tertiaryContainer,
-                    contentColor = colors.onTertiaryContainer
+                    contentColor = colors.onTertiaryContainer,
+                    modifier = Modifier.semantics {
+                        contentDescription = text("未接続の部品は保存されますが実行されません。タップして一覧を開きます。") + " " + model.state.parts
+                    }
                 ) {
                     Text(
                         text = text("未接続") + " " + model.state.parts,

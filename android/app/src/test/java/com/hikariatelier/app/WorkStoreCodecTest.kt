@@ -48,7 +48,7 @@ class WorkStoreCodecTest {
 
     @Test
     fun roundTripRetainsEachWorkRatioAndProjectContents() {
-        val ratios = listOf("16:9", "4:3", "1:1", "9:16", "device")
+        val ratios = listOf("16:9", "3:2", "4:3", "1:1", "4:5", "3:4", "9:16", "device", "device_landscape", "41:29")
         val originals = ratios.mapIndexed { index, ratio ->
             Work(
                 id = "work-$index",
