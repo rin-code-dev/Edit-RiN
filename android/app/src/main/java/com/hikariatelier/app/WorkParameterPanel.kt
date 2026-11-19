@@ -157,6 +157,7 @@ internal fun WorkParameterPanel(
                                 }
                                 onCommit()
                             },
+                            shape = UNIT_CONTROL_SHAPE,
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
@@ -170,6 +171,7 @@ internal fun WorkParameterPanel(
                         IconButton(
                             onClick = {},
                             interactionSource = compareInteractionSource,
+                            shape = UNIT_CONTROL_SHAPE,
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
@@ -226,10 +228,10 @@ internal fun WorkParameterPanel(
                     }
                 }
                 onDismiss?.let { dismiss ->
-                    IconButton(onClick = dismiss) {
+                    IconButton(onClick = dismiss, shape = UNIT_CONTROL_SHAPE) {
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
-                            contentDescription = text("全画面表示を閉じる")
+                            contentDescription = text("閉じる")
                         )
                     }
                 }
@@ -323,6 +325,7 @@ internal fun WorkParameterPanel(
                             lockedParameters + parameter.name
                         }
                     },
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                     modifier = Modifier.size(28.dp)
                 ) {
                     Icon(

@@ -1,5 +1,44 @@
 # Changelog
 
+## 4.1.0 — 2026-11-20
+
+## English
+
+Requires Android 11 or later.
+
+- Landscape Workspace Redesign: Replaced the landscape top bar with an evenly spaced vertical tool rail, balanced 50/50 editor and 1:1 preview geometry, and preserved the seamless editor file/mode header with a bordered work title button.
+- Landscape Work Gallery Redesign: Added a minimal collapsible sidebar Unit for folders, tags, and work creation alongside a 1:1 square artwork grid and uniform-height horizontal cards for bundled sample works with full descriptions.
+- Floating Unit Modals & Unified Controls: Styled work menus, inspectors, and dialogs as floating bordered Units in both orientations, refined light-mode surfaces, and unified button/icon touch highlight shapes to match each control's rounded corners.
+- Compact Portrait Editor Overlay: Replaced the portrait code top bar with a floating mode/file capsule that omits `sketch.js` on single-file works and hides while typing.
+- Runtime, Navigation & Guide Improvements: Added smooth configuration-change retention on rotation, background audio suspend/resume handling in WebView, richer block-editor error localization, and updated settings/onboarding/user guide visuals.
+
+Edit:RiN includes a visual JavaScript block editor built with Blockly and Acorn. Blockly is licensed under Apache-2.0, and Acorn under MIT. Third-party license texts are available in the app's License information and in the corresponding source repository.
+
+## 日本語
+
+Android 11以降に対応しています。
+
+- 横画面ワークスペースの再設計: 均等間隔の縦ツールレールを新設し、1:1作品のプレビューとエディターが50:50で揃うレイアウトへ刷新しました。エディター上部は枠線付き作品名ボタンを保ちつつシームレスなデザインを維持しています。
+- 横画面の作品選択画面を再設計: フォルダー・タグ・作品追加をまとめた折りたたみ対応のサイドバーユニットと、1:1正方形サムネイルのギャラリーへ刷新しました。サンプル一覧は最大カード高さに揃えた横型カードで説明文を全文表示します。
+- 浮遊ユニットUIと操作パーツの統一: 作品メニュー・作品設定・各種ダイアログを縦横共通の枠付き浮遊ユニットへ統一し、ライトモード配色と各種ボタン／アイコンのタッチ時ハイライト形状を角丸に合わせて揃えました。
+- 縦画面エディターの省スペース化: 縦画面コード編集時の上部バーをフロートカプセル化し、単一ファイルでは `sketch.js` 表示を省略、入力中は自動で非表示にしてコード領域を広げました。
+- 実行安定性・ガイド改善: 画面回転時の状態保持、バックグラウンド移行時のWebView音声一時停止／復帰制御、ブロック編集エラーの多言語案内強化、設定画面・入門ツアー・使い方ガイドの表示改善を行いました。
+
+Edit:RiNは、BlocklyとAcornを使用したブロック形式のJavaScript編集機能を備えています。BlocklyはApache-2.0、AcornはMITライセンスで提供されています。第三者ライセンスの全文は、アプリのライセンス情報と対応ソースのリポジトリで確認できます。
+
+## 中文
+
+需要 Android 11 或更高版本。
+
+- 横屏工作区重构: 新增等间距垂直工具栏，优化 1:1 作品预览与编辑器的 50:50 平衡布局，并保留带边框作品名按钮的无缝编辑器顶部栏。
+- 横屏作品库重构: 新增可折叠的极简侧边栏单元（文件夹、标签与新建作品），采用 1:1 正方形缩略图网格，并为内置示例作品提供统一高度的横向卡片与完整说明。
+- 悬浮单元界面与控件统一: 将作品菜单、属性面板与对话框统一为竖横屏一致的带边框悬浮单元，优化浅色模式配色并统一各类按钮与图标的点击反馈圆角形状。
+- 竖屏编辑器紧凑悬浮胶囊: 在竖屏代码编辑时使用右上角悬浮胶囊切换模式与文件，单文件作品隐藏冗余的 `sketch.js` 标签，输入时自动隐藏以扩大代码视野。
+- 运行稳定性与指南优化: 增强旋转时的状态保留、后台 WebView 音频暂停与恢复管理、积木编辑错误多语言提示以及设置页与使用指南界面。
+
+Edit:RiN 内置基于 Blockly 与 Acorn 构建的可视化 JavaScript 积木编辑器。Blockly 采用 Apache-2.0 许可证，Acorn 采用 MIT 许可证。第三方许可证全文可在应用的许可证信息及对应源码仓库中查看。
+
+
 ## 4.0.1 — 2026-11-08
 
 ## English

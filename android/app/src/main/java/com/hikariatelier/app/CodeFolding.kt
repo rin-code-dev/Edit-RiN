@@ -173,12 +173,22 @@ internal class FoldProjection(val source: String, folds: List<CodeFold>, collaps
     private val marker = " … "
     private val removedThrough = IntArray(hidden.size)
     private val displayStarts = IntArray(hidden.size)
+    val displayText: String
     init {
         var removed = 0
         hidden.forEachIndexed { index, fold ->
             displayStarts[index] = fold.open + 1 - removed
             removed += fold.close - fold.open - 1 - marker.length
             removedThrough[index] = removed
+        }
+        displayText = if (hidden.isEmpty()) source else buildString {
+            var from = 0
+            for (fold in hidden) {
+                append(source, from, fold.open + 1)
+                append(marker)
+                from = fold.close
+            }
+            append(source, from, source.length)
         }
     }
     fun isHidden(offset: Int): Boolean {

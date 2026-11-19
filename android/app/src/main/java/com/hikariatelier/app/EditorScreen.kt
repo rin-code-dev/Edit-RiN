@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -26,6 +27,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -43,15 +45,18 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.window.Dialog
@@ -61,6 +66,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -164,7 +170,8 @@ internal fun EditorScreen(
         activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
     val liveParameterCount by key(activeWorkId) {
         produceState(initialValue = 0, key1 = parameterSources) {
-            if (parameterSources.values.sumOf { it.length } >= 8_000) kotlinx.coroutines.delay(120)
+            val totalLen = parameterSources.values.sumOf { it.length }
+            kotlinx.coroutines.delay(if (totalLen >= 8_000) 120L else 60L)
             value = withContext(Dispatchers.Default) { workParameters(parameterSources).size }
         }
     }
@@ -655,6 +662,11 @@ internal fun EditorScreen(
     }
 
     var compactPreview by settingsViewModel::compactPreview
+    SideEffect {
+        if (sessionViewModel.pipModeEnabled != compactPreview) {
+            sessionViewModel.pipModeEnabled = compactPreview
+        }
+    }
 
     var showResizeHandles by settingsViewModel::showResizeHandles
 
@@ -682,27 +694,18 @@ internal fun EditorScreen(
 
     var draftRecovery by settingsViewModel::draftRecovery
 
-    LaunchedEffect(
-        editorText,
-        activeWorkId,
-        sessionViewModel.fileDrafts.hashCode(),
-        sessionViewModel.blockEditorDrafts.hashCode(),
-        sessionViewModel.blockEditorInputGeneration,
-        draftRecovery
-    ) {
-
-        if (
-            !draftRecovery ||
-            activeWorkId.isBlank()
-        ) {
-            return@LaunchedEffect
+    LaunchedEffect(activeWorkId, draftRecovery) {
+        if (!draftRecovery || activeWorkId.isBlank()) return@LaunchedEffect
+        snapshotFlow {
+            Triple(
+                sessionViewModel.editorValueState.value.text,
+                sessionViewModel.blockEditorInputGeneration,
+                sessionViewModel.fileDrafts.toMap() to sessionViewModel.blockEditorDrafts.toMap()
+            )
+        }.collectLatest {
+            kotlinx.coroutines.delay(700L)
+            workManagementViewModel.saveDraft()
         }
-
-        kotlinx.coroutines.delay(
-            700L
-        )
-
-        workManagementViewModel.saveDraft()
     }
 
     var navigationSequence by remember { mutableIntStateOf(0) }
@@ -894,7 +897,7 @@ internal fun EditorScreen(
     val currentHasUnsavedChanges = rememberUpdatedState(hasUnsavedChanges)
     DisposableEffect(lifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && currentAutoSaveOnLeave.value &&
+            if (event == Lifecycle.Event.ON_PAUSE && currentAutoSaveOnLeave.value &&
                 currentHasUnsavedChanges.value && !sessionViewModel.sampleReadOnly) {
                 workManagementViewModel.saveCurrentWork(blockUi = false)
             }
@@ -934,6 +937,32 @@ internal fun EditorScreen(
         label = "landscapePreviewSplit"
     )
 
+    fun openWorkGallery() {
+        val owner = activeWorkId
+        val activation = sessionViewModel.blockEditorActivationGeneration
+        if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+            workMenuExpanded = true
+        } else {
+            editorToolScope.launch {
+                if (flushOwnedBlockEditor(owner, activation)) workMenuExpanded = true
+            }
+        }
+    }
+
+    val currentSaveLabel = when {
+        workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存内容の競合")
+        workManagementViewModel.operationState == WorkOperationState.FAILED -> uiText("保存失敗")
+        workSaving -> uiText("処理中")
+        hasUnsavedChanges -> uiText("未保存")
+        workManagementViewModel.operationState == WorkOperationState.SAVED -> uiText("保存済み")
+        else -> null
+    }
+    val currentSaveFailed = workManagementViewModel.operationState in setOf(WorkOperationState.CONFLICT, WorkOperationState.FAILED)
+    val currentSaveRetry: (() -> Unit)? = if (!workSaving && currentSaveFailed) ({
+        if (workManagementViewModel.operationState == WorkOperationState.CONFLICT) workManagementViewModel.showConflictDialog = true
+        else saveCurrentWork()
+    }) else null
+
     @Composable
     fun WorkSelector(modifier: Modifier = Modifier) {
         WorkSelectorChip(
@@ -943,30 +972,10 @@ internal fun EditorScreen(
             manualRotation = manualRotation,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
-            onClick = {
-                val owner = activeWorkId
-                val activation = sessionViewModel.blockEditorActivationGeneration
-                if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
-                    workMenuExpanded = true
-                } else {
-                    editorToolScope.launch {
-                        if (flushOwnedBlockEditor(owner, activation)) workMenuExpanded = true
-                    }
-                }
-            },
-            saveLabel = when {
-                workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存内容の競合")
-                workManagementViewModel.operationState == WorkOperationState.FAILED -> uiText("保存失敗")
-                workSaving -> uiText("処理中")
-                hasUnsavedChanges -> uiText("未保存")
-                workManagementViewModel.operationState == WorkOperationState.SAVED -> uiText("保存済み")
-                else -> null
-            },
-            saveFailed = workManagementViewModel.operationState in setOf(WorkOperationState.CONFLICT, WorkOperationState.FAILED),
-            onRetry = if (!workSaving && workManagementViewModel.operationState in setOf(WorkOperationState.CONFLICT, WorkOperationState.FAILED)) ({
-                if (workManagementViewModel.operationState == WorkOperationState.CONFLICT) workManagementViewModel.showConflictDialog = true
-                else saveCurrentWork()
-            }) else null,
+            onClick = ::openWorkGallery,
+            saveLabel = currentSaveLabel,
+            saveFailed = currentSaveFailed,
+            onRetry = currentSaveRetry,
             modifier = modifier
         )
 
@@ -1071,6 +1080,18 @@ internal fun EditorScreen(
             }
         }
     }
+    val gallerySuspended = galleryPresent && galleryProgress >= 1f && !isRecordingOrCountingDown
+    DisposableEffect(gallerySuspended, preview.generation) {
+        val webView = preview.webView
+        if (gallerySuspended) webView?.onPause()
+        onDispose {
+            if (gallerySuspended && webView != null && preview.webView === webView &&
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            ) {
+                webView.onResume()
+            }
+        }
+    }
     LaunchedEffect(galleryPresent, galleryHandoffAlpha) {
         if (!galleryPresent && galleryHandoffAlpha == 0f) galleryPreviewBitmap = null
     }
@@ -1100,7 +1121,7 @@ internal fun EditorScreen(
         workGalleryState.jumpToWork(activeWorkId)
     }
     val workDatabase = remember(applicationContext) { WorkDatabase.getInstance(applicationContext) }
-    LaunchedEffect(works, activeWorkId) {
+    LaunchedEffect(works) {
         withContext(Dispatchers.IO) {
             runCatching { workDatabase.syncAllWorks(works) }
         }
@@ -1124,11 +1145,16 @@ internal fun EditorScreen(
     }
 
     @Composable
-    fun GalleryActions(modifier: Modifier = Modifier, buttonSize: androidx.compose.ui.unit.Dp = 38.dp) {
+    fun GalleryActions(
+        modifier: Modifier = Modifier,
+        buttonSize: androidx.compose.ui.unit.Dp = 38.dp,
+        showManageTags: Boolean = true
+    ) {
         WorkGalleryActions(state = workGalleryState, onDismiss = ::closeWorkGallery,
             text = { uiText(it) }, sort = settingsViewModel.workSort,
             onSort = { settingsViewModel.workSort = it }, modifier = modifier, buttonSize = buttonSize,
             busy = assetBusy, canDeleteSelection = workGalleryState.selectedIds.size < works.size,
+            showManageTags = showManageTags,
             onMoveSelection = { workManagementViewModel.galleryMoveIds = workGalleryState.selectedIds },
             onTagSelection = {
                 focusManager.clearFocus(force = true); keyboardController?.hide()
@@ -1144,6 +1170,95 @@ internal fun EditorScreen(
                 pendingGalleryExportFolder = selectedFolderUri?.toString()
                 exportGalleryZip.launch("Edit-RiN-works.zip")
             })
+    }
+
+    @Composable
+    fun LandscapeGalleryBar(visibleCount: Int) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 38.dp)
+                .padding(start = 2.dp, end = 2.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (workGalleryState.searching && !workGalleryState.selecting) {
+                WorkGallerySearch(
+                    state = workGalleryState,
+                    text = { uiText(it) },
+                    interactive = galleryProgress >= 1f,
+                    modifier = Modifier.weight(1f),
+                    compact = true
+                )
+            } else {
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 36.dp)
+                        .clip(UNIT_CONTROL_SHAPE)
+                        .clickable(enabled = !assetBusy) {
+                            if (workGalleryState.selecting) toggleAllGallerySelection() else jumpToEditingWork()
+                        }
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        if (workGalleryState.selecting)
+                            "${workGalleryState.selectedIds.size} · ${uiText("選択中")}"
+                        else galleryFolderLabel(workGalleryState.selectedFolder) { uiText(it) },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!workGalleryState.selecting) {
+                        Text(
+                            visibleCount.toString(),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.outline,
+                            maxLines = 1
+                        )
+                    }
+                    val selectedTag = workGalleryState.selectedTag
+                    if (!workGalleryState.selecting && selectedTag != null) {
+                        Surface(
+                            onClick = { workGalleryState.selectedTag = null },
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.primary.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                "#$selectedTag ×",
+                                Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    val subtitle = if (workGalleryState.selecting) {
+                        uiText("すべて選択 / 解除")
+                    } else {
+                        activeWork?.title?.takeIf { it.isNotEmpty() }?.let { "· $it" }.orEmpty()
+                    }
+                    if (subtitle.isNotEmpty()) {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+                }
+            }
+            GalleryActions(buttonSize = 36.dp, showManageTags = false)
+        }
     }
 
     @Composable
@@ -1197,7 +1312,8 @@ internal fun EditorScreen(
             tabs = workManagementViewModel.galleryTabs,
             onManageFolders = { workManagementViewModel.showGalleryFolders = true },
             onMove = { workManagementViewModel.galleryMoveIds = setOf(it.id) },
-            onReorderTabs = { workManagementViewModel.reorderGalleryTabs(it) }
+            onReorderTabs = { workManagementViewModel.reorderGalleryTabs(it) },
+            landscapeHeader = { visibleCount -> LandscapeGalleryBar(visibleCount) }
         )
     }
 
@@ -1205,8 +1321,24 @@ internal fun EditorScreen(
         if (sessionViewModel.sampleReadOnly) workManagementViewModel.requestSampleCopy() else action()
     }
 
+    fun openAppSettings() {
+        val owner = activeWorkId
+        val activation = sessionViewModel.blockEditorActivationGeneration
+        if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+            workManagementViewModel.saveCurrentWork(blockUi = false)
+            showSettings = true
+        } else {
+            editorToolScope.launch {
+                if (flushOwnedBlockEditor(owner, activation)) {
+                    workManagementViewModel.saveCurrentWork(blockUi = false)?.join()
+                    if (sessionViewModel.canApplyBlockAction(owner, activation, requireEditable = false)) showSettings = true
+                }
+            }
+        }
+    }
+
     @Composable
-    fun WorkActions() {
+    fun WorkActions(showButtons: Boolean = true) {
         WorkActionsMenu(
             activeWork = activeWork,
             canUndo = undoStack.isNotEmpty(),
@@ -1228,21 +1360,7 @@ internal fun EditorScreen(
                 }
             },
             onOpenUserGuide = { showUserGuide = true },
-            onOpenSettings = {
-                val owner = activeWorkId
-                val activation = sessionViewModel.blockEditorActivationGeneration
-                if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
-                    workManagementViewModel.saveCurrentWork(blockUi = false)
-                    showSettings = true
-                } else {
-                    editorToolScope.launch {
-                        if (flushOwnedBlockEditor(owner, activation)) {
-                            workManagementViewModel.saveCurrentWork(blockUi = false)?.join()
-                            if (sessionViewModel.canApplyBlockAction(owner, activation, requireEditable = false)) showSettings = true
-                        }
-                    }
-                }
-            },
+            onOpenSettings = ::openAppSettings,
             onUndo = { undoEditorChange() },
             onRedo = { redoEditorChange() },
             onSearch = {
@@ -1301,7 +1419,8 @@ internal fun EditorScreen(
             onToggleTweetMode = { sessionViewModel.tweetModeEnabled = !sessionViewModel.tweetModeEnabled },
             onOpenMinify = { openCodeTool { sessionViewModel.showMinifySheet = true } },
             textTranslator = { s, args -> uiText(s, *args) },
-            windowSetup = { KeepLandscapeDialogImmersive() }
+            windowSetup = { KeepLandscapeDialogImmersive() },
+            showButtons = showButtons
         )
     }
 
@@ -1331,8 +1450,8 @@ internal fun EditorScreen(
                     )
                 }
             }
-            // Four fixed slots let the glyphs change without moving the toolbar.
-            Box(Modifier.width(164.dp), contentAlignment = Alignment.CenterEnd) {
+            // Four fixed slots in normal mode; expand to five slots during multi-select.
+            Box(Modifier.width(if (galleryPresent && workGalleryState.selecting) 210.dp else 164.dp), contentAlignment = Alignment.CenterEnd) {
                 Box(Modifier.blockGalleryInput(galleryPresent)) {
                     WorkActions()
                 }
@@ -1401,31 +1520,150 @@ internal fun EditorScreen(
     }
 
     @Composable
-    fun LandscapeGalleryBar() {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (workGalleryState.searching && !workGalleryState.selecting) {
-                WorkGallerySearch(workGalleryState, { uiText(it) }, galleryProgress >= 1f,
-                    Modifier.weight(1f))
-            } else {
-                Column(Modifier.weight(1f).heightIn(min = 48.dp)
-                    .clickable(enabled = !assetBusy) {
-                        if (workGalleryState.selecting) toggleAllGallerySelection() else jumpToEditingWork()
-                    },
-                    verticalArrangement = Arrangement.Center) {
-                    Text(if (workGalleryState.selecting)
-                        "${workGalleryState.selectedIds.size} · ${uiText("選択中")}"
-                        else "${uiText("作品")} · ${works.size}",
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(if (workGalleryState.selecting) uiText("すべて選択 / 解除") else activeWork?.title.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            GalleryActions(buttonSize = 48.dp)
+    fun LandscapeRail(modifier: Modifier = Modifier) {
+        var historyExpanded by remember { mutableStateOf(false) }
+        var settingsExpanded by remember { mutableStateOf(false) }
+        val hasPendingChanges = previewHasChanges && !preview.isLoading
+        val consoleHasError = consoleEntries.any { it.level == ConsoleLevel.ERROR }
+        val statusDotColor = when {
+            hasPendingChanges -> colors.tertiary
+            isError -> colors.error
+            isPaused -> colors.outline
+            else -> colors.primary
         }
+        val itemCount = 5 + 3 + (if (manualRotation) 1 else 0)
+        LandscapeToolRail(
+            itemCount = itemCount,
+            modifier = modifier,
+            top = {
+                RailButton(
+                    iconRes = if (isPaused) R.drawable.ic_play else R.drawable.ic_pause,
+                    label = uiText(if (isPaused) "再生" else "一時停止"),
+                    onClick = ::togglePreviewPlayback,
+                    dotColor = statusDotColor,
+                    outlineColor = if (isError) colors.error else null
+                )
+                RailButton(
+                    iconRes = R.drawable.ic_reload,
+                    label = uiText(if (hasPendingChanges) "変更を実行" else "再読み込み"),
+                    onClick = { runSketch() },
+                    tint = if (hasPendingChanges) colors.tertiary else null,
+                    dotColor = if (hasPendingChanges) colors.tertiary else null
+                )
+                RailButton(
+                    iconRes = R.drawable.ic_log,
+                    label = uiText("ログ"),
+                    onClick = { showConsole = !showConsole },
+                    active = showConsole,
+                    tint = if (consoleHasError) colors.error else null,
+                    outlineColor = if (consoleHasError) colors.error else null,
+                    badge = if (consoleEntries.isNotEmpty())
+                        (if (consoleEntries.size > 99) "99+" else consoleEntries.size.toString())
+                    else null
+                )
+                RailButton(
+                    iconRes = R.drawable.ic_tune,
+                    label = uiText("パラメータ"),
+                    onClick = ::openPreviewParameters,
+                    active = showParameterSheet,
+                    tint = if (liveParameterCount > 0 || showParameterSheet) colors.primary else null,
+                    badge = if (liveParameterCount > 0)
+                        (if (liveParameterCount > 99) "99+" else liveParameterCount.toString())
+                    else null
+                )
+                RailButton(
+                    iconRes = if (isRecordingOrCountingDown) R.drawable.ic_stop else R.drawable.ic_camera,
+                    label = uiText("プレビュー操作"),
+                    onClick = { previewActionsExpanded = !previewActionsExpanded },
+                    active = previewActionsExpanded,
+                    tint = if (isRecordingOrCountingDown) colors.error else null,
+                    outlineColor = if (isRecordingOrCountingDown) colors.error else null
+                )
+            },
+            bottom = {
+                Box {
+                    RailButton(
+                        iconRes = R.drawable.ic_save,
+                        label = uiText("保存（長押しで履歴）"),
+                        onClick = { saveCurrentWork() },
+                        onLongClick = { historyExpanded = true },
+                        tint = if (hasUnsavedChanges) colors.primary else null,
+                        dotColor = if (hasUnsavedChanges) colors.primary else null
+                    )
+                    DropdownMenu(
+                        expanded = historyExpanded,
+                        onDismissRequest = { historyExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(uiText("スナップショット")) },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_snapshot), contentDescription = null) },
+                            onClick = {
+                                historyExpanded = false
+                                editUserWork { showSnapshotSheet = true }
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(uiText("保存済み状態に戻す")) },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_restore), contentDescription = null) },
+                            onClick = {
+                                historyExpanded = false
+                                restoreCurrentWork()
+                            }
+                        )
+                    }
+                }
+                if (manualRotation) {
+                    RailButton(
+                        iconRes = R.drawable.ic_rotate,
+                        label = uiText("画面を回転"),
+                        onClick = {
+                            val activity = view.context as Activity
+                            activity.requestedOrientation = if (isLandscape) {
+                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            } else {
+                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            }
+                        }
+                    )
+                }
+                Box {
+                    RailButton(
+                        iconRes = R.drawable.ic_settings,
+                        label = uiText("設定"),
+                        onClick = { settingsExpanded = true }
+                    )
+                    DropdownMenu(
+                        expanded = settingsExpanded,
+                        onDismissRequest = { settingsExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(uiText("作品設定")) },
+                            enabled = activeWork != null,
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_folder_code), contentDescription = null) },
+                            onClick = {
+                                settingsExpanded = false
+                                workManagementViewModel.workActionsMenuExpanded = false
+                                editUserWork { sessionViewModel.showInspectorSheet = true }
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(uiText("アプリ設定")) },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                            onClick = {
+                                settingsExpanded = false
+                                openAppSettings()
+                            }
+                        )
+                    }
+                }
+                RailButton(
+                    iconRes = R.drawable.ic_more_vertical,
+                    label = uiText("作品メニュー"),
+                    onClick = { workManagementViewModel.workActionsMenuExpanded = true }
+                )
+            }
+        )
+        WorkActions(showButtons = false)
     }
 
     @Composable
@@ -1857,6 +2095,17 @@ internal fun EditorScreen(
                 }
             },
             onOpenFullPreview = { openFullPreviewFromEditor() },
+            documentLeadingContent = if (isLandscape) ({
+                CompactWorkTitleButton(
+                    title = activeWork?.title,
+                    hasUnsavedChanges = hasUnsavedChanges,
+                    saveLabel = currentSaveLabel,
+                    saveFailed = currentSaveFailed,
+                    onClick = ::openWorkGallery,
+                    onRetry = currentSaveRetry,
+                    textTranslator = { s, args -> uiText(s, *args) }
+                )
+            }) else null,
             modifier = modifier
         )
     }
@@ -1914,11 +2163,15 @@ internal fun EditorScreen(
                     },
                     onShowPracticeTour = {
                         showSettings = false
-                        settingsViewModel.startPracticeTour()
+                        settingsViewModel.replayOnboarding()
                     },
                     onExportBackup = { exportBackupLauncher.launch("Edit-RiN-backup.zip") },
                     onImportBackup = { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                    openExternalUrl = { onOpenExternalUrl(it) }
+                    openExternalUrl = { onOpenExternalUrl(it) },
+                    onTryGuideCode = { title, code ->
+                        showSettings = false
+                        workManagementViewModel.createWorkWithCode(title, code)
+                    }
                 ),
                 modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
                 folderName = selectedFolderName,
@@ -2015,7 +2268,8 @@ internal fun EditorScreen(
                     completions = { CompletionBar(it) }, accessory = { EditorAccessoryBar(it) },
                     preview = { MainPreviewArea(it) },
                     gallery = { InlineGallery(it) },
-                    landscapeGalleryBar = { LandscapeGalleryBar() },
+                    landscapeGalleryBar = {},
+                    landscapeRail = { LandscapeRail(it) },
                     previewChrome = { modifier ->
                         WorkGalleryPreviewChrome(galleryPreviewBounds, modifier, visible = liftPreviewChrome) {
                             BoxWithConstraints(Modifier.fillMaxSize().galleryChrome(galleryProgress, GalleryPart.SECONDARY)) {

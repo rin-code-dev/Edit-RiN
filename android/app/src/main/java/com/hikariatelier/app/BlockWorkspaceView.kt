@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -44,15 +43,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -99,13 +101,18 @@ internal class BlockEditorWebClient(
                 "ogg" -> "audio/ogg"
                 else -> return denied()
             }
+            val assetPath = "public$path"
+            val bytes = BUNDLED_BLOCK_ASSET_CACHE.computeIfAbsent(assetPath) { key ->
+                assets.open(key).use { it.readBytes() }
+            }
             WebResourceResponse(mime, "UTF-8", 200, "OK", mapOf(
+                "Content-Length" to bytes.size.toString(),
                 "Cache-Control" to "no-store",
                 "X-Content-Type-Options" to "nosniff",
                 "Content-Security-Policy" to "default-src 'none'; script-src 'self'; worker-src 'self'; " +
                     "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; " +
                     "media-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'"
-            ), assets.open("public$path"))
+            ), ByteArrayInputStream(bytes))
         }.getOrElse { denied() }
     }
 
@@ -122,6 +129,10 @@ internal class BlockEditorWebClient(
 
     private fun denied() = WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden",
         emptyMap(), ByteArrayInputStream(ByteArray(0)))
+
+    companion object {
+        private val BUNDLED_BLOCK_ASSET_CACHE = ConcurrentHashMap<String, ByteArray>()
+    }
 }
 
 /** Kotlin owns acknowledged edits; the WebView can be discarded and reconstructed at any time. */
@@ -242,9 +253,9 @@ private class BlockEditorHost(
             val result = withTimeoutOrNull(5_000L) { completion.await() }
             if (result == null) {
                 // Keep an escape to acknowledged native source even when the renderer stops replying.
-                // Only dispose the unresponsive webview on explicit dismiss/save flushes (hideChaff = true),
-                // not on transient background auto-draft attempts.
-                if (hideChaff) {
+                // Only dispose the unresponsive webview on explicit visible dismiss/save flushes (hideChaff = true),
+                // not on transient background auto-draft or hidden lifecycle transitions.
+                if (hideChaff && view.isShown && view.windowVisibility == android.view.View.VISIBLE) {
                     dispose()
                     onFailure()
                 }
@@ -294,7 +305,6 @@ internal fun BlockWorkspaceView(
     var displayPreferences by remember(presentationStore) { mutableStateOf(presentationStore.displayPreferences()) }
     val restoredViewport = remember(work.id) { session.blockEditorViewport(work.id) ?: presentationStore.viewport(work.id) }
     var generation by remember(work.id) { mutableStateOf(0) }
-    var fullscreen by remember(work.id) { mutableStateOf(false) }
     var hostFailure by remember(work.id) { mutableStateOf(false) }
     var hostReady by remember(work.id, generation) { mutableStateOf(false) }
     val chrome = remember(work.id, generation) { BlockEditorChromeModel() }
@@ -392,18 +402,16 @@ internal fun BlockWorkspaceView(
                 }
                 "toggleFullscreen" -> scope.launch {
                     if (session.flushBlockEditor() && currentAction(requireEditable = false)) {
-                        if (fullscreen) fullscreen = false
                         session.blockSplitView = !session.blockSplitView
                     }
                 }
                 "openCode" -> scope.launch {
                     if (session.flushBlockEditor() && currentAction(requireEditable = false)) {
-                        fullscreen = false
                         currentOpenCode(message.optInt("start", 0), message.optInt("end", 0))
                     }
                 }
                 "openRuntime" -> if (!currentReadOnly) scope.launch {
-                    if (session.flushBlockEditor() && currentAction(requireEditable = true)) { fullscreen = false; currentOpenRuntime() }
+                    if (session.flushBlockEditor() && currentAction(requireEditable = true)) { currentOpenRuntime() }
                 }
                 "undo" -> if (!currentReadOnly) scope.launch {
                     if (session.flushBlockEditor() && currentAction(requireEditable = true)) currentUndo()
@@ -441,7 +449,7 @@ internal fun BlockWorkspaceView(
             host.update(payload)
         }
     }
-    val isFullscreenWorkspace = !session.blockSplitView || fullscreen
+    val isFullscreenWorkspace = !session.blockSplitView
     LaunchedEffect(isFullscreenWorkspace, hostFailure, hostReady) {
         if (!hostFailure) {
             host.setFullscreen(isFullscreenWorkspace)
@@ -464,6 +472,15 @@ internal fun BlockWorkspaceView(
             if (session.blockEditorFlusher === flusher) session.blockEditorFlusher = null
             host.dispose()
         }
+    }
+    val lifecycle = LocalView.current.findViewTreeLifecycleOwner()?.lifecycle
+    DisposableEffect(lifecycle, host) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) host.view.onPause()
+            else if (event == Lifecycle.Event.ON_RESUME) host.view.onResume()
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
     }
     fun openSearch(mode: String) {
         host.command("dismiss")
@@ -488,17 +505,15 @@ internal fun BlockWorkspaceView(
     val uiText = { value: String -> textTranslator(value, emptyArray()) }
     fun toggleFullscreen() {
         val activation = session.blockEditorActivationGeneration
-        val nextSplitView = !session.blockSplitView || fullscreen
+        val nextSplitView = !session.blockSplitView
         scope.launch {
             if (session.flushBlockEditor() && session.activeWorkIdState.value == work.id &&
                 session.canApplyBlockAction(work.id, activation, requireEditable = false)) {
-                fullscreen = false
                 session.blockSplitView = nextSplitView
             }
         }
     }
-    // Keep one host and message channel when moving between the pane and dialog.
-    // Changing presentation must not reload the document or discard pending fields.
+    // Keep one host and message channel across layout changes.
     @Composable
     fun WorkspaceContent() {
         BackHandler(enabled = chrome.state.overlay && !hostFailure) { host.command("dismiss") }
@@ -530,7 +545,6 @@ internal fun BlockWorkspaceView(
                                         requireEditable = false)) {
                                     host.dispose()
                                     session.blockEditorFlusher = null
-                                    fullscreen = false
                                     currentOpenCode(0, 0)
                                 }
                             }) {
@@ -588,23 +602,6 @@ internal fun BlockWorkspaceView(
         }
     }
     Box(modifier) {
-        if (!fullscreen) WorkspaceContent()
-    }
-    if (fullscreen) Dialog(
-        onDismissRequest = { if (chrome.state.overlay && !hostFailure) host.command("dismiss") else fullscreen = false },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        // Use the same edge-to-edge window policy as the expanded preview. The
-        // dialog default reserves the entire cutout strip even around the canvas.
-        KeepLandscapeDialogImmersive(forceFullscreen = true)
-        androidx.compose.material3.Surface(modifier = Modifier.fillMaxSize()) {
-            androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().imePadding()) {
-                Box(Modifier.weight(1f)) { WorkspaceContent() }
-            }
-        }
+        WorkspaceContent()
     }
 }

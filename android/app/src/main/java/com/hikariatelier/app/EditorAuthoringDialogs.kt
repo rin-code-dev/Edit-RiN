@@ -190,7 +190,11 @@ internal fun EditorAuthoringDialogs(
                 onClose = { onUserGuideChange(false) },
                 onStartPracticeTour = {
                     onUserGuideChange(false)
-                    settingsViewModel.startPracticeTour()
+                    settingsViewModel.replayOnboarding()
+                },
+                onTryCodeInEditor = { title, code ->
+                    onUserGuideChange(false)
+                    workManagementViewModel.createWorkWithCode(title, code)
                 }
             )
         }
@@ -208,8 +212,9 @@ internal fun EditorAuthoringDialogs(
                 dismissOnClickOutside = false)
         ) {
             val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
+            val uiLang = resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage)
             OnboardingTour(
-                language = resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage),
+                language = uiLang,
                 onFinish = { settingsViewModel.completeOnboarding() },
                 onSkip = { settingsViewModel.completeOnboarding() },
                 onOpenDetailedGuide = {
@@ -218,36 +223,17 @@ internal fun EditorAuthoringDialogs(
                 },
                 onOpenPracticeTour = {
                     settingsViewModel.completeOnboarding()
-                    settingsViewModel.startPracticeTour()
-                },
-                allowSkip = settingsViewModel.onboardingReplay
-            )
-        }
-    }
-
-    val practiceDue = practiceTourDue(
-        onboardingVersion = settingsViewModel.onboardingVersion,
-        practiceTourVersion = settingsViewModel.practiceTourVersion,
-        loadFailed = workManagementViewModel.loadFailure != null,
-        hasPendingDraft = workManagementViewModel.pendingDraft != null
-    )
-    if (practiceDue || settingsViewModel.practiceTourOpen) {
-        Dialog(
-            onDismissRequest = {},
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
-                dismissOnClickOutside = false)
-        ) {
-            val deviceLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language ?: "en"
-            val uiLang = resolveUiLanguage(settingsViewModel.appLanguage, deviceLanguage)
-            EditorPracticeTour(
-                language = uiLang,
-                onClose = { settingsViewModel.closePracticeTour() },
-                onTrySample = {
-                    settingsViewModel.closePracticeTour()
                     val title = practiceTourSampleTitle(uiLang)
                     val code = practiceTourSampleCode(uiLang)
                     workManagementViewModel.createWorkWithCode(title, code)
-                }
+                },
+                onTrySample = {
+                    settingsViewModel.completeOnboarding()
+                    val title = practiceTourSampleTitle(uiLang)
+                    val code = practiceTourSampleCode(uiLang)
+                    workManagementViewModel.createWorkWithCode(title, code)
+                },
+                allowSkip = true
             )
         }
     }
@@ -309,18 +295,20 @@ internal fun TweetMinifyShareSheet(
     val statusColor = if (isOver) colors.error else Color(0xFF10B981)
     val progressFraction = (minifiedCount.toFloat() / targetLimit.toFloat()).coerceIn(0f, 1f)
 
-    ModalBottomSheet(
+    val landscape = isLandscapeLayout()
+    UnitModal(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        tonalElevation = 4.dp,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(top = 14.dp, bottom = if (landscape) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (landscape) 10.dp else 12.dp)
         ) {
             // Top Row: Big Counter + 140/280 Toggle (Never wraps)
             Row(
@@ -419,10 +407,10 @@ internal fun TweetMinifyShareSheet(
                         modifier = Modifier
                             .height(26.dp)
                             .clip(pillShape)
-                            .background(if (active) colors.primary.copy(alpha = 0.14f) else colors.surfaceVariant.copy(alpha = 0.4f))
+                            .background(if (active) colors.primary.copy(alpha = 0.14f) else colors.surface)
                             .border(
                                 1.dp,
-                                if (active) colors.primary.copy(alpha = 0.6f) else colors.outlineVariant.copy(alpha = 0.5f),
+                                if (active) colors.primary.copy(alpha = 0.6f) else colors.outlineVariant,
                                 pillShape
                             )
                             .clickable { onClick() }

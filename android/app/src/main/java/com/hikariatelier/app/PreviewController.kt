@@ -154,6 +154,15 @@ internal class PreviewController(
         if (!disposed) webView?.evaluateJavascript(script, null)
     }
 
+    fun setParameter(name: String, jsonValue: String) {
+        if (disposed) return
+        val port = controlPort
+        if (port != null && portToken == session.assets.token) {
+            if (runCatching { port.postMessage(WebMessage("P:$name:$jsonValue")) }.isSuccess) return
+        }
+        evaluate("window.__editRinSetParameter?.(${JSONObject.quote(name)},$jsonValue)")
+    }
+
     fun requestScreenshot(forShareCard: Boolean = false, scale: Int = 1) {
         if (disposed || webView == null || screenshotBusy || recording.screenshotSaving) return
         if (!session.isCurrent(session.assets.token)) {
@@ -536,6 +545,7 @@ internal class PreviewController(
         activityActive = false
         performance.pause()
         sensors.stop()
+        evaluate("window.__editRinSuspendBackgroundAudio?.()")
         webView?.onPause()
     }
 
@@ -545,6 +555,7 @@ internal class PreviewController(
             performance.resume()
             updateSensorPlayback()
             webView?.onResume()
+            if (!isPaused) evaluate("window.__editRinResumeBackgroundAudio?.()")
         }
     }
 

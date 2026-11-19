@@ -77,8 +77,13 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
         try {
             val keepIds = works.map { it.id }.toSet()
             val existingIds = mutableListOf<String>()
-            db.rawQuery("SELECT id FROM works_meta", null).use { cursor ->
-                while (cursor.moveToNext()) existingIds.add(cursor.getString(0))
+            val existingFiles = mutableMapOf<String, String>()
+            db.rawQuery("SELECT id, document_file FROM works_meta", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getString(0)
+                    existingIds.add(id)
+                    existingFiles[id] = if (cursor.isNull(1)) "" else cursor.getString(1)
+                }
             }
             for (oldId in existingIds) {
                 if (oldId !in keepIds) {
@@ -87,7 +92,7 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
                 }
             }
             for (work in works) {
-                upsertWorkInternal(db, work, fileMap[work.id].orEmpty())
+                upsertWorkInternal(db, work, fileMap[work.id] ?: existingFiles[work.id].orEmpty())
             }
             db.setTransactionSuccessful()
         } finally {

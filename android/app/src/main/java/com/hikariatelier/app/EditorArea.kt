@@ -50,7 +50,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Forces Android IMEs (Gboard, Samsung Keyboard, Simeji, etc.) to NEVER enter the full-screen
@@ -143,7 +145,8 @@ internal fun EditorArea(
     onOpenBlockRuntime: () -> Unit = {},
     onBlockUndo: () -> Unit = {},
     onBlockRedo: () -> Unit = {},
-    onOpenFullPreview: (() -> Unit)? = null
+    onOpenFullPreview: (() -> Unit)? = null,
+    documentLeadingContent: (@Composable () -> Unit)? = null
 ) {
     val blockMode = remember(activeWorkId, sessionViewModel.auxiliaryEditorGeneration) { sessionViewModel.blockModeState(activeWorkId) }
     val modeScope = rememberCoroutineScope()
@@ -225,7 +228,7 @@ internal fun EditorArea(
     val projection = remember(editingText, foldRegions, collapsedFolds) {
         FoldProjection(editingText, foldRegions, collapsedFolds)
     }
-    val displayText = remember(projection) { projection.transform(AnnotatedString(editingText)).text.text }
+    val displayText = projection.displayText
     val searchColor = colors.primary.copy(alpha = 0.18f)
     val visibleSearchMatches = remember(searchMatches, editingValue.selection) {
         if (searchMatches.size <= 2000) searchMatches else {
@@ -297,8 +300,60 @@ internal fun EditorArea(
         listOf("sketch.js") + activeWork?.files.orEmpty().keys.sorted()
     }
 
+    val isPortraitEditor = androidx.compose.ui.platform.LocalConfiguration.current.orientation !=
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    val handleSelectFile: (String) -> Unit = { nextFile ->
+        if (selectedEditorFile != nextFile) {
+            focusManager.clearFocus(force = true)
+            onFocusChange(false)
+            if (sessionViewModel.blockEditorFlusher == null || !showingBlocks) {
+                onSelectEditorFile(nextFile)
+            } else {
+                val activation = sessionViewModel.blockEditorActivationGeneration
+                modeScope.launch {
+                    if (sessionViewModel.flushBlockEditor() &&
+                        sessionViewModel.canApplyBlockAction(activeWorkId, activation, requireEditable = false)) onSelectEditorFile(nextFile)
+                }
+            }
+        }
+    }
+    val handleSelectBlocks: (Boolean) -> Unit = { blocks ->
+        if (blocks) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onFocusChange(false)
+            sessionViewModel.blockSplitView = false
+            sessionViewModel.pipMinimized = false
+            blockMode.value = true
+        } else {
+            if (sessionViewModel.blockEditorFlusher == null) {
+                blockMode.value = false
+            } else {
+                val activation = sessionViewModel.blockEditorActivationGeneration
+                modeScope.launch {
+                    if (sessionViewModel.flushBlockEditor() &&
+                        sessionViewModel.canApplyBlockAction(activeWorkId, activation, requireEditable = false)) blockMode.value = false
+                }
+            }
+        }
+    }
+    val handleAddFile: (() -> Unit)? = onOpenProjectFiles?.let { open ->
+        {
+            if (sessionViewModel.blockEditorFlusher == null || !showingBlocks) {
+                open()
+            } else {
+                val activation = sessionViewModel.blockEditorActivationGeneration
+                modeScope.launch {
+                    if (sessionViewModel.flushBlockEditor() &&
+                        sessionViewModel.canApplyBlockAction(activeWorkId, activation)) open()
+                }
+            }
+        }
+    }
+
     @Composable
-    fun DocumentHeader(enabled: Boolean = true) {
+    fun DocumentHeader(enabled: Boolean = true, compact: Boolean = false) {
         if (activeWork != null) EditorDocumentBar(
             files = projectFileList,
             selectedFile = selectedEditorFile,
@@ -309,57 +364,23 @@ internal fun EditorArea(
             readOnly = readOnly,
             autoRunEnabled = sessionViewModel.autoRunEnabled,
             previewHasChanges = previewHasChanges,
-            onSelectFile = { nextFile ->
-                if (selectedEditorFile != nextFile) {
-                    focusManager.clearFocus(force = true)
-                    onFocusChange(false)
-                    if (sessionViewModel.blockEditorFlusher == null || !showingBlocks) {
-                        onSelectEditorFile(nextFile)
-                    } else {
-                        val activation = sessionViewModel.blockEditorActivationGeneration
-                        modeScope.launch {
-                            if (sessionViewModel.flushBlockEditor() &&
-                                sessionViewModel.canApplyBlockAction(activeWorkId, activation, requireEditable = false)) onSelectEditorFile(nextFile)
-                        }
-                    }
-                }
-            },
-            onSelectBlocks = { blocks ->
-                if (blocks) {
-                    focusManager.clearFocus(force = true)
-                    keyboardController?.hide()
-                    onFocusChange(false)
-                    sessionViewModel.blockSplitView = false
-                    sessionViewModel.pipMinimized = false
-                    blockMode.value = true
-                } else {
-                    if (sessionViewModel.blockEditorFlusher == null) {
-                        blockMode.value = false
-                    } else {
-                        val activation = sessionViewModel.blockEditorActivationGeneration
-                        modeScope.launch {
-                            if (sessionViewModel.flushBlockEditor() &&
-                                sessionViewModel.canApplyBlockAction(activeWorkId, activation, requireEditable = false)) blockMode.value = false
-                        }
-                    }
-                }
-            },
-            onAddFile = onOpenProjectFiles?.let { open -> {
-                if (sessionViewModel.blockEditorFlusher == null || !showingBlocks) {
-                    open()
-                } else {
-                    val activation = sessionViewModel.blockEditorActivationGeneration
-                    modeScope.launch {
-                        if (sessionViewModel.flushBlockEditor() &&
-                            sessionViewModel.canApplyBlockAction(activeWorkId, activation)) open()
-                    }
-                }
-            } },
+            onSelectFile = handleSelectFile,
+            onSelectBlocks = handleSelectBlocks,
+            onAddFile = handleAddFile,
             onToggleAutoRun = { sessionViewModel.autoRunEnabled = !sessionViewModel.autoRunEnabled },
             onRunChanges = onRunChanges,
             textTranslator = textTranslator,
-            onOpenFullPreview = onOpenFullPreview
-        )
+            onOpenFullPreview = onOpenFullPreview,
+            leadingContent = documentLeadingContent,
+            compact = compact
+        ) else if (documentLeadingContent != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                documentLeadingContent()
+            }
+        }
     }
 
     Card(
@@ -435,7 +456,9 @@ internal fun EditorArea(
                         Text(textTranslator("コピーして編集", emptyArray()))
                     }
                 }
-                if (!showingBlocks) DocumentHeader()
+                if (!showingBlocks && !isPortraitEditor) {
+                    DocumentHeader()
+                }
                 if (!showingBlocks) inlineSearch()
                 if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
                     Text(
@@ -480,7 +503,7 @@ internal fun EditorArea(
                         onOpenRuntime = onOpenBlockRuntime,
                         onUndo = onBlockUndo,
                         onRedo = onBlockRedo,
-                        documentBar = { enabled -> DocumentHeader(enabled) },
+                        documentBar = { enabled -> DocumentHeader(enabled, compact = isPortraitEditor) },
                         textTranslator = textTranslator,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -558,89 +581,94 @@ internal fun EditorArea(
                         }
                     }
 
-                    // Synchronous auto-ghost evaluation: reactive to scroll, cursor, focus, and watch value changes
-                    val isOverlapping = remember(
+                    // Auto-ghost evaluation via derivedStateOf so scroll frames do not recompose EditorArea
+                    val isOverlapping by remember(
                         useFloatingPip,
-                        sessionViewModel.pipSnapCorner,
-                        sessionViewModel.pipSizePreset,
-                        sessionViewModel.pipMinimized,
-                        editorScrollState.value,
-                        editorHorizontalScrollState.value,
                         editingValue.selection,
                         editorFocused,
-                        watchValues.toMap(),
                         editorTextLayout,
+                        logicalLineStarts,
+                        projection,
+                        editingText.length,
+                        gutterWidth,
+                        showLineNumbers,
+                        hasFolds,
+                        pipSafeRatio,
+                        pipBaseSize,
+                        pipCardHeightDp,
                         maxWidth,
                         maxHeight
                     ) {
-                        if (!useFloatingPip) return@remember false
+                        derivedStateOf {
+                            if (!useFloatingPip) return@derivedStateOf false
 
-                        val containerWidthPx = with(localDensity) { maxWidth.toPx() }
-                        val containerHeightPx = with(localDensity) { maxHeight.toPx() }
-                        val pipCanvasWidthDp = if (pipSafeRatio >= 1f) pipBaseSize.dp else (pipBaseSize * pipSafeRatio).dp
-                        val pipWidthDp = if (sessionViewModel.pipMinimized) 138.dp else maxOf(138.dp, pipCanvasWidthDp)
-                        val pipWidthPx = with(localDensity) { pipWidthDp.toPx() }
-                        val pipHeightPx = with(localDensity) { pipCardHeightDp.toPx() }
-                        val marginPx = with(localDensity) { 8.dp.toPx() }
+                            val containerWidthPx = with(localDensity) { maxWidth.toPx() }
+                            val containerHeightPx = with(localDensity) { maxHeight.toPx() }
+                            val pipCanvasWidthDp = if (pipSafeRatio >= 1f) pipBaseSize.dp else (pipBaseSize * pipSafeRatio).dp
+                            val pipWidthDp = if (sessionViewModel.pipMinimized) 164.dp else maxOf(164.dp, pipCanvasWidthDp)
+                            val pipWidthPx = with(localDensity) { pipWidthDp.toPx() }
+                            val pipHeightPx = with(localDensity) { pipCardHeightDp.toPx() }
+                            val marginPx = with(localDensity) { 8.dp.toPx() }
 
-                        val pipLeft = when (sessionViewModel.pipSnapCorner) {
-                            PipCorner.TOP_START, PipCorner.BOTTOM_START -> marginPx
-                            PipCorner.TOP_END, PipCorner.BOTTOM_END -> (containerWidthPx - pipWidthPx - marginPx).coerceAtLeast(0f)
-                        }
-                        val pipTop = when (sessionViewModel.pipSnapCorner) {
-                            PipCorner.TOP_START, PipCorner.TOP_END -> marginPx
-                            PipCorner.BOTTOM_START, PipCorner.BOTTOM_END -> (containerHeightPx - pipHeightPx - marginPx).coerceAtLeast(0f)
-                        }
-                        val pipRight = pipLeft + pipWidthPx
-                        val pipBottom = pipTop + pipHeightPx
+                            val pipLeft = when (sessionViewModel.pipSnapCorner) {
+                                PipCorner.TOP_START, PipCorner.BOTTOM_START -> marginPx
+                                PipCorner.TOP_END, PipCorner.BOTTOM_END -> (containerWidthPx - pipWidthPx - marginPx).coerceAtLeast(0f)
+                            }
+                            val pipTop = when (sessionViewModel.pipSnapCorner) {
+                                PipCorner.TOP_START, PipCorner.TOP_END -> marginPx
+                                PipCorner.BOTTOM_START, PipCorner.BOTTOM_END -> (containerHeightPx - pipHeightPx - marginPx).coerceAtLeast(0f)
+                            }
+                            val pipRight = pipLeft + pipWidthPx
+                            val pipBottom = pipTop + pipHeightPx
 
-                        var overlapping = false
-                        val layout = editorTextLayout
+                            var overlapping = false
+                            val layout = editorTextLayout
 
-                        // Check watch badges overlap (badges are on the right edge)
-                        val isRightEdgePip = sessionViewModel.pipSnapCorner == PipCorner.TOP_END ||
-                            sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_END
-                        if (isRightEdgePip && watchValues.isNotEmpty() && layout != null) {
-                            val badgePad = with(localDensity) { 16.dp.toPx() }
-                            val badgeH = with(localDensity) { 24.dp.toPx() }
-                            for ((lineNum, _) in watchValues) {
-                                val lineIdx = lineNum - 1
-                                val origOffset = logicalLineStarts.getOrNull(lineIdx) ?: continue
-                                if (projection.isHidden(origOffset)) continue
-                                val transOffset = projection.originalToTransformed(origOffset)
-                                    .coerceIn(0, layout.layoutInput.text.length)
-                                val visualLine = layout.getLineForOffset(transOffset)
-                                val badgeTop = layout.getLineTop(visualLine) - editorScrollState.value + badgePad
-                                val badgeBottom = badgeTop + badgeH
-                                if (badgeBottom >= pipTop && badgeTop <= pipBottom) {
-                                    overlapping = true
-                                    break
+                            // Check watch badges overlap (badges are on the right edge)
+                            val isRightEdgePip = sessionViewModel.pipSnapCorner == PipCorner.TOP_END ||
+                                sessionViewModel.pipSnapCorner == PipCorner.BOTTOM_END
+                            if (isRightEdgePip && watchValues.isNotEmpty() && layout != null) {
+                                val badgePad = with(localDensity) { 16.dp.toPx() }
+                                val badgeH = with(localDensity) { 24.dp.toPx() }
+                                for ((lineNum, _) in watchValues) {
+                                    val lineIdx = lineNum - 1
+                                    val origOffset = logicalLineStarts.getOrNull(lineIdx) ?: continue
+                                    if (projection.isHidden(origOffset)) continue
+                                    val transOffset = projection.originalToTransformed(origOffset)
+                                        .coerceIn(0, layout.layoutInput.text.length)
+                                    val visualLine = layout.getLineForOffset(transOffset)
+                                    val badgeTop = layout.getLineTop(visualLine) - editorScrollState.value + badgePad
+                                    val badgeBottom = badgeTop + badgeH
+                                    if (badgeBottom >= pipTop && badgeTop <= pipBottom) {
+                                        overlapping = true
+                                        break
+                                    }
                                 }
                             }
-                        }
 
-                        // Check cursor overlap with text padding factored in
-                        if (!overlapping && layout != null && editorFocused) {
-                            val pad = with(localDensity) { 16.dp.toPx() }
-                            val textStartPad = with(localDensity) { (if (showLineNumbers || hasFolds) 8.dp else 14.dp).toPx() }
-                            val gutterPx = with(localDensity) { gutterWidth.toPx() } + textStartPad
-                            val cursorW = with(localDensity) { 24.dp.toPx() }
-                            val cursorOffset = projection.originalToTransformed(editingValue.selection.end.coerceIn(0, editingText.length))
-                                .coerceIn(0, layout.layoutInput.text.length)
-                            val cursorVisualLine = layout.getLineForOffset(cursorOffset)
-                            val cursorLineTop = layout.getLineTop(cursorVisualLine) - editorScrollState.value + pad
-                            val cursorLineBottom = layout.getLineBottom(cursorVisualLine) - editorScrollState.value + pad
-                            val cursorLeft = gutterPx + layout.getHorizontalPosition(cursorOffset, true) - editorHorizontalScrollState.value
-                            val cursorRight = cursorLeft + cursorW
+                            // Check cursor overlap with text padding factored in
+                            if (!overlapping && layout != null && editorFocused) {
+                                val pad = with(localDensity) { 16.dp.toPx() }
+                                val textStartPad = with(localDensity) { (if (showLineNumbers || hasFolds) 8.dp else 14.dp).toPx() }
+                                val gutterPx = with(localDensity) { gutterWidth.toPx() } + textStartPad
+                                val cursorW = with(localDensity) { 24.dp.toPx() }
+                                val cursorOffset = projection.originalToTransformed(editingValue.selection.end.coerceIn(0, editingText.length))
+                                    .coerceIn(0, layout.layoutInput.text.length)
+                                val cursorVisualLine = layout.getLineForOffset(cursorOffset)
+                                val cursorLineTop = layout.getLineTop(cursorVisualLine) - editorScrollState.value + pad
+                                val cursorLineBottom = layout.getLineBottom(cursorVisualLine) - editorScrollState.value + pad
+                                val cursorLeft = gutterPx + layout.getHorizontalPosition(cursorOffset, true) - editorHorizontalScrollState.value
+                                val cursorRight = cursorLeft + cursorW
 
-                            val vOverlap = cursorLineBottom >= pipTop && cursorLineTop <= pipBottom
-                            val hOverlap = cursorRight >= pipLeft && cursorLeft <= pipRight
-                            if (vOverlap && hOverlap) {
-                                overlapping = true
+                                val vOverlap = cursorLineBottom >= pipTop && cursorLineTop <= pipBottom
+                                val hOverlap = cursorRight >= pipLeft && cursorLeft <= pipRight
+                                if (vOverlap && hOverlap) {
+                                    overlapping = true
+                                }
                             }
-                        }
 
-                        overlapping
+                            overlapping
+                        }
                     }
 
                     SideEffect {
@@ -909,6 +937,31 @@ internal fun EditorArea(
                             }
                         }
                     }
+                    if (isPortraitEditor && activeWork != null) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = !editorFocused,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 6.dp, end = 8.dp),
+                            enter = androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.fadeOut()
+                        ) {
+                            EditorDocumentOverlayCapsule(
+                                files = projectFileList,
+                                selectedFile = selectedEditorFile,
+                                dirtyFiles = dirtyFiles,
+                                showingBlocks = showingBlocks,
+                                allowBlocks = selectedEditorFile == "sketch.js",
+                                enabled = !sessionViewModel.editorInputLocked,
+                                readOnly = readOnly,
+                                showFileName = projectFileList.size > 1,
+                                onSelectFile = handleSelectFile,
+                                onSelectBlocks = handleSelectBlocks,
+                                onAddFile = handleAddFile,
+                                textTranslator = textTranslator
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -967,8 +1020,11 @@ internal fun TweetModeStatusBar(
 ) {
     fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
 
-    val golfedCount by remember(sourceText) {
-        derivedStateOf { minifyJavaScriptForTweet(sourceText).length }
+    val golfedCount by produceState(
+        initialValue = remember { minifyJavaScriptForTweet(sourceText).length },
+        key1 = sourceText
+    ) {
+        value = withContext(Dispatchers.Default) { minifyJavaScriptForTweet(sourceText).length }
     }
 
     val isOver = golfedCount > targetLimit

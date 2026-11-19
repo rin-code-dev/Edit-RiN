@@ -103,11 +103,12 @@ internal fun P5AccountImportDialog(
                     ) {
                         items(sketches, key = { it.id }) { sketch ->
                             Surface(
-                                modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) {
-                                    onImport(sketch)
-                                },
-                                shape = MaterialTheme.shapes.medium,
-                                color = MaterialTheme.colorScheme.surfaceVariant
+                                onClick = { onImport(sketch) },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = UNIT_CONTROL_SHAPE,
+                                color = MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                                     Text(sketch.name, maxLines = 2, fontWeight = FontWeight.Medium)

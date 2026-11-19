@@ -70,35 +70,24 @@ internal fun WorkSheet(
     windowSetup: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val currentDismissEnabled by rememberUpdatedState(dismissEnabled)
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { currentDismissEnabled || it != SheetValue.Hidden }
-    )
+    val landscape = isLandscapeLayout()
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
-    ModalBottomSheet(
+    UnitModal(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        sheetGesturesEnabled = false,
-        containerColor = colors.surface,
-        contentColor = colors.onSurface,
-        tonalElevation = 0.dp,
-        shape = RoundedCornerShape(
-            topStart = if (minimal) 8.dp else 20.dp,
-            topEnd = if (minimal) 8.dp else 20.dp
-        ),
-        dragHandle = null
+        dismissEnabled = dismissEnabled,
+        minimal = minimal,
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = windowSetup
     ) {
-        windowSetup()
         Column(
             Modifier
-                .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.85f).dp)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         ) {
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(vertical = if (landscape) 4.dp else 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
@@ -114,7 +103,7 @@ internal fun WorkSheet(
                     )
                 }
                 headerAction()
-                IconButton(onClick = onDismiss, enabled = dismissEnabled) {
+                IconButton(onClick = onDismiss, enabled = dismissEnabled, shape = UNIT_CONTROL_SHAPE) {
                     Icon(
                         painterResource(R.drawable.ic_close), uiText("閉じる"),
                         Modifier.size(20.dp), tint = colors.onSurfaceVariant
@@ -122,7 +111,7 @@ internal fun WorkSheet(
                 }
             }
             HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.6f))
-            Column(Modifier.weight(1f, fill = false).padding(top = 12.dp)) {
+            Column(Modifier.weight(1f, fill = false).padding(top = if (landscape) 8.dp else 12.dp)) {
                 content()
             }
         }
@@ -139,6 +128,7 @@ internal fun ActionRow(
     destructive: Boolean = false,
     onClick: () -> Unit
 ) {
+    val landscape = isLandscapeLayout()
     val tint = when {
         !enabled -> colors.onSurface.copy(alpha = 0.38f)
         destructive -> colors.error
@@ -147,13 +137,14 @@ internal fun ActionRow(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = if (landscape) 4.dp else 6.dp),
+        shape = RoundedCornerShape(if (landscape) 12.dp else 16.dp),
         color = if (destructive) colors.error.copy(alpha = 0.04f) else colors.surface,
         border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = if (enabled) 0.7f else 0.35f))
     ) {
         Row(
-            Modifier.heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+            Modifier.heightIn(min = if (landscape) 46.dp else 56.dp)
+                .padding(horizontal = 12.dp, vertical = if (landscape) 6.dp else 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(painterResource(iconRes), null, Modifier.size(22.dp), tint = tint)
@@ -277,7 +268,7 @@ internal fun WorkSelectorChip(
                 }
             }
             onRetry?.let { retry ->
-                TextButton(onClick = retry, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                TextButton(onClick = retry, shape = UNIT_COMPACT_CONTROL_SHAPE, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                     modifier = Modifier.height(28.dp)) { Text(uiText("再試行"), style = MaterialTheme.typography.labelSmall) }
             }
         }
@@ -328,7 +319,8 @@ internal fun WorkActionsMenu(
     onToggleTweetMode: () -> Unit = {},
     onOpenMinify: () -> Unit = {},
     textTranslator: (String, Array<out Any?>) -> String,
-    windowSetup: @Composable () -> Unit = {}
+    windowSetup: @Composable () -> Unit = {},
+    showButtons: Boolean = true
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -513,11 +505,11 @@ internal fun WorkActionsMenu(
 
     @Composable
     fun FileActions() {
-        TextButton(enabled = !assetBusy, onClick = {
+        TextButton(enabled = !assetBusy, shape = UNIT_CONTROL_SHAPE, onClick = {
             viewModel.workActionsMenuExpanded = false
             onExportZip()
         }) { Text(uiText("作品ZIPを書き出す")) }
-        TextButton(enabled = !assetBusy, onClick = {
+        TextButton(enabled = !assetBusy, shape = UNIT_CONTROL_SHAPE, onClick = {
             viewModel.workActionsMenuExpanded = false
             onImportZip()
         }) { Text(uiText("作品ZIPを追加")) }
@@ -588,59 +580,61 @@ internal fun WorkActionsMenu(
 
     val actionButtonSize = if (isLandscape) 34.dp else 38.dp
     val actionIconSize = if (isLandscape) 18.dp else 20.dp
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 2.dp else 4.dp)
-    ) {
-        if (manualRotation) {
-            TooltipIconButton(label = uiText("画面を回転"),
-                onClick = onRotate,
-                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 0).size(actionButtonSize)
+    if (showButtons) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 2.dp else 4.dp)
+        ) {
+            if (manualRotation) {
+                TooltipIconButton(label = uiText("画面を回転"),
+                    onClick = onRotate,
+                    modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 0).size(actionButtonSize)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_rotate),
+                        contentDescription = uiText("画面を回転"),
+                        tint = colors.onSurface,
+                        modifier = Modifier.size(actionIconSize)
+                    )
+                }
+            }
+            TooltipIconButton(label = uiText("設定"),
+                onClick = onOpenSettings,
+                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 1).size(actionButtonSize)
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_rotate),
-                    contentDescription = uiText("画面を回転"),
+                    painter = painterResource(R.drawable.ic_settings),
+                    contentDescription = uiText("設定"),
                     tint = colors.onSurface,
                     modifier = Modifier.size(actionIconSize)
                 )
             }
-        }
-        TooltipIconButton(label = uiText("設定"),
-            onClick = onOpenSettings,
-            modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 1).size(actionButtonSize)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_settings),
-                contentDescription = uiText("設定"),
-                tint = colors.onSurface,
-                modifier = Modifier.size(actionIconSize)
-            )
-        }
-        TooltipIconButton(label = uiText("作品設定"),
-            enabled = activeWork != null,
-            onClick = {
-                viewModel.workActionsMenuExpanded = false
-                onOpenWorkSettings()
-            },
-            modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 2).size(actionButtonSize)
-        ) {
-            Icon(
-                painterResource(R.drawable.ic_folder_code),
-                contentDescription = uiText("作品設定"),
-                tint = colors.onSurface,
-                modifier = Modifier.size(actionIconSize)
-            )
-        }
-        TooltipIconButton(label = uiText("作品メニュー"),
-            onClick = { viewModel.workActionsMenuExpanded = true },
-            modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 3).size(actionButtonSize)
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_more_vertical),
-                contentDescription = uiText("作品メニュー"),
-                tint = colors.onSurface,
-                modifier = Modifier.size(actionIconSize)
-            )
+            TooltipIconButton(label = uiText("作品設定"),
+                enabled = activeWork != null,
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    onOpenWorkSettings()
+                },
+                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 2).size(actionButtonSize)
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_folder_code),
+                    contentDescription = uiText("作品設定"),
+                    tint = colors.onSurface,
+                    modifier = Modifier.size(actionIconSize)
+                )
+            }
+            TooltipIconButton(label = uiText("作品メニュー"),
+                onClick = { viewModel.workActionsMenuExpanded = true },
+                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 3).size(actionButtonSize)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vertical),
+                    contentDescription = uiText("作品メニュー"),
+                    tint = colors.onSurface,
+                    modifier = Modifier.size(actionIconSize)
+                )
+            }
         }
     }
 

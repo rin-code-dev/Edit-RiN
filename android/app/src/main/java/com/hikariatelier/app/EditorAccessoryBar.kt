@@ -524,6 +524,9 @@ internal fun EditorAccessoryBar(
 
                     if (showAccessoryNavigation) {
                         KeyDivider()
+                        FlatTextKey("TAB", uiText("インデント"), width = 38) {
+                            onApplyEdit(changeLineIndent(editingValue, true))
+                        }
                         FlatIconKey(R.drawable.ic_indent, uiText("インデント")) {
                             onApplyEdit(changeLineIndent(editingValue, true))
                         }

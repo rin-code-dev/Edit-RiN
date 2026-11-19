@@ -16,12 +16,14 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,11 +37,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.zIndex
 import java.util.Collections
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -53,9 +55,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -168,7 +175,8 @@ internal class WorkGalleryState internal constructor(
     gridState: MutableState<LazyGridState>,
     selectingState: MutableState<Boolean>,
     selectedIdsState: MutableState<Set<String>>,
-    selectedFolderState: MutableState<String?> = mutableStateOf(null)
+    selectedFolderState: MutableState<String?> = mutableStateOf(null),
+    sidePanelExpandedState: MutableState<Boolean> = mutableStateOf(true)
 ) {
     var gridState by gridState
         private set
@@ -179,6 +187,7 @@ internal class WorkGalleryState internal constructor(
     var selectedIds by selectedIdsState
     var selectedFolder by selectedFolderState
         private set
+    var sidePanelExpanded by sidePanelExpandedState
     fun inFolder(work: Work): Boolean = if (selectedFolder == SAMPLE_FOLDER) work.isSample
         else !work.isSample && (selectedFolder == null || work.folderName == selectedFolder)
     fun changeFolder(folder: String?) {
@@ -228,7 +237,12 @@ internal fun rememberWorkGalleryState(): WorkGalleryState {
     val selecting = rememberSaveable { mutableStateOf(false) }
     val selectedIds = rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
     val selectedFolder = rememberSaveable { mutableStateOf<String?>(null) }
-    return remember { WorkGalleryState(searching, query, selectedTag, grid, selecting, selectedIds, selectedFolder) }
+    val sidePanelExpanded = rememberSaveable { mutableStateOf(true) }
+    return remember {
+        WorkGalleryState(
+            searching, query, selectedTag, grid, selecting, selectedIds, selectedFolder, sidePanelExpanded
+        )
+    }
 }
 
 /** Shared actions with compact portrait and larger landscape touch targets. */
@@ -246,29 +260,30 @@ internal fun WorkGalleryActions(
     onTagSelection: () -> Unit = {},
     onExportSelection: () -> Unit = {},
     onDeleteSelection: () -> Unit = {},
-    onMoveSelection: () -> Unit = {}
+    onMoveSelection: () -> Unit = {},
+    showManageTags: Boolean = true
 ) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         if (state.selecting) {
             val enabled = state.selectedIds.isNotEmpty() && !busy
-            IconButton(onClick = onMoveSelection, enabled = enabled, modifier = Modifier.size(buttonSize)) {
-                Icon(painterResource(R.drawable.ic_folder_code), text("フォルダーへ移動"), Modifier.size(20.dp))
+            IconButton(onClick = onMoveSelection, enabled = enabled, shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(buttonSize)) {
+                Icon(painterResource(R.drawable.ic_folder_code), text("フォルダーへ移動"), Modifier.size(19.dp))
             }
-            IconButton(onClick = onTagSelection, enabled = enabled, modifier = Modifier.size(buttonSize)) {
-                Icon(painterResource(R.drawable.ic_tag), text("選択した作品にタグ付け"), Modifier.size(20.dp))
+            IconButton(onClick = onTagSelection, enabled = enabled, shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(buttonSize)) {
+                Icon(painterResource(R.drawable.ic_tag), text("選択した作品にタグ付け"), Modifier.size(19.dp))
             }
-            IconButton(onClick = onExportSelection, enabled = enabled, modifier = Modifier.size(buttonSize)) {
-                Icon(painterResource(R.drawable.ic_save), text("選択した作品を書き出す"), Modifier.size(20.dp))
+            IconButton(onClick = onExportSelection, enabled = enabled, shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(buttonSize)) {
+                Icon(painterResource(R.drawable.ic_save), text("選択した作品を書き出す"), Modifier.size(19.dp))
             }
             IconButton(onClick = onDeleteSelection, enabled = enabled && canDeleteSelection,
-                modifier = Modifier.size(buttonSize)) {
-                Icon(painterResource(R.drawable.ic_delete), text("選択した作品を削除"), Modifier.size(20.dp))
+                shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(buttonSize)) {
+                Icon(painterResource(R.drawable.ic_delete), text("選択した作品を削除"), Modifier.size(19.dp))
             }
-            IconButton(onClick = { state.finishSelection() }, enabled = !busy, modifier = Modifier.size(buttonSize)) {
-                Icon(painterResource(R.drawable.ic_close), text("選択を終了"), Modifier.size(20.dp))
+            IconButton(onClick = { state.finishSelection() }, enabled = !busy, shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(buttonSize)) {
+                Icon(painterResource(R.drawable.ic_close), text("選択を終了"), Modifier.size(19.dp))
             }
-        } else WorkGalleryActionButtons(state, onDismiss, text, sort, onSort, Modifier.size(buttonSize))
+        } else WorkGalleryActionButtons(state, onDismiss, text, sort, onSort, showManageTags, Modifier.size(buttonSize))
     }
 }
 
@@ -279,12 +294,15 @@ private fun WorkGalleryActionButtons(
     text: (String) -> String,
     sort: String,
     onSort: (String) -> Unit,
+    showManageTags: Boolean,
     buttonModifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    IconButton(onClick = { state.showManageAllTagsDialog = true }, modifier = buttonModifier) {
-        Icon(painterResource(R.drawable.ic_tag), text("タグの管理"), Modifier.size(20.dp))
+    if (showManageTags) {
+        IconButton(onClick = { state.showManageAllTagsDialog = true }, shape = UNIT_CONTROL_SHAPE, modifier = buttonModifier) {
+            Icon(painterResource(R.drawable.ic_tag), text("タグの管理"), Modifier.size(19.dp))
+        }
     }
     IconButton(onClick = {
         if (state.searching) {
@@ -293,13 +311,19 @@ private fun WorkGalleryActionButtons(
             state.closeSearch()
         } else state.searching = true
     },
+        shape = UNIT_CONTROL_SHAPE,
         modifier = buttonModifier) {
-        Icon(painterResource(R.drawable.ic_search), text("作品名で検索"), Modifier.size(20.dp))
+        Icon(
+            painterResource(R.drawable.ic_search),
+            text("作品名で検索"),
+            Modifier.size(19.dp),
+            tint = if (state.searching) MaterialTheme.colorScheme.primary else LocalContentColor.current
+        )
     }
     Box {
-        IconButton(onClick = { state.sorting = true }, modifier = buttonModifier) {
+        IconButton(onClick = { state.sorting = true }, shape = UNIT_CONTROL_SHAPE, modifier = buttonModifier) {
             Icon(painterResource(R.drawable.ic_sort),
-                text("並び替え"), Modifier.size(20.dp))
+                text("並び替え"), Modifier.size(19.dp))
         }
         DropdownMenu(expanded = state.sorting, onDismissRequest = { state.sorting = false }) {
             listOf("更新順", "最近開いた順", "名前順").forEach { value ->
@@ -310,8 +334,8 @@ private fun WorkGalleryActionButtons(
             }
         }
     }
-    IconButton(onClick = onDismiss, modifier = buttonModifier) {
-        Icon(painterResource(R.drawable.ic_close), text("閉じる"), Modifier.size(20.dp))
+    IconButton(onClick = onDismiss, shape = UNIT_CONTROL_SHAPE, modifier = buttonModifier) {
+        Icon(painterResource(R.drawable.ic_close), text("閉じる"), Modifier.size(19.dp))
     }
 }
 
@@ -321,17 +345,73 @@ internal fun WorkGallerySearch(
     state: WorkGalleryState,
     text: (String) -> String,
     interactive: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val colors = MaterialTheme.colorScheme
     LaunchedEffect(interactive) {
         if (interactive) {
             withFrameNanos { }
             focusRequester.requestFocus()
             keyboardController?.show()
         }
+    }
+    if (compact) {
+        Surface(
+            modifier = modifier.height(34.dp),
+            shape = UNIT_CONTROL_SHAPE,
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.6f))
+        ) {
+            Row(
+                Modifier.fillMaxSize().padding(start = 10.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_search),
+                    null,
+                    Modifier.size(15.dp),
+                    tint = colors.onSurfaceVariant
+                )
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (state.query.isEmpty()) {
+                        Text(
+                            text("作品名・タグ・コードで検索"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    BasicTextField(
+                        value = state.query,
+                        onValueChange = { state.query = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                        textStyle = TextStyle(
+                            color = colors.onSurface,
+                            fontSize = 13.sp
+                        ),
+                        cursorBrush = SolidColor(colors.primary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = {
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                        })
+                    )
+                }
+                if (state.query.isNotEmpty()) {
+                    IconButton(onClick = { state.query = "" }, shape = UNIT_COMPACT_CONTROL_SHAPE, modifier = Modifier.size(26.dp)) {
+                        Icon(painterResource(R.drawable.ic_close), text("検索をクリア"), Modifier.size(15.dp))
+                    }
+                }
+            }
+        }
+        return
     }
     TextField(value = state.query, onValueChange = { state.query = it }, singleLine = true,
         modifier = modifier.focusRequester(focusRequester),
@@ -343,7 +423,7 @@ internal fun WorkGallerySearch(
         }),
         colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent,
             unfocusedContainerColor = Color.Transparent),
-        trailingIcon = { if (state.query.isNotEmpty()) IconButton(onClick = { state.query = "" }) {
+        trailingIcon = { if (state.query.isNotEmpty()) IconButton(onClick = { state.query = "" }, shape = UNIT_CONTROL_SHAPE) {
             Icon(painterResource(R.drawable.ic_close), text("検索をクリア"), Modifier.size(18.dp))
         } })
 }
@@ -379,12 +459,13 @@ internal fun InlineWorkGallery(
     previewRevisions: Map<String, Int> = emptyMap(),
     onThumbnailPriority: (List<String>) -> Unit = {},
     onThumbnailScrolling: (Boolean) -> Unit = {},
-    navigationWhileBusy: Boolean = false
+    navigationWhileBusy: Boolean = false,
+    landscapeHeader: (@Composable (Int) -> Unit)? = null
 ) {
     WorkGalleryContent(works, activeId, unsaved, sort, cacheDir, previewRevision, updatedPreviewId,
         text, onOpen, onAdd, state, modifier, MaterialTheme.colorScheme.background, onTogglePin,
         onEditTags, onDeleteGlobalTag, busy, onRename, onDuplicate, onDelete,
-        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs, previewRevisions, onThumbnailPriority, images, onThumbnailScrolling, navigationWhileBusy, onPrepareOpen)
+        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs, previewRevisions, onThumbnailPriority, images, onThumbnailScrolling, navigationWhileBusy, onPrepareOpen, landscapeHeader)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -419,7 +500,8 @@ private fun WorkGalleryContent(
     images: PreviewImageRepository,
     onThumbnailScrolling: (Boolean) -> Unit,
     navigationWhileBusy: Boolean,
-    onPrepareOpen: (Work, Bitmap?, Rect?) -> Unit
+    onPrepareOpen: (Work, Bitmap?, Rect?) -> Unit,
+    landscapeHeader: (@Composable (Int) -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     val configuration = LocalConfiguration.current
@@ -537,12 +619,513 @@ private fun WorkGalleryContent(
                 .collect { visible -> if (!visible) currentBoundsCallback(null) }
         }
     }
-    Column(modifier) {
-        val density = LocalDensity.current
-        val haptic = LocalHapticFeedback.current
-        val effectiveTabs = remember(tabs, folders) {
-            if (tabs.isNotEmpty()) tabs else (listOf(SAMPLE_FOLDER) + (if (folders.isNotEmpty()) listOf("") + folders else emptyList()))
+    val effectiveTabs = remember(tabs, folders) {
+        if (tabs.isNotEmpty()) tabs else (listOf(SAMPLE_FOLDER) + (if (folders.isNotEmpty()) listOf("") + folders else emptyList()))
+    }
+    val folderCounts = remember(works, effectiveTabs) {
+        buildMap<String?, Int> {
+            put(null, works.count { !it.isSample })
+            effectiveTabs.forEach { tab ->
+                put(tab, when (tab) {
+                    SAMPLE_FOLDER -> works.count { it.isSample }
+                    "" -> works.count { !it.isSample && it.folderName.isEmpty() }
+                    else -> works.count { !it.isSample && it.folderName == tab }
+                })
+            }
         }
+    }
+    val scopedTagCounts = remember(works, state.selectedFolder) {
+        works.filter(state::inFolder).flatMap { it.tags }.groupingBy { it }.eachCount()
+    }
+
+    @Composable
+    fun BoxWithConstraintsScope.GalleryGrid() {
+        val isLandscapeSampleView = landscape && state.selectedFolder == SAMPLE_FOLDER
+        val columnCount = when {
+            isLandscapeSampleView -> landscapeSampleColumnCount(maxWidth.value, configuration.fontScale)
+            landscape -> landscapeSquareColumnCount(maxWidth.value, configuration.fontScale)
+            else -> galleryColumnCount(maxWidth.value, configuration.fontScale, false)
+        }
+        val horizontalPadding = if (landscape) 2.dp else 16.dp
+        val itemGap = if (isLandscapeSampleView) 12.dp else 14.dp
+        val cardWidth = ((maxWidth - horizontalPadding * 2 - itemGap * (columnCount - 1)) / columnCount).coerceAtLeast(1.dp)
+        // Always keep 1:1 square thumbnails; only shrink the square side if the IME compresses landscape height.
+        val compactSquareSize = if (landscape && !isLandscapeSampleView && keyboardVisible) {
+            minOf(cardWidth, (maxHeight - 44.dp).coerceAtLeast(64.dp))
+        } else null
+        val sampleThumbSize = if (keyboardVisible) 64.dp else if (cardWidth >= 260.dp) 90.dp else 82.dp
+        val textMeasurer = rememberTextMeasurer()
+        val sampleGuideStyle = LocalTextStyle.current.copy(
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp
+        )
+        val sampleTitleStyle = LocalTextStyle.current.copy(
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        val uniformSampleCardHeight: Dp = if (isLandscapeSampleView) {
+            val textColWidthPx = with(density) {
+                (cardWidth - 20.dp - sampleThumbSize - 12.dp).coerceAtLeast(48.dp).roundToPx()
+            }
+            val guides = visibleWorks.mapNotNull { work -> sampleGuide(work)?.let { text(it) } }
+            remember(guides, textColWidthPx, sampleGuideStyle, sampleTitleStyle, sampleThumbSize, density) {
+                val titleHeightPx = textMeasurer.measure(
+                    text = AnnotatedString("Agあ"),
+                    style = sampleTitleStyle,
+                    maxLines = 1
+                ).size.height
+                val maxGuideHeightPx = guides.maxOfOrNull { guide ->
+                    textMeasurer.measure(
+                        text = AnnotatedString(guide),
+                        style = sampleGuideStyle,
+                        constraints = Constraints(maxWidth = textColWidthPx)
+                    ).size.height
+                } ?: 0
+                with(density) {
+                    val headerHeight = maxOf(26.dp, titleHeightPx.toDp())
+                    val contentHeight = headerHeight + (if (maxGuideHeightPx > 0) 4.dp + maxGuideHeightPx.toDp() else 0.dp)
+                    maxOf(sampleThumbSize, contentHeight) + 24.dp
+                }
+            }
+        } else 0.dp
+        val thumbShape = RoundedCornerShape(if (landscape) 14.dp else 10.dp)
+        if (visibleWorks.isEmpty()) {
+            Text(text("一致する作品がありません"), Modifier.align(Alignment.Center).padding(24.dp),
+                color = colors.onSurfaceVariant)
+        }
+        key(state.selectedFolder) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columnCount),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = horizontalPadding,
+                    end = horizontalPadding,
+                    top = if (landscape) 8.dp else 16.dp,
+                    bottom = if (landscape) 16.dp else 88.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(itemGap),
+                verticalArrangement = Arrangement.spacedBy(if (isLandscapeSampleView) 12.dp else if (landscape) 16.dp else 20.dp)
+            ) {
+                items(visibleWorks, key = { it.id }, contentType = { if (it.isSample) "sample_card" else "work_card" }) { work ->
+                    val isSelected = if (state.selecting) work.id in state.selectedIds else work.id == activeId
+                    val isActiveWork = work.id == activeId
+                    val bitmap by produceState(images.peek(work.id), work.id, work, images,
+                        previewRevisions[work.id] ?: if (work.id == updatedPreviewId) previewRevision else 0) {
+                        val sampleInput = if (work.isSample) capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
+                        val filename = images.file(work.id).name
+                        images.changes.filter { it == null || it == filename }.onStart { emit(null) }.collectLatest {
+                            val loaded = images.load(work.id, work, sampleInput)
+                            // Keep the current image while a replacement is being generated.
+                            if (loaded != null || value == null) value = loaded
+                        }
+                    }
+                    var thumbnailBounds by remember(work.id) { mutableStateOf<Rect?>(null) }
+                    fun openWork(openMenu: Boolean) {
+                        onPrepareOpen(work, bitmap, thumbnailBounds)
+                        onOpen(work, openMenu)
+                    }
+
+                    @Composable
+                    fun WorkCardMenuButton(size: Dp, iconSize: Dp) {
+                        Box {
+                            IconButton(
+                                onClick = { state.cardMenuWorkId = work.id },
+                                enabled = !busy && !state.selecting,
+                                shape = if (size <= 32.dp) UNIT_COMPACT_CONTROL_SHAPE else UNIT_CONTROL_SHAPE,
+                                modifier = Modifier.size(size)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_more_vertical),
+                                    contentDescription = text("作品メニュー"),
+                                    modifier = Modifier.size(iconSize),
+                                    tint = colors.onSurfaceVariant.copy(alpha = 0.65f)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = state.cardMenuWorkId == work.id,
+                                onDismissRequest = { state.cardMenuWorkId = null }
+                            ) {
+                                Text(workGalleryDetails(work),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    color = colors.onSurfaceVariant, fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace)
+                                HorizontalDivider()
+                                if (work.isSample) {
+                                    DropdownMenuItem(text = { Text(text("コピーして編集")) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_duplicate), null, Modifier.size(18.dp)) },
+                                        onClick = { state.cardMenuWorkId = null; onDuplicate(work) })
+                                } else {
+                                    DropdownMenuItem(text = { Text(text("選択")) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_select), null, Modifier.size(18.dp)) },
+                                        onClick = { finishSearchInput(); state.startSelection(work.id) })
+                                    DropdownMenuItem(text = { Text(text("名前変更")) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_rename), null, Modifier.size(18.dp)) },
+                                        onClick = { finishSearchInput(); state.cardMenuWorkId = null; onRename(work) })
+                                    DropdownMenuItem(text = { Text(text("複製")) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_duplicate), null, Modifier.size(18.dp)) },
+                                        onClick = { state.cardMenuWorkId = null; onDuplicate(work) })
+                                    DropdownMenuItem(text = { Text(text("削除")) }, enabled = works.size > 1,
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_delete), null, Modifier.size(18.dp)) },
+                                        onClick = { finishSearchInput(); state.cardMenuWorkId = null; onDelete(work) })
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(if (work.isPinned) text("ピン留め解除") else text("ピン留め")) },
+                                        leadingIcon = {
+                                            Icon(
+                                                painterResource(if (work.isPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin),
+                                                null,
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            state.cardMenuWorkId = null
+                                            onTogglePin?.invoke(work)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(text("タグを編集")) },
+                                        leadingIcon = {
+                                            Icon(
+                                                painterResource(R.drawable.ic_tag),
+                                                null,
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            state.cardMenuWorkId = null
+                                            onEditTags?.invoke(work)
+                                        }
+                                    )
+                                    DropdownMenuItem(text = { Text(text("フォルダーへ移動")) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_folder_code), null, Modifier.size(18.dp)) },
+                                        onClick = { state.cardMenuWorkId = null; onMove(work) })
+                                }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(text("開く")) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painterResource(R.drawable.ic_code),
+                                            null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        state.cardMenuWorkId = null
+                                        openWork(false)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (isLandscapeSampleView) {
+                        val cardShape = RoundedCornerShape(14.dp)
+                        val innerThumbShape = RoundedCornerShape(10.dp)
+                        Row(
+                            modifier = Modifier
+                                .animateItem(fadeInSpec = null, fadeOutSpec = null)
+                                .fillMaxWidth()
+                                .heightIn(min = uniformSampleCardHeight)
+                                .clip(cardShape)
+                                .background(colors.surface)
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) colors.primary else colors.outlineVariant.copy(alpha = 0.75f),
+                                    shape = cardShape
+                                )
+                                .combinedClickable(
+                                    onClick = {
+                                        if (!busy || navigationWhileBusy) openWork(false)
+                                    },
+                                    onLongClickLabel = text("作品メニュー"),
+                                    onLongClick = { if (!busy) state.cardMenuWorkId = work.id }
+                                )
+                                .semantics { selected = isSelected }
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(sampleThumbSize)
+                                    .graphicsLayer {
+                                        alpha = if (suppressMorphThumbnail && work.id == morphWorkId) 0f else 1f
+                                    }
+                                    .onGloballyPositioned { coordinates ->
+                                        val visible = gridState.layoutInfo.visibleItemsInfo.any { it.key == work.id }
+                                        val bounds = coordinates.boundsInRoot()
+                                        val fullyVisible = bounds.width >= coordinates.size.width - 1f &&
+                                            bounds.height >= coordinates.size.height - 1f
+                                        thumbnailBounds = bounds.takeIf { visible && fullyVisible && it.usableGalleryBounds() }
+                                        if (work.id == morphWorkId) currentBoundsCallback(thumbnailBounds)
+                                    }
+                                    .clip(innerThumbShape)
+                                    .background(colors.background)
+                                    .border(1.dp, colors.outlineVariant.copy(alpha = 0.55f), innerThumbShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                bitmap?.let {
+                                    Image(it.asImageBitmap(), text("作品プレビュー"),
+                                        Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                                } ?: Icon(
+                                    painterResource(R.drawable.ic_code),
+                                    text("プレビュー未作成"),
+                                    Modifier.size(18.dp),
+                                    tint = colors.outlineVariant
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    if (isActiveWork) {
+                                        Box(
+                                            Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(if (unsaved) colors.tertiary else colors.primary)
+                                        )
+                                    }
+                                    Text(
+                                        if (work.isSample) text(work.title) else work.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = sampleTitleStyle,
+                                        color = colors.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    WorkCardMenuButton(size = 26.dp, iconSize = 14.dp)
+                                }
+                                sampleGuide(work)?.let { guide ->
+                                    Text(
+                                        text(guide),
+                                        color = colors.onSurfaceVariant,
+                                        style = sampleGuideStyle,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                    } else Column(
+                        Modifier
+                            .animateItem(fadeInSpec = null, fadeOutSpec = null)
+                            .clip(thumbShape)
+                            .combinedClickable(
+                                onClick = {
+                                    if (state.selecting) { if (!busy) state.toggleSelected(work.id) }
+                                    else if (!busy || navigationWhileBusy) openWork(false)
+                                },
+                                onLongClickLabel = text("作品メニュー"),
+                                onLongClick = { if (!busy) { if (state.selecting) state.toggleSelected(work.id) else state.cardMenuWorkId = work.id } }
+                            )
+                            .semantics { selected = isSelected }
+                            .padding(bottom = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            Modifier
+                                .then(
+                                    if (compactSquareSize != null) Modifier.size(compactSquareSize)
+                                    else Modifier.fillMaxWidth().aspectRatio(1f)
+                                )
+                                .graphicsLayer {
+                                    alpha = if (suppressMorphThumbnail && work.id == morphWorkId) 0f else 1f
+                                }
+                                .onGloballyPositioned { coordinates ->
+                                    val visible = gridState.layoutInfo.visibleItemsInfo.any { it.key == work.id }
+                                    val bounds = coordinates.boundsInRoot()
+                                    // A clipped card is a fade destination, not a smaller morph destination.
+                                    val fullyVisible = bounds.width >= coordinates.size.width - 1f &&
+                                        bounds.height >= coordinates.size.height - 1f
+                                    thumbnailBounds = bounds.takeIf { visible && fullyVisible && it.usableGalleryBounds() }
+                                    if (work.id == morphWorkId) currentBoundsCallback(thumbnailBounds)
+                                }
+                                .clip(thumbShape)
+                                .background(colors.surface)
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) colors.primary else colors.outlineVariant.copy(alpha = 0.75f),
+                                    shape = thumbShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            bitmap?.let {
+                                Image(it.asImageBitmap(), text("作品プレビュー"),
+                                    Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                            } ?: Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(12.dp)
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_code),
+                                    null,
+                                    Modifier.size(18.dp),
+                                    tint = colors.outlineVariant
+                                )
+                                Text(
+                                    text("プレビュー未作成"),
+                                    fontSize = 10.sp,
+                                    color = colors.outline,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (state.selecting) {
+                                Checkbox(checked = isSelected,
+                                    onCheckedChange = { if (!busy) state.toggleSelected(work.id) },
+                                    enabled = !busy,
+                                    modifier = Modifier.align(Alignment.TopStart).size(48.dp)
+                                        .semantics { contentDescription = work.title })
+                            }
+                            if (work.isPinned && !state.selecting) {
+                                val badgeModifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(7.dp)
+                                    .size(if (landscape) 26.dp else 32.dp)
+                                val pinIcon: @Composable () -> Unit = {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_pin_filled),
+                                            text("ピン留め済み"),
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(if (landscape) 12.dp else 14.dp)
+                                        )
+                                    }
+                                }
+                                if (onTogglePin != null) {
+                                    Surface(
+                                        onClick = {
+                                            if (state.selecting) state.toggleSelected(work.id) else onTogglePin(work)
+                                        },
+                                        enabled = !busy,
+                                        shape = CircleShape,
+                                        color = colors.surface.copy(alpha = 0.94f),
+                                        border = BorderStroke(1.dp, colors.outlineVariant),
+                                        modifier = badgeModifier,
+                                        content = pinIcon
+                                    )
+                                } else {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = colors.surface.copy(alpha = 0.94f),
+                                        border = BorderStroke(1.dp, colors.outlineVariant),
+                                        modifier = badgeModifier,
+                                        content = pinIcon
+                                    )
+                                }
+                            }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = if (landscape) 6.dp else 8.dp, start = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            if (isActiveWork && !state.selecting) {
+                                Box(
+                                    Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (unsaved) colors.tertiary else colors.primary)
+                                )
+                            }
+                            Text(
+                                if (work.isSample) text(work.title) else work.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = if (landscape) 13.sp else 14.sp,
+                                fontWeight = if (isActiveWork) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (isActiveWork) colors.onSurface else colors.onSurface.copy(alpha = 0.88f),
+                                modifier = Modifier.weight(1f)
+                            )
+                            WorkCardMenuButton(
+                                size = if (landscape) 28.dp else 38.dp,
+                                iconSize = if (landscape) 14.dp else 15.dp
+                            )
+                        }
+                        sampleGuide(work)?.let { guide ->
+                            Text(text(guide), color = colors.onSurfaceVariant,
+                                fontSize = 11.sp, lineHeight = 16.sp,
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, start = 2.dp))
+                        }
+                        if (work.tags.isNotEmpty() && !landscape) {
+                            Text(
+                                text = work.tags.joinToString(" ") { "#$it" },
+                                color = colors.onSurfaceVariant,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 2.dp)
+                                    .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                    .clickable(enabled = !busy && !state.selecting) { onEditTags?.invoke(work) }
+                                    .padding(vertical = 8.dp)
+                            )
+                        }
+                        if (isActiveWork && unsaved && !landscape) Text(
+                            text("未保存の変更あり"),
+                            color = colors.onSurfaceVariant,
+                            fontSize = 10.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+        if (!state.selecting && !landscape) Surface(onClick = onAdd, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(48.dp),
+            shape = RoundedCornerShape(14.dp), color = colors.onSurface, contentColor = background,
+            border = BorderStroke(1.dp, colors.outlineVariant)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_add), text("作品を追加"), Modifier.size(24.dp))
+            }
+        }
+    }
+
+    if (landscape) {
+        Row(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (!keyboardVisible) {
+                WorkGallerySidePanel(
+                    state = state,
+                    totalWorksCount = works.size,
+                    tabs = effectiveTabs,
+                    folderCounts = folderCounts,
+                    tags = allTags,
+                    tagCounts = scopedTagCounts,
+                    busy = busy,
+                    text = text,
+                    onChooseFolder = { folder -> finishSearchInput(); state.changeFolder(folder) },
+                    onReorderTabs = onReorderTabs,
+                    onManageFolders = onManageFolders,
+                    onManageTags = { state.showManageAllTagsDialog = true },
+                    onAdd = onAdd
+                )
+            }
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                landscapeHeader?.invoke(visibleWorks.size)
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    GalleryGrid()
+                }
+            }
+        }
+    } else Column(modifier) {
+        val haptic = LocalHapticFeedback.current
         var currentTabs by remember(effectiveTabs) { mutableStateOf(effectiveTabs) }
         var draggingTab by remember { mutableStateOf<String?>(null) }
         var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -550,8 +1133,15 @@ private fun WorkGalleryContent(
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             fun choose(folder: String?) { finishSearchInput(); state.changeFolder(folder) }
-            FilterChip(selected = state.selectedFolder == null, enabled = !busy,
-                onClick = { choose(null) }, label = { Text(text("自分の作品")) })
+            FilterChip(
+                selected = state.selectedFolder == null,
+                enabled = !busy,
+                onClick = { choose(null) },
+                label = { Text(text("自分の作品")) },
+                shape = UNIT_CONTROL_SHAPE,
+                colors = unitFilterChipColors(colors),
+                border = unitFilterChipBorder(state.selectedFolder == null, !busy, colors)
+            )
 
             currentTabs.forEach { tab ->
                 val isDragging = draggingTab == tab
@@ -622,19 +1212,22 @@ private fun WorkGalleryContent(
                     enabled = !busy,
                     onClick = { choose(tab) },
                     label = { Text(labelText) },
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitFilterChipColors(colors),
+                    border = unitFilterChipBorder(state.selectedFolder == tab, !busy, colors),
                     modifier = chipModifier
                 )
             }
 
-            IconButton(onClick = onManageFolders, enabled = !busy) {
+            IconButton(onClick = onManageFolders, enabled = !busy, shape = UNIT_CONTROL_SHAPE) {
                 Icon(painterResource(R.drawable.ic_folder_code), text("フォルダー管理"), Modifier.size(20.dp))
             }
         }
-        if (state.searching && !landscape) {
+        if (state.searching) {
             WorkGallerySearch(state, text, interactive,
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         }
-        if (allTags.isNotEmpty() && !(landscape && keyboardVisible)) {
+        if (allTags.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -647,261 +1240,24 @@ private fun WorkGalleryContent(
                     selected = state.selectedTag == null,
                     onClick = { state.selectedTag = null },
                     label = { Text(text("すべて"), fontSize = 12.sp) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = colors.surfaceContainerHighest,
-                        selectedLabelColor = colors.onSurface,
-                        labelColor = colors.onSurfaceVariant
-                    )
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitFilterChipColors(colors),
+                    border = unitFilterChipBorder(state.selectedTag == null, true, colors)
                 )
                 allTags.forEach { tag ->
                     FilterChip(
                         selected = state.selectedTag == tag,
                         onClick = { state.selectedTag = if (state.selectedTag == tag) null else tag },
                         label = { Text("#$tag", fontSize = 12.sp) },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = colors.surfaceContainerHighest,
-                            selectedLabelColor = colors.onSurface,
-                            labelColor = colors.onSurfaceVariant
-                        )
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(colors),
+                        border = unitFilterChipBorder(state.selectedTag == tag, true, colors)
                     )
                 }
             }
         }
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            val columnCount = galleryColumnCount(maxWidth.value, configuration.fontScale, landscape)
-            val cardWidth = ((maxWidth - 32.dp - 14.dp * (columnCount - 1)) / columnCount).coerceAtLeast(1.dp)
-            // Leave a readable title/menu row even on a short viewport with the IME open.
-            val landscapeThumbnailHeight = minOf(cardWidth,
-                (maxHeight - 96.dp).coerceIn(48.dp, if (keyboardVisible) 88.dp else 180.dp))
-            if (visibleWorks.isEmpty()) {
-                Text(text("一致する作品がありません"), Modifier.align(Alignment.Center).padding(24.dp),
-                    color = colors.onSurfaceVariant)
-            }
-            key(state.selectedFolder) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columnCount),
-                state = gridState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(if (landscape) 16.dp else 20.dp)) {
-                items(visibleWorks, key = { it.id }, contentType = { if (it.isSample) "sample_card" else "work_card" }) { work ->
-                    val isSelected = if (state.selecting) work.id in state.selectedIds else work.id == activeId
-                    val bitmap by produceState(images.peek(work.id), work.id, work, images,
-                        previewRevisions[work.id] ?: if (work.id == updatedPreviewId) previewRevision else 0) {
-                        val sampleInput = if (work.isSample) capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
-                        val filename = images.file(work.id).name
-                        images.changes.filter { it == null || it == filename }.onStart { emit(null) }.collectLatest {
-                            val loaded = images.load(work.id, work, sampleInput)
-                            // Keep the current image while a replacement is being generated.
-                            if (loaded != null || value == null) value = loaded
-                        }
-                    }
-                    var thumbnailBounds by remember(work.id) { mutableStateOf<Rect?>(null) }
-                    fun openWork(openMenu: Boolean) {
-                        onPrepareOpen(work, bitmap, thumbnailBounds)
-                        onOpen(work, openMenu)
-                    }
-                    Column(Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null).clip(RoundedCornerShape(6.dp))
-                        .combinedClickable(
-                            onClick = {
-                                if (state.selecting) { if (!busy) state.toggleSelected(work.id) }
-                                else if (!busy || navigationWhileBusy) openWork(false)
-                            },
-                            onLongClickLabel = text("作品メニュー"),
-                            onLongClick = { if (!busy) { if (state.selecting) state.toggleSelected(work.id) else state.cardMenuWorkId = work.id } }
-                        )
-                        .semantics { selected = isSelected }) {
-                        Box(Modifier.fillMaxWidth()
-                            .then(if (landscape) Modifier.height(landscapeThumbnailHeight) else Modifier.aspectRatio(1f))
-                            .graphicsLayer {
-                                alpha = if (suppressMorphThumbnail && work.id == morphWorkId) 0f else 1f
-                            }
-                            .onGloballyPositioned { coordinates ->
-                                val visible = gridState.layoutInfo.visibleItemsInfo.any { it.key == work.id }
-                                val bounds = coordinates.boundsInRoot()
-                                // A clipped card is a fade destination, not a smaller morph destination.
-                                val fullyVisible = bounds.width >= coordinates.size.width - 1f &&
-                                    bounds.height >= coordinates.size.height - 1f
-                                thumbnailBounds = bounds.takeIf { visible && fullyVisible && it.usableGalleryBounds() }
-                                if (work.id == morphWorkId) currentBoundsCallback(thumbnailBounds)
-                            }
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(colors.surfaceContainer)
-                            .then(if (isSelected) Modifier.border(1.dp, colors.primary.copy(alpha = 0.65f),
-                                RoundedCornerShape(6.dp)) else Modifier), contentAlignment = Alignment.Center) {
-                            bitmap?.let {
-                                Image(it.asImageBitmap(), text("作品プレビュー"),
-                                    Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                            } ?: Text(text("プレビュー未作成"), fontSize = 11.sp,
-                                color = colors.onSurfaceVariant, modifier = Modifier.padding(12.dp))
-                            if (state.selecting) {
-                                Checkbox(checked = isSelected,
-                                    onCheckedChange = { if (!busy) state.toggleSelected(work.id) },
-                                    enabled = !busy,
-                                    modifier = Modifier.align(Alignment.TopStart).size(48.dp)
-                                        .semantics { contentDescription = work.title })
-                            }
-                            if (work.isPinned && !state.selecting) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = colors.surfaceContainerHigh,
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(6.dp)
-                                        .size(40.dp)
-                                        .then(if (onTogglePin != null) Modifier.clickable(enabled = !busy) {
-                                            if (state.selecting) state.toggleSelected(work.id) else onTogglePin(work)
-                                        } else Modifier)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            painterResource(R.drawable.ic_pin_filled),
-                                            text("ピン留め済み"),
-                                            tint = colors.primary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                if (work.isSample) text(work.title) else work.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = 14.sp,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Box {
-                                IconButton(
-                                    onClick = { state.cardMenuWorkId = work.id },
-                                    enabled = !busy && !state.selecting,
-                                    modifier = Modifier.size(if (landscape) 48.dp else 40.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_more_vertical),
-                                        contentDescription = text("作品メニュー"),
-                                        modifier = Modifier.size(15.dp),
-                                        tint = colors.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = state.cardMenuWorkId == work.id,
-                                    onDismissRequest = { state.cardMenuWorkId = null }
-                                ) {
-                                    Text(workGalleryDetails(work),
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                        color = colors.onSurfaceVariant, fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace)
-                                    HorizontalDivider()
-                                    if (work.isSample) {
-                                        DropdownMenuItem(text = { Text(text("コピーして編集")) },
-                                            leadingIcon = { Icon(painterResource(R.drawable.ic_duplicate), null, Modifier.size(18.dp)) },
-                                            onClick = { state.cardMenuWorkId = null; onDuplicate(work) })
-                                    } else {
-                                    DropdownMenuItem(text = { Text(text("選択")) },
-                                        leadingIcon = { Icon(painterResource(R.drawable.ic_select), null, Modifier.size(18.dp)) },
-                                        onClick = { finishSearchInput(); state.startSelection(work.id) })
-                                    DropdownMenuItem(text = { Text(text("名前変更")) },
-                                        leadingIcon = { Icon(painterResource(R.drawable.ic_rename), null, Modifier.size(18.dp)) },
-                                        onClick = { finishSearchInput(); state.cardMenuWorkId = null; onRename(work) })
-                                    DropdownMenuItem(text = { Text(text("複製")) },
-                                        leadingIcon = { Icon(painterResource(R.drawable.ic_duplicate), null, Modifier.size(18.dp)) },
-                                        onClick = { state.cardMenuWorkId = null; onDuplicate(work) })
-                                    DropdownMenuItem(text = { Text(text("削除")) }, enabled = works.size > 1,
-                                        leadingIcon = { Icon(painterResource(R.drawable.ic_delete), null, Modifier.size(18.dp)) },
-                                        onClick = { finishSearchInput(); state.cardMenuWorkId = null; onDelete(work) })
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(if (work.isPinned) text("ピン留め解除") else text("ピン留め")) },
-                                        leadingIcon = {
-                                            Icon(
-                                                painterResource(if (work.isPinned) R.drawable.ic_pin_filled else R.drawable.ic_pin),
-                                                null,
-                                                tint = colors.primary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            state.cardMenuWorkId = null
-                                            onTogglePin?.invoke(work)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(text("タグを編集")) },
-                                        leadingIcon = {
-                                            Icon(
-                                                painterResource(R.drawable.ic_tag),
-                                                null,
-                                                tint = colors.primary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            state.cardMenuWorkId = null
-                                            onEditTags?.invoke(work)
-                                        }
-                                    )
-                                    DropdownMenuItem(text = { Text(text("フォルダーへ移動")) },
-                                        leadingIcon = { Icon(painterResource(R.drawable.ic_folder_code), null, Modifier.size(18.dp)) },
-                                        onClick = { state.cardMenuWorkId = null; onMove(work) })
-                                    }
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(text("開く")) },
-                                        leadingIcon = {
-                                            Icon(
-                                                painterResource(R.drawable.ic_code),
-                                                null,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            state.cardMenuWorkId = null
-                                            openWork(false)
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        sampleGuide(work)?.let { guide ->
-                            Text(text(guide), color = colors.onSurfaceVariant,
-                                fontSize = 11.sp, lineHeight = 16.sp,
-                                modifier = Modifier.padding(top = 4.dp))
-                        }
-                        if (work.tags.isNotEmpty() && !(landscape && keyboardVisible)) {
-                            Text(
-                                text = work.tags.joinToString(" ") { "#$it" },
-                                color = colors.onSurfaceVariant,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .padding(top = 2.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .clickable(enabled = !busy && !state.selecting) { onEditTags?.invoke(work) }
-                                    .padding(vertical = 8.dp)
-                            )
-                        }
-                        if (work.id == activeId && unsaved) Text(text("未保存の変更あり"),
-                            color = colors.onSurfaceVariant, fontSize = 10.sp)
-                    }
-                }
-            }
-            }
-            if (!state.selecting) Surface(onClick = onAdd, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(48.dp),
-                shape = RoundedCornerShape(14.dp), color = colors.onSurface, contentColor = background,
-                border = BorderStroke(1.dp, colors.outlineVariant)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_add), text("作品を追加"), Modifier.size(24.dp))
-                }
-            }
+            GalleryGrid()
         }
     }
     if (state.showManageAllTagsDialog) {

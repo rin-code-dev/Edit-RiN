@@ -1,15 +1,26 @@
 package com.hikariatelier.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.webkit.WebView
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -26,17 +37,41 @@ internal fun SettingsAboutSection(
     textTranslator: (String, Array<out Any?>) -> String
 ) {
     val colors = MaterialTheme.colorScheme
+    val context = LocalContext.current
     fun uiText(source: String, vararg arguments: Any?) = textTranslator(source, arguments)
 
+    val webViewVersion = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching { WebView.getCurrentWebViewPackage()?.versionName }.getOrNull()
+        } else {
+            null
+        } ?: "System WebView"
+    }
+
+    val runtimeInfoSummary = remember(webViewVersion) {
+        buildString {
+            appendLine("Edit:RiN ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            appendLine("Package: ${BuildConfig.APPLICATION_ID}")
+            appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
+            appendLine("WebView: $webViewVersion")
+            appendLine("p5.js: 2.3.4 / 1.11.5 (LGPL-2.1)")
+            appendLine("p5.sound: 0.4.1 (LGPL-2.1) / 1.0.1 (MIT)")
+            appendLine("Blockly: 13.4.0 (Apache-2.0)")
+            appendLine("Acorn: 8.19.0 (MIT)")
+            append("Matter.js: 0.20.0 (MIT)")
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // 1. アプリ情報 & アップデート
+        // 1. アプリ情報 & ライブ更新ステータス
         SettingsSection(
             title = "Edit:RiN",
             description = uiText("アプリ情報とアップデート")
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -46,29 +81,127 @@ internal fun SettingsAboutSection(
                         painter = painterResource(R.drawable.ic_app_icon),
                         contentDescription = null,
                         modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(14.dp))
                     )
                     Spacer(Modifier.width(14.dp))
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            text = "Edit:RiN",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = uiText("バージョン %s", BuildConfig.VERSION_NAME),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Edit:RiN",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.secondaryContainer,
+                                contentColor = colors.onSecondaryContainer
+                            ) {
+                                Text(
+                                    text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            if (BuildConfig.DEBUG) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = colors.tertiaryContainer,
+                                    contentColor = colors.onTertiaryContainer
+                                ) {
+                                    Text(
+                                        text = "DEV",
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             text = uiText("Android向けクリエイティブコーディング環境"),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.bodySmall,
                             color = colors.primary
                         )
+                    }
+                }
+
+                // Update status banner
+                val available = updateViewModel.availableRelease
+                val statusMsg = updateViewModel.message
+                if (updateViewModel.checking || updateViewModel.downloading || statusMsg != null || available != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.secondaryContainer.copy(alpha = 0.65f),
+                        contentColor = colors.onSecondaryContainer
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (updateViewModel.checking) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        text = uiText("確認中…"),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            } else {
+                                if (available != null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = uiText("新しいバージョン: %s", available.tag),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (!updateViewModel.downloading && available.apk != null && !BuildConfig.DEBUG) {
+                                            FilledTonalButton(
+                                                onClick = { updateViewModel.download() },
+                                                shape = UNIT_CONTROL_SHAPE,
+                                                colors = unitTonalButtonColors(),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(uiText("ダウンロード"), style = MaterialTheme.typography.labelMedium)
+                                            }
+                                        }
+                                    }
+                                }
+                                if (updateViewModel.downloading) {
+                                    LinearProgressIndicator(
+                                        progress = { updateViewModel.downloadProgress.coerceIn(0f, 1f) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                if (!statusMsg.isNullOrBlank()) {
+                                    Text(
+                                        text = statusMsg,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -79,7 +212,7 @@ internal fun SettingsAboutSection(
                 title = uiText("アップデートを確認"),
                 subtitle = if (updateViewModel.checking) uiText("確認中…") else uiText("最新バージョンをチェック"),
                 trailingText = if (updateViewModel.manualChecking) "…" else "›",
-                enabled = !updateViewModel.checking,
+                enabled = !updateViewModel.checking && !updateViewModel.downloading,
                 onClick = { updateViewModel.checkManually() }
             )
 
@@ -93,7 +226,103 @@ internal fun SettingsAboutSection(
             )
         }
 
-        // 2. リンクとコミュニティ
+        // 2. 同梱エンジンと実行環境
+        SettingsSection(
+            title = uiText("同梱エンジンと実行環境"),
+            description = uiText("搭載ライブラリとWebView・ライセンス構成")
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                EngineSpecRow("p5.js", "2.3.4 / 1.11.5 · LGPL-2.1")
+                EngineSpecRow("p5.sound", "0.4.1 (p5 2.x: LGPL-2.1) / 1.0.1 (p5 1.x: MIT)")
+                EngineSpecRow("Blockly", "13.4.0 · Apache-2.0")
+                EngineSpecRow("Acorn", "8.19.0 · MIT")
+                EngineSpecRow("Matter.js", "0.20.0 · MIT")
+                EngineSpecRow("Android WebView", webViewVersion)
+                EngineSpecRow("Android", "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+
+                Spacer(Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Edit:RiN Runtime Info", runtimeInfoSummary))
+                            Toast.makeText(context, uiText("環境情報をコピーしました"), Toast.LENGTH_SHORT).show()
+                        },
+                        shape = UNIT_CONTROL_SHAPE,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_copy),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(uiText("環境情報をコピー"), maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                    }
+                    FilledTonalButton(
+                        onClick = onShowLicenses,
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitTonalButtonColors(),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(uiText("ライセンス情報"), maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+
+        // 3. ヘルプとライセンス
+        SettingsSection(
+            title = uiText("ヘルプとライセンス"),
+            description = uiText("使い方とオープンソース情報")
+        ) {
+            AboutActionRow(
+                title = uiText("使い方ガイド"),
+                subtitle = uiText("エディターの操作や各機能の解説"),
+                trailingText = "›",
+                onClick = onShowGuide
+            )
+
+            SettingsDivider()
+
+            AboutActionRow(
+                title = uiText("初回ツアーをもう一度見る"),
+                subtitle = uiText("基本操作やブロックモード、// ?・// @slider などの使い方を試せます"),
+                trailingText = "›",
+                onClick = onShowOnboarding
+            )
+
+            SettingsDivider()
+
+            AboutActionRow(
+                title = uiText("ライセンス情報"),
+                subtitle = uiText("オープンソースソフトウェアのライセンス"),
+                trailingText = "›",
+                onClick = onShowLicenses
+            )
+
+            SettingsDivider()
+
+            AboutActionRow(
+                title = uiText("対応ソース (GitHub)"),
+                subtitle = uiText("GPLv3 / LGPLv2.1 に基づき、完全な対応ソースコードを公開リポジトリで提供しています"),
+                trailingText = "↗",
+                onClick = { openExternalUrl(GITHUB_REPO_URL) }
+            )
+        }
+
+        // 4. リンクとコミュニティ
         SettingsSection(
             title = uiText("リンクとコミュニティ"),
             description = uiText("公式ウェブサイト・リポジトリ・SNS")
@@ -132,46 +361,33 @@ internal fun SettingsAboutSection(
                 onClick = { openExternalUrl(SUPPORT_OFUSE_URL) }
             )
         }
+    }
+}
 
-        // 3. ヘルプとライセンス
-        SettingsSection(
-            title = uiText("ヘルプとライセンス"),
-            description = uiText("使い方とオープンソース情報")
-        ) {
-            AboutActionRow(
-                title = uiText("使い方ガイド"),
-                subtitle = uiText("エディターの操作や各機能の解説"),
-                trailingText = "›",
-                onClick = onShowGuide
-            )
-
-            SettingsDivider()
-
-            AboutActionRow(
-                title = uiText("入門ツアーをもう一度見る"),
-                subtitle = uiText("初回起動時のツアーを再開します"),
-                trailingText = "›",
-                onClick = onShowOnboarding
-            )
-
-            SettingsDivider()
-
-            AboutActionRow(
-                title = uiText("エディター実践ツアーを体験する"),
-                subtitle = uiText("// ? や // @slider などのコメント機能を体験"),
-                trailingText = "›",
-                onClick = onShowPracticeTour
-            )
-
-            SettingsDivider()
-
-            AboutActionRow(
-                title = uiText("ライセンス情報"),
-                subtitle = uiText("オープンソースソフトウェアのライセンス"),
-                trailingText = "›",
-                onClick = onShowLicenses
-            )
-        }
+@Composable
+private fun EngineSpecRow(name: String, value: String) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceContainerLow, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onSurface
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = colors.onSurfaceVariant
+        )
     }
 }
 

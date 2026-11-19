@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
@@ -122,6 +123,7 @@ internal fun BlockEditorFloatingStatusPill(
         ) {
             Row(
                 modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = usable && isError) { onCommand("status") }
                     .padding(start = 12.dp, end = if (model.state.dismissable) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -139,6 +141,7 @@ internal fun BlockEditorFloatingStatusPill(
                     IconButton(
                         onClick = { onCommand("statusDismiss") },
                         enabled = usable,
+                        shape = UNIT_COMPACT_CONTROL_SHAPE,
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(painterResource(R.drawable.ic_close), text("閉じる"), Modifier.size(15.dp))
@@ -185,59 +188,66 @@ internal fun BlockEditorFloatingDock(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Primary Left Pill: "+ ブロック追加" or "× 閉じる" when half-sheet palette is open
-            val primaryLabel = text(if (paletteOpen) "閉じる" else "ブロックを追加")
-            Surface(
-                onClick = {
-                    if (paletteOpen) onCommand("dismiss") else onCommand("add")
-                },
-                enabled = if (paletteOpen) ready else (usable && model.state.editable),
-                shape = RoundedCornerShape(999.dp),
-                color = if (paletteOpen) colors.secondaryContainer else colors.primary,
-                contentColor = if (paletteOpen) colors.onSecondaryContainer else colors.onPrimary,
-                modifier = Modifier.semantics { contentDescription = primaryLabel }
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(if (paletteOpen) R.drawable.ic_close else R.drawable.ic_add),
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = primaryLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
-            }
-
-            if (model.state.parts > 0 && !paletteOpen) {
+                // Primary Left Pill: "+ ブロック追加" or "× 閉じる" when half-sheet palette is open
+                val primaryLabel = text(if (paletteOpen) "閉じる" else "ブロックを追加")
                 Surface(
-                    onClick = { onSearch("parts") },
-                    enabled = usable,
+                    onClick = {
+                        if (paletteOpen) onCommand("dismiss") else onCommand("add")
+                    },
+                    enabled = if (paletteOpen) ready else (usable && model.state.editable),
                     shape = RoundedCornerShape(999.dp),
-                    color = colors.tertiaryContainer,
-                    contentColor = colors.onTertiaryContainer,
-                    modifier = Modifier.semantics {
-                        contentDescription = text("未接続の部品は保存されますが実行されません。タップして一覧を開きます。") + " " + model.state.parts
-                    }
+                    color = if (paletteOpen) colors.secondaryContainer else colors.primary,
+                    contentColor = if (paletteOpen) colors.onSecondaryContainer else colors.onPrimary,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .semantics { contentDescription = primaryLabel }
                 ) {
-                    Text(
-                        text = text("未接続") + " " + model.state.parts,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(if (paletteOpen) R.drawable.ic_close else R.drawable.ic_add),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = primaryLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (model.state.parts > 0 && !paletteOpen) {
+                    Surface(
+                        onClick = { onSearch("parts") },
+                        enabled = usable,
+                        shape = RoundedCornerShape(999.dp),
+                        color = colors.tertiaryContainer,
+                        contentColor = colors.onTertiaryContainer,
+                        modifier = Modifier.semantics {
+                            contentDescription = text("未接続の部品は保存されますが実行されません。タップして一覧を開きます。") + " " + model.state.parts
+                        }
+                    ) {
+                        Text(
+                            text = text("未接続") + " " + model.state.parts,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
-
-            Spacer(Modifier.weight(1f))
 
             @Composable
             fun DockIconButton(
@@ -252,40 +262,50 @@ internal fun BlockEditorFloatingDock(
                     shape = CircleShape,
                     color = colors.surfaceContainer.copy(alpha = if (enabled) 0.9f else 0.4f),
                     contentColor = if (enabled) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.45f),
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(painterResource(iconRes), contentDesc, Modifier.size(18.dp))
+                        Icon(painterResource(iconRes), contentDesc, Modifier.size(17.dp))
                     }
                 }
             }
 
-            DockIconButton(
-                iconRes = R.drawable.ic_undo,
-                contentDesc = text("元に戻す"),
-                enabled = usable && canUndo,
-                onClick = { onCommand("undo") }
-            )
-            DockIconButton(
-                iconRes = R.drawable.ic_redo,
-                contentDesc = text("やり直す"),
-                enabled = usable && canRedo,
-                onClick = { onCommand("redo") }
-            )
-            DockIconButton(
-                iconRes = R.drawable.ic_search,
-                contentDesc = text("作品内を探す"),
-                enabled = usable,
-                onClick = { onSearch("search") }
-            )
-
-            Box {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 DockIconButton(
-                    iconRes = R.drawable.ic_more_vertical,
-                    contentDesc = text("その他の操作"),
-                    enabled = usable || fullscreen,
-                    onClick = { menu = true }
+                    iconRes = R.drawable.ic_undo,
+                    contentDesc = text("元に戻す"),
+                    enabled = usable && canUndo,
+                    onClick = { onCommand("undo") }
                 )
+                DockIconButton(
+                    iconRes = R.drawable.ic_redo,
+                    contentDesc = text("やり直す"),
+                    enabled = usable && canRedo,
+                    onClick = { onCommand("redo") }
+                )
+                DockIconButton(
+                    iconRes = R.drawable.ic_search,
+                    contentDesc = text("作品内を探す"),
+                    enabled = usable,
+                    onClick = { onSearch("search") }
+                )
+                DockIconButton(
+                    iconRes = if (fullscreen) R.drawable.ic_pip_expand else R.drawable.ic_fullscreen,
+                    contentDesc = text(if (fullscreen) "分割表示に戻る" else "全画面"),
+                    enabled = fullscreen || usable,
+                    onClick = onFullscreen
+                )
+
+                Box {
+                    DockIconButton(
+                        iconRes = R.drawable.ic_more_vertical,
+                        contentDesc = text("その他の操作"),
+                        enabled = usable || fullscreen,
+                        onClick = { menu = true }
+                    )
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     @Composable fun Item(label: String, enabled: Boolean = true, action: () -> Unit) {
                         DropdownMenuItem(text = { Text(text(label)) }, enabled = enabled,
@@ -303,6 +323,7 @@ internal fun BlockEditorFloatingDock(
                     HorizontalDivider()
                     Item("ブロックの例", usable && model.state.editable) { onCommand("examples") }
                     Item("ブロックの使い方", usable) { onCommand("help") }
+                }
                 }
             }
         }
@@ -331,7 +352,12 @@ internal fun BlockEditorSearchDialog(
                     style = MaterialTheme.typography.bodySmall)
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                     items(model.entries, key = { it.id }) { entry ->
-                        Column(Modifier.fillMaxWidth().clickable(enabled = !model.searching) { onLocate(entry) }.padding(vertical = 10.dp),
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                .clickable(enabled = !model.searching) { onLocate(entry) }
+                                .padding(horizontal = 4.dp, vertical = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(entry.title, style = MaterialTheme.typography.bodyLarge)
                             Text(entry.detail, style = MaterialTheme.typography.bodySmall,

@@ -443,39 +443,18 @@ internal fun ShareCardSheet(
         }
     }
 
-    ModalBottomSheet(
+    UnitModal(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = false
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
-        val localView = androidx.compose.ui.platform.LocalView.current
-        DisposableEffect(localView, isLandscape) {
-            if (isLandscape && !localView.isInEditMode) {
-                var current: android.view.ViewParent? = localView.parent
-                var dialogWindow: android.view.Window? = null
-                while (current != null) {
-                    if (current is androidx.compose.ui.window.DialogWindowProvider) {
-                        dialogWindow = current.window
-                        break
-                    }
-                    current = current.parent
-                }
-                if (dialogWindow != null) {
-                    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-                    val controller = androidx.core.view.WindowCompat.getInsetsController(dialogWindow, dialogWindow.decorView)
-                    controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-                }
-            }
-            onDispose {}
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(top = 12.dp, bottom = if (isLandscape) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isLandscape) 10.dp else 14.dp)
         ) {
             // Header
             Row(
@@ -484,8 +463,8 @@ internal fun ShareCardSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text("シェアカード設定"), style = MaterialTheme.typography.titleLarge)
-                IconButton(onClick = onDismiss) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = text("全画面表示を閉じる"))
+                IconButton(onClick = onDismiss, shape = UNIT_CONTROL_SHAPE) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = text("閉じる"))
                 }
             }
 

@@ -173,6 +173,7 @@ internal fun SnapshotSheet(
                                 IconButton(
                                     onClick = { snapshotToDelete = snapshot },
                                     enabled = !busy && !loading && error == null,
+                                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(

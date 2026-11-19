@@ -189,12 +189,12 @@ internal fun PreviewActionsTray(
             ) {
                 val chipBg = when {
                     destructive -> colors.errorContainer.copy(alpha = 0.85f)
-                    active -> colors.primaryContainer.copy(alpha = 0.85f)
-                    else -> colors.surfaceVariant.copy(alpha = 0.5f)
+                    active -> colors.primary.copy(alpha = 0.14f)
+                    else -> colors.surface
                 }
                 val chipContent = when {
                     destructive -> colors.onErrorContainer
-                    active -> colors.onPrimaryContainer
+                    active -> colors.primary
                     else -> colors.onSurface
                 }
                 Surface(
@@ -206,7 +206,7 @@ internal fun PreviewActionsTray(
                         when {
                             destructive -> colors.error
                             active -> colors.primary
-                            else -> colors.outlineVariant.copy(alpha = 0.5f)
+                            else -> colors.outlineVariant
                         }
                     )
                 ) {
@@ -334,7 +334,9 @@ internal fun RunStatusControls(
             fontWeight = FontWeight.SemiBold,
             color = if (hasPendingChanges) colors.tertiary else if (isError) colors.error else colors.onSurfaceVariant,
             modifier = if (hasPendingChanges) Modifier
+                .clip(RoundedCornerShape(6.dp))
                 .clickable(onClickLabel = uiText("変更を実行"), onClick = onReload)
+                .padding(horizontal = 3.dp, vertical = 1.dp)
                 .semantics { contentDescription = uiText("変更未反映") }
                 else Modifier,
             maxLines = 1,
@@ -516,6 +518,7 @@ internal fun SaveRestoreControls(
             TooltipIconButton(
                 label = uiText("履歴"),
                 onClick = { historyExpanded = true },
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 modifier = Modifier.size(buttonSize)
             ) {
                 Icon(
@@ -550,6 +553,7 @@ internal fun SaveRestoreControls(
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onSave()
                 },
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 modifier = Modifier.size(buttonSize)
             ) {
                 Icon(
@@ -699,7 +703,7 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.Bold
                 )
-                TextButton(onClick = onCancelCountdown) {
+                TextButton(onClick = onCancelCountdown, shape = UNIT_CONTROL_SHAPE) {
                     Text(uiText("キャンセル"), color = colors.primary)
                 }
             }
@@ -805,7 +809,7 @@ internal fun LandscapeSplitDivider(
     if (showResizeHandles) {
         Box(
             modifier = modifier
-                .width(24.dp)
+                .width(18.dp)
                 .fillMaxHeight()
                 .pointerInput(landscapeEditorOnLeft) {
                     var accumulated = 0f
@@ -864,13 +868,13 @@ internal fun LandscapeSplitDivider(
                     contentDescription = textTranslator("プレビューとエディターの分割を調整", emptyArray())
                     customActions = listOf(
                         CustomAccessibilityAction(textTranslator("プレビューを広げる", emptyArray())) {
-                            val index = LANDSCAPE_PREVIEW_SPLITS.indexOf(landscapePreviewFraction)
+                            val index = LANDSCAPE_PREVIEW_SPLITS.indices.minByOrNull { kotlin.math.abs(LANDSCAPE_PREVIEW_SPLITS[it] - landscapePreviewFraction) } ?: 1
                             val next = LANDSCAPE_PREVIEW_SPLITS[(index + 1).coerceIn(0, 2)]
                             onSplitChanged(next)
                             true
                         },
                         CustomAccessibilityAction(textTranslator("エディターを広げる", emptyArray())) {
-                            val index = LANDSCAPE_PREVIEW_SPLITS.indexOf(landscapePreviewFraction)
+                            val index = LANDSCAPE_PREVIEW_SPLITS.indices.minByOrNull { kotlin.math.abs(LANDSCAPE_PREVIEW_SPLITS[it] - landscapePreviewFraction) } ?: 1
                             val next = LANDSCAPE_PREVIEW_SPLITS[(index - 1).coerceIn(0, 2)]
                             onSplitChanged(next)
                             true

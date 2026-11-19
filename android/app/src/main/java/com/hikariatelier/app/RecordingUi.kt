@@ -60,27 +60,41 @@ internal fun RecordingOptionsSheet(
     onDismiss: () -> Unit, onStart: (String) -> Unit
 ) {
     var format by rememberSaveable { mutableStateOf("mp4") }
-    ModalBottomSheet(
+    val landscape = isLandscapeLayout()
+    UnitModal(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = false
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            .padding(horizontal = 20.dp).padding(top = 16.dp, bottom = if (landscape) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 12.dp)) {
             Text(text("録画設定"), style = MaterialTheme.typography.titleLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("mp4", "gif").forEach {
-                    FilterChip(selected = format == it, onClick = { format = it },
-                        label = { Text(it.uppercase()) })
+                    FilterChip(
+                        selected = format == it,
+                        onClick = { format = it },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(),
+                        border = unitFilterChipBorder(format == it),
+                        label = { Text(it.uppercase()) }
+                    )
                 }
             }
             if (format == "mp4") {
                 Text(text("MP4ビットレート"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(2, 5, 10).forEach {
-                        FilterChip(selected = bitrate == it, onClick = { onBitrate(it) },
-                            label = { Text("$it Mbps") })
+                        FilterChip(
+                            selected = bitrate == it,
+                            onClick = { onBitrate(it) },
+                            shape = UNIT_CONTROL_SHAPE,
+                            colors = unitFilterChipColors(),
+                            border = unitFilterChipBorder(bitrate == it),
+                            label = { Text("$it Mbps") }
+                        )
                     }
                 }
                 Text(text("最大60秒の推定容量") + ": " + recordingSize(bitrate * 1_000_000L * 60 / 8),
@@ -93,11 +107,17 @@ internal fun RecordingOptionsSheet(
             Text(text("録画開始カウントダウン"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(0, 3, 5).forEach {
-                    FilterChip(selected = countdown == it, onClick = { onCountdown(it) },
-                        label = { Text(if (it == 0) text("なし") else "$it s") })
+                    FilterChip(
+                        selected = countdown == it,
+                        onClick = { onCountdown(it) },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(),
+                        border = unitFilterChipBorder(countdown == it),
+                        label = { Text(if (it == 0) text("なし") else "$it s") }
+                    )
                 }
             }
-            Button(shape = ButtonDefaults.shape, onClick = { onStart(format) }, modifier = Modifier.fillMaxWidth()) {
+            Button(shape = UNIT_CONTROL_SHAPE, onClick = { onStart(format) }, modifier = Modifier.fillMaxWidth()) {
                 Text(text("録画を開始"))
             }
         }
@@ -124,14 +144,17 @@ internal fun RecordingRecoverySheet(
             dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(text("キャンセル")) } }
         )
     }
-    ModalBottomSheet(
+    val landscape = isLandscapeLayout()
+    UnitModal(
         onDismissRequest = {},
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = false
+        dismissEnabled = false,
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            .padding(horizontal = 20.dp).padding(top = 16.dp, bottom = if (landscape) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 12.dp)) {
             Text(text("録画を保存できませんでした"), style = MaterialTheme.typography.titleLarge)
             Text(text("録画は残っています。もう一度保存するか、別の保存先を選んでください。"),
                 style = MaterialTheme.typography.bodyMedium)
@@ -139,10 +162,10 @@ internal fun RecordingRecoverySheet(
             Text("${pending.mimeType.substringAfter('/').uppercase()} · ${formatRecordingDuration(pending.durationMillis)} · ${recordingSize(pending.sizeBytes)}",
                 style = MaterialTheme.typography.bodySmall)
             if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Button(onClick = onRetry, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+            Button(shape = UNIT_CONTROL_SHAPE, onClick = onRetry, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
                 Text(text("もう一度保存"))
             }
-            OutlinedButton(onClick = onChooseDestination, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(shape = UNIT_CONTROL_SHAPE, onClick = onChooseDestination, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
                 Text(text("別の保存先を選ぶ"))
             }
             TextButton(onClick = { confirmDiscard = true }, enabled = !saving, modifier = Modifier.fillMaxWidth()) {
@@ -159,19 +182,22 @@ internal fun SavedRecordingSheet(
     thumbnail: Bitmap?, text: (String) -> String, onOpen: () -> Unit,
     onShare: () -> Unit, onX: () -> Unit, onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(
+    val landscape = isLandscapeLayout()
+    UnitModal(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        sheetGesturesEnabled = false
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            .padding(horizontal = 20.dp).padding(top = 16.dp, bottom = if (landscape) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (landscape) 8.dp else 12.dp)) {
             val isImage = mimeType.startsWith("image/") && mimeType != "image/gif"
             val titleText = if (isImage) text("スクリーンショット") else text("保存した録画")
             Text(titleText, style = MaterialTheme.typography.titleLarge)
             thumbnail?.let {
-                Image(it.asImageBitmap(), text("プレビュー"), Modifier.fillMaxWidth().height(160.dp),
+                Image(it.asImageBitmap(), text("プレビュー"),
+                    Modifier.fillMaxWidth().height(if (landscape) 104.dp else 160.dp),
                     contentScale = ContentScale.Fit)
             }
             Text(name, style = MaterialTheme.typography.bodySmall)
@@ -182,9 +208,9 @@ internal fun SavedRecordingSheet(
                 }
                 Text(recordingSize(sizeBytes))
             }
-            OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(text("開く")) }
-            OutlinedButton(shape = ButtonDefaults.outlinedShape, onClick = onShare, modifier = Modifier.fillMaxWidth()) { Text(text("共有")) }
-            Button(shape = ButtonDefaults.shape, onClick = onX, modifier = Modifier.fillMaxWidth()) { Text(text("Xで共有")) }
+            OutlinedButton(shape = UNIT_CONTROL_SHAPE, onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(text("開く")) }
+            OutlinedButton(shape = UNIT_CONTROL_SHAPE, onClick = onShare, modifier = Modifier.fillMaxWidth()) { Text(text("共有")) }
+            Button(shape = UNIT_CONTROL_SHAPE, onClick = onX, modifier = Modifier.fillMaxWidth()) { Text(text("Xで共有")) }
         }
     }
 }
@@ -208,7 +234,7 @@ internal fun RecordingStatus(
                 }
             }
             if (saving) CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
-            else IconButton(onClick = onStop) {
+            else IconButton(onClick = onStop, shape = UNIT_CONTROL_SHAPE) {
                 Icon(painterResource(R.drawable.ic_stop), text("録画を停止"),
                     tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }

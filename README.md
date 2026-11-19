@@ -55,8 +55,11 @@ function draw() {
 }
 ```
 
-### Editing and preview in v4.0.1
+### Editing and preview in v4.1.0
 
+- **Redesigned Landscape Workspace & Gallery**: Evenly spaced vertical tool rail, balanced 50/50 editor and 1:1 preview layout, and a minimal collapsible sidebar with 1:1 square artwork thumbnails and uniform horizontal sample cards.
+- **Floating Unit Modals & Unified Controls**: Menus, inspectors, and dialogs appear as bordered floating Units in both portrait and landscape, with crisp light-mode contrast, unified rounded-square control shapes, and consistent touch highlights.
+- **Compact Portrait Editor Overlay**: Floating top-right mode/file capsule hides redundant `sketch.js` labels on single-file works and auto-hides while typing to maximize code space.
 - Switch between Code Mode and Block Mode while keeping `sketch.js` as the single source of truth. In Block Mode, adjust color and number capsules directly, insert blocks from the bottom dock, and jump between functions.
 - Browse auto-save history and named snapshots in a unified sheet with restoration scope indicators and code comparison.
 - Use a floating preview while editing in portrait orientation. Change its size, move it between corners, or minimize it.
@@ -71,7 +74,7 @@ function draw() {
 
 ## Installation & Requirements
 
-- **Supported OS**: Android 11 (API level 30) or later for the current v4.0.1 release. Older v2.3.1 supports Android 6.0 or later.
+- **Supported OS**: Android 11 (API level 30) or later for the current v4.1.0 release. Older v2.3.1 supports Android 6.0 or later.
 - **Download**: Get the latest signed APK from [GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases).
 - **Updates**: Starting with the v2.3.0 release app, download future updates within the app, then install through Android’s confirmation screen. Download progress and cancellation are available.
 
@@ -130,7 +133,9 @@ Edit:RiN は、Android 端末で p5.js のコードを書き、ジェネラテ�
 - アプリ内更新：v2.3.0以降の正式版では、次回以降の更新用APKをアプリ内でダウンロードできます。進捗の確認や中止に対応し、Androidの確認画面からインストールします。
 - プライバシー：作品の編集・実行はオフラインでも利用できます。広告やトラッキングはありません。公開作品の取り込みや更新確認には通信が必要です。
 
-現在のv4.0.1はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+現在のv4.1.0はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+
+v4.1.0では横画面UIを全面刷新し、均等間隔の縦ツールレール、1:1作品に最適化した左右バランス、折りたたみ対応サイドバーと1:1正方形サムネイルの作品選択画面（サンプル解説カード対応）を備えています。作品メニューや設定シートも縦横共通の枠付きユニットへ統一し、縦画面のコード編集では入力中に自動で隠れる省スペースなモード／ファイル切替カプセルを採用しました。
 
 `sketch.js` を唯一の正本として保ったまま、コードモードとブロックモードを切り替えて編集できます。縦画面では小窓プレビューを表示したまま編集でき、サイズや配置を変えたり最小化したりできます。自動保存履歴と名前付きスナップショットの統合シート、`@slider` などのコメントから作る操作UI、`// ?` による変数ウォッチ、140／280字のカウンターとコード圧縮、2種類の操作ツアーも利用できます。
 

@@ -41,21 +41,15 @@ internal fun AspectRatioDialog(
     val landscapeRatioText = String.format(java.util.Locale.ROOT, "%.2f:1", landscapeDeviceRatio)
     val portraitRatioText = String.format(java.util.Locale.ROOT, "1:%.2f", 1f / portraitDeviceRatio)
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    UnitModal(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        sheetGesturesEnabled = false,
-        containerColor = colors.surface,
-        contentColor = colors.onSurface,
-        tonalElevation = 0.dp,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        dragHandle = null
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
         Column(
             Modifier
-                .heightIn(max = (configuration.screenHeightDp * 0.85f).dp)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -77,7 +71,7 @@ internal fun AspectRatioDialog(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, shape = UNIT_CONTROL_SHAPE) {
                     Icon(
                         painterResource(R.drawable.ic_close),
                         uiText("閉じる"),

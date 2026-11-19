@@ -3,8 +3,11 @@ package com.hikariatelier.app
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,9 +22,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /** Raise this only when the tour is redesigned and should be shown again to everyone. */
-internal const val ONBOARDING_VERSION = 2
+internal const val ONBOARDING_VERSION = 3
 
-internal const val ONBOARDING_STEP_COUNT = 9
+internal const val ONBOARDING_STEP_COUNT = 5
 
 internal data class OnboardingStep(val title: String, val body: String)
 
@@ -30,58 +33,34 @@ internal fun onboardingSteps(language: String): List<OnboardingStep> {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     return listOf(
         OnboardingStep(
-            t("作品を開く", "Open a work", "打开作品"),
-            t("ギャラリーでサムネイルをタップすると作品が開きます。まずは動くサンプルを選んでみましょう。",
-                "Tap a thumbnail in the gallery to open a work. Start by choosing a running sample.",
-                "在作品库中点击缩略图即可打开作品。先从正在运行的示例开始吧。")
+            t("作品を開いて動かす", "Open and run a sketch", "打开并运行作品"),
+            t("作品一覧からサンプルを開き、「実行」でプレビューを更新します。縦画面でコードを書くときは、小窓（PiP）にプレビューを表示したまま編集できます。",
+                "Pick a sample from the gallery and press Run to update the canvas. In portrait mode, the floating PiP window keeps your sketch visible while you type.",
+                "从作品库选择示例，点击“运行”更新画面。竖屏编写代码时，可通过画中画小窗随时查看运行效果。")
         ),
         OnboardingStep(
-            t("書いて、動かす", "Write and run", "编写并运行"),
-            t("コードを編集したら、「実行」を押してプレビューに変更を反映しましょう。",
-                "Edit the code and press Run to see your changes in the preview.",
-                "编辑代码后，点击“运行”即可把更改应用到预览。")
+            t("ブロックとコードで編集する", "Switch between blocks and code", "积木与代码自由切换"),
+            t("sketch.js は「コード」と「ブロック」をいつでも切り替えられます。ブロック内の色や数値をタップして書き換えても、元のコードはそのまま保たれます。",
+                "Switch sketch.js between Code and Blocks at any time. Tap colors or numbers inside a block to edit them directly—your JavaScript source stays intact.",
+                "sketch.js 可随时在“代码”和“积木”之间切换。直接点击积木中的颜色或数字即可修改，原始代码始终保持完整。")
         ),
         OnboardingStep(
-            t("ブロックで組み立てる", "Build with blocks", "用积木搭建"),
-            t("ブロックモードに切り替えれば、下部の「＋ ブロックを追加」やブロック上の色スウォッチから、タッチ操作で直感的に作品を組み立てられます。全画面プレビューも1タップで開けます。",
-                "Switch to Block mode to assemble JavaScript visually. Add blocks from the bottom dock, tap color swatches on blocks, or open the full-screen preview in one tap.",
-                "切换到积木模式即可可视化搭建 JavaScript。可从底部栏添加积木、直接点击积木上的色块换色，或一键打开全屏预览。")
+            t("コメントで値を確かめる・動かす", "Inspect and tune with comments", "用注释查看变量与调节参数"),
+            t("行末に // ? を書くと実行中の値が表示されます。// @slider や // @color、先頭の // @rin を書くと、スライダーや色選択で作品を動かしながら調整できます。",
+                "Add // ? at the end of a line to see its live value. Use // @slider, // @color, or // @rin comments to add sliders and color pickers without changing how your code runs.",
+                "在行末写上 // ? 可直接显示运行时的值。添加 // @slider、// @color 或 // @rin 注释，即可用滑块和取色器实时调整画面。")
         ),
         OnboardingStep(
-            t("記号と数値の調整", "Symbols and scrubbing", "符号输入与数值微调"),
-            t("キーボード上のバーで記号を素早く入力できます。また、コード内の数値をドラッグして直感的に変更できます。",
-                "Quickly enter symbols with the bar above the keyboard. You can also drag numbers in your code to adjust them on the fly.",
-                "通过键盘上方的辅助栏快速输入符号。还可以通过拖动代码中的数值实时调整。")
+            t("履歴の復元と画像の書き出し", "Restore history and export", "历史恢复与作品导出"),
+            t("「履歴」から自動保存やスナップショットを見比べて以前の状態に戻せます。高解像度のPNG保存やMP4・GIF録画、SNS投稿用のコード短縮にも対応しています。",
+                "Compare auto-saves and snapshots in History whenever you want to roll back. Export up to 4x PNG, record MP4 or GIF, or shorten code for social posts.",
+                "在“历史”中可对比自动保存记录与快照并恢复旧版本。支持导出最高 4 倍分辨率 PNG、录制 MP4/GIF，以及缩短代码以便分享。")
         ),
         OnboardingStep(
-            t("PiP小窓プレビュー", "PiP floating preview", "画中画悬浮预览"),
-            t("縦画面でコードを広く書きながら、小窓で作品の動きを確認できます。4隅へのドラッグ移動やサイズ変更・半透明にも対応しています。",
-                "Keep an eye on your artwork in a floating window while editing code full-height. Drag to snap to corners, toggle opacity, or switch sizes.",
-                "竖屏全高编写代码时，可通过悬浮小窗查看作品动态。支持四角吸附拖拽、半透明和多档尺寸切换。")
-        ),
-        OnboardingStep(
-            t("パラメータで調整", "Tune with parameters", "实时参数调整"),
-            t("コードに宣言した数値や色を、スライダーを使ってリアルタイムに調整できます。",
-                "Adjust numbers and colors declared in your code in real time using sliders.",
-                "作品运行时，可以通过滑块实时调整代码中声明的数值和颜色。")
-        ),
-        OnboardingStep(
-            t("一時停止と履歴", "Pause and History", "暂停与恢复"),
-            t("作品の動きを一時停止したり、「履歴」から自動保存の履歴やスナップショットを確認して過去の状態へ復元できます。",
-                "Pause the artwork at any time. From History, you can inspect revisions or snapshots and restore past versions.",
-                "可以随时暂停作品。在“历史”中可以查看自动保存记录或快照，并恢复到过去的状态。")
-        ),
-        OnboardingStep(
-            t("記録して、共有", "Capture and share", "导出与分享"),
-            t("画像の書き出しや、MP4・GIFの録画ができます。保存した作品は、ほかのアプリへすぐに共有できます。",
-                "Export images or record MP4 and GIF files, then share your creations through other apps.",
-                "可以导出图片，或录制 MP4 和 GIF。保存后，可通过其他应用分享。")
-        ),
-        OnboardingStep(
-            t("さあ、始めましょう", "Make it yours", "开始创作吧"),
-            t("このツアーは設定からいつでも再確認できます。詳しい使い方は「使い方ガイド」をご覧ください。",
-                "You can revisit this tour from Settings at any time. The User Guide explains each feature in detail.",
-                "您可以随时在设置中再次查看此引导。各项功能的详细说明请参阅“使用指南”。")
+            t("制作をはじめましょう", "Start creating", "开始使用"),
+            t("このツアーや詳しい使い方は、設定画面の「アプリ情報」や「使い方ガイド」からいつでも開けます。",
+                "You can reopen this tour or browse the User Guide anytime from Settings.",
+                "您可以随时在“设置”中重新打开本向导或查看使用指南。")
         )
     )
 }
@@ -98,9 +77,8 @@ internal fun onboardingDue(
 ): Boolean = storedVersion == 0 && !loadFailed && !hasPendingDraft
 
 /**
- * Full-screen first-run tour. Every interaction lives in the mock screens of [OnboardingMocks];
- * nothing here reads or writes works, files or settings. Hint and demo animations always play,
- * even when the system animation scale is off; [animate] exists so tests can hold them still.
+ * Full-screen unified onboarding tour. Every interaction lives in the shared studio mock of
+ * [OnboardingMocks]; nothing here reads or writes real works, files, or settings.
  */
 @Composable
 internal fun OnboardingTour(
@@ -110,16 +88,20 @@ internal fun OnboardingTour(
     onOpenDetailedGuide: () -> Unit,
     allowSkip: Boolean = true,
     animate: Boolean = true,
-    onOpenPracticeTour: () -> Unit = {}
+    onOpenPracticeTour: () -> Unit = {},
+    onTrySample: (() -> Unit)? = null
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
     val steps = remember(language) { onboardingSteps(language) }
     var step by rememberSaveable { mutableIntStateOf(0) }
-    val last = step == steps.lastIndex
+    val safeStep = step.coerceIn(0, steps.lastIndex)
+    val last = safeStep == steps.lastIndex
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val studioState = remember { OnboardingStudioState() }
+
     BackHandler {
-        if (step > 0) {
-            step--
+        if (safeStep > 0) {
+            step = safeStep - 1
         } else if (allowSkip) {
             onSkip()
         }
@@ -130,10 +112,20 @@ internal fun OnboardingTour(
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(steps.size) { index ->
                     Box(
-                        Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
-                            .background(if (index <= step) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f))
-                    )
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(24.dp)
+                            .clickable { step = index },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    if (index <= safeStep) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+                                )
+                        )
+                    }
                 }
             }
             if (allowSkip) {
@@ -144,44 +136,65 @@ internal fun OnboardingTour(
         }
     }
     val mock: @Composable () -> Unit = {
-        Box(Modifier.fillMaxSize().semantics { contentDescription = t("練習用の画面", "Practice screen", "练习画面") },
-            contentAlignment = Alignment.Center) {
-            key(step) { OnboardingMock(step, language, animate) }
+        Box(
+            Modifier.fillMaxSize().semantics { contentDescription = t("練習用の画面", "Practice screen", "练习画面") },
+            contentAlignment = Alignment.Center
+        ) {
+            key(safeStep) { OnboardingMock(safeStep, language, animate, studioState) }
         }
     }
     val text: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                t("ステップ ${step + 1} / ${steps.size}", "Step ${step + 1} of ${steps.size}", "第 ${step + 1} 步，共 ${steps.size} 步"),
-                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
+                t("ステップ ${safeStep + 1} / ${steps.size}", "Step ${safeStep + 1} of ${steps.size}", "第 ${safeStep + 1} 步，共 ${steps.size} 步"),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
             )
-            Text(steps[step].title, style = if (landscape) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium, modifier = Modifier.testTag("onboarding-title"))
-            Text(steps[step].body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                steps[safeStep].title,
+                style = if (landscape) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.testTag("onboarding-title")
+            )
+            Text(
+                steps[safeStep].body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
     val buttons: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (step > 0) {
-                    OutlinedButton(onClick = { step-- }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("onboarding-back")) {
+                if (safeStep > 0) {
+                    OutlinedButton(
+                        onClick = { step = safeStep - 1 },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("onboarding-back")
+                    ) {
                         Text(t("戻る", "Back", "返回"))
                     }
                 }
                 Button(
-                    onClick = { if (last) onFinish() else step++ },
-                    modifier = Modifier.weight(if (step > 0) 2f else 1f).heightIn(min = 48.dp).testTag("onboarding-next")
-                ) { Text(if (last) t("始める", "Start Creating", "开始创作") else t("次へ", "Next", "下一步")) }
+                    onClick = { if (last) onFinish() else step = safeStep + 1 },
+                    modifier = Modifier.weight(if (safeStep > 0) 2f else 1f).heightIn(min = 48.dp).testTag("onboarding-next")
+                ) {
+                    Text(if (last) t("始める", "Start Creating", "开始创作") else t("次へ", "Next", "下一步"))
+                }
             }
             if (last) {
-                OutlinedButton(
-                    onClick = onOpenPracticeTour,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onboarding-practice-tour")
+                val sampleAction = onTrySample ?: onOpenPracticeTour
+                FilledTonalButton(
+                    onClick = sampleAction,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onboarding-try-sample")
                 ) {
-                    Icon(painterResource(R.drawable.ic_reload), contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(painterResource(R.drawable.ic_play), contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(t("実践ツアーを体験する", "Try Practice Tour", "体验实践向导"))
+                    Text(t("サンプル作品をエディターで開く", "Open sample in editor", "在编辑器中打开示例"), maxLines = 1)
                 }
-                TextButton(onClick = onOpenDetailedGuide, modifier = Modifier.fillMaxWidth().testTag("onboarding-guide")) {
+                TextButton(
+                    onClick = onOpenDetailedGuide,
+                    modifier = Modifier.fillMaxWidth().testTag("onboarding-guide")
+                ) {
                     Text(t("詳しい使い方を見る", "Open the User Guide", "查看使用指南"))
                 }
             }
@@ -195,8 +208,12 @@ internal fun OnboardingTour(
             if (landscape) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Box(Modifier.weight(1f).fillMaxHeight()) { mock() }
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
                         text()
+                        Spacer(Modifier.height(12.dp))
                         buttons()
                     }
                 }

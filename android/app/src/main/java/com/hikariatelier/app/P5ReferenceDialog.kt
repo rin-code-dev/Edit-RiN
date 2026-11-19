@@ -119,7 +119,7 @@ internal fun P5ReferenceDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismiss, shape = UNIT_CONTROL_SHAPE) {
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = textTranslator("閉じる")
@@ -144,7 +144,7 @@ internal fun P5ReferenceDialog(
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                            IconButton(onClick = { searchQuery = "" }, shape = UNIT_CONTROL_SHAPE) {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_clear),
                                     contentDescription = textTranslator("クリア"),

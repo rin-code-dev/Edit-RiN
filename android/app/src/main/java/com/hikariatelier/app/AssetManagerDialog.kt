@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -187,6 +188,7 @@ internal fun AssetManagerDialog(
                                         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                             IconButton(
                                                 enabled = !busy,
+                                                shape = UNIT_COMPACT_CONTROL_SHAPE,
                                                 modifier = Modifier.size(32.dp),
                                                 onClick = { copyToClipboard("assets/$name") }
                                             ) {
@@ -199,6 +201,7 @@ internal fun AssetManagerDialog(
                                             }
                                             IconButton(
                                                 enabled = !busy,
+                                                shape = UNIT_COMPACT_CONTROL_SHAPE,
                                                 modifier = Modifier.size(32.dp),
                                                 onClick = {
                                                     selectedReferences = emptySet()
@@ -217,6 +220,7 @@ internal fun AssetManagerDialog(
                                             }
                                             IconButton(
                                                 enabled = !busy,
+                                                shape = UNIT_COMPACT_CONTROL_SHAPE,
                                                 modifier = Modifier.size(32.dp),
                                                 onClick = { deleting = name }
                                             ) {
@@ -318,7 +322,12 @@ internal fun AssetManagerDialog(
                                     fun toggle() {
                                         selectedReferences = if (checked) selectedReferences - candidate else selectedReferences + candidate
                                     }
-                                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = ::toggle)) {
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                            .clickable(enabled = !busy, onClick = ::toggle)
+                                    ) {
                                         Checkbox(checked = checked, enabled = !busy, onCheckedChange = { toggle() })
                                         Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
                                             Text(

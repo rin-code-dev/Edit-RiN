@@ -4,11 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.os.ConfigurationCompat
 import androidx.compose.ui.Alignment
@@ -38,6 +44,35 @@ internal data class ReleaseNote(
 )
 
 internal val APP_RELEASE_NOTES = listOf(
+    ReleaseNote(
+        versionName = "4.1.0",
+        versionCode = 41,
+        titleEn = "What's New in v4.1.0",
+        titleJa = "v4.1.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_rotate,
+                titleEn = "Redesigned Landscape Workspace & Gallery",
+                titleJa = "横画面UIの全面刷新",
+                descEn = "Added an evenly spaced vertical tool rail, balanced 50/50 editor and 1:1 preview layout, and a minimal sidebar + square-thumbnail gallery with full-text sample cards.",
+                descJa = "均等間隔の縦ツールレール、1:1作品に最適化した左右バランス、サイドバーと1:1正方形サムネイルのモダンな作品選択画面（サンプル解説カード対応）へ刷新しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_folder_code,
+                titleEn = "Floating Unit Modals & Unified Controls",
+                titleJa = "浮遊ユニットUIと操作パーツの統一",
+                descEn = "Menus, inspectors, and dialogs now appear as bordered floating Units across both orientations, with unified button shapes, crisp light-mode colors, and consistent touch highlights.",
+                descJa = "作品メニューや設定シートを縦横共通の枠付きユニットへ刷新し、ライトモードの配色・ボタン形状・タッチ時の選択背景を統一しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Compact Portrait Editor Overlay",
+                titleJa = "縦画面エディターの省スペース化",
+                descEn = "Replaced the portrait top file bar with a floating mode/file capsule that hides redundant sketch.js labels on single-file works and auto-hides while typing.",
+                descJa = "縦画面のコード編集時に単一ファイルではファイル名を省略し、入力中は自動で隠れるフロートカプセルへ変更してコード表示領域を広げました。"
+            )
+        )
+    ),
     ReleaseNote(
         versionName = "4.0.1",
         versionCode = 40,
@@ -90,16 +125,16 @@ internal val APP_RELEASE_NOTES = listOf(
             ReleaseFeature(
                 iconRes = R.drawable.ic_tune,
                 titleEn = "Unified Inspector & Safe Action Guards",
-                titleJa = "作品設定の統合 ＆ 操作前確認の共通化",
+                titleJa = "作品設定の統合と保存・実行時の保護",
                 descEn = "Select all 6 preview aspect ratios directly in the project inspector, return smoothly from sub-dialogs, and automatically flush active block edits before saving, running, or switching files.",
-                descJa = "作品設定シートで全6種類のプレビュー比率を直接切り替え可能にし、子画面から元の設定画面へ自然に戻れる階層遷移を導入しました。保存・実行・ファイル切替時のブロック編集確定と安全性チェックも共通化しています。"
+                descJa = "作品設定シートで全6種類のプレビュー比率を切り替えられるようになり、子画面から元の設定画面へ戻れるようにしました。保存・実行・ファイル切替時のブロック編集確定と安全性チェックも共通化しています。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_help,
                 titleEn = "Expanded Onboarding & User Guide",
-                titleJa = "入門ツアー ＆ 使い方ガイドの拡充",
-                descEn = "Added an interactive Block Mode step to the 9-step onboarding tour and updated the built-in user guide to cover block editing and the unified history workflow.",
-                descJa = "初回入門ツアー（全9ステップ）とアプリ内の使い方ガイドに、ブロックモードの模擬操作と統合履歴シートの解説を追加しました。"
+                titleJa = "初回ツアーと使い方ガイドの更新",
+                descEn = "Added an interactive Block Mode step to the onboarding tour and updated the built-in user guide to cover block editing and the unified history workflow.",
+                descJa = "初回ツアーとアプリ内の使い方ガイドに、ブロックモードの模擬操作と統合履歴シートの解説を追加しました。"
             )
         )
     ),
@@ -135,17 +170,17 @@ internal val APP_RELEASE_NOTES = listOf(
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_system_update,
-                titleEn = "Modernized Update Experience",
-                titleJa = "アプリ更新画面のフルリニューアル",
-                descEn = "Brand-new floating card dialog with download progress tracking, one-tap dismiss, and dynamic feature highlights extracted from GitHub Releases in your language.",
-                descJa = "モダンなカードデザイン、詳細な進捗表示、GitHub Releasesからの多言語ハイライト動的抽出に対応した新しい更新画面を搭載しました。"
+                titleEn = "Improved In-App Update Dialog",
+                titleJa = "アプリ内更新画面の改善",
+                descEn = "Shows download progress and loads release highlights from GitHub Releases.",
+                descJa = "ダウンロード進捗の表示と、GitHub Releasesからの更新内容の読み込みに対応しました。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_tune,
-                titleEn = "Startup Tour Dispatch & Watch Ghosting",
-                titleJa = "起動時ツアー振り分け ＆ ウォッチ透過",
-                descEn = "New installs launch Onboarding; updates launch the Practice Tour. Cursor lines over inline watches automatically fade and pass touches through.",
-                descJa = "新規時は入門ツアー、過去版更新時は実践ツアーを自動案内。編集行と重なる変数ウォッチの自動半透明化＆直接タッチ編集にも対応しました。"
+                titleEn = "Startup Tour Dispatch & Watch Fade",
+                titleJa = "起動時のツアー案内と変数ウォッチの透過表示",
+                descEn = "New installs launch Onboarding; updates launch the Practice Tour when updated. Cursor lines over inline watches automatically fade and pass touches through.",
+                descJa = "新規インストール時は初回ツアー、更新時は新しいツアーがある場合に案内を表示します。カーソル行と重なる変数ウォッチは自動で半透明になります。"
             )
         )
     ),
@@ -158,30 +193,30 @@ internal val APP_RELEASE_NOTES = listOf(
             ReleaseFeature(
                 iconRes = R.drawable.ic_tune,
                 titleEn = "Comment-Driven Live Parameters",
-                titleJa = "コメント駆動の双方向パラメータ",
+                titleJa = "コメント記法によるパラメータ操作",
                 descEn = "Declare parameters using inline comments like // @slider and // @color. Adjusting the UI instantly updates both running preview and code literals with grouped undo.",
-                descJa = "// @slider や // @color などのコメントを書くだけで操作スライダーが出現。ドラッグ操作でプレビュー即時反映＆コードの数値が連動して書き換わります（Undo集約対応）。"
+                descJa = "// @slider や // @color などのコメントを書くだけで操作スライダーが表示され、ドラッグ操作がプレビューとコードの数値に反映されます（Undo集約対応）。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_share_card,
-                titleEn = "#つぶやきProcessing & Smart Code Minify",
-                titleJa = "#つぶやきProcessing 支援 ＆ コード自動圧縮",
-                descEn = "Dedicated tweet coding studio with 140/280 char HUD gauge, compact share sheet, and smart code compression to fit creations into a single post.",
-                descJa = "140/280字の文字数HUDと専用シェアシートを搭載。余分な記述をスリム化する自動圧縮で手軽にSNS共有できます。"
+                titleEn = "#つぶやきProcessing & Code Minify",
+                titleJa = "#つぶやきProcessing 向けの文字数表示とコード短縮",
+                descEn = "Includes a 140/280 char HUD gauge, compact share sheet, and code compression to fit sketches into a single post.",
+                descJa = "140/280字の文字数表示と専用シェアシートを搭載しました。余分な記述を削るコード短縮でSNS投稿用に整えられます。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_pip_opacity,
-                titleEn = "PiP Auto-Ghosting & Direct Touch Edit",
-                titleJa = "PiP小窓のオートゴースト ＆ 直接タッチ編集",
+                titleEn = "PiP Auto-Fade and Tap-Through Editing",
+                titleJa = "PiP小窓の自動透過と背面コードのタップ編集",
                 descEn = "Floating preview lowers opacity to 25% when hovering over cursor lines. Tap directly on the preview to focus the editor and edit the code underneath.",
-                descJa = "編集中のカーソル行と小窓が重なると自動で半透明化。小窓の上から背後のコードを直接タップしてそのまま編集を続けられます。"
+                descJa = "編集中のカーソル行と小窓が重なると自動で半透明になります。小窓の上から背後のコードを直接タップしてそのまま編集を続けられます。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_assets,
-                titleEn = "Streamed Asset Hot-Swap & Lean Memory",
-                titleJa = "アセットHot-Swapのストリーム化 ＆ メモリ最適化",
-                descEn = "Hot-swap large images, audio, and JSON files safely via streamed URL references without OOM risks, paired with lazy-loaded reference catalogs for a lean footprint.",
-                descJa = "大容量の画像・音声・フォント・JSONをメモリ不足なく瞬時にゼロリロード差し替え。リファレンス等の遅延展開で起動メモリも削減しました。"
+                titleEn = "Asset Streaming & Reduced Memory Usage",
+                titleJa = "素材の読み込み改善とメモリ使用量の削減",
+                descEn = "Updates images, audio, and JSON files via streamed URL references, paired with lazy-loaded reference catalogs to reduce startup memory.",
+                descJa = "大容量の画像・音声・フォント・JSONをストリーム参照で読み込み、リファレンス等の遅延読み込みによって起動時のメモリ使用量を抑えました。"
             )
         )
     ),
@@ -193,15 +228,15 @@ internal val APP_RELEASE_NOTES = listOf(
         features = listOf(
             ReleaseFeature(
                 iconRes = R.drawable.ic_play,
-                titleEn = "Zero-Reload Hot-Swap Preview",
-                titleJa = "ゼロ・リロード (Hot-Swap) プレビュー",
-                descEn = "Seamless code updates without white-screen reloads or audio stutter. WebMessagePort delivers updates directly to the running canvas in real time.",
-                descJa = "画面の白フラッシュや音切れなく、コード変更を瞬時にプレビューへ反映。WebMessagePortによる超高速Hot-Swapを実現しました。"
+                titleEn = "Live Preview Updates Without Reloading",
+                titleJa = "リロードなしのプレビュー更新",
+                descEn = "Applies code changes to the running canvas without white-screen flashes or audio stutter.",
+                descJa = "画面の白フラッシュや音切れを抑え、実行中のキャンバスへコード変更を反映します。"
             ),
             ReleaseFeature(
                 iconRes = R.drawable.ic_fullscreen,
                 titleEn = "Floating PiP Preview & State Persistence",
-                titleJa = "フローティングPiP小窓プレビュー & 状態保持",
+                titleJa = "PiP小窓プレビューと位置・サイズの保持",
                 descEn = "Floating thumbnail preview docks to corners during typing in portrait mode with S/M/L presets. Corner snaps, transparency, and sizes persist seamlessly across your session.",
                 descJa = "縦画面の文字入力時、作品が四隅にスナップする小窓（PiP）として浮遊表示。サイズ・四隅位置・透過・最小化の状態はセッション内で安全に記憶されます。"
             ),
@@ -543,6 +578,10 @@ internal fun ReleaseNotesDialog(
     val colors = MaterialTheme.colorScheme
     val systemLanguage = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]?.language
     val isJa = language == "ja" || (language == "system" && systemLanguage == "ja")
+    var selectedIndex by rememberSaveable(note.versionCode) {
+        mutableIntStateOf(APP_RELEASE_NOTES.indexOf(note).coerceAtLeast(0))
+    }
+    val currentNote = APP_RELEASE_NOTES.getOrElse(selectedIndex) { note }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -584,13 +623,13 @@ internal fun ReleaseNotesDialog(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isJa) note.titleJa else note.titleEn,
+                            text = if (isJa) currentNote.titleJa else currentNote.titleEn,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.onSurface
                         )
                         Text(
-                            text = if (isJa) "最新のアップデートと新機能" else "Latest updates and enhancements",
+                            text = if (isJa) "最新のアップデートと変更履歴" else "Updates and version history",
                             fontSize = 12.sp,
                             color = colors.onSurfaceVariant
                         )
@@ -608,7 +647,28 @@ internal fun ReleaseNotesDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Version selector chips
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(APP_RELEASE_NOTES) { index, item ->
+                        FilterChip(
+                            selected = selectedIndex == index,
+                            onClick = { selectedIndex = index },
+                            label = {
+                                Text(
+                                    text = "v${item.versionName}",
+                                    fontWeight = if (selectedIndex == index) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(color = colors.outlineVariant, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -619,7 +679,7 @@ internal fun ReleaseNotesDialog(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    items(note.features) { feature ->
+                    items(currentNote.features) { feature ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

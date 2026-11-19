@@ -594,6 +594,34 @@ window.resumeSketch = () => {
   try { window.getAudioContext?.().resume().catch(() => {}); } catch (_) {}
   if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
 };
+const backgroundSuspendedContexts = new Set();
+window.__editRinSuspendBackgroundAudio = () => {
+  const candidates = new Set(window.__editRinActiveAudioContexts || []);
+  try { const ctx = window.getAudioContext?.(); if (ctx) candidates.add(ctx); } catch (_) {}
+  try { const ctx = window.p5?.soundOut?.audiocontext; if (ctx) candidates.add(ctx); } catch (_) {}
+  for (const ctx of candidates) {
+    try {
+      if (ctx && ctx.state === 'running' && typeof ctx.suspend === 'function') {
+        backgroundSuspendedContexts.add(ctx);
+        ctx.suspend().catch?.(() => {});
+      }
+    } catch (_) {}
+  }
+};
+window.__editRinResumeBackgroundAudio = () => {
+  if (hostPaused) {
+    backgroundSuspendedContexts.clear();
+    return;
+  }
+  for (const ctx of backgroundSuspendedContexts) {
+    try {
+      if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+        ctx.resume().catch?.(() => {});
+      }
+    } catch (_) {}
+  }
+  backgroundSuspendedContexts.clear();
+};
 // Host presentation/capture uses the original RAF. Artwork RAFs can be paused,
 // including an HTML canvas which does not use p5; timers retain their normal semantics.
 let artworkFrameId = 0;
@@ -1596,6 +1624,7 @@ window.addEventListener('load', () => {
     try { window.p5?.instance?.remove?.(); } catch (_) {}
 
     const audioContexts = window.__editRinActiveAudioContexts;
+    backgroundSuspendedContexts.clear();
     if (audioContexts) {
       for (const ctx of audioContexts) {
         try { ctx.close?.().catch?.(() => {}); } catch (_) {}
@@ -2001,6 +2030,15 @@ window.addEventListener('load', () => {
               const payload = text.slice(colon2 + 1);
               window.__editRinHotSwapAsset?.(filename, mime, payload);
             }
+          }
+        } else if (text.startsWith('P:')) {
+          const colon = text.indexOf(':', 2);
+          if (colon > 2) {
+            const name = text.slice(2, colon);
+            const rawJson = text.slice(colon + 1);
+            try {
+              window.__editRinSetParameter?.(name, JSON.parse(rawJson));
+            } catch (_) {}
           }
         }
       };

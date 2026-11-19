@@ -3,6 +3,7 @@ package com.hikariatelier.app
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -19,6 +20,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 internal const val PRACTICE_TOUR_STEP_COUNT = 4
+
+/** Raise this only when the practice tour changes and should be shown again on update. */
+internal const val PRACTICE_TOUR_VERSION = 37
 
 internal data class PracticeTourStep(val title: String, val body: String)
 
@@ -59,7 +63,7 @@ internal fun practiceTourSteps(language: String): List<PracticeTourStep> {
 internal fun practiceTourDue(
     onboardingVersion: Int,
     practiceTourVersion: Int,
-    targetVersionCode: Int = BuildConfig.VERSION_CODE,
+    targetVersionCode: Int = PRACTICE_TOUR_VERSION,
     loadFailed: Boolean = false,
     hasPendingDraft: Boolean = false
 ): Boolean = onboardingVersion > 0 && practiceTourVersion < targetVersionCode && !loadFailed && !hasPendingDraft
@@ -207,12 +211,20 @@ internal fun EditorPracticeTour(
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(steps.size) { index ->
                     Box(
-                        Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp))
-                            .background(
-                                if (index <= step) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-                            )
-                    )
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(24.dp)
+                            .clickable { step = index },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    if (index <= step) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+                                )
+                        )
+                    }
                 }
             }
             TextButton(onClick = onClose, modifier = Modifier.testTag("practice-tour-close")) {

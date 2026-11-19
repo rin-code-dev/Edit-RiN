@@ -156,8 +156,8 @@ internal fun AutoRunHotSwapEffect(
 }
 
 enum class PipSizePreset(val baseDp: Int, val shortLabel: String) {
-    SMALL(138, "S"),
-    MEDIUM(178, "M"),
+    SMALL(164, "S"),
+    MEDIUM(192, "M"),
     LARGE(228, "L")
 }
 
@@ -269,8 +269,16 @@ internal fun FloatingPipPreviewHost(
     val headerHeight = 32.dp
     val minHeaderWidth = if (onExpandFullscreen != null) 164.dp else 138.dp
 
-    val rawCanvasWidth = if (safeRatio >= 1f) baseSize else (baseSize.value * safeRatio).dp
-    val rawCanvasHeight = if (safeRatio >= 1f) (baseSize.value / safeRatio).dp else baseSize
+    val rawCanvasWidth = if (safeRatio >= 1f) {
+        maxOf(minHeaderWidth, baseSize)
+    } else {
+        (baseSize.value * safeRatio).dp
+    }
+    val rawCanvasHeight = if (safeRatio >= 1f) {
+        (rawCanvasWidth.value / safeRatio).dp
+    } else {
+        baseSize
+    }
 
     // Guarantee minimum width so all header buttons never clip in S size or 9:16 aspect ratio
     val targetWidth = if (minimized) minHeaderWidth else maxOf(minHeaderWidth, rawCanvasWidth)

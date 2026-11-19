@@ -254,8 +254,6 @@ class EditorSessionViewModel : ViewModel() {
                 val next = TextFieldValue(nextText, androidx.compose.ui.text.TextRange(
                     current.selection.start.coerceIn(0, nextText.length), current.selection.end.coerceIn(0, nextText.length)))
                 editorValueState.value = next
-                mainPieceTable.reset(nextText)
-                mainDeltaLog.record(current, next)
             }
             trimMainHistory()
             lastEditPosition = -1
@@ -265,9 +263,6 @@ class EditorSessionViewModel : ViewModel() {
     }
     internal fun editorFileState(workId: String) = selectedFiles.getOrPut(workId) { mutableStateOf("sketch.js") }
 
-    /** Piece Table buffer and delta operation log for low-allocation editing. */
-    internal val mainPieceTable = PieceTableBuffer()
-    internal val mainDeltaLog = EditOperationLog()
     internal var autoRunEnabled by mutableStateOf(false)
     internal var pipModeEnabled by mutableStateOf(true)
     internal var showInspectorSheet by mutableStateOf(false)
@@ -299,7 +294,6 @@ class EditorSessionViewModel : ViewModel() {
             if (updatedText != current.text) {
                 val updatedValue = current.copy(text = updatedText)
                 editorValueState.value = updatedValue
-                mainPieceTable.reset(updatedText)
             }
         } else {
             val workId = activeWorkIdState.value
@@ -381,8 +375,6 @@ class EditorSessionViewModel : ViewModel() {
         } else null
         val initialVal = cached?.value ?: TextFieldValue(code, position ?: androidx.compose.ui.text.TextRange.Zero)
         editorValueState.value = initialVal
-        mainPieceTable.reset(initialVal.text)
-        mainDeltaLog.clear()
         if (!resume) mainEditorPositions.remove(workId)
         clearEditHistory()
         cached?.let { saved ->
@@ -496,8 +488,6 @@ class EditorSessionViewModel : ViewModel() {
         val initialCode = editorTextOverride ?: works.find { it.id == resolvedActiveId }?.code.orEmpty()
         lastSavedTextState.value = works.find { it.id == resolvedActiveId }?.code.orEmpty()
         editorValueState.value = TextFieldValue(initialCode)
-        mainPieceTable.reset(initialCode)
-        mainDeltaLog.clear()
         initialized = true
     }
 
@@ -511,7 +501,6 @@ class EditorSessionViewModel : ViewModel() {
         undoStack.clear()
         mainHistoryBlockStates.clear()
         redoStack.clear()
-        mainDeltaLog.clear()
         lastEditPosition = -1
         lastEditTimestamp = 0L
     }
@@ -526,12 +515,6 @@ class EditorSessionViewModel : ViewModel() {
             val change = editorTextChange(currentValue, nextValue)
             if (targetUndoStack === undoStack) {
                 invalidateBlockDocumentRevision(activeWorkIdState.value)
-                mainPieceTable.replace(
-                    change.start,
-                    change.oldEnd,
-                    nextValue.text.substring(change.start, change.newEnd)
-                )
-                mainDeltaLog.record(currentValue, nextValue)
             }
             // Coalesce adjacent single-char typing entries in targetUndoStack to cut memory by >80%
             val lastEntry = targetUndoStack.lastOrNull()
@@ -585,7 +568,6 @@ class EditorSessionViewModel : ViewModel() {
             if (main) {
                 invalidateBlockDocumentRevision(activeWorkIdState.value)
                 if (mainHistoryBlockStates.containsKey(it)) setBlockEditorState(activeWorkIdState.value, mainHistoryBlockStates.remove(it))
-                mainPieceTable.reset(it.text)
                 lastEditPosition = -1; lastEditTimestamp = 0L
             }
         }
@@ -603,7 +585,6 @@ class EditorSessionViewModel : ViewModel() {
             if (main) {
                 invalidateBlockDocumentRevision(activeWorkIdState.value)
                 if (mainHistoryBlockStates.containsKey(it)) setBlockEditorState(activeWorkIdState.value, mainHistoryBlockStates.remove(it))
-                mainPieceTable.reset(it.text)
                 lastEditPosition = -1; lastEditTimestamp = 0L
             }
         }

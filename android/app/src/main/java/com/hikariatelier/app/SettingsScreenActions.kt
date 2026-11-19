@@ -18,4 +18,5 @@ internal data class SettingsScreenActions(
     val onExportBackup: () -> Unit,
     val onImportBackup: () -> Unit,
     val openExternalUrl: (String) -> Unit,
+    val onTryGuideCode: ((String, String) -> Unit)? = null,
 )

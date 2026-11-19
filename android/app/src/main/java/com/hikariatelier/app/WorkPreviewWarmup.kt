@@ -155,12 +155,14 @@ internal class WorkPreviewWarmup(
                         var success = false
                         try {
                             val file = images.file(id)
-                            // Fast-path: if a valid non-empty thumbnail file already exists on disk, skip WebView spin-up
-                            val existingValid = withContext(Dispatchers.IO) { file.exists() && file.length() > 0L }
+                            // Fast-path: reuse stamped matches, or legacy non-empty thumbnails without a stamp file
                             val input = works.thumbnailInput(id, selected.folder) ?: error("Thumbnail input unavailable")
                             val fingerprint = withContext(Dispatchers.Default) { thumbnailFingerprint(input) }
                             val previousModified = withContext(Dispatchers.IO) { file.lastModified() }
-                            val cached = withContext(Dispatchers.IO) { thumbnailCacheMatches(file, fingerprint) || existingValid }
+                            val cached = withContext(Dispatchers.IO) {
+                                thumbnailCacheMatches(file, fingerprint) ||
+                                    (file.exists() && file.length() > 0L && !thumbnailStampFile(file).exists())
+                            }
                             if (!cached && failures.getString(file.name, null) != fingerprint) {
                                 val asset = withContext(Dispatchers.IO) { bundled.assetPath(candidate.work, input) }
                                 val bytes = if (asset != null) withContext(Dispatchers.IO) {

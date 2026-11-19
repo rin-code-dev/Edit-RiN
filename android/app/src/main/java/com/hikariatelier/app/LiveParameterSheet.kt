@@ -30,7 +30,9 @@ internal fun LiveParameterSheet(
     val sources = parameterWork?.files.orEmpty().mapValues { (name, code) ->
         sessionViewModel.fileDrafts["${parameterWork?.id}/$name"] ?: code
     } + ("sketch.js" to editorText)
-    val declarations = workParameters(sources)
+    val declarations = remember(parameterWork?.id, editorText, parameterWork?.files?.toMap(), sessionViewModel.fileDrafts.toMap()) {
+        workParameters(sources)
+    }
     val initialDefaults = remember(parameterWork?.id) {
         declarations.associate { it.name to it.defaultValue }
     }
@@ -82,9 +84,7 @@ internal fun LiveParameterSheet(
                 is WorkParameter.Number, is WorkParameter.Boolean -> value
                 is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(value)
             }
-            preview.evaluate(
-                "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
-            )
+            preview.setParameter(parameter.name, jsonValue)
             pendingLiveChanges[parameter.name] = parameter to value
         },
         onResetParameter = { parameter ->
@@ -94,9 +94,7 @@ internal fun LiveParameterSheet(
                 is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
                 is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
             }
-            preview.evaluate(
-                "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
-            )
+            preview.setParameter(parameter.name, jsonValue)
             pendingLiveChanges.remove(parameter.name)
             sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             syncPreviewSource()
@@ -110,9 +108,7 @@ internal fun LiveParameterSheet(
                     is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
                     is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
                 }
-                preview.evaluate(
-                    "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
-                )
+                preview.setParameter(parameter.name, jsonValue)
                 sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             }
             pendingLiveChanges.clear()
@@ -147,7 +143,7 @@ internal fun LiveParameterSheet(
                     is WorkParameter.Number, is WorkParameter.Boolean -> rawVal
                     is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(rawVal)
                 }
-                preview.evaluate("window.__editRinSetParameter?.(${JSONObject.quote(param.name)},$jsonValue)")
+                preview.setParameter(param.name, jsonValue)
             }
         },
         initialDefaults = initialDefaults
@@ -178,7 +174,9 @@ internal fun LiveParameterPanel(
     val sources = parameterWork?.files.orEmpty().mapValues { (name, code) ->
         sessionViewModel.fileDrafts["${parameterWork?.id}/$name"] ?: code
     } + ("sketch.js" to editorText)
-    val declarations = workParameters(sources)
+    val declarations = remember(parameterWork?.id, editorText, parameterWork?.files?.toMap(), sessionViewModel.fileDrafts.toMap()) {
+        workParameters(sources)
+    }
     val initialDefaults = remember(parameterWork?.id) {
         declarations.associate { it.name to it.defaultValue }
     }
@@ -225,9 +223,7 @@ internal fun LiveParameterPanel(
                 is WorkParameter.Number, is WorkParameter.Boolean -> value
                 is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(value)
             }
-            preview.evaluate(
-                "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
-            )
+            preview.setParameter(parameter.name, jsonValue)
             pendingLiveChanges[parameter.name] = parameter to value
         },
         onResetParameter = { parameter ->
@@ -237,9 +233,7 @@ internal fun LiveParameterPanel(
                 is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
                 is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
             }
-            preview.evaluate(
-                "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
-            )
+            preview.setParameter(parameter.name, jsonValue)
             pendingLiveChanges.remove(parameter.name)
             sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             syncPreviewSource()
@@ -253,9 +247,7 @@ internal fun LiveParameterPanel(
                     is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
                     is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
                 }
-                preview.evaluate(
-                    "window.__editRinSetParameter?.(${JSONObject.quote(parameter.name)},$jsonValue)"
-                )
+                preview.setParameter(parameter.name, jsonValue)
                 sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             }
             pendingLiveChanges.clear()
@@ -290,7 +282,7 @@ internal fun LiveParameterPanel(
                     is WorkParameter.Number, is WorkParameter.Boolean -> rawVal
                     is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(rawVal)
                 }
-                preview.evaluate("window.__editRinSetParameter?.(${JSONObject.quote(param.name)},$jsonValue)")
+                preview.setParameter(param.name, jsonValue)
             }
         },
         initialDefaults = initialDefaults

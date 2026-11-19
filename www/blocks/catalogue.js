@@ -291,10 +291,16 @@
                        typeName === 'RangeError' ? '数値の範囲エラー' : '文法エラー';
         return `${typeJa}: ${rest}`;
       }
+      if (lang === 'zh') {
+        const typeZh = typeName === 'ReferenceError' ? '引用错误' :
+                       typeName === 'TypeError' ? '类型错误' :
+                       typeName === 'RangeError' ? '范围错误' : '语法错误';
+        return `${typeZh}: ${rest}`;
+      }
       return `${typeName}: ${rest}`;
     }
 
-    return firstLine || (lang === 'ja' ? '実行時エラーが発生しました' : 'Runtime error occurred');
+    return firstLine || (lang === 'ja' ? '実行時エラーが発生しました' : lang === 'zh' ? '发生运行时错误' : 'Runtime error occurred');
   }
 
   const catalogue = Object.freeze({API_VERSION:2,P5_CALLS,P5_NAMES,EVENTS,EVENT_NAMES:EVENTS.map(event=>event.name),TEMPLATES,EXAMPLES,CATEGORY_LABELS,NODE_LABELS,friendlyErrorMessage});

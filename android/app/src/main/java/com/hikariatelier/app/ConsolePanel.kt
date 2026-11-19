@@ -71,12 +71,17 @@ internal fun ConsolePanel(
     fun uiText(source: String, vararg arguments: Any?): String =
         textTranslator(source, arguments)
 
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val effectiveMaxHeightDp = (if (isLandscape && !viewModel.consoleExpanded)
+        viewModel.consoleHeight.coerceAtMost(132f)
+    else viewModel.consoleHeight).coerceAtMost(configuration.screenHeightDp * (if (isLandscape) 0.45f else 0.65f))
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(
-                min = 96.dp,
-                max = viewModel.consoleHeight.coerceAtMost(configuration.screenHeightDp * 0.65f).dp
+                min = if (isLandscape) 72.dp else 96.dp,
+                max = effectiveMaxHeightDp.dp
             )
             .border(
                 width = 1.dp,
@@ -198,14 +203,15 @@ internal fun ConsolePanel(
                         IconButton(
                             modifier = Modifier.size(30.dp),
                             enabled = viewModel.entries.isNotEmpty(),
+                            shape = UNIT_COMPACT_CONTROL_SHAPE,
                             onClick = { copyToClipboard(viewModel.entries.joinToString("\n") { it.copyText() }) }
                         ) {
                             Icon(painterResource(R.drawable.ic_console_copy), contentDescription = uiText("ログをすべてコピー"), modifier = Modifier.size(16.dp))
                         }
-                        IconButton(modifier = Modifier.size(30.dp), onClick = { viewModel.clear() }) {
+                        IconButton(modifier = Modifier.size(30.dp), shape = UNIT_COMPACT_CONTROL_SHAPE, onClick = { viewModel.clear() }) {
                             Icon(painterResource(R.drawable.ic_clear), contentDescription = uiText("ログを消去"), modifier = Modifier.size(16.dp))
                         }
-                        IconButton(modifier = Modifier.size(30.dp), onClick = { viewModel.showConsole = false }) {
+                        IconButton(modifier = Modifier.size(30.dp), shape = UNIT_COMPACT_CONTROL_SHAPE, onClick = { viewModel.showConsole = false }) {
                             Icon(painterResource(R.drawable.ic_close), contentDescription = uiText("閉じる"), modifier = Modifier.size(16.dp))
                         }
                     }
@@ -218,7 +224,7 @@ internal fun ConsolePanel(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(if (isLandscape) 40.dp else 56.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Text(
@@ -236,7 +242,7 @@ internal fun ConsolePanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(
-                                max = (viewModel.consoleHeight.coerceAtMost(configuration.screenHeightDp * 0.65f) - 42f).coerceAtLeast(1f).dp
+                                max = (effectiveMaxHeightDp - 42f).coerceAtLeast(1f).dp
                             ),
                         contentPadding = PaddingValues(top = 4.dp, bottom = if (followLatest) 4.dp else 36.dp)
                     ) {
@@ -246,6 +252,8 @@ internal fun ConsolePanel(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .padding(horizontal = 4.dp)
+                                    .clip(UNIT_COMPACT_CONTROL_SHAPE)
                                     .combinedClickable(
                                         onClick = {
                                             if (canNavigate) {
@@ -258,7 +266,7 @@ internal fun ConsolePanel(
                                             copyToClipboard(entry.copyText())
                                         }
                                     )
-                                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.Top
                             ) {
                                 Box(

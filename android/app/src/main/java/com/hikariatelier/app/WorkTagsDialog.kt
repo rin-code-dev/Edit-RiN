@@ -108,7 +108,7 @@ internal fun WorkTagsDialog(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onDismiss, shape = UNIT_COMPACT_CONTROL_SHAPE, modifier = Modifier.size(28.dp)) {
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = text("閉じる"),
@@ -226,10 +226,10 @@ internal fun WorkTagsDialog(
                     ) {
                         availableSuggestions.forEach { suggestion ->
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = colors.surfaceContainerHighest.copy(alpha = 0.6f),
-                                border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.4f)),
-                                modifier = Modifier.clickable { onAddTag(suggestion) }
+                                onClick = { onAddTag(suggestion) },
+                                shape = UNIT_COMPACT_CONTROL_SHAPE,
+                                color = colors.surface,
+                                border = BorderStroke(1.dp, colors.outlineVariant)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -323,7 +323,7 @@ internal fun AllTagsManageDialog(
                             color = colors.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onDismiss, shape = UNIT_COMPACT_CONTROL_SHAPE, modifier = Modifier.size(28.dp)) {
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = text("閉じる"),

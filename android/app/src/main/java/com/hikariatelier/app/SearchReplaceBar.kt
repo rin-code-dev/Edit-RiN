@@ -124,13 +124,13 @@ private fun FileSearchBar(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { selectMatch(1) })
                     )
-                    IconButton(onClick = { selectMatch(-1) }, enabled = !searching && !replacing && matches.isNotEmpty(), modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { selectMatch(-1) }, enabled = !searching && !replacing && matches.isNotEmpty(), shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(36.dp)) {
                         Icon(painterResource(R.drawable.ic_chevron_down), uiText("前へ"), Modifier.size(18.dp).rotate(180f))
                     }
-                    IconButton(onClick = { selectMatch(1) }, enabled = !searching && !replacing && matches.isNotEmpty(), modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { selectMatch(1) }, enabled = !searching && !replacing && matches.isNotEmpty(), shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(36.dp)) {
                         Icon(painterResource(R.drawable.ic_chevron_down), uiText("次へ"), Modifier.size(18.dp))
                     }
-                    IconButton(onClick = { closeSearch() }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { closeSearch() }, shape = UNIT_CONTROL_SHAPE, modifier = Modifier.size(36.dp)) {
                         Icon(painterResource(R.drawable.ic_close), uiText("閉じる"), Modifier.size(18.dp))
                     }
                 }

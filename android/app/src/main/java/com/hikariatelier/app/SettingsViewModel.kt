@@ -60,7 +60,7 @@ internal class SettingsViewModel(private val repository: SettingsPersistence) : 
     var practiceTourOpen by mutableStateOf(false)
         private set
     fun startPracticeTour() { practiceTourOpen = true }
-    fun completePracticeTour(version: Int = BuildConfig.VERSION_CODE) {
+    fun completePracticeTour(version: Int = PRACTICE_TOUR_VERSION) {
         repository.completePracticeTour(version)
         practiceTourVersion = version
         practiceTourOpen = false

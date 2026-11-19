@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
@@ -116,11 +117,12 @@ internal fun SearchReplaceDialog(
                                 Column(
                                     Modifier
                                         .fillMaxWidth()
+                                        .clip(UNIT_COMPACT_CONTROL_SHAPE)
                                         .clickable {
                                             viewModel.showSearchDialog = false
                                             onNavigateToSource(match.file, match.line, TextRange(match.start, match.end))
                                         }
-                                        .padding(vertical = 10.dp)
+                                        .padding(horizontal = 4.dp, vertical = 10.dp)
                                 ) {
                                     Text(
                                         "${match.file}:${match.line}",

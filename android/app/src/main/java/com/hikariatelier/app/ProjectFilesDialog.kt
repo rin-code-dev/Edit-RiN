@@ -78,7 +78,7 @@ internal fun ProjectFilesDialog(
                             Text(name, modifier = Modifier.weight(1f), fontFamily = codeFontFamily)
                             Spacer(Modifier.width(8.dp))
                             Text(textTranslator("編集", emptyArray()), style = MaterialTheme.typography.labelSmall)
-                            IconButton(onClick = { onEditFile(name, content) }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onEditFile(name, content) }, shape = UNIT_COMPACT_CONTROL_SHAPE, modifier = Modifier.size(32.dp)) {
                                 Icon(painterResource(R.drawable.ic_more_vertical),
                                     textTranslator("ファイル設定", emptyArray()), Modifier.size(18.dp))
                             }

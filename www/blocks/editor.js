@@ -440,7 +440,7 @@
   async function textChoice(title,value){const dialog=$('actionDialog');$('dialogTitle').textContent=title;$('dialogDescription').textContent='';$('dialogChoices').replaceChildren();const input=document.createElement('input');input.type='text';input.value=value;input.setAttribute('aria-label',title);input.autocomplete='off';input.spellcheck=false;let result=null;const button=document.createElement('button');button.type='button';button.className='filled';button.textContent=words('適用','Apply','应用');button.onclick=()=>{if(input.value.trim()){result=input.value.trim();dialog.close('apply');}};$('dialogChoices').append(input,button);return new Promise(resolve=>{const done=()=>{dialog.removeEventListener('close',done);resolve(result);};dialog.addEventListener('close',done);dialog.returnValue='cancel';dialog.showModal();input.focus();input.select();});}
   async function semanticEdit(block,operation,source=state.source,revision=state.revision){
     ensureDocument(source,revision);const model=modelFor(block);if(!model||!state.editable||state.pending)throw new Error(tr('unsupported'));
-    const result=await ask('proposePatch',{projection:model.bound?state.projection:model.projection,operations:operation});if(!result.ok)throw new Error(result.error||tr('unsupported'));
+    const result=await ask('proposePatch',{projection:model.bound?state.projection:model.projection,operations:operation});if(!result.ok)throw new Error(authoringError(result));
     let metadata=await snapshotMetadata();
     if(!model.bound){const top=block.getRootBlock(),meta=JSON.parse(metadata),id=top.rinOrphanId||top.id,entry=meta.orphans.find(o=>o.id===id);if(!entry)throw new Error(tr('unsupported'));entry.source=chain(top).map(part=>{const path=nodeFor(part)?.path,node=result.projection.nodes.find(n=>n.path===path);if(!node)throw new Error(tr('unsupported'));return node.raw;}).join('\n');metadata=JSON.stringify(meta);}
     await submit(model.bound?result.patches:[],metadata,source,revision);
@@ -1448,7 +1448,7 @@
       }
     }
     if(!operations.length){if(events.some(e=>e.type==='create'||e.type==='delete'||e.type==='change'||e.type==='move'))await commit([]);return;}
-    const result=await ask('proposePatch',{projection,operations});if(!result.ok)throw new Error(result.error||tr('unsupported'));
+    const result=await ask('proposePatch',{projection,operations});if(!result.ok)throw new Error(authoringError(result));
     await commit(result.patches);
     }finally{state.processing=false;applyReadOnly();}
   }
@@ -1499,7 +1499,7 @@
       }
     }
     const result=operations.length?await ask('proposePatch',{projection:state.projection,operations}):{ok:true,patches:[]};
-    if(!result.ok)throw new Error(result.error||tr('unsupported'));
+    if(!result.ok)throw new Error(authoringError(result));
     const metadata=await snapshotMetadata();
     if(generation!==state.generation||inputVersion!==inputGeneration||source!==state.source||revision!==state.revision||
       state.pending||state.loading||state.processing||pendingEvents.length)
@@ -1556,7 +1556,31 @@
       ambiguous_canvas:['キャンバスを安全に変更できません。複数の作成処理などをコード画面で確認してください。','Cannot safely modify canvas. Check multiple setups in code.','无法安全更改画布。请在代码中检查多个或自定义画布。'],
       custom_audio_routing:['この音には独自のつなぎ方があります。左右の位置はコード画面で調整してください。','This audio uses custom routing. Adjust panning in code.','此音频使用自定义连接。请在代码中调整声像。'],
       sound_disabled:[tr('sound'),tr('sound'),tr('sound')],
-      invalid_source:[tr('syntax'),tr('syntax'),tr('syntax')]
+      invalid_source:[tr('syntax'),tr('syntax'),tr('syntax')],
+      ambiguous_branch:['条件によって実行結果が変わるため、安全に変更できません。コード画面で確認してください。','Cannot safely modify because execution varies across branches. Check in code.','由于不同分支的执行结果不一致，无法安全修改。请在代码中检查。'],
+      unsupported_binding:['この宣言や代入の書き方はブロック編集に対応していません。コード画面で確認してください。','This declaration or binding form is not supported in blocks. Check in code.','积木编辑不支持此声明或绑定写法。请在代码中检查。'],
+      unbound_name:['定義されていない名前が使われています。変数を作るかコード画面で確認してください。','An undefined name is referenced. Create the variable or check in code.','引用了未定义的名称。请创建变量或在代码中检查。'],
+      external_binding:['外部の変数を変更する記述はブロックでは安全に編集できません。コード画面で確認してください。','External variable bindings cannot be safely edited with blocks. Check in code.','无法通过积木安全编辑外部变量绑定。请在代码中检查。'],
+      reflective_global:['window や globalThis を使った動的な参照が含まれるため、コード画面で編集してください。','Dynamic global access cannot be edited here. Please edit in code.','包含动态全局访问，请在代码中编辑。'],
+      complex_parameters:['分割代入や可変長引数などを含むため、コード画面で編集してください。','Complex parameter syntax is present. Please edit in code.','包含复杂参数语法，请在代码中编辑。'],
+      name_collision:['同じ名前がすでに別の用途で使われています。別の名前を指定してください。','That name is already used for something else. Please choose another name.','该名称已被其他用途占用，请使用其他名称。'],
+      name_capture:['内側の変数名とぶつかるため、このまま変更できません。別の名前にしてください。','This name conflicts with an inner variable. Please choose a different name.','此名称与内部变量冲突，请更换名称。'],
+      invalid_argument:['引数の値が正しくありません。数値や式を確認してください。','Invalid argument value. Please check the number or expression.','参数值无效，请检查数值或表达式。'],
+      invalid_list_index:['リストの番号（インデックス）が正しくありません。0以上の整数を確認してください。','Invalid list index. Please enter a non-negative integer or valid expression.','列表索引无效，请输入有效的非负整数或表达式。'],
+      unsupported_list:['このリスト操作は現在のブロック構文では編集できません。コード画面で確認してください。','This list operation cannot be edited as a block. Check in code.','无法将此列表操作作为积木编辑。请在代码中检查。'],
+      unsupported_call:['この関数呼び出しはブロック編集に対応していません。コード画面で確認してください。','This function call is not supported in block editing. Check in code.','积木编辑不支持此函数调用。请在代码中检查。'],
+      event_parameters:['独自の引数付きイベントが定義されています。コード画面で確認してください。','This event has custom parameters. Please check in code.','此事件包含自定义参数，请在代码中检查。'],
+      ambiguous_function:['関数の定義場所や使われ方を特定できません。コード画面で確認してください。','Cannot uniquely resolve this function definition. Check in code.','无法唯一确定此函数定义。请在代码中检查。'],
+      escaped_function:['関数が別の変数や引数に渡されているため、安全に変更できません。コード画面で確認してください。','This function reference is passed around and cannot be safely rewritten. Check in code.','此函数被作为值传递，无法安全修改。请在代码中检查。'],
+      spread_arguments:['スプレッド構文（...）を含む呼び出しはコード画面で編集してください。','Calls using spread syntax (...) must be edited in code.','包含展开语法 (...) 的调用请在代码中编辑。'],
+      arguments_object:['arguments オブジェクトを使う処理はコード画面で編集してください。','Code using the arguments object must be edited in code.','使用 arguments 对象的代码请在代码中编辑。'],
+      used_parameter:['別の処理で使われている引数のため変更できません。','Cannot modify a parameter that is referenced elsewhere.','无法修改已在其他处使用的参数。'],
+      unsupported_color:['この色の書き方はブロックでは変更できません。標準の #RRGGBB 形式や数値を使ってください。','This color format cannot be edited here. Use #RRGGBB or numeric values.','此处无法编辑该颜色格式，请使用 #RRGGBB 或数值。'],
+      unknown_event:['指定されたイベントはブロック追加に対応していません。','The selected event is not supported for block insertion.','不支持向所选事件插入积木。'],
+      invalid_change:['この変更内容は現在の作品構造に適用できません。コード画面で確認してください。','This change cannot be applied to the current code structure. Check in code.','无法将此更改应用到当前代码结构。请在代码中检查。'],
+      unknown_action:['不明なブロック操作が指定されました。','An unknown block action was requested.','请求了未知的积木操作。'],
+      asset_kind:['選択した素材の種類（画像／音声）がブロックと一致していません。','The selected asset kind (image/audio) does not match this block.','所选素材类型（图像/音频）与此积木不匹配。'],
+      webgl_confirmation:['3D（WEBGL）への切り替え確認が必要です。コード内の createCanvas を確認してください。','Confirmation is required to switch to 3D (WEBGL). Check createCanvas in code.','需要确认才能切换到 3D (WEBGL)。请检查代码中的 createCanvas。']
     };
     const row=messages[result.errorCode];
     if(row)return row[language==='en'?1:language==='zh'?2:0];
@@ -1860,7 +1884,7 @@
     if(template.category==='sound'&&!state.soundEnabled)status(tr('sound'),false);
     const editSource=state.source,editRevision=state.revision;
     setPalette(false);const expression=templateExpression(template);
-    if(location==='replace'&&expression){const value=selected||selectedBlock(),node=nodeFor(value);if(!node||value.workspace!==workspace||workspace.getBlockById(value.id)!==value||!modelFor(value)?.bound)throw new Error(tr('unsupported'));const result=await ask('proposePatch',{projection:state.projection,operations:{type:'replace',id:node.id,source:template.source}});if(!result.ok)throw new Error(result.error||tr('unsupported'));await submit(result.patches,await snapshotMetadata(),editSource,editRevision);return;}
+    if(location==='replace'&&expression){const value=selected||selectedBlock(),node=nodeFor(value);if(!node||value.workspace!==workspace||workspace.getBlockById(value.id)!==value||!modelFor(value)?.bound)throw new Error(tr('unsupported'));const result=await ask('proposePatch',{projection:state.projection,operations:{type:'replace',id:node.id,source:template.source}});if(!result.ok)throw new Error(authoringError(result));await submit(result.patches,await snapshotMetadata(),editSource,editRevision);return;}
     if(location==='tray'||expression){const parsed=await parseTemplate(template.source,expression);ensureDocument(editSource,editRevision);quiet(()=>{let previous=null,first=null;const suffix='t'+Date.now().toString(36);for(const nodeId of parsed.ids){const block=createTree(parsed.projection,nodeId,false,suffix);if(!first)first=block;if(previous?.nextConnection&&block.previousConnection)previous.nextConnection.connect(block.previousConnection);previous=block;}if(first){first.rinOrphanId=suffix;presentation.placeDetached(first);first.select();}});await submit([],await snapshotMetadata(),editSource,editRevision);return;}
     const rel=relation(selected||selectedStatement()),operation={type:'insert',parentId:null,input:'root',index:state.projection.rootIds.length,source:template.source};
     if((location==='before'||location==='after')&&rel){operation.parentId=rel.parentId;operation.input=rel.input;operation.index=rel.index+(location==='after'?1:0);}
@@ -1873,7 +1897,7 @@
       if(owner&&!owner.async)operations.push({type:'setField',id:owner.id,field:'async',value:true});
     }
     operations.push(operation);
-    const result=await ask('proposePatch',{projection:state.projection,operations});if(!result.ok)throw new Error(result.error||tr('unsupported'));await submit(result.patches,await snapshotMetadata(),editSource,editRevision);
+    const result=await ask('proposePatch',{projection:state.projection,operations});if(!result.ok)throw new Error(authoringError(result));await submit(result.patches,await snapshotMetadata(),editSource,editRevision);
   }
   async function replaceExample(id){const example=C.EXAMPLES.find(e=>e.id===id);if(!example)throw new Error('Unknown example');if(!state.editable||state.pending)throw new Error(tr('readOnly'));if(example.requiresSound&&!state.soundEnabled){status(tr('sound'),true);send({type:'openRuntime'});return false;}await submit([{start:0,end:state.source.length,text:example.source}],JSON.stringify({version:1,engine:null,orphans:[]}));return true;}
   async function duplicateBlock(block){if(!state.editable||state.pending)throw new Error(tr('readOnly'));const editSource=state.source,editRevision=state.revision;const source=await serialize(block),parsed=await parseTemplate(source,!!block.outputConnection),xy=block.getRelativeToSurfaceXY();ensureDocument(editSource,editRevision);quiet(()=>{let previous=null,first=null;const suffix='d'+Date.now().toString(36);for(const nodeId of parsed.ids){const copy=createTree(parsed.projection,nodeId,false,suffix);if(!first)first=copy;if(previous?.nextConnection&&copy.previousConnection)previous.nextConnection.connect(copy.previousConnection);previous=copy;}if(first){first.rinOrphanId=suffix;presentation.placeDetached(first,{x:xy.x+80,y:xy.y+80});first.select();}});await submit([],await snapshotMetadata(),editSource,editRevision);}

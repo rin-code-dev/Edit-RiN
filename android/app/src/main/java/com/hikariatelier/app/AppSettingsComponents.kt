@@ -68,6 +68,9 @@ internal fun ThemeChip(
         modifier = modifier,
         selected = selected,
         onClick = onClick,
+        shape = UNIT_CONTROL_SHAPE,
+        colors = unitFilterChipColors(),
+        border = unitFilterChipBorder(selected),
         label = {
             Text(
                 text = label,
@@ -131,7 +134,8 @@ internal fun SettingSwitchRow(
         Switch(
             checked = checked,
             enabled = enabled,
-            onCheckedChange = null
+            onCheckedChange = null,
+            colors = unitSwitchColors(colors)
         )
     }
 }

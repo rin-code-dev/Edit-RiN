@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -133,7 +134,9 @@ internal fun SnippetDialog(
                                 ListItem(
                                     headlineContent = { Text(text(snippet.title)) },
                                     supportingContent = { Text(text(snippet.placement)) },
-                                    modifier = Modifier.clickable { onInsert(snippet) }
+                                    modifier = Modifier
+                                        .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                        .clickable { onInsert(snippet) }
                                 )
                             }
                         }
@@ -186,7 +189,7 @@ internal fun ScreenshotScaleDialog(
                                     color = colors.primary
                                 )
                                 Text(
-                                    text = text(fullLabel).substringAfter("（").removeSuffix("）").removeSuffix(")"),
+                                    text = text(fullLabel).substringAfter("（").substringAfter("(").removeSuffix("）").removeSuffix(")"),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = colors.onSurfaceVariant,
                                     maxLines = 1

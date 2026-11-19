@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,18 +55,20 @@ internal fun ProjectInspectorSheet(
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg args: Any?): String = textTranslator(source, args)
 
-    ModalBottomSheet(
+    val landscape = isLandscapeLayout()
+    UnitModal(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        contentColor = colors.onSurface,
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+        maxWidth = adaptiveSheetMaxWidth(),
+        maxHeight = adaptiveSheetMaxHeight(),
+        windowSetup = { KeepLandscapeDialogImmersive() }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(top = 14.dp, bottom = if (landscape) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (landscape) 10.dp else 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -86,6 +89,9 @@ internal fun ProjectInspectorSheet(
                 }
                 FilledTonalButton(
                     onClick = onOpenTagsDialog,
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitTonalButtonColors(colors),
+                    border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.45f)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
@@ -144,8 +150,8 @@ internal fun ProjectInspectorSheet(
                 InspectorTab.RUNTIME_AND_RATIO -> {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = colors.surfaceContainerLow,
-                        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f))
+                        color = colors.surface,
+                        border = BorderStroke(1.dp, colors.outlineVariant)
                     ) {
                         Row(
                             modifier = Modifier
@@ -168,7 +174,8 @@ internal fun ProjectInspectorSheet(
                             }
                             Switch(
                                 checked = autoRunEnabled,
-                                onCheckedChange = onToggleAutoRun
+                                onCheckedChange = onToggleAutoRun,
+                                colors = unitSwitchColors(colors)
                             )
                         }
                     }
@@ -202,6 +209,9 @@ internal fun ProjectInspectorSheet(
                                 FilterChip(
                                     selected = selected,
                                     onClick = { onSelectAspectRatio(ratio) },
+                                    shape = UNIT_CONTROL_SHAPE,
+                                    colors = unitFilterChipColors(colors),
+                                    border = unitFilterChipBorder(selected, true, colors),
                                     label = {
                                         Text(
                                             text = previewAspectRatioLabel(ratio) { uiText(it) },
@@ -252,8 +262,8 @@ private fun InspectorCardRow(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
-        color = colors.surfaceContainerLow,
-        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f))
+        color = colors.surface,
+        border = BorderStroke(1.dp, colors.outlineVariant)
     ) {
         Row(
             modifier = Modifier
@@ -273,6 +283,9 @@ private fun InspectorCardRow(
             }
             FilledTonalButton(
                 onClick = onClick,
+                shape = UNIT_CONTROL_SHAPE,
+                colors = unitTonalButtonColors(colors),
+                border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.45f)),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(actionLabel, style = MaterialTheme.typography.labelMedium)

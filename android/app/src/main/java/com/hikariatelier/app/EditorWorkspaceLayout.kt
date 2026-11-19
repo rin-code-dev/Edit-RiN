@@ -100,6 +100,7 @@ internal data class EditorWorkspaceSlots(
     val galleryPreview: @Composable (Modifier) -> Unit = {},
     val previewChrome: @Composable (Modifier) -> Unit = {},
     val landscapeGalleryBar: @Composable () -> Unit = {},
+    val landscapeRail: (@Composable (Modifier) -> Unit)? = null,
 )
 
 @Composable
@@ -202,114 +203,164 @@ internal fun EditorWorkspaceLayout(
                         }
                     } else Modifier.fillMaxSize()
 
-                    Row(
+                    BoxWithConstraints(
                         modifier = workspaceSize
                             .then(if (galleryPresent) Modifier.clearAndSetSemantics {} else Modifier)
                             .focusProperties { if (galleryPresent) canFocus = false }
                             .onPreviewKeyEvent { galleryPresent }
-                            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
-                        horizontalArrangement = Arrangement.Start
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        val editorPane: @Composable RowScope.() -> Unit = {
-                            Column(
-                                modifier = Modifier
-                                    .weight(if (useFloatingPipInLandscape) 1f else (1f - state.animatedLandscapePreviewFraction))
-                                    .fillMaxHeight()
-                                    .clipToBounds()
-                            ) {
-                                AnimatedVisibility(
-                                    visible = !state.editorFocused && !useFloatingPipInLandscape,
-                                    enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
-                                    exit = fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
-                                ) {
-                                    Box(Modifier.galleryChrome(galleryProgress, GalleryPart.TITLE)) { slots.landscapeBar() }
-                                }
-
-                                AnimatedVisibility(
-                                    visible = state.showConsole,
-                                    enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
-                                    exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
-                                ) {
-                                    slots.console(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 6.dp))
-                                }
-
-                                AnimatedVisibility(
-                                    visible = state.previewActionsExpanded,
-                                    enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
-                                    exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
-                                ) {
-                                    slots.previewActions(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 6.dp))
-                                }
-
-                                Crossfade(
-                                    targetState = state.showParameterPanel,
-                                    animationSpec = tween(180),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxWidth()
-                                        .galleryEditorReveal(galleryProgress, true, state.landscapeEditorOnLeft),
-                                    label = "landscapeEditorParameterCrossfade"
-                                ) { isParameter ->
-                                    if (isParameter) {
-                                        slots.parameterPanel(Modifier.fillMaxSize())
-                                    } else {
-                                        editorContent(Modifier.fillMaxSize())
-                                    }
-                                }
-
-                                slots.completions(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 6.dp))
-
-                                AnimatedVisibility(
-                                    visible = state.editorFocused && state.showEditorAccessoryBar,
-                                    enter = fadeIn(tween(120)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
-                                    exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
-                                ) {
-                                    slots.accessory(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 6.dp))
-                                }
-                            }
+                        val dividerWidth = if (state.showResizeHandles) 18.dp else 8.dp
+                        val isSquareWork = kotlin.math.abs(state.workPreviewRatio - 1f) < 0.01f
+                        val previewPaneWidth = ((maxWidth - dividerWidth) * state.animatedLandscapePreviewFraction)
+                            .coerceAtLeast(0.dp)
+                        val alignedRowHeight = if (
+                            !useFloatingPipInLandscape &&
+                            !state.keyboardVisible &&
+                            isSquareWork &&
+                            state.animatedLandscapePreviewFraction >= 0.49f &&
+                            previewPaneWidth in 220.dp..maxHeight
+                        ) {
+                            previewPaneWidth
+                        } else {
+                            maxHeight
                         }
 
-                        val dividerHandle: @Composable RowScope.() -> Unit = {
-                            LandscapeSplitDivider(
-                                showResizeHandles = state.showResizeHandles,
-                                landscapeEditorOnLeft = state.landscapeEditorOnLeft,
-                                landscapePreviewFraction = state.landscapePreviewFraction,
-                                currentFraction = currentLandscapePreviewFraction.value,
-                                showLandscapeSplitLabel = state.showLandscapeSplitLabel,
-                                colors = colors,
-                                hapticFeedback = hapticFeedback,
-                                onSplitChanged = { next -> actions.onSplitChanged(next) },
-                                onLabelVisibilityChanged = { actions.onSplitLabelChanged(it) },
-                                textTranslator = textTranslator,
-                                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.SECONDARY)
-                            )
-                        }
-
-                        val previewPane: @Composable RowScope.() -> Unit = {
-                            BoxWithConstraints(
-                                modifier = Modifier
-                                    .weight(state.animatedLandscapePreviewFraction)
-                                    .fillMaxHeight()
-                            ) {
-                                val previewSize = fitPreviewSize(maxWidth.value, maxHeight.value, state.workPreviewRatio)
-                                slots.preview(
-                                    Modifier
-                                        .size(previewSize.width.dp, previewSize.height.dp)
-                                        .align(Alignment.Center)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(alignedRowHeight),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val hasLandscapeRail = slots.landscapeRail != null
+                            val railPane: @Composable () -> Unit = {
+                                slots.landscapeRail?.invoke(
+                                    Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS)
                                 )
                             }
-                        }
+                            val editorColumn: @Composable (Modifier) -> Unit = { editorModifier ->
+                                Column(
+                                    modifier = editorModifier
+                                        .fillMaxHeight()
+                                        .clipToBounds()
+                                ) {
+                                    if (!hasLandscapeRail) {
+                                        AnimatedVisibility(
+                                            visible = !state.editorFocused && !useFloatingPipInLandscape,
+                                            enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
+                                            exit = fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
+                                        ) {
+                                            Box(Modifier.galleryChrome(galleryProgress, GalleryPart.TITLE)) { slots.landscapeBar() }
+                                        }
+                                    }
 
-                        if (useFloatingPipInLandscape) {
-                            editorPane()
-                        } else if (state.landscapeEditorOnLeft) {
-                            editorPane()
-                            dividerHandle()
-                            previewPane()
-                        } else {
-                            previewPane()
-                            dividerHandle()
-                            editorPane()
+                                    AnimatedVisibility(
+                                        visible = state.showConsole,
+                                        enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                                        exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
+                                    ) {
+                                        slots.console(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 4.dp))
+                                    }
+
+                                    AnimatedVisibility(
+                                        visible = state.previewActionsExpanded,
+                                        enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                                        exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
+                                    ) {
+                                        slots.previewActions(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 4.dp))
+                                    }
+
+                                    Crossfade(
+                                        targetState = state.showParameterPanel,
+                                        animationSpec = tween(180),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth()
+                                            .galleryEditorReveal(galleryProgress, true, state.landscapeEditorOnLeft),
+                                        label = "landscapeEditorParameterCrossfade"
+                                    ) { isParameter ->
+                                        if (isParameter) {
+                                            slots.parameterPanel(Modifier.fillMaxSize())
+                                        } else {
+                                            editorContent(Modifier.fillMaxSize())
+                                        }
+                                    }
+
+                                    slots.completions(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 4.dp))
+
+                                    AnimatedVisibility(
+                                        visible = state.editorFocused && state.showEditorAccessoryBar,
+                                        enter = fadeIn(tween(120)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
+                                        exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
+                                    ) {
+                                        slots.accessory(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 4.dp))
+                                    }
+                                }
+                            }
+
+                            val editorSidePane: @Composable RowScope.() -> Unit = {
+                                Row(
+                                    modifier = Modifier
+                                        .weight(if (useFloatingPipInLandscape) 1f else (1f - state.animatedLandscapePreviewFraction))
+                                        .fillMaxHeight(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (hasLandscapeRail && state.landscapeEditorOnLeft) {
+                                        railPane()
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    editorColumn(Modifier.weight(1f))
+                                    if (hasLandscapeRail && !state.landscapeEditorOnLeft) {
+                                        Spacer(Modifier.width(8.dp))
+                                        railPane()
+                                    }
+                                }
+                            }
+
+                            val dividerHandle: @Composable RowScope.() -> Unit = {
+                                LandscapeSplitDivider(
+                                    showResizeHandles = state.showResizeHandles,
+                                    landscapeEditorOnLeft = state.landscapeEditorOnLeft,
+                                    landscapePreviewFraction = state.landscapePreviewFraction,
+                                    currentFraction = currentLandscapePreviewFraction.value,
+                                    showLandscapeSplitLabel = state.showLandscapeSplitLabel,
+                                    colors = colors,
+                                    hapticFeedback = hapticFeedback,
+                                    onSplitChanged = { next -> actions.onSplitChanged(next) },
+                                    onLabelVisibilityChanged = { actions.onSplitLabelChanged(it) },
+                                    textTranslator = textTranslator,
+                                    modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.SECONDARY)
+                                )
+                            }
+
+                            val previewPane: @Composable RowScope.() -> Unit = {
+                                BoxWithConstraints(
+                                    modifier = Modifier
+                                        .weight(state.animatedLandscapePreviewFraction)
+                                        .fillMaxHeight()
+                                ) {
+                                    val previewSize = fitPreviewSize(maxWidth.value, maxHeight.value, state.workPreviewRatio)
+                                    slots.preview(
+                                        Modifier
+                                            .size(previewSize.width.dp, previewSize.height.dp)
+                                            .align(Alignment.Center)
+                                    )
+                                }
+                            }
+
+                            if (useFloatingPipInLandscape) {
+                                editorSidePane()
+                            } else if (state.landscapeEditorOnLeft) {
+                                editorSidePane()
+                                dividerHandle()
+                                previewPane()
+                            } else {
+                                previewPane()
+                                dividerHandle()
+                                editorSidePane()
+                            }
                         }
                     }
                     if (useFloatingPipInLandscape) {

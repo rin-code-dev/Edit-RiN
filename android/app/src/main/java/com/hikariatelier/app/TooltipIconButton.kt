@@ -9,6 +9,7 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 
 /** Icon-only buttons are hard to decode; a long press shows what they do. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -18,6 +19,7 @@ internal fun TooltipIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    shape: Shape = UNIT_CONTROL_SHAPE,
     content: @Composable () -> Unit
 ) {
     TooltipBox(
@@ -25,6 +27,12 @@ internal fun TooltipIconButton(
         tooltip = { PlainTooltip { Text(label) } },
         state = rememberTooltipState()
     ) {
-        IconButton(onClick = onClick, modifier = modifier, enabled = enabled, content = content)
+        IconButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            shape = shape,
+            content = content
+        )
     }
 }

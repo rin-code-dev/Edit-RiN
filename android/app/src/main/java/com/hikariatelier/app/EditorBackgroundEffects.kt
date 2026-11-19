@@ -43,7 +43,8 @@ internal fun rememberProjectCompletionSymbols(
             .toMutableMap().apply { put(file, text) }
     }
     val result by produceState<Pair<String, List<ProjectSymbol>>>("" to emptyList(), workId, sources) {
-        if (sources.values.sumOf { it.length } >= 8_000) delay(120)
+        val totalLen = sources.values.sumOf { it.length }
+        delay(if (totalLen >= 8_000) 120 else 50)
         value = workId to withContext(Dispatchers.Default) { cache.symbols(sources) { ensureActive() } }
     }
     return result.second.takeIf { result.first == workId }.orEmpty()
