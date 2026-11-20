@@ -38,4 +38,68 @@ class ProjectSearchTest {
         assertTrue(match.excerpt.length <= 202)
         assertEquals("needle", code.substring(match.start, match.end))
     }
+
+    @Test fun findsCompactGalleryCodeMatchesAcrossFilesAndMultiTokenQueries() {
+        val sources = mapOf(
+            "sketch.js" to "function setup() {\n  createCanvas(400, 400);\n}\nfunction draw() {\n  circle(200, 200, 50);\n}",
+            "shader.frag" to "precision mediump float;\nfloat n = perlinNoise(uv);\nfloat m = perlinNoise(uv * 2.0);"
+        )
+        val fragMatch = findFirstCodeMatchInSources("w1", sources, "perlinNoise")!!
+        assertEquals("shader.frag", fragMatch.file)
+        assertEquals(2, fragMatch.line)
+        assertEquals(2, fragMatch.matchCount)
+        assertTrue(fragMatch.excerpt.contains("perlinNoise"))
+
+        val multiLineMatch = findFirstCodeMatchInSources("w1", sources, "createCanvas circle")!!
+        assertEquals("sketch.js", multiLineMatch.file)
+        assertEquals(2, multiLineMatch.line)
+        assertEquals("createCanvas", multiLineMatch.matchedToken)
+
+        assertNull(findFirstCodeMatchInSources("w1", sources, "nonexistentToken"))
+        assertNull(findFirstCodeMatchInSources("w1", sources, "   "))
+    }
+
+    @Test fun extractsCodeOutlineForJsFunctionsClassesArrowsSectionsAndGlsl() {
+        val js = """
+            // --- Setup & State ---
+            /*
+            function ignoredInBlockComment() {}
+            */
+            function setup() {
+              createCanvas(400, 400);
+            }
+            class Particle {}
+            const updateField = (dt) => dt * 2;
+            // === Render ===
+            async function draw() {}
+        """.trimIndent()
+        val jsOutline = extractCodeOutline(js, "sketch.js")
+        assertEquals(
+            listOf(
+                CodeOutlineItem(CodeOutlineKind.SECTION, "Setup & State", 1),
+                CodeOutlineItem(CodeOutlineKind.FUNCTION, "setup()", 5),
+                CodeOutlineItem(CodeOutlineKind.CLASS, "Particle", 8),
+                CodeOutlineItem(CodeOutlineKind.FUNCTION, "updateField()", 9),
+                CodeOutlineItem(CodeOutlineKind.SECTION, "Render", 10),
+                CodeOutlineItem(CodeOutlineKind.FUNCTION, "draw()", 11)
+            ),
+            jsOutline
+        )
+
+        val glsl = """
+            precision mediump float;
+            // --- Noise ---
+            float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+            void main() { gl_FragColor = vec4(1.0); }
+        """.trimIndent()
+        val glslOutline = extractCodeOutline(glsl, "effect.frag")
+        assertEquals(
+            listOf(
+                CodeOutlineItem(CodeOutlineKind.SECTION, "Noise", 2),
+                CodeOutlineItem(CodeOutlineKind.FUNCTION, "hash()", 3),
+                CodeOutlineItem(CodeOutlineKind.FUNCTION, "main()", 4)
+            ),
+            glslOutline
+        )
+    }
 }

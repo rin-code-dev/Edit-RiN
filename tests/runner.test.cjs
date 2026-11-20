@@ -523,6 +523,180 @@ test('choice parameters update in rinParams via __editRinSetParameter and enforc
   assert.equal(r.context.window.rinParams.other, undefined);
 });
 
+test('2D XY parameters (object and array) update via __editRinSetParameter with strict type safety', () => {
+  let boundObj = { x: 0.5, y: 0.5 };
+  let boundArr = [10, 20];
+  const r = runner('function setup() {}', {}, {
+    Android: {
+      getSketchCode: () => 'function setup() {}',
+      getProjectConfig: () => '{}',
+      getWorkParameters: () => JSON.stringify({ pos: { x: 0.5, y: 0.5 }, vec: [10, 20] }),
+      getP5Version: () => '1.11.5',
+      isP5SoundEnabled: () => false,
+      onStatusChanged: () => {},
+      onError: () => {},
+      onRuntimeError: () => {},
+      onRecordingStatusChanged: () => {},
+      onCaptureError: () => {}
+    }
+  });
+  r.context.window.__editRinParameterBindings = {
+    pos: v => { boundObj = v; },
+    vec: v => { boundArr = v; }
+  };
+
+  assert.equal(JSON.stringify(r.context.window.rinParams.pos), JSON.stringify({ x: 0.5, y: 0.5 }));
+  assert.equal(JSON.stringify(r.context.window.rinParams.vec), JSON.stringify([10, 20]));
+
+  // Valid object update
+  r.context.window.__editRinSetParameter('pos', { x: 0.25, y: 0.75 });
+  assert.equal(JSON.stringify(r.context.window.rinParams.pos), JSON.stringify({ x: 0.25, y: 0.75 }));
+  assert.equal(JSON.stringify(boundObj), JSON.stringify({ x: 0.25, y: 0.75 }));
+
+  // Reject mismatched or non-finite object payloads
+  r.context.window.__editRinSetParameter('pos', [0.1, 0.2]);
+  r.context.window.__editRinSetParameter('pos', { x: NaN, y: 0.5 });
+  r.context.window.__editRinSetParameter('pos', { x: 0.1, y: Infinity });
+  r.context.window.__editRinSetParameter('pos', 42);
+  assert.equal(JSON.stringify(r.context.window.rinParams.pos), JSON.stringify({ x: 0.25, y: 0.75 }));
+
+  // Valid array update
+  r.context.window.__editRinSetParameter('vec', [-5, 40]);
+  assert.equal(JSON.stringify(r.context.window.rinParams.vec), JSON.stringify([-5, 40]));
+  assert.equal(JSON.stringify(boundArr), JSON.stringify([-5, 40]));
+
+  // Reject mismatched or non-finite array payloads
+  r.context.window.__editRinSetParameter('vec', { x: 1, y: 2 });
+  r.context.window.__editRinSetParameter('vec', [1, 2, 3]);
+  r.context.window.__editRinSetParameter('vec', [1, NaN]);
+  r.context.window.__editRinSetParameter('vec', 'bad');
+  assert.equal(JSON.stringify(r.context.window.rinParams.vec), JSON.stringify([-5, 40]));
+});
+
+test('stepSketchFrame pauses, advances one frame, updates HUD metrics, and __editRinEvalConsole evaluates safely', () => {
+  const hudEvents = [];
+  const evalResults = [];
+  let rafStepped = 0;
+  const r = runner('function setup() {}', {}, {
+    frameCount: 10,
+    width: 320,
+    height: 240,
+    redraw() { this.frameCount += 1; },
+    Android: {
+      getSketchCode: () => 'function setup() {}',
+      getProjectConfig: () => '{}',
+      getWorkParameters: () => '{}',
+      getP5Version: () => '1.11.5',
+      isP5SoundEnabled: () => false,
+      onStatusChanged: () => {},
+      onError: () => {},
+      onRuntimeError: () => {},
+      onRecordingStatusChanged: () => {},
+      onCaptureError: () => {},
+      onHudMetrics: (_token, json) => hudEvents.push(JSON.parse(json)),
+      onConsoleEvalResult: (_token, json) => evalResults.push(JSON.parse(json))
+    }
+  });
+  const token = r.context.window.__editRinRunToken;
+
+  // Enable HUD and step one frame (including a queued artwork RAF)
+  r.context.window.__editRinSetHudEnabled(true);
+  assert.ok(hudEvents.length >= 1);
+  r.context.window.pauseSketch();
+  r.context.window.requestAnimationFrame(() => { rafStepped += 1; });
+  assert.equal(rafStepped, 0);
+
+  const beforeMetrics = r.context.window.__editRinReadHudMetrics();
+  const stepped = r.context.window.stepSketchFrame();
+  assert.equal(stepped, true);
+  assert.equal(rafStepped, 1);
+  const afterMetrics = r.context.window.__editRinReadHudMetrics();
+  assert.equal(afterMetrics.paused, true);
+  assert.equal(afterMetrics.fps, 0);
+  assert.equal(afterMetrics.frameCount, beforeMetrics.frameCount + 1);
+  assert.equal(afterMetrics.width, 320);
+  assert.equal(afterMetrics.height, 240);
+
+  // Evaluate expressions, object literals, cyclic objects, errors, and reject stale tokens
+  r.context.window.__editRinEvalConsole(token, '1 + 2 * 3');
+  assert.deepEqual(evalResults.at(-1), { ok: true, value: '7' });
+
+  r.context.window.__editRinEvalConsole(token, '{ a: 1, b: "ok" }');
+  assert.deepEqual(evalResults.at(-1), { ok: true, value: '{a: 1, b: "ok"}' });
+
+  r.context.window.__editRinEvalConsole(token, '(() => { const o = {}; o.self = o; return o; })()');
+  assert.equal(evalResults.at(-1).ok, true);
+  assert.ok(evalResults.at(-1).value.includes('[Circular]'));
+
+  r.context.window.__editRinEvalConsole(token, 'unknownSymbolXYZ');
+  assert.equal(evalResults.at(-1).ok, false);
+  assert.ok(evalResults.at(-1).error.includes('ReferenceError'));
+
+  const countBeforeStale = evalResults.length;
+  r.context.window.__editRinEvalConsole('stale-token', '42');
+  assert.equal(evalResults.length, countBeforeStale);
+
+  r.context.window.__editRinSetHudEnabled(false);
+});
+
+test('frame-sync GIF recording steps exact frame count and restores playback state', async () => {
+  let redrawCount = 0;
+  let capturedFrames = 0;
+  let loopCalls = 0;
+  let noLoopCalls = 0;
+  const r = runner('function setup() {}', {}, {
+    frameCount: 1,
+    width: 120,
+    height: 120,
+    noLoop() { noLoopCalls += 1; },
+    loop() { loopCalls += 1; },
+    redraw() { this.frameCount += 1; redrawCount += 1; },
+    URL: { createObjectURL: () => 'blob:gif-worker', revokeObjectURL() {} }
+  });
+  r.context.drawingContext.getImageData = (_x, _y, w, h) => ({
+    data: new Uint8ClampedArray(w * h * 4)
+  });
+  r.context.Worker = class {
+    postMessage(msg) {
+      if (msg.type === 'frame') {
+        capturedFrames += 1;
+        queueMicrotask(() => this.onmessage?.({ data: { type: 'ready' } }));
+      } else if (msg.type === 'finish') {
+        queueMicrotask(() => this.onmessage?.({ data: { type: 'done', blob: new Blob(['GIF89a']) } }));
+      }
+    }
+    terminate() {}
+  };
+  r.context.FileReader = class {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then(bytes => {
+        this.result = 'data:image/gif;base64,' + Buffer.from(bytes).toString('base64');
+        this.onload();
+      });
+    }
+  };
+  let finishedMime = null;
+  r.context.Android.beginRecordingTransfer = () => true;
+  r.context.Android.appendRecordingChunk = () => true;
+  r.context.Android.finishRecordingTransfer = (_owner, _id, mime) => { finishedMime = mime; };
+
+  r.setup();
+  r.flush();
+
+  // Request 1000ms frame-sync GIF -> 30 exact frames
+  r.context.__editKiroStartRecording('gif', 5000000, 1000, true);
+  for (let i = 0; i < 80 && !finishedMime; i++) {
+    r.flush();
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.deepEqual(r.errors, []);
+  assert.equal(capturedFrames, 30);
+  assert.equal(redrawCount, 29);
+  assert.equal(finishedMime, 'image/gif');
+  assert.ok(noLoopCalls >= 1);
+  assert.ok(loopCalls >= 1);
+});
+
 test('bundled WebGPU.js uses WEBGPU when available and WEBGL otherwise', async () => {
   for (const [gpu, expected] of [[{requestAdapter: async () => ({})}, 'webgpu'], [{requestAdapter: async () => null}, 'webgl'], [undefined, 'webgl']]) {
     let renderer = null;

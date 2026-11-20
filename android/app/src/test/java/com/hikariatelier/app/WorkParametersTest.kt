@@ -209,4 +209,99 @@ class WorkParametersTest {
         assertTrue(updateParameterInSource(source, declaration, "2")!!.startsWith("const speed = 2"))
         assertEquals("const speed = 1;", prepareLiveParameterSource("const speed = 1;"))
     }
+
+    @Test fun parsesPoint2DParametersBothLegacyAndInlineAndSerializesCorrectly() {
+        val code = """
+            // @rin xy origin "Origin" 0 1 0.5 0 2 1.0 0.05
+            let pos = { x: 0.25, y: 0.75 }; // @xy(0, 1) "Position"
+            const vec = [-10, 20]; // @xy(-100, 100, -50, 50, 1) "Vector"
+            let bad = { x: 0, y: 0 }; // @xy(5, 1)
+        """.trimIndent()
+        val params = workParameters(mapOf("sketch.js" to code))
+        assertEquals(listOf("origin", "pos", "vec"), params.map { it.name })
+
+        val origin = params[0] as WorkParameter.Point2D
+        assertEquals("0.50,1.00", origin.defaultValue)
+        assertEquals(false, origin.arrayStyle)
+
+        val pos = params[1] as WorkParameter.Point2D
+        assertEquals("Position", pos.label)
+        assertEquals("0.25,0.75", pos.defaultValue)
+        assertEquals(false, pos.arrayStyle)
+
+        val vec = params[2] as WorkParameter.Point2D
+        assertEquals("-10,20", vec.defaultValue)
+        assertEquals(true, vec.arrayStyle)
+
+        val json = JSONObject(parameterValuesJson(params, mapOf("origin" to "0.25,1.50", "vec" to "15,-25")))
+        assertEquals(0.25, json.getJSONObject("origin").getDouble("x"), 0.001)
+        assertEquals(1.50, json.getJSONObject("origin").getDouble("y"), 0.001)
+        assertEquals(15.0, json.getJSONArray("vec").getDouble(0), 0.001)
+        assertEquals(-25.0, json.getJSONArray("vec").getDouble(1), 0.001)
+
+        val updatedPos = updateParameterInSource(code, pos, "0.80,0.20")!!
+        assertTrue(updatedPos.contains("let pos = { x: 0.80, y: 0.20 }; // @xy(0, 1) \"Position\""))
+
+        val updatedVec = updateParameterInSource(updatedPos, vec, "30,-40")!!
+        assertTrue(updatedVec.contains("const vec = [30, -40]; // @xy(-100, 100, -50, 50, 1) \"Vector\""))
+
+        val updatedOrigin = updateParameterInSource(updatedVec, origin, "0.10,1.90")!!
+        assertTrue(updatedOrigin.contains("// @rin xy origin \"Origin\" 0 1 0.10 0 2 1.90 0.05"))
+
+        val runtime = prepareLiveParameterSource("const vec = [-10, 20]; // @xy(-100, 100, -50, 50, 1)")
+        assertTrue(runtime.startsWith("let vec = [-10, 20];"))
+        assertTrue(runtime.contains("__editRinParameterBindings"))
+    }
+
+    @Test fun interpolatesAllParameterTypesAndRespectsLocks() {
+        val code = """
+            // @rin number speed "Speed" 0 10 0 0.5
+            // @rin color ink "Ink" #000000
+            // @rin boolean glow "Glow" false
+            // @rin choice shape "Shape" circle circle square
+            // @rin xy pos "Pos" 0 10 0 0 10 0 0.5
+        """.trimIndent()
+        val params = workParameters(mapOf("sketch.js" to code))
+        val from = mapOf("speed" to "0", "ink" to "#000000", "glow" to "false", "shape" to "circle", "pos" to "0.0,0.0")
+        val to = mapOf("speed" to "10", "ink" to "#FF8040", "glow" to "true", "shape" to "square", "pos" to "10.0,4.0")
+
+        val mid = interpolateWorkParameters(params, from, to, 0.5f, lockedNames = setOf("glow"))
+        assertEquals("5.0", mid["speed"])
+        assertEquals("#804020", mid["ink"])
+        assertEquals("false", mid["glow"]) // locked!
+        assertEquals("square", mid["shape"]) // threshold >= 0.5
+        assertEquals("5.0,2.0", mid["pos"])
+
+        val early = interpolateWorkParameters(params, from, to, 0.25f)
+        assertEquals("2.5", early["speed"])
+        assertEquals("false", early["glow"])
+        assertEquals("circle", early["shape"])
+        assertEquals("2.5,1.0", early["pos"])
+
+        val end = interpolateWorkParameters(params, from, to, 1f)
+        assertEquals("10.0", end["speed"])
+        assertEquals("#FF8040", end["ink"])
+        assertEquals("true", end["glow"])
+        assertEquals("square", end["shape"])
+        assertEquals("10.0,4.0", end["pos"])
+    }
+
+    @Test fun parameterPresetsRoundTripThroughWorkStoreCodecWithLimitAndBackwardCompat() {
+        val presets = List(MAX_PARAMETER_PRESETS + 3) { i ->
+            WorkParameterPreset(id = "p-$i", name = "Look ${i + 1}", values = mapOf("speed" to "$i", "pos" to "0.5,0.5"))
+        }
+        val work = Work("w1", "Preset Work", "", parameterPresets = presets)
+        assertEquals(MAX_PARAMETER_PRESETS, work.parameterPresets.size)
+
+        val serialized = serializeWorkStore(listOf(work), work.id)
+        val restored = parseWorkStoreJson(serialized)!!.works.single()
+        assertEquals(MAX_PARAMETER_PRESETS, restored.parameterPresets.size)
+        assertEquals("Look 1", restored.parameterPresets.first().name)
+        assertEquals("0.5,0.5", restored.parameterPresets.first().values["pos"])
+
+        val noPresetsWork = Work("w2", "Plain", "")
+        val plainJson = serializeWorkStore(listOf(noPresetsWork), noPresetsWork.id)
+        assertTrue(!plainJson.contains("parameterPresets"))
+        assertTrue(parseWorkStoreJson(plainJson)!!.works.single().parameterPresets.isEmpty())
+    }
 }

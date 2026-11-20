@@ -31,19 +31,22 @@ private fun smoothGalleryPhase(value: Float, start: Float, end: Float): Float {
 }
 
 /** Near-position scale and a small lift preserve the toolbar's measured slots. */
-internal fun Modifier.galleryChrome(progress: Float, part: GalleryPart, order: Int = 0): Modifier =
+internal fun Modifier.galleryChrome(progress: () -> Float, part: GalleryPart, order: Int = 0): Modifier =
     graphicsLayer {
-        val exposure = galleryExposure(progress, part, order)
+        val exposure = galleryExposure(progress(), part, order)
         alpha = exposure
         scaleX = 0.92f + 0.08f * exposure
         scaleY = scaleX
         translationY = 6f * density * (1f - exposure)
     }
 
+internal fun Modifier.galleryChrome(progress: Float, part: GalleryPart, order: Int = 0): Modifier =
+    galleryChrome({ progress }, part, order)
+
 /** Reveal the measured editor from the preview edge without reflowing code or the WebView. */
-internal fun Modifier.galleryEditorReveal(progress: Float, landscape: Boolean, editorOnLeft: Boolean): Modifier =
+internal fun Modifier.galleryEditorReveal(progress: () -> Float, landscape: Boolean, editorOnLeft: Boolean): Modifier =
     graphicsLayer {
-        val exposure = galleryExposure(progress, GalleryPart.EDITOR)
+        val exposure = galleryExposure(progress(), GalleryPart.EDITOR)
         alpha = 0.35f + 0.65f * exposure
         transformOrigin = TransformOrigin(if (landscape && editorOnLeft) 1f else 0f, 0f)
         scaleX = if (landscape) 0.98f + 0.02f * exposure else 1f
@@ -51,7 +54,7 @@ internal fun Modifier.galleryEditorReveal(progress: Float, landscape: Boolean, e
         translationX = if (landscape) (if (editorOnLeft) 1f else -1f) * 18f * density * (1f - exposure) else 0f
         translationY = if (landscape) 0f else -18f * density * (1f - exposure)
     }.drawWithContent {
-        val exposure = galleryExposure(progress, GalleryPart.EDITOR)
+        val exposure = galleryExposure(progress(), GalleryPart.EDITOR)
         if (landscape) {
             clipRect(left = if (editorOnLeft) size.width * (1f - exposure) else 0f,
                 right = if (editorOnLeft) size.width else size.width * exposure) { this@drawWithContent.drawContent() }
@@ -59,3 +62,6 @@ internal fun Modifier.galleryEditorReveal(progress: Float, landscape: Boolean, e
             clipRect(bottom = size.height * exposure) { this@drawWithContent.drawContent() }
         }
     }
+
+internal fun Modifier.galleryEditorReveal(progress: Float, landscape: Boolean, editorOnLeft: Boolean): Modifier =
+    galleryEditorReveal({ progress }, landscape, editorOnLeft)

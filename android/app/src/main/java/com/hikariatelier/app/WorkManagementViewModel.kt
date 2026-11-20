@@ -104,6 +104,7 @@ internal class WorkManagementViewModel(
         private set
     var p5Error by mutableStateOf<String?>(null)
     private val parameterDrafts = mutableStateMapOf<String, Map<String, String>>()
+    private val presetDrafts = mutableStateMapOf<String, List<WorkParameterPreset>>()
     private val ratioDrafts = mutableStateMapOf<String, String>()
     private val parameterJobs = mutableMapOf<String, Job>()
     private var commandJob: Job? = null
@@ -416,6 +417,7 @@ internal class WorkManagementViewModel(
     private data class CommandRequest(
         val workId: String, val folder: Uri?, val editorText: String, val editedText: String?,
         val files: Map<String, String>, val blocks: Map<String, String?>, val parameters: Map<String, Map<String, String>>,
+        val presets: Map<String, List<WorkParameterPreset>>,
         val ratios: Map<String, String>, val workContent: Work?, val acceptedAtNanos: Long,
         val requestedFolderName: String, val sampleId: String?
     )
@@ -429,7 +431,8 @@ internal class WorkManagementViewModel(
             previewAspectRatio = previewRatio(work)
         } }
         return CommandRequest(id, selectedFolderUri, text, text.takeIf { work != null && !work.isSample && it != work.code },
-            session.fileDrafts.toMap(), session.blockEditorDrafts.toMap(), parameterDrafts.mapValues { it.value.toMap() }, ratioDrafts.toMap(), content, System.nanoTime(), newWorkFolder, copySampleId)
+            session.fileDrafts.toMap(), session.blockEditorDrafts.toMap(), parameterDrafts.mapValues { it.value.toMap() },
+            presetDrafts.mapValues { it.value.toList() }, ratioDrafts.toMap(), content, System.nanoTime(), newWorkFolder, copySampleId)
     }
     private data class QueuedOperation(
         val errorText: String, val blockUi: Boolean, val progressDelayMillis: Long,
@@ -569,6 +572,7 @@ internal class WorkManagementViewModel(
         val selected = request?.workId ?: session.activeWorkIdState.value
         val code = if (request != null) request.editedText else session.editorValueState.value.text
         val capturedParameters = request?.parameters ?: parameterDrafts
+        val capturedPresets = request?.presets ?: presetDrafts
         val capturedRatios = request?.ratios ?: ratioDrafts
         val capturedFiles = request?.files ?: session.fileDrafts
         val capturedBlocks = request?.blocks ?: session.blockEditorDrafts
@@ -578,7 +582,7 @@ internal class WorkManagementViewModel(
             if (original.isSample) return@map snapshotWork(original)
             val dirty = includeEdits && (
                 (original.id == selected && code != null && original.code != code) ||
-                    capturedParameters.containsKey(original.id) || capturedRatios.containsKey(original.id) ||
+                    capturedParameters.containsKey(original.id) || capturedPresets.containsKey(original.id) || capturedRatios.containsKey(original.id) ||
                     (capturedBlocks.containsKey(original.id) && capturedBlocks[original.id] != original.blockEditorState) ||
                     original.files.any { (name, saved) ->
                         capturedFiles["${original.id}/$name"]?.let { it != saved } == true
@@ -587,6 +591,7 @@ internal class WorkManagementViewModel(
             snapshotWork(original).also { copy ->
                 if (includeEdits) {
                     capturedParameters[copy.id]?.let { copy.parameterValues.clear(); copy.parameterValues.putAll(it) }
+                    capturedPresets[copy.id]?.let { copy.parameterPresets.clear(); copy.parameterPresets.addAll(it) }
                     capturedRatios[copy.id]?.let { copy.previewAspectRatio = it }
                     if (capturedBlocks.containsKey(copy.id)) {
                         copy.blockEditorState = capturedBlocks[copy.id]
@@ -719,6 +724,7 @@ internal class WorkManagementViewModel(
         }
         if (savedEdits) works.forEach { work ->
             if (parameterDrafts[work.id] == work.parameterValues.toMap()) parameterDrafts.remove(work.id)
+            if (presetDrafts[work.id] == work.parameterPresets.toList()) presetDrafts.remove(work.id)
             if (ratioDrafts[work.id] == work.previewAspectRatio) ratioDrafts.remove(work.id)
             session.rebaseBlockEditorDraft(work.id)
             work.files.forEach { (name, code) ->
@@ -734,7 +740,7 @@ internal class WorkManagementViewModel(
         val targetFolder = selectedFolderUri
         return execute(blockUi = blockUi, progressDelayMillis = progressDelayMillis, markSaveFlushFailure = true) {
             check(selectedFolderUri == targetFolder)
-            if (!needsInitialSave && editedText == null && files.isEmpty() && blocks.isEmpty() && parameters.isEmpty() && ratios.isEmpty() && !conflictPending) {
+            if (!needsInitialSave && editedText == null && files.isEmpty() && blocks.isEmpty() && parameters.isEmpty() && presets.isEmpty() && ratios.isEmpty() && !conflictPending) {
                 operationState = WorkOperationState.SAVED
                 emit(then)
                 return@execute
@@ -759,6 +765,7 @@ internal class WorkManagementViewModel(
         if (active != null && !active.isSample && session.editorValueState.value.text != active.code) return true
         return works.filterNot { it.isSample }.any { work ->
             parameterDrafts[work.id]?.let { it != work.parameterValues.toMap() } == true ||
+                presetDrafts[work.id]?.let { it != work.parameterPresets.toList() } == true ||
                 ratioDrafts[work.id]?.let { it != work.previewAspectRatio } == true ||
                 (session.blockEditorDrafts.containsKey(work.id) && session.blockEditorDrafts[work.id] != work.blockEditorState) ||
                 work.files.any { (name, code) ->
@@ -900,7 +907,7 @@ internal class WorkManagementViewModel(
             files = current.files.toMutableMap(), assets = current.assets.toMap(),
             previewAspectRatio = previewRatio(current), p5Version = current.p5Version,
             p5SoundEnabled = current.p5SoundEnabled, libraries = current.libraries.toMap(),
-            parameterValues = current.parameterValues.toMap(), createdAt = previous.createdAt, blockEditorState = current.blockEditorState)
+            parameterValues = current.parameterValues.toMap(), parameterPresets = current.parameterPresets.toList(), createdAt = previous.createdAt, blockEditorState = current.blockEditorState)
         val next = userTemplates.map { if (it.id == templateId) replacement else it }
         withContext(io) { checkNotNull(templatePersistence).captureAssets(replacement); templatePersistence.save(next) }
         userTemplates = next
@@ -963,6 +970,7 @@ internal class WorkManagementViewModel(
         val copy = copyGalleryWork(source, emptySet()).apply {
             this.title = title.trim(); folderName = folder
             parameterValues.clear(); parameterValues.putAll(this@WorkManagementViewModel.parameterValues(source))
+            parameterPresets.clear(); parameterPresets.addAll(this@WorkManagementViewModel.parameterPresets(source))
         }
         persistAndSwitch(snapshots(includeEdits = true, request = this) + copy, copy.id)
         copySampleId = null
@@ -1031,7 +1039,7 @@ internal class WorkManagementViewModel(
             code = current.code, files = current.files.toMutableMap(), assets = current.assets.toMap(),
             previewAspectRatio = current.previewAspectRatio, p5Version = current.p5Version,
             p5SoundEnabled = current.p5SoundEnabled, libraries = current.libraries.toMap(),
-            parameterValues = current.parameterValues.toMap(), isPinned = current.isPinned, tags = current.tags.toList(), folderName = current.folderName,
+            parameterValues = current.parameterValues.toMap(), parameterPresets = current.parameterPresets.toList(), isPinned = current.isPinned, tags = current.tags.toList(), folderName = current.folderName,
             blockEditorState = current.blockEditorState)
         val next = snapshots(includeEdits = true, request = this) + duplicate
         persistAndSwitch(next, duplicate.id)
@@ -1182,13 +1190,14 @@ internal class WorkManagementViewModel(
     private fun clearMetadataDrafts(workId: String? = null) {
         if (workId == null) {
             parameterJobs.values.forEach { it.cancel() }
-            parameterJobs.clear(); parameterDrafts.clear(); ratioDrafts.clear()
+            parameterJobs.clear(); parameterDrafts.clear(); presetDrafts.clear(); ratioDrafts.clear()
         } else {
-            parameterJobs.remove(workId)?.cancel(); parameterDrafts.remove(workId); ratioDrafts.remove(workId)
+            parameterJobs.remove(workId)?.cancel(); parameterDrafts.remove(workId); presetDrafts.remove(workId); ratioDrafts.remove(workId)
         }
     }
     internal fun workForSnapshot(work: Work): Work = snapshotWork(work).also { copy ->
         copy.parameterValues.clear(); copy.parameterValues.putAll(parameterValues(work))
+        copy.parameterPresets.clear(); copy.parameterPresets.addAll(parameterPresets(work))
         copy.blockEditorState = session.currentBlockEditorState(work.id)
     }
     fun requestRestoreCurrentWork() {
@@ -1386,6 +1395,10 @@ internal class WorkManagementViewModel(
                         parameterValues.clear()
                         parameterValues.putAll(it)
                     }
+                    presetDrafts[id]?.let {
+                        parameterPresets.clear()
+                        parameterPresets.addAll(it)
+                    }
                     updatedAt = System.currentTimeMillis()
                 }
                 persist(next, id)
@@ -1401,14 +1414,60 @@ internal class WorkManagementViewModel(
         if (session.worksState.value.any { it.id == workId && it.isSample }) return false
         val work = session.worksState.value.find { it.id == workId } ?: return false
         return parameterDrafts[workId]?.let { it != work.parameterValues.toMap() } == true ||
+            presetDrafts[workId]?.let { it != work.parameterPresets.toList() } == true ||
             ratioDrafts[workId]?.let { it != work.previewAspectRatio } == true
     }
     fun parameterValues(work: Work?): Map<String, String> = work?.let { parameterDrafts[it.id] ?: it.parameterValues }.orEmpty()
+    fun parameterPresets(work: Work?): List<WorkParameterPreset> = work?.let { presetDrafts[it.id] ?: it.parameterPresets.toList() }.orEmpty()
     fun updateParameter(workId: String, name: String, value: String?) {
         val work = session.worksState.value.find { it.id == workId } ?: return
         val next = parameterValues(work).toMutableMap()
         if (value == null) next.remove(name) else next[name] = value
         parameterDrafts[workId] = next
+    }
+    fun saveParameterPreset(
+        workId: String,
+        name: String,
+        values: Map<String, String>,
+        overwritePresetId: String? = null
+    ): Boolean {
+        val work = session.worksState.value.find { it.id == workId } ?: return false
+        val trimmed = name.trim().take(MAX_PARAMETER_PRESET_NAME)
+        if (trimmed.isEmpty()) return false
+        val current = parameterPresets(work).toMutableList()
+        val sanitizedValues = linkedMapOf<String, String>()
+        values.entries.take(16).forEach { (k, v) -> if (k.isNotBlank()) sanitizedValues[k] = v }
+        val existingIdx = if (overwritePresetId != null) current.indexOfFirst { it.id == overwritePresetId } else -1
+        if (existingIdx >= 0) {
+            current[existingIdx] = current[existingIdx].copy(name = trimmed, values = sanitizedValues)
+        } else {
+            if (current.size >= MAX_PARAMETER_PRESETS) return false
+            current.add(WorkParameterPreset(name = trimmed, values = sanitizedValues))
+        }
+        val normalized = normalizeParameterPresets(current)
+        presetDrafts[workId] = normalized
+        if (!work.isSample) saveParameterPresets(workId)
+        return true
+    }
+    fun renameParameterPreset(workId: String, presetId: String, newName: String): Boolean {
+        val work = session.worksState.value.find { it.id == workId } ?: return false
+        val trimmed = newName.trim().take(MAX_PARAMETER_PRESET_NAME)
+        if (trimmed.isEmpty()) return false
+        val current = parameterPresets(work)
+        if (current.none { it.id == presetId }) return false
+        val normalized = normalizeParameterPresets(current.map { if (it.id == presetId) it.copy(name = trimmed) else it })
+        presetDrafts[workId] = normalized
+        if (!work.isSample) saveParameterPresets(workId)
+        return true
+    }
+    fun deleteParameterPreset(workId: String, presetId: String): Boolean {
+        val work = session.worksState.value.find { it.id == workId } ?: return false
+        val current = parameterPresets(work)
+        val filtered = current.filterNot { it.id == presetId }
+        if (filtered.size == current.size) return false
+        presetDrafts[workId] = filtered
+        if (!work.isSample) saveParameterPresets(workId)
+        return true
     }
     fun scheduleParameterSave(workId: String) {
         if (session.worksState.value.any { it.id == workId && it.isSample }) return
@@ -1419,20 +1478,41 @@ internal class WorkManagementViewModel(
         parameterJobs.remove(workId)?.cancel()
         return scope.launch { commandJob?.join(); saveParameters(workId)?.join() }
     }
-    private fun saveParameters(workId: String): Job? {
+    private fun saveParameterPresets(workId: String): Job? {
         if (session.worksState.value.any { it.id == workId && it.isSample }) return null
-        val values = parameterDrafts[workId] ?: return null
+        val presets = presetDrafts[workId] ?: return null
         if (session.worksState.value.none { it.id == workId }) return null
         return execute(blockUi = false) {
             val next = snapshots(copyIds = setOf(workId))
             checkNotNull(next.firstOrNull { it.id == workId }).apply {
-                parameterValues.clear(); parameterValues.putAll(values)
+                parameterPresets.clear(); parameterPresets.addAll(presets)
+                parameterDrafts[workId]?.let { parameterValues.clear(); parameterValues.putAll(it) }
                 ratioDrafts[workId]?.let { previewAspectRatio = it }
                 updatedAt = System.currentTimeMillis()
             }
             persist(next, session.activeWorkIdState.value)
             commit(next)
-            if (parameterDrafts[workId] == values) parameterDrafts.remove(workId)
+            if (presetDrafts[workId] == presets) presetDrafts.remove(workId)
+        }
+    }
+    private fun saveParameters(workId: String): Job? {
+        if (session.worksState.value.any { it.id == workId && it.isSample }) return null
+        val values = parameterDrafts[workId]
+        val presets = presetDrafts[workId]
+        if (values == null && presets == null) return null
+        if (session.worksState.value.none { it.id == workId }) return null
+        return execute(blockUi = false) {
+            val next = snapshots(copyIds = setOf(workId))
+            checkNotNull(next.firstOrNull { it.id == workId }).apply {
+                values?.let { parameterValues.clear(); parameterValues.putAll(it) }
+                presets?.let { parameterPresets.clear(); parameterPresets.addAll(it) }
+                ratioDrafts[workId]?.let { previewAspectRatio = it }
+                updatedAt = System.currentTimeMillis()
+            }
+            persist(next, session.activeWorkIdState.value)
+            commit(next)
+            if (values != null && parameterDrafts[workId] == values) parameterDrafts.remove(workId)
+            if (presets != null && presetDrafts[workId] == presets) presetDrafts.remove(workId)
         }
     }
 
@@ -1597,6 +1677,7 @@ internal fun prefetchTextBytes(work: Work): Long {
     fun Map<String, String>.bytes() = entries.sumOf { it.key.bytes() + it.value.bytes() }
     return work.code.bytes() + work.title.bytes() + work.id.bytes() +
         work.files.bytes() + work.libraries.bytes() + work.parameterValues.bytes() +
+        work.parameterPresets.sumOf { it.id.bytes() + it.name.bytes() + it.values.bytes() } +
         work.revisions.sumOf { it.code.bytes() } + work.tags.sumOf { it.bytes() } +
         work.assets.entries.sumOf { it.key.bytes() + it.value.hash.bytes() + it.value.mime.bytes() } +
         work.folderName.bytes() + work.previewAspectRatio.bytes() + work.p5Version.bytes()

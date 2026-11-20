@@ -58,4 +58,34 @@ class ThumbnailStorageTest {
             assertTrue(storeWorkPreviewBytes(file, png(0x01000000), fingerprint = "faint"))
         } finally { dir.deleteRecursively() }
     }
+
+    @Test fun manualThumbnailResistsAutoOverwriteUntilCleared() = runBlocking {
+        val dir = Files.createTempDirectory("thumbnail-manual").toFile()
+        try {
+            val file = workPreviewFile(dir, "work")
+            val manual = png(-65536)
+            val auto = png(-16776961)
+            val updatedManual = png(-16711936)
+
+            assertTrue(storeWorkPreviewBytes(file, manual, fingerprint = MANUAL_THUMBNAIL_FINGERPRINT, allowOverwriteManual = true))
+            assertTrue(hasManualThumbnail(file))
+
+            // Automatic captures must not overwrite a user-selected manual cover.
+            assertFalse(storeWorkPreviewBytes(file, auto, fingerprint = "auto-hash"))
+            assertArrayEquals(manual, file.readBytes())
+            assertTrue(hasManualThumbnail(file))
+
+            // Explicit manual replacement succeeds.
+            assertTrue(storeWorkPreviewBytes(file, updatedManual, fingerprint = MANUAL_THUMBNAIL_FINGERPRINT, allowOverwriteManual = true))
+            assertArrayEquals(updatedManual, file.readBytes())
+            assertTrue(hasManualThumbnail(file))
+
+            // Clearing the manual thumbnail restores normal auto-capture writes.
+            assertTrue(clearWorkPreview(file))
+            assertFalse(hasManualThumbnail(file))
+            assertTrue(storeWorkPreviewBytes(file, auto, fingerprint = "auto-hash"))
+            assertArrayEquals(auto, file.readBytes())
+            assertFalse(hasManualThumbnail(file))
+        } finally { dir.deleteRecursively() }
+    }
 }

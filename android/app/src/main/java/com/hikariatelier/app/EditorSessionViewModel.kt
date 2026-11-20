@@ -36,6 +36,7 @@ class Work(
     p5SoundEnabled: Boolean = false,
     libraries: Map<String, String> = emptyMap(),
     parameterValues: Map<String, String> = emptyMap(),
+    parameterPresets: List<WorkParameterPreset> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     updatedAt: Long = System.currentTimeMillis(),
     isPinned: Boolean = false,
@@ -56,6 +57,7 @@ class Work(
     var p5SoundEnabled by mutableStateOf(p5SoundEnabled)
     var libraries by mutableStateOf(normalizedWorkLibraries(libraries))
     val parameterValues = parameterValues.toList().toMutableStateMap()
+    val parameterPresets = normalizeParameterPresets(parameterPresets).toMutableStateList()
     var updatedAt by mutableStateOf(updatedAt)
     var isPinned by mutableStateOf(isPinned)
     val tags = tags.distinct().filter { it.isNotBlank() }.toMutableStateList()

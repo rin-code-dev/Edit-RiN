@@ -286,6 +286,7 @@ internal fun WorkActionsMenu(
     manualRotation: Boolean,
     wideWorkPanels: Boolean,
     galleryProgress: Float = 0f,
+    galleryProgressProvider: () -> Float = { galleryProgress },
     colors: ColorScheme,
     viewModel: WorkManagementViewModel,
     onRotate: () -> Unit,
@@ -588,7 +589,7 @@ internal fun WorkActionsMenu(
             if (manualRotation) {
                 TooltipIconButton(label = uiText("画面を回転"),
                     onClick = onRotate,
-                    modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 0).size(actionButtonSize)
+                    modifier = Modifier.galleryChrome(galleryProgressProvider, GalleryPart.PRIMARY, 0).size(actionButtonSize)
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_rotate),
@@ -600,7 +601,7 @@ internal fun WorkActionsMenu(
             }
             TooltipIconButton(label = uiText("設定"),
                 onClick = onOpenSettings,
-                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 1).size(actionButtonSize)
+                modifier = Modifier.galleryChrome(galleryProgressProvider, GalleryPart.PRIMARY, 1).size(actionButtonSize)
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_settings),
@@ -615,7 +616,7 @@ internal fun WorkActionsMenu(
                     viewModel.workActionsMenuExpanded = false
                     onOpenWorkSettings()
                 },
-                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 2).size(actionButtonSize)
+                modifier = Modifier.galleryChrome(galleryProgressProvider, GalleryPart.PRIMARY, 2).size(actionButtonSize)
             ) {
                 Icon(
                     painterResource(R.drawable.ic_folder_code),
@@ -626,7 +627,7 @@ internal fun WorkActionsMenu(
             }
             TooltipIconButton(label = uiText("作品メニュー"),
                 onClick = { viewModel.workActionsMenuExpanded = true },
-                modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.PRIMARY, 3).size(actionButtonSize)
+                modifier = Modifier.galleryChrome(galleryProgressProvider, GalleryPart.PRIMARY, 3).size(actionButtonSize)
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_more_vertical),

@@ -57,10 +57,17 @@ private fun recordingSize(bytes: Long) =
 internal fun RecordingOptionsSheet(
     bitrate: Int, countdown: Int, text: (String) -> String,
     onBitrate: (Int) -> Unit, onCountdown: (Int) -> Unit,
-    onDismiss: () -> Unit, onStart: (String) -> Unit
+    onDismiss: () -> Unit, onStart: (String, Int, Boolean) -> Unit
 ) {
     var format by rememberSaveable { mutableStateOf("mp4") }
+    var durationSeconds by rememberSaveable { mutableIntStateOf(0) }
+    var frameSync by rememberSaveable { mutableStateOf(false) }
     val landscape = isLandscapeLayout()
+    val durationChoices = if (format == "gif") listOf(0, 3, 6, 10, 15) else listOf(0, 3, 6, 10, 15, 30)
+    LaunchedEffect(format) {
+        if (format != "gif") frameSync = false
+        if (durationSeconds !in durationChoices) durationSeconds = 0
+    }
     UnitModal(
         onDismissRequest = onDismiss,
         maxWidth = adaptiveSheetMaxWidth(),
@@ -83,6 +90,19 @@ internal fun RecordingOptionsSheet(
                     )
                 }
             }
+            Text(text("自動停止（ループ録画）"))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                durationChoices.forEach { sec ->
+                    FilterChip(
+                        selected = durationSeconds == sec,
+                        onClick = { durationSeconds = sec },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(),
+                        border = unitFilterChipBorder(durationSeconds == sec),
+                        label = { Text(if (sec == 0) text("手動停止") else "${sec}s") }
+                    )
+                }
+            }
             if (format == "mp4") {
                 Text(text("MP4ビットレート"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -97,12 +117,45 @@ internal fun RecordingOptionsSheet(
                         )
                     }
                 }
-                Text(text("最大60秒の推定容量") + ": " + recordingSize(bitrate * 1_000_000L * 60 / 8),
+                val estSeconds = if (durationSeconds > 0) durationSeconds else 60
+                val estLabel = if (durationSeconds > 0) {
+                    "${text("推定容量")} (${estSeconds}s)"
+                } else {
+                    text("最大60秒の推定容量")
+                }
+                Text("$estLabel: " + recordingSize(bitrate * 1_000_000L * estSeconds / 8),
                     style = MaterialTheme.typography.bodyMedium)
                 Text(text("ファイルサイズは、映像の内容や端末によって変わります"),
                     style = MaterialTheme.typography.bodySmall)
             } else {
-                Text(text("GIFは30fpsで、最大15秒まで保存できます。ファイルサイズは映像の内容によって変わります"))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(text("フレーム同期キャプチャ（コマ落ち防止）"), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text("重い3Dやブラシ作品でも1フレームずつ確実に描画して30fps GIFを生成します"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = frameSync,
+                        onCheckedChange = { enabled ->
+                            frameSync = enabled
+                            if (enabled && durationSeconds == 0) durationSeconds = 3
+                        }
+                    )
+                }
+                val effectiveGifSec = if (durationSeconds > 0) durationSeconds else 15
+                Text(
+                    if (frameSync) "${effectiveGifSec}s · ${effectiveGifSec * 30} frames (30fps)"
+                    else text("GIFは30fpsで、最大15秒まで保存できます。ファイルサイズは映像の内容によって変わります"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Text(text("録画開始カウントダウン"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -117,7 +170,7 @@ internal fun RecordingOptionsSheet(
                     )
                 }
             }
-            Button(shape = UNIT_CONTROL_SHAPE, onClick = { onStart(format) }, modifier = Modifier.fillMaxWidth()) {
+            Button(shape = UNIT_CONTROL_SHAPE, onClick = { onStart(format, durationSeconds, frameSync) }, modifier = Modifier.fillMaxWidth()) {
                 Text(text("録画を開始"))
             }
         }

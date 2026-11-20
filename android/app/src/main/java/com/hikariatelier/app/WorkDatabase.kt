@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -17,8 +18,31 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
     null,
     1
 ) {
+    private val lastSyncedSignatures = ConcurrentHashMap<String, Int>()
+
     init {
         setWriteAheadLoggingEnabled(true)
+    }
+
+    private fun workSignature(work: Work, documentFile: String): Int {
+        var result = work.id.hashCode()
+        result = 31 * result + work.title.hashCode()
+        result = 31 * result + work.folderName.hashCode()
+        result = 31 * result + if (work.isPinned) 1 else 0
+        result = 31 * result + work.tags.hashCode()
+        result = 31 * result + work.previewAspectRatio.hashCode()
+        result = 31 * result + work.p5Version.hashCode()
+        result = 31 * result + if (work.p5SoundEnabled) 1 else 0
+        result = 31 * result + work.libraries.hashCode()
+        result = 31 * result + work.createdAt.hashCode()
+        result = 31 * result + work.updatedAt.hashCode()
+        result = 31 * result + documentFile.hashCode()
+        result = 31 * result + if (work.bodyLoaded) 1 else 0
+        if (work.bodyLoaded) {
+            result = 31 * result + work.code.hashCode()
+            result = 31 * result + work.files.hashCode()
+        }
+        return result
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -61,11 +85,13 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
     }
 
     fun syncWork(work: Work, documentFile: String = "") {
+        val signature = workSignature(work, documentFile)
         val db = writableDatabase
         db.beginTransactionNonExclusive()
         try {
             upsertWorkInternal(db, work, documentFile)
             db.setTransactionSuccessful()
+            lastSyncedSignatures[work.id] = signature
         } finally {
             db.endTransaction()
         }
@@ -74,9 +100,11 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
     fun syncAllWorks(works: List<Work>, fileMap: Map<String, String> = emptyMap()) {
         val db = writableDatabase
         db.beginTransactionNonExclusive()
+        val updatedSignatures = mutableListOf<Pair<String, Int>>()
+        val removedIds = mutableListOf<String>()
         try {
             val keepIds = works.map { it.id }.toSet()
-            val existingIds = mutableListOf<String>()
+            val existingIds = mutableSetOf<String>()
             val existingFiles = mutableMapOf<String, String>()
             db.rawQuery("SELECT id, document_file FROM works_meta", null).use { cursor ->
                 while (cursor.moveToNext()) {
@@ -89,12 +117,20 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
                 if (oldId !in keepIds) {
                     db.delete("works_meta", "id = ?", arrayOf(oldId))
                     db.delete("works_fts", "work_id = ?", arrayOf(oldId))
+                    removedIds.add(oldId)
                 }
             }
             for (work in works) {
-                upsertWorkInternal(db, work, fileMap[work.id] ?: existingFiles[work.id].orEmpty())
+                val docFile = fileMap[work.id] ?: existingFiles[work.id].orEmpty()
+                val signature = workSignature(work, docFile)
+                if (work.id !in existingIds || lastSyncedSignatures[work.id] != signature) {
+                    upsertWorkInternal(db, work, docFile)
+                    updatedSignatures.add(work.id to signature)
+                }
             }
             db.setTransactionSuccessful()
+            removedIds.forEach { lastSyncedSignatures.remove(it) }
+            updatedSignatures.forEach { (id, sig) -> lastSyncedSignatures[id] = sig }
         } finally {
             db.endTransaction()
         }
@@ -199,6 +235,36 @@ internal class WorkDatabase(context: Context) : SQLiteOpenHelper(
         }
 
         return matched
+    }
+
+    fun searchCodeMatches(rawQuery: String, limit: Int = 60): Map<String, GalleryCodeMatch> {
+        val cleaned = rawQuery.trim().replace("\"", "")
+        if (cleaned.isEmpty()) return emptyMap()
+        val tokens = cleaned.split(Regex("\\s+")).filter { it.isNotBlank() }.take(8)
+        if (tokens.isEmpty()) return emptyMap()
+
+        val results = linkedMapOf<String, GalleryCodeMatch>()
+        runCatching {
+            val whereClauses = tokens.joinToString(" AND ") { "code_body LIKE ? ESCAPE '/'" }
+            val args = tokens.map { token ->
+                val escaped = token.replace("/", "//").replace("%", "/%").replace("_", "/_")
+                "%$escaped%"
+            }.toTypedArray()
+
+            readableDatabase.rawQuery(
+                "SELECT work_id, code_body FROM works_fts WHERE $whereClauses LIMIT $limit",
+                args
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val workId = cursor.getString(0)
+                    val codeBody = cursor.getString(1).orEmpty()
+                    findFirstCodeMatchInCombinedCode(workId, codeBody, cleaned)?.let { match ->
+                        results[workId] = match
+                    }
+                }
+            }
+        }
+        return results
     }
 
     companion object {

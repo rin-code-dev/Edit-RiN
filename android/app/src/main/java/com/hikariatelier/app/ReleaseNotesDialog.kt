@@ -45,6 +45,49 @@ internal data class ReleaseNote(
 
 internal val APP_RELEASE_NOTES = listOf(
     ReleaseNote(
+        versionName = "4.2.0",
+        versionCode = 42,
+        titleEn = "What's New in v4.2.0",
+        titleJa = "v4.2.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Parameter Presets, Morphing & 2D XY Pad",
+                titleJa = "パラメータのプリセット・補間・2D XYパッド",
+                descEn = "Save and switch parameter presets with 650 ms morphing or an A↔B blend slider, use @rin xy 2D pads, and adjust fullscreen parameters alongside a PiP preview in portrait.",
+                descJa = "パラメータ値の保存・切替・650ms補間・A↔Bブレンドに対応し、@rin xy の2Dパッドと縦画面全画面パラメータ時のPiPプレビューを追加しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_search,
+                titleEn = "Cross-Work Code Search & Custom Covers",
+                titleJa = "作品横断のコード検索と手動サムネイル",
+                descEn = "Search code across folders in the gallery with file:line snippets and direct jumps, and lock or reset custom cover thumbnails from any preview frame.",
+                descJa = "ギャラリーからフォルダーを横断してfile:line付きでコード検索・直接ジャンプでき、任意フレームを保護付きサムネイルとして保存・リセットできます。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_camera,
+                titleEn = "1-Frame Step, FPS HUD, REPL & Frame-Sync GIF",
+                titleJa = "1コマ送り・FPS HUD・REPL・フレーム同期録画",
+                descEn = "Added live FPS/frame/size HUD, +1 frame stepping while paused, a console JS REPL with history, timed loop presets, and 30 fps frame-synced GIF recording.",
+                descJa = "リアルタイムFPS/フレーム/解像度HUD、一時停止中の+1コマ送り、履歴付きコンソールREPL、30fpsフレーム同期GIF録画を追加しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_outline,
+                titleEn = "Shaders, Code Outline & Block Mode Expansion",
+                titleJa = "GLSL強調・アウトライン・ブロック拡張",
+                descEn = "Added GLSL syntax highlighting, expanded p5/brush/Matter/GLSL completions, an Outline jump dialog, and new block templates with whole-code preview scrolling.",
+                descJa = "GLSLシンタックス強調、補完拡充、コードアウトライン一覧ジャンプ、ブロック用パラメータ/brush/Matterテンプレートと全体コード強調を追加しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_code,
+                titleEn = "Performance Overhaul & Overlay Fixes",
+                titleJa = "アプリ全体の高速化再設計とUI修正",
+                descEn = "Moved gallery metadata I/O off the main thread, eliminated animation recompositions and hot-path SubcomposeLayouts, kept the editor mounted under Settings, and refined preview action trays and popups.",
+                descJa = "ギャラリーI/Oの非同期キャッシュ化や再構成・サブコンポジション削減により全体動作を高速化し、カメラトレイ残留や全画面パネル溢れを修正しました。"
+            )
+        )
+    ),
+    ReleaseNote(
         versionName = "4.1.0",
         versionCode = 41,
         titleEn = "What's New in v4.1.0",

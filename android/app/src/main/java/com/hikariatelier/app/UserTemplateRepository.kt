@@ -9,7 +9,7 @@ internal fun newWorkFromUserTemplate(source: Work, title: String): Work = Work(
     files = source.files.toMutableMap(), assets = source.assets.toMap(),
     previewAspectRatio = source.previewAspectRatio, p5Version = source.p5Version,
     p5SoundEnabled = source.p5SoundEnabled, libraries = source.libraries.toMap(),
-    parameterValues = source.parameterValues.toMap(), blockEditorState = source.blockEditorState
+    parameterValues = source.parameterValues.toMap(), parameterPresets = source.parameterPresets.toList(), blockEditorState = source.blockEditorState
 )
 
 internal interface UserTemplatePersistence {

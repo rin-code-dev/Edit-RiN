@@ -64,6 +64,7 @@ internal class ConsoleViewModel(private val operationScope: CoroutineScope? = nu
     var consoleHeight by mutableFloatStateOf(170f)
     var consoleExpanded by mutableStateOf(false)
     var filter by mutableStateOf(ConsoleFilter.ALL)
+    val replHistory = mutableStateListOf<String>()
     var errorsOnly: Boolean
         get() = filter == ConsoleFilter.ERROR
         set(value) {
@@ -72,6 +73,28 @@ internal class ConsoleViewModel(private val operationScope: CoroutineScope? = nu
 
     val errorCount: Int
         get() = entries.count { it.level == ConsoleLevel.ERROR }
+
+    fun recordReplCommand(expression: String) {
+        val trimmed = expression.trim()
+        if (trimmed.isEmpty()) return
+        if (replHistory.lastOrNull() != trimmed) {
+            replHistory.add(trimmed)
+            while (replHistory.size > 30) replHistory.removeAt(0)
+        }
+    }
+
+    fun appendImmediate(level: ConsoleLevel, message: String) {
+        val normalized = message.trim()
+        if (normalized.isBlank()) return
+        synchronized(queueLock) {
+            flushJob?.cancel()
+            flushJob = null
+            sequence += 1L
+            pending.addLast(ConsoleEntry(id = sequence, level = level, message = normalized))
+            while (pending.size > 200) pending.removeFirst()
+        }
+        flush()
+    }
 
     fun clear() {
         synchronized(queueLock) {

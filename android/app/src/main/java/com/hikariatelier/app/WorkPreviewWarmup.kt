@@ -155,6 +155,10 @@ internal class WorkPreviewWarmup(
                         var success = false
                         try {
                             val file = images.file(id)
+                            if (hasManualThumbnail(file)) {
+                                success = true
+                                return@launch
+                            }
                             // Fast-path: reuse stamped matches, or legacy non-empty thumbnails without a stamp file
                             val input = works.thumbnailInput(id, selected.folder) ?: error("Thumbnail input unavailable")
                             val fingerprint = withContext(Dispatchers.Default) { thumbnailFingerprint(input) }

@@ -42,4 +42,27 @@ class WorkGalleryStateTest {
         assertEquals(5, gallery.gridState.firstVisibleItemIndex)
         assertEquals(40, gallery.gridState.firstVisibleItemScrollOffset)
     }
+
+    @Test fun searchAllFoldersExpandsScopeOnlyWhileSearchingWithQueryAndResetsOnClose() {
+        val gallery = gallery()
+        val inFolderA = Work("a", "A", "", folderName = "FolderA")
+        val inFolderB = Work("b", "B", "", folderName = "FolderB")
+        val sample = Work("s", "Sample", "", isSample = true)
+
+        gallery.changeFolder("FolderA")
+        assertTrue(gallery.matchesScope(inFolderA))
+        assertFalse(gallery.matchesScope(inFolderB))
+        assertFalse(gallery.matchesScope(sample))
+
+        gallery.searching = true
+        gallery.query = "noise"
+        gallery.searchAllFolders = true
+        assertTrue(gallery.matchesScope(inFolderA))
+        assertTrue(gallery.matchesScope(inFolderB))
+        assertTrue(gallery.matchesScope(sample))
+
+        gallery.closeSearch()
+        assertFalse(gallery.searchAllFolders)
+        assertFalse(gallery.matchesScope(inFolderB))
+    }
 }

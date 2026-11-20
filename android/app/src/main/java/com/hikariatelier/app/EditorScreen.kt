@@ -10,9 +10,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -165,14 +168,26 @@ internal fun EditorScreen(
             it.id == activeWorkId
         } ?: works.firstOrNull()
 
-    // Read observable drafts in composition and pass an immutable source snapshot to the worker.
-    val parameterSources = projectSearchSources(activeWorkId, editorText,
-        activeWork?.files.orEmpty(), sessionViewModel.fileDrafts)
-    val liveParameterCount by key(activeWorkId) {
-        produceState(initialValue = 0, key1 = parameterSources) {
-            val totalLen = parameterSources.values.sumOf { it.length }
-            kotlinx.coroutines.delay(if (totalLen >= 8_000) 120L else 60L)
-            value = withContext(Dispatchers.Default) { workParameters(parameterSources).size }
+    val liveParameterCount by produceState(initialValue = 0, activeWorkId) {
+        snapshotFlow {
+            val work = works.find { it.id == activeWorkId } ?: works.firstOrNull()
+            val workId = work?.id ?: activeWorkId
+            val currentText = sessionViewModel.editorValueState.value.text
+            val files = work?.files.orEmpty()
+            val auxDrafts = files.keys.associateWith { name -> sessionViewModel.fileDrafts["$workId/$name"] }
+            Triple(currentText, files, auxDrafts)
+        }.collectLatest { (mainText, files, auxDrafts) ->
+            val totalLen = mainText.length + files.entries.sumOf { (name, saved) -> (auxDrafts[name] ?: saved).length }
+            delay(if (totalLen >= 8_000) 120L else 60L)
+            value = withContext(Dispatchers.Default) {
+                val sources = buildMap {
+                    put("sketch.js", mainText)
+                    files.toSortedMap().forEach { (name, saved) ->
+                        if (name != "sketch.js") put(name, auxDrafts[name] ?: saved)
+                    }
+                }
+                workParameters(sources).size
+            }
         }
     }
 
@@ -189,6 +204,7 @@ internal fun EditorScreen(
     }
 
     var showSnippets by rememberSaveable(activeWorkId) { mutableStateOf(false) }
+    var showOutlineDialog by rememberSaveable(activeWorkId) { mutableStateOf(false) }
     var showReferenceDialog by rememberSaveable(activeWorkId) { mutableStateOf(false) }
     var referenceSearchQuery by rememberSaveable(activeWorkId) { mutableStateOf("") }
     var showScreenshotScale by rememberSaveable { mutableStateOf(false) }
@@ -209,18 +225,40 @@ internal fun EditorScreen(
 
     val workGalleryState = rememberWorkGalleryState()
     val galleryTarget = workMenuExpanded
-    val galleryProgress by animateFloatAsState(
+    val galleryTargetState = rememberUpdatedState(galleryTarget)
+    val galleryProgressState = animateFloatAsState(
         targetValue = if (galleryTarget) 1f else 0f,
         animationSpec = tween(GALLERY_MOTION_DURATION_MS, easing = FastOutSlowInEasing),
         label = "inlineWorkGallery"
     )
-    val galleryPresent = galleryTarget || galleryProgress > 0f
-    val galleryHandoffAlpha by animateFloatAsState(
+    val galleryPresent by remember {
+        derivedStateOf { galleryTargetState.value || galleryProgressState.value > 0f }
+    }
+    val gallerySettled by remember {
+        derivedStateOf { galleryProgressState.value >= 1f }
+    }
+    val galleryAnimating by remember {
+        derivedStateOf { galleryProgressState.value > 0f && galleryProgressState.value < 1f }
+    }
+    val galleryProgressProvider = remember(galleryProgressState) {
+        { galleryProgressState.value.coerceIn(0f, 1f) }
+    }
+    val galleryHandoffAlphaState = animateFloatAsState(
         if (galleryPresent) 1f else 0f,
-        animationSpec = tween(if (galleryPresent) 0 else 120), label = "galleryPreviewHandoff")
+        animationSpec = tween(if (galleryPresent) 0 else 120),
+        label = "galleryPreviewHandoff"
+    )
+    val galleryHandoffActive by remember {
+        derivedStateOf { galleryHandoffAlphaState.value > 0f }
+    }
+    val galleryPresentState = rememberUpdatedState(galleryPresent)
+    val galleryHandoffOpacityProvider = remember(galleryHandoffAlphaState) {
+        { if (galleryPresentState.value) 1f else galleryHandoffAlphaState.value }
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val galleryDensity = LocalDensity.current
     var galleryPreviewBitmap by remember(isLandscape, galleryDensity) { mutableStateOf<Bitmap?>(null) }
+    val latestPreviewBounds = remember(isLandscape, galleryDensity) { arrayOfNulls<Rect>(1) }
     var galleryPreviewBounds by remember(isLandscape, galleryDensity) { mutableStateOf<Rect?>(null) }
     var galleryThumbnailBounds by remember(isLandscape, galleryDensity) { mutableStateOf<Rect?>(null) }
     var galleryPreviewOwner by remember(isLandscape) { mutableStateOf<String?>(null) }
@@ -266,6 +304,22 @@ internal fun EditorScreen(
     var showAspectRatioDialog by workManagementViewModel::showAspectRatioDialog
     var showRuntimeDialog by workManagementViewModel::showRuntimeDialog
     var showParameterSheet by remember { mutableStateOf(false) }
+    var parameterFullscreen by rememberSaveable { mutableStateOf(false) }
+    fun setParameterFullscreenMode(enabled: Boolean) {
+        parameterFullscreen = enabled
+        if (enabled) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            sessionViewModel.pipMinimized = false
+        }
+    }
+    LaunchedEffect(showParameterSheet, isLandscape) {
+        if (showParameterSheet && !isLandscape) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            sessionViewModel.pipMinimized = false
+        }
+    }
 
 
     val previewRatioSelection = workManagementViewModel.previewRatio(activeWork)
@@ -299,7 +353,6 @@ internal fun EditorScreen(
     }
     var recordingFormatLabel by recordingViewModel::recordingFormatLabel
     var recordingLimitMillis by recordingViewModel::recordingLimitMillis
-    var recordingElapsedMillis by recordingViewModel::recordingElapsedMillis
     var isRecordingSaving by recordingViewModel::isRecordingSaving
     var mp4BitrateMbps by settingsViewModel::mp4BitrateMbps
     var recordingCountdownSeconds by settingsViewModel::recordingCountdownSeconds
@@ -313,10 +366,15 @@ internal fun EditorScreen(
         }
     }
 
-    fun requestPreviewRecording(format: String) {
-        recordingViewModel.requestPreviewRecording(format, recordingCountdownSeconds, mp4BitrateMbps) { js ->
-            preview.webView?.evaluateJavascript(js, null)
-        }
+    fun requestPreviewRecording(format: String, durationSeconds: Int = 0, frameSync: Boolean = false) {
+        recordingViewModel.requestPreviewRecording(
+            format = format,
+            countdownSeconds = recordingCountdownSeconds,
+            mp4BitrateMbps = mp4BitrateMbps,
+            evaluateJavascript = { js -> preview.webView?.evaluateJavascript(js, null) },
+            durationSeconds = durationSeconds,
+            frameSync = frameSync
+        )
     }
 
     fun cancelRecordingCountdown() {
@@ -369,6 +427,12 @@ internal fun EditorScreen(
         previewActionsExpanded = false
         showExpandedPreview = false
         showParameterSheet = !showParameterSheet
+        if (showParameterSheet && !isLandscape) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            sessionViewModel.pipMinimized = false
+        }
+        if (!showParameterSheet) parameterFullscreen = false
     }
 
     LaunchedEffect(showExpandedPreview) {
@@ -392,6 +456,9 @@ internal fun EditorScreen(
     var auxiliaryFileContent by workManagementViewModel::auxiliaryFileContent
 
     val consoleEntries = consoleViewModel.entries
+    val hasConsoleError by remember(consoleEntries) {
+        derivedStateOf { consoleEntries.any { it.level == ConsoleLevel.ERROR } }
+    }
 
     val editorFocusRequester =
         remember {
@@ -416,6 +483,17 @@ internal fun EditorScreen(
     }
     val editingFile = selectedEditorFile.takeIf { it in activeWork?.files.orEmpty() } ?: "sketch.js"
     val editingJavaScript = isJavaScriptProjectFile(editingFile)
+    val isBlockModeActive = editingFile == "sketch.js" && sessionViewModel.blockModeState(activeWorkId).value
+    val isBlockModeFullscreen = isBlockModeActive && !sessionViewModel.blockSplitView && !galleryPresent
+    LaunchedEffect(isBlockModeActive) {
+        if (isBlockModeActive) previewActionsExpanded = false
+    }
+    LaunchedEffect(isBlockModeFullscreen) {
+        if (isBlockModeFullscreen) previewActionsExpanded = false
+    }
+    LaunchedEffect(editorFocused, isLandscape) {
+        if (!isLandscape && editorFocused) previewActionsExpanded = false
+    }
     val editingKey = "$activeWorkId/$editingFile"
     val editingState = if (editingFile == "sketch.js") sessionViewModel.editorValueState else
         remember(editingKey, sessionViewModel.auxiliaryEditorGeneration) {
@@ -634,6 +712,15 @@ internal fun EditorScreen(
                 }
             }
             CoordinatorResult.Success(Unit)
+        }
+    }
+
+    BackHandler(enabled = showParameterSheet && (!isLandscape || parameterFullscreen) && !galleryPresent && !showSettings && !showUserGuide) {
+        if (!isLandscape) {
+            showParameterSheet = false
+            parameterFullscreen = false
+        } else {
+            parameterFullscreen = false
         }
     }
 
@@ -874,10 +961,10 @@ internal fun EditorScreen(
         if (event.openSettings) showSettings = true
         if (event.openFolder) folderLauncher.launch(selectedFolderUri)
         if (event.forceRun || (event.rerun && autoRun)) {
-            val awaitClose: (suspend () -> Unit)? = if (!workMenuExpanded && galleryProgress > 0f) {
+            val awaitClose: (suspend () -> Unit)? = if (!workMenuExpanded && galleryProgressState.value > 0f) {
                 {
                     withTimeoutOrNull(1000L) {
-                        androidx.compose.runtime.snapshotFlow { galleryProgress == 0f || workMenuExpanded }.first { it }
+                        androidx.compose.runtime.snapshotFlow { galleryProgressState.value == 0f || workMenuExpanded }.first { it }
                     }
                 }
             } else null
@@ -938,6 +1025,7 @@ internal fun EditorScreen(
     )
 
     fun openWorkGallery() {
+        latestPreviewBounds[0]?.let { galleryPreviewBounds = it }
         val owner = activeWorkId
         val activation = sessionViewModel.blockEditorActivationGeneration
         if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
@@ -1025,6 +1113,7 @@ internal fun EditorScreen(
     // Capture the renderer's owner, which can differ from the selected work when auto-run is off.
     LaunchedEffect(workMenuExpanded, isLandscape) {
         if (!workMenuExpanded) return@LaunchedEffect
+        latestPreviewBounds[0]?.let { galleryPreviewBounds = it }
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         navigationTarget = null
@@ -1062,38 +1151,45 @@ internal fun EditorScreen(
         }
     }
 
-    DisposableEffect(galleryPresent, preview.generation) {
+    LaunchedEffect(showSettings) {
+        if (showSettings) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+    }
+    val previewObscured = galleryPresent || showSettings
+    DisposableEffect(previewObscured, preview.generation) {
         val webView = preview.webView
         val accessibility = webView?.importantForAccessibility
         val focusable = webView?.isFocusable
         val touchFocusable = webView?.isFocusableInTouchMode
-        if (galleryPresent) {
+        if (previewObscured) {
             webView?.clearFocus()
             webView?.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             webView?.isFocusable = false
         }
         onDispose {
-            if (galleryPresent && webView != null && preview.webView === webView) {
+            if (previewObscured && webView != null && preview.webView === webView) {
                 webView.importantForAccessibility = accessibility!!
                 webView.isFocusable = focusable!!
                 webView.isFocusableInTouchMode = touchFocusable!!
             }
         }
     }
-    val gallerySuspended = galleryPresent && galleryProgress >= 1f && !isRecordingOrCountingDown
-    DisposableEffect(gallerySuspended, preview.generation) {
+    val previewSuspended = ((galleryPresent && gallerySettled) || showSettings) && !isRecordingOrCountingDown
+    DisposableEffect(previewSuspended, preview.generation) {
         val webView = preview.webView
-        if (gallerySuspended) webView?.onPause()
+        if (previewSuspended) webView?.onPause()
         onDispose {
-            if (gallerySuspended && webView != null && preview.webView === webView &&
+            if (previewSuspended && webView != null && preview.webView === webView &&
                 lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             ) {
                 webView.onResume()
             }
         }
     }
-    LaunchedEffect(galleryPresent, galleryHandoffAlpha) {
-        if (!galleryPresent && galleryHandoffAlpha == 0f) galleryPreviewBitmap = null
+    LaunchedEffect(galleryPresent, galleryHandoffActive) {
+        if (!galleryPresent && !galleryHandoffActive) galleryPreviewBitmap = null
     }
     LaunchedEffect(galleryPresent) {
         if (!galleryPresent) {
@@ -1107,9 +1203,9 @@ internal fun EditorScreen(
     }
 
     val liftPreviewChrome = !showExpandedPreview && galleryPreviewBounds?.usableGalleryBounds() == true &&
-        (galleryPresent || galleryHandoffAlpha > 0f)
-    val galleryMorphActive = galleryPresent && galleryProgress > 0f &&
-        galleryProgress < 1f && galleryPreviewBitmap?.isRecycled == false &&
+        (galleryPresent || galleryHandoffActive)
+    val galleryMorphActive = galleryPresent && galleryAnimating &&
+        galleryPreviewBitmap?.isRecycled == false &&
         galleryPreviewBounds?.usableGalleryBounds() == true &&
         galleryThumbnailBounds?.usableGalleryBounds() == true
 
@@ -1127,6 +1223,21 @@ internal fun EditorScreen(
         }
     }
 
+    var pendingGalleryCodeJump by remember { mutableStateOf<Pair<GalleryCodeMatch, String>?>(null) }
+    LaunchedEffect(activeWorkId, activeWork?.bodyLoaded, galleryPresent, pendingGalleryCodeJump) {
+        val pending = pendingGalleryCodeJump ?: return@LaunchedEffect
+        val (match, query) = pending
+        val work = activeWork
+        if (!galleryPresent && activeWorkId == match.workId && work != null && work.bodyLoaded) {
+            pendingGalleryCodeJump = null
+            val sources = work.files.mapValues { (name, code) ->
+                sessionViewModel.fileDrafts["${work.id}/$name"] ?: code
+            } + ("sketch.js" to sessionViewModel.editorValueState.value.text)
+            val resolved = findFirstCodeMatchInSources(work.id, sources, query) ?: match
+            navigateToSource(resolved.file, resolved.line)
+        }
+    }
+
     fun toggleAllGallerySelection() {
         if (assetBusy) return
         val trimmedQuery = workGalleryState.query.trim()
@@ -1136,7 +1247,7 @@ internal fun EditorScreen(
                 runCatching { workDatabase.searchWorkIds(trimmedQuery) }.getOrDefault(emptySet())
             }
             val allIds = works.filter {
-                !it.isSample && workGalleryState.inFolder(it) &&
+                !it.isSample && workGalleryState.matchesScope(it) &&
                     (workGalleryState.selectedTag == null || it.tags.any { tag -> tag.equals(workGalleryState.selectedTag, true) }) &&
                     matchesGalleryQuery(it, trimmedQuery, ftsMatchedIds)
             }.map { it.id }.toSet()
@@ -1186,7 +1297,7 @@ internal fun EditorScreen(
                 WorkGallerySearch(
                     state = workGalleryState,
                     text = { uiText(it) },
-                    interactive = galleryProgress >= 1f,
+                    interactive = gallerySettled,
                     modifier = Modifier.weight(1f),
                     compact = true
                 )
@@ -1307,13 +1418,26 @@ internal fun EditorScreen(
             onActiveThumbnailBounds = { if (galleryTarget && !gallerySelectionPrepared) galleryThumbnailBounds = it },
             morphWorkId = galleryPreviewOwner,
             suppressMorphThumbnail = galleryMorphActive,
-            morphProgress = galleryProgress,
+            morphProgress = if (gallerySettled) 1f else 0f,
             folders = workManagementViewModel.galleryFolders,
             tabs = workManagementViewModel.galleryTabs,
             onManageFolders = { workManagementViewModel.showGalleryFolders = true },
             onMove = { workManagementViewModel.galleryMoveIds = setOf(it.id) },
             onReorderTabs = { workManagementViewModel.reorderGalleryTabs(it) },
-            landscapeHeader = { visibleCount -> LandscapeGalleryBar(visibleCount) }
+            landscapeHeader = { visibleCount -> LandscapeGalleryBar(visibleCount) },
+            onOpenCodeMatch = { work, match, query ->
+                if (workSaving || (!assetBusy && sessionViewModel.snapshotOperationWorkId == null)) {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    pendingGalleryCodeJump = match to query
+                    workManagementViewModel.selectWork(work.id, false)
+                }
+            },
+            onResetThumbnail = { work ->
+                preview.resetManualThumbnail(work.id) {
+                    Toast.makeText(context, uiText("自動サムネイルに戻しました"), Toast.LENGTH_SHORT).show()
+                }
+            }
         )
     }
 
@@ -1348,7 +1472,7 @@ internal fun EditorScreen(
             isLandscape = isLandscape,
             manualRotation = manualRotation,
             wideWorkPanels = wideWorkPanels,
-            galleryProgress = galleryProgress,
+            galleryProgressProvider = galleryProgressProvider,
             colors = colors,
             viewModel = workManagementViewModel,
             onRotate = {
@@ -1431,7 +1555,7 @@ internal fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.weight(1f).padding(end = 8.dp)) {
-                Box(Modifier.galleryChrome(galleryProgress, GalleryPart.TITLE)
+                Box(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.TITLE)
                     .blockGalleryInput(galleryPresent)) {
                     WorkSelector()
                 }
@@ -1445,8 +1569,8 @@ internal fun EditorScreen(
                         labelText = if (workGalleryState.selecting)
                             "${workGalleryState.selectedIds.size} · ${uiText("選択中")}"
                             else uiText("作品") + " · " + works.size,
-                        modifier = Modifier.graphicsLayer { alpha = 1f - galleryExposure(galleryProgress, GalleryPart.TITLE) }
-                            .blockGalleryInput(galleryProgress < 1f)
+                        modifier = Modifier.graphicsLayer { alpha = 1f - galleryExposure(galleryProgressProvider(), GalleryPart.TITLE) }
+                            .blockGalleryInput(!gallerySettled)
                     )
                 }
             }
@@ -1456,8 +1580,8 @@ internal fun EditorScreen(
                     WorkActions()
                 }
                 if (galleryPresent) {
-                    GalleryActions(Modifier.graphicsLayer { alpha = galleryLayerAlpha(galleryProgress) }
-                        .blockGalleryInput(galleryProgress < 1f))
+                    GalleryActions(Modifier.graphicsLayer { alpha = galleryLayerAlpha(galleryProgressProvider()) }
+                        .blockGalleryInput(!gallerySettled))
                 }
             }
         }
@@ -1515,7 +1639,10 @@ internal fun EditorScreen(
                 showExpandedPreview = true
             },
             textTranslator = { s, args -> uiText(s, *args) },
-            modifier = modifier
+            modifier = modifier,
+            showHud = preview.showHud,
+            onToggleHud = { preview.setHudEnabled(!preview.showHud) },
+            onStepFrame = { preview.stepFrame() }
         )
     }
 
@@ -1524,7 +1651,7 @@ internal fun EditorScreen(
         var historyExpanded by remember { mutableStateOf(false) }
         var settingsExpanded by remember { mutableStateOf(false) }
         val hasPendingChanges = previewHasChanges && !preview.isLoading
-        val consoleHasError = consoleEntries.any { it.level == ConsoleLevel.ERROR }
+        val consoleHasError = hasConsoleError
         val statusDotColor = when {
             hasPendingChanges -> colors.tertiary
             isError -> colors.error
@@ -1538,8 +1665,9 @@ internal fun EditorScreen(
             top = {
                 RailButton(
                     iconRes = if (isPaused) R.drawable.ic_play else R.drawable.ic_pause,
-                    label = uiText(if (isPaused) "再生" else "一時停止"),
+                    label = uiText(if (isPaused) "再生（長押しで1コマ送り）" else "一時停止（長押しで1コマ送り）"),
                     onClick = ::togglePreviewPlayback,
+                    onLongClick = { preview.stepFrame() },
                     dotColor = statusDotColor,
                     outlineColor = if (isError) colors.error else null
                 )
@@ -1691,11 +1819,12 @@ internal fun EditorScreen(
                 iconSize = 17.dp,
                 onTogglePause = ::togglePreviewPlayback,
                 onReload = { runSketch() },
-                textTranslator = { s, args -> uiText(s, *args) }
+                textTranslator = { s, args -> uiText(s, *args) },
+                onStepFrame = { preview.stepFrame() }
             )
 
             ConsoleButton(
-                hasError = consoleEntries.any { it.level == ConsoleLevel.ERROR },
+                hasError = hasConsoleError,
                 entryCount = consoleEntries.size,
                 colors = colors,
                 height = 34.dp,
@@ -1726,7 +1855,7 @@ internal fun EditorScreen(
     }
 
     @Composable
-    fun BoxWithConstraintsScope.PreviewChrome(fullscreen: Boolean = false, showExpandControl: Boolean = true) {
+    fun BoxScope.PreviewChrome(fullscreen: Boolean = false, showExpandControl: Boolean = true) {
                 PreviewOverlayControls(
                     fullscreen = fullscreen,
                     showExpandControl = showExpandControl,
@@ -1737,7 +1866,7 @@ internal fun EditorScreen(
                     isPreviewRecording = isPreviewRecording,
                     isRecordingSaving = isRecordingSaving,
                     recordingFormatLabel = recordingFormatLabel,
-                    recordingElapsedMillis = recordingElapsedMillis,
+                    recordingElapsedMillisProvider = { recordingViewModel.recordingElapsedMillis },
                     recordingLimitMillis = recordingLimitMillis,
                     previewActionsExpanded = previewActionsExpanded,
                     onTogglePreviewActions = { previewActionsExpanded = !previewActionsExpanded },
@@ -1781,7 +1910,13 @@ internal fun EditorScreen(
                     },
                     onStopRecording = ::stopPreviewRecording,
                     colors = colors,
-                    textTranslator = { s, args -> uiText(s, *args) }
+                    textTranslator = { s, args -> uiText(s, *args) },
+                    showHud = preview.showHud,
+                    hudMetricsProvider = { preview.hudMetrics },
+                    isPaused = isPaused,
+                    onToggleHud = { preview.setHudEnabled(!preview.showHud) },
+                    onStepFrame = { preview.stepFrame() },
+                    onTogglePause = ::togglePreviewPlayback
                 )
     }
 
@@ -1795,7 +1930,7 @@ internal fun EditorScreen(
         PreviewSurface(
             preview = preview, isError = isError, fullscreen = fullscreen,
             logicalSize = logicalSize, modifier = modifier,
-            galleryProgress = if (fullscreen) 0f else galleryProgress,
+            galleryProgressProvider = if (fullscreen) ({ 0f }) else galleryProgressProvider,
             galleryMorphActive = !fullscreen && galleryMorphActive,
             chromeLifted = !fullscreen && liftPreviewChrome,
             onClearEditorFocus = { focusManager.clearFocus(force = true) }
@@ -1811,9 +1946,22 @@ internal fun EditorScreen(
         } else {
             PreviewArea(
                 modifier = modifier.onGloballyPositioned { coordinates ->
-                    if (!galleryPresent || gallerySelectionPrepared || !galleryTarget) galleryPreviewBounds = coordinates.boundsInRoot()
+                    val bounds = coordinates.boundsInRoot()
+                    latestPreviewBounds[0] = bounds
+                    if ((galleryTarget && !gallerySelectionPrepared) ||
+                        (galleryPresent && galleryPreviewBounds == null)) {
+                        val current = galleryPreviewBounds
+                        if (current == null ||
+                            kotlin.math.abs(current.left - bounds.left) >= 1f ||
+                            kotlin.math.abs(current.top - bounds.top) >= 1f ||
+                            kotlin.math.abs(current.right - bounds.right) >= 1f ||
+                            kotlin.math.abs(current.bottom - bounds.bottom) >= 1f
+                        ) {
+                            galleryPreviewBounds = bounds
+                        }
+                    }
                 }.onSizeChanged { size ->
-                    if (size.width > 0 && size.height > 0) {
+                    if (size.width > 0 && size.height > 0 && normalPreviewSize != size) {
                         normalPreviewSize = size
                     }
                 }
@@ -1862,13 +2010,14 @@ internal fun EditorScreen(
                 iconSize = if (isLandscape) 15.dp else 16.dp,
                 onTogglePause = ::togglePreviewPlayback,
                 onReload = { runSketch() },
-                textTranslator = { s, args -> uiText(s, *args) }
+                textTranslator = { s, args -> uiText(s, *args) },
+                onStepFrame = { preview.stepFrame() }
             )
 
             Spacer(Modifier.width(4.dp))
 
             ConsoleButton(
-                hasError = consoleEntries.any { it.level == ConsoleLevel.ERROR },
+                hasError = hasConsoleError,
                 entryCount = consoleEntries.size,
                 colors = colors,
                 height = if (isLandscape) 32.dp else 36.dp,
@@ -1911,7 +2060,8 @@ internal fun EditorScreen(
             onNavigateToSource = { file, line -> navigateToSource(file, line) },
             codeFontFamily = codeFontFamily,
             textTranslator = { s, args -> uiText(s, *args) },
-            modifier = modifier
+            modifier = modifier,
+            onEvaluateExpression = { preview.evaluateConsoleExpression(it) }
         )
     }
 
@@ -1931,6 +2081,7 @@ internal fun EditorScreen(
             onUndo = { undoEditorChange() },
             onRedo = { redoEditorChange() },
             onSearch = { editUserWork { searchReplaceViewModel.openSearch(editingValue) } },
+            onOutline = { showOutlineDialog = true },
             onFormat = {
                 formatEditingFile()
             },
@@ -1970,9 +2121,10 @@ internal fun EditorScreen(
         activeWorkId, editingFile, editingText, editorText, activeWork?.files.orEmpty(),
         sessionViewModel, codeCompletion && editingJavaScript
     )
+    val completionSupported = editingJavaScript || projectTextSyntax(editingFile) == ProjectTextSyntax.SHADER
     val editorSuggestions = remember(editingValue.text, editingValue.selection, editorFocused,
-        codeCompletion, editingFile, projectCompletionSymbols) {
-        if (!editorFocused || !codeCompletion || !editingJavaScript) emptyList()
+        codeCompletion, editingFile, completionSupported, projectCompletionSymbols) {
+        if (!editorFocused || !codeCompletion || !completionSupported) emptyList()
         else projectCompletions(editingValue, projectCompletionSymbols, editingFile)
     }
 
@@ -1984,7 +2136,7 @@ internal fun EditorScreen(
             suggestions = editorSuggestions,
             editingValue = editingValue,
             editingText = editingText,
-            visible = editorFocused && codeCompletion && editingJavaScript && !inlineSearchVisible,
+            visible = editorFocused && codeCompletion && completionSupported && !inlineSearchVisible,
             codeFontFamily = codeFontFamily,
             colors = colors,
             textTranslator = { s, args -> uiText(s, *args) },
@@ -2128,59 +2280,7 @@ internal fun EditorScreen(
             appInsets
     ) { innerPadding ->
 
-        if (showSettings) {
-
-            SettingsScreen(
-                state = settingsViewModel.state,
-                onSettingsChange = { settingsViewModel.update(it) },
-                font = FontSettingsUiState(customFontFamily, importedFontName, fontImportBusy),
-                actions = SettingsScreenActions(
-                    onBack = { showSettings = false },
-                    onChooseFolder = { workManagementViewModel.saveCurrentWork(WorkEvent(openFolder = true)) },
-                    onImportOfficialSamples = {
-                        showSettings = false
-                        workGalleryState.changeFolder(SAMPLE_FOLDER)
-                        workGalleryState.closeSearch(); workGalleryState.finishSelection()
-                        val owner = activeWorkId
-                        val activation = sessionViewModel.blockEditorActivationGeneration
-                        if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
-                            workMenuExpanded = true
-                        } else {
-                            editorToolScope.launch {
-                                if (flushOwnedBlockEditor(owner, activation)) workMenuExpanded = true
-                            }
-                        }
-                    },
-                    onImportFont = { fontPicker.launch(arrayOf("*/*")) },
-                    onResetFont = { settingsViewModel.resetFont() },
-                    onImportP5 = { workManagementViewModel.resetP5Results(); showP5Import = true },
-                    onImportJs = { importJsLauncher.launch(arrayOf("application/javascript", "text/javascript", "text/plain", "application/octet-stream")) },
-                    onExportJs = { exportJsLauncher.launch(safeJsFileName(activeWork?.title ?: "sketch")) },
-                    onExportHtml = { exportHtmlLauncher.launch(safeHtmlFileName(activeWork?.title ?: "sketch")) },
-                    onShowOnboarding = {
-                        showSettings = false
-                        settingsViewModel.replayOnboarding()
-                    },
-                    onShowPracticeTour = {
-                        showSettings = false
-                        settingsViewModel.replayOnboarding()
-                    },
-                    onExportBackup = { exportBackupLauncher.launch("Edit-RiN-backup.zip") },
-                    onImportBackup = { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                    openExternalUrl = { onOpenExternalUrl(it) },
-                    onTryGuideCode = { title, code ->
-                        showSettings = false
-                        workManagementViewModel.createWorkWithCode(title, code)
-                    }
-                ),
-                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
-                folderName = selectedFolderName,
-                assets = assets,
-                updateViewModel = updateViewModel,
-                textTranslator = { text, arguments -> uiText(text, *arguments) }
-            )
-
-        } else {
+        Box(Modifier.fillMaxSize()) {
 
             EditorWorkspaceLayout(
                 state = EditorWorkspaceState(
@@ -2204,10 +2304,12 @@ internal fun EditorScreen(
                     portraitRatioDragging = portraitRatioDragging,
                     codeFontFamily = codeFontFamily,
                     hasVisibleCompletions = editorSuggestions.isNotEmpty() && !inlineSearchVisible,
-                    showParameterPanel = USE_INLINE_PARAMETER_PANEL && isLandscape && showParameterSheet,
+                    showParameterPanel = showParameterSheet,
                     isSample = sessionViewModel.sampleReadOnly || activeWork?.isSample == true,
                     galleryVisible = galleryPresent,
-                    galleryProgress = galleryProgress,
+                    galleryProgress = 0f,
+                    galleryProgressProvider = galleryProgressProvider,
+                    gallerySettled = gallerySettled,
                     pipModeWhenEditing = compactPreview && !showExpandedPreview,
                     autoRunEnabled = sessionViewModel.autoRunEnabled,
                     previewHasChanges = previewHasChanges && !preview.isLoading,
@@ -2216,10 +2318,8 @@ internal fun EditorScreen(
                     pipMinimized = sessionViewModel.pipMinimized,
                     pipSnapCorner = sessionViewModel.pipSnapCorner,
                     pipAutoGhosted = sessionViewModel.pipAutoGhosted,
-                    blockModeFullscreen = editingFile == "sketch.js" &&
-                        sessionViewModel.blockModeState(activeWorkId).value &&
-                        !sessionViewModel.blockSplitView &&
-                        !galleryPresent
+                    blockModeFullscreen = isBlockModeFullscreen,
+                    parameterFullscreen = showParameterSheet && (!isLandscape || parameterFullscreen) && !galleryPresent
                 ),
                 actions = EditorWorkspaceActions(
                     onSplitChanged = { landscapePreviewFraction = it },
@@ -2252,7 +2352,10 @@ internal fun EditorScreen(
                             workManagementViewModel = workManagementViewModel,
                             preview = preview,
                             textTranslator = { source, args -> uiText(source, *args) },
-                            onDismiss = { showParameterSheet = false },
+                            onDismiss = {
+                                showParameterSheet = false
+                                parameterFullscreen = false
+                            },
                             onJumpToParameter = { paramName ->
                                 val currentSources = activeWork?.files.orEmpty().mapValues { (name, code) ->
                                     sessionViewModel.fileDrafts["${activeWork?.id}/$name"] ?: code
@@ -2260,9 +2363,12 @@ internal fun EditorScreen(
                                 findParameterDeclarationLine(currentSources, paramName)?.let { (file, line) ->
                                     navigateToSource(file, line)
                                     showParameterSheet = false
+                                    parameterFullscreen = false
                                 }
                             },
-                            modifier = modifier
+                            modifier = modifier,
+                            isFullscreen = !isLandscape || parameterFullscreen,
+                            onToggleFullscreen = if (isLandscape) ({ setParameterFullscreenMode(!parameterFullscreen) }) else null
                         )
                     },
                     completions = { CompletionBar(it) }, accessory = { EditorAccessoryBar(it) },
@@ -2272,7 +2378,7 @@ internal fun EditorScreen(
                     landscapeRail = { LandscapeRail(it) },
                     previewChrome = { modifier ->
                         WorkGalleryPreviewChrome(galleryPreviewBounds, modifier, visible = liftPreviewChrome) {
-                            BoxWithConstraints(Modifier.fillMaxSize().galleryChrome(galleryProgress, GalleryPart.SECONDARY)) {
+                            Box(Modifier.fillMaxSize().galleryChrome(galleryProgressProvider, GalleryPart.SECONDARY)) {
                                 PreviewChrome()
                             }
                         }
@@ -2281,16 +2387,84 @@ internal fun EditorScreen(
                         WorkGalleryPreview(
                             bitmap = galleryPreviewBitmap,
                             start = galleryPreviewBounds, end = galleryThumbnailBounds,
-                            progress = galleryProgress, modifier = modifier,
-                            visible = (galleryPresent && galleryProgress < 1f) || (!galleryPresent && galleryHandoffAlpha > 0f),
-                            opacity = if (galleryPresent) 1f else galleryHandoffAlpha
+                            progressProvider = galleryProgressProvider, modifier = modifier,
+                            visible = (galleryPresent && !gallerySettled) || (!galleryPresent && galleryHandoffActive),
+                            opacityProvider = galleryHandoffOpacityProvider
                         )
                     }
                 ),
                 textTranslator = { source, args -> uiText(source, *args) },
-                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
+                    .graphicsLayer { alpha = if (showSettings) 0f else 1f }
+                    .then(if (showSettings) Modifier.clearAndSetSemantics { hideFromAccessibility() } else Modifier)
+                    .focusProperties { if (showSettings) canFocus = false }
+                    .onPreviewKeyEvent { showSettings }
+                    .blockGalleryInput(showSettings)
             )
-    }
+
+            AnimatedVisibility(
+                visible = showSettings,
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(110)),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                SettingsScreen(
+                    state = settingsViewModel.state,
+                    onSettingsChange = { settingsViewModel.update(it) },
+                    font = FontSettingsUiState(customFontFamily, importedFontName, fontImportBusy),
+                    actions = SettingsScreenActions(
+                        onBack = { showSettings = false },
+                        onChooseFolder = { workManagementViewModel.saveCurrentWork(WorkEvent(openFolder = true)) },
+                        onImportOfficialSamples = {
+                            showSettings = false
+                            workGalleryState.changeFolder(SAMPLE_FOLDER)
+                            workGalleryState.closeSearch(); workGalleryState.finishSelection()
+                            val owner = activeWorkId
+                            val activation = sessionViewModel.blockEditorActivationGeneration
+                            if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+                                workMenuExpanded = true
+                            } else {
+                                editorToolScope.launch {
+                                    if (flushOwnedBlockEditor(owner, activation)) workMenuExpanded = true
+                                }
+                            }
+                        },
+                        onImportFont = { fontPicker.launch(arrayOf("*/*")) },
+                        onResetFont = { settingsViewModel.resetFont() },
+                        onImportP5 = { workManagementViewModel.resetP5Results(); showP5Import = true },
+                        onImportJs = { importJsLauncher.launch(arrayOf("application/javascript", "text/javascript", "text/plain", "application/octet-stream")) },
+                        onExportJs = { exportJsLauncher.launch(safeJsFileName(activeWork?.title ?: "sketch")) },
+                        onExportHtml = { exportHtmlLauncher.launch(safeHtmlFileName(activeWork?.title ?: "sketch")) },
+                        onShowOnboarding = {
+                            showSettings = false
+                            settingsViewModel.replayOnboarding()
+                        },
+                        onShowPracticeTour = {
+                            showSettings = false
+                            settingsViewModel.replayOnboarding()
+                        },
+                        onExportBackup = { exportBackupLauncher.launch("Edit-RiN-backup.zip") },
+                        onImportBackup = { importBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                        openExternalUrl = { onOpenExternalUrl(it) },
+                        onTryGuideCode = { title, code ->
+                            showSettings = false
+                            workManagementViewModel.createWorkWithCode(title, code)
+                        }
+                    ),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(colors.background)
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding),
+                    folderName = selectedFolderName,
+                    assets = assets,
+                    updateViewModel = updateViewModel,
+                    textTranslator = { text, arguments -> uiText(text, *arguments) }
+                )
+            }
+        }
 
     }
 
@@ -2328,6 +2502,17 @@ internal fun EditorScreen(
         }
     }
 
+    if (showOutlineDialog) {
+        CodeOutlineDialog(
+            file = editingFile,
+            source = editingText,
+            codeFontFamily = codeFontFamily,
+            text = ::uiText,
+            onJump = { line -> navigateToSource(editingFile, line) },
+            onDismiss = { showOutlineDialog = false }
+        )
+    }
+
     EditorAuthoringDialogs(
         models = models,
         preview = preview,
@@ -2363,22 +2548,6 @@ internal fun EditorScreen(
         applyEditorChange = ::applyEditorChange,
         textTranslator = { s, args -> uiText(s, *args) }
     )
-
-    if ((!USE_INLINE_PARAMETER_PANEL || !isLandscape) && showParameterSheet) {
-        LiveParameterSheet(activeWork, editorText, sessionViewModel, workManagementViewModel, preview,
-            ParameterSheetLayout(isLandscape, landscapeEditorOnLeft, 1f - animatedLandscapePreviewFraction, showStatusBar),
-            { source, args -> uiText(source, *args) },
-            onDismiss = { showParameterSheet = false },
-            onJumpToParameter = { paramName ->
-                val currentSources = activeWork?.files.orEmpty().mapValues { (name, code) ->
-                    sessionViewModel.fileDrafts["${activeWork?.id}/$name"] ?: code
-                } + ("sketch.js" to editorText)
-                findParameterDeclarationLine(currentSources, paramName)?.let { (file, line) ->
-                    navigateToSource(file, line)
-                    showParameterSheet = false
-                }
-            })
-    }
 
     PreviewMediaSheets(models, preview, mediaActions, editorValue)
 

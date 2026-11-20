@@ -516,18 +516,46 @@
     }
     const hasBlockSnippet=Boolean(block&&snippet);
     const scopeToggle=$('codeScopeToggle'),scopeBlock=$('codeScopeBlock'),scopeAll=$('codeScopeAll');
+    let currentPlainCode='';
+    function renderHighlightedSource(fullSource, hlStart, hlEnd){
+      const el=$('codeDialogContent');
+      el.replaceChildren();
+      if(!fullSource){el.textContent='// (empty)';return;}
+      if(hlEnd>hlStart&&hlStart>=0&&hlEnd<=fullSource.length){
+        el.appendChild(document.createTextNode(fullSource.slice(0,hlStart)));
+        const mark=document.createElement('mark');
+        mark.className='rin-code-highlight';
+        mark.textContent=fullSource.slice(hlStart,hlEnd);
+        el.appendChild(mark);
+        el.appendChild(document.createTextNode(fullSource.slice(hlEnd)));
+        requestAnimationFrame(()=>{try{mark.scrollIntoView({block:'center',inline:'nearest'});}catch(_){}});
+      }else{
+        el.textContent=fullSource;
+      }
+    }
     function updateView(showEntire){
       if(showEntire||!hasBlockSnippet){
+        const full=state.source||'';
+        currentPlainCode=full||'// (empty)';
         $('codeDialogTitle').textContent=tr('codePreview');
-        $('codeDialogSubtitle').textContent='sketch.js · '+tr('entireProgram');
-        $('codeDialogContent').textContent=state.source||'// (empty)';
+        if(targetNode&&end>start){
+          const lineStart=1+full.slice(0,start).split('\n').length-1;
+          const lineEnd=1+full.slice(0,Math.max(start,end-1)).split('\n').length-1;
+          const lineTag=lineStart===lineEnd?('L'+lineStart):('L'+lineStart+'–L'+lineEnd);
+          $('codeDialogSubtitle').textContent='sketch.js · '+tr('entireProgram')+' ('+lineTag+')';
+          renderHighlightedSource(full,start,end);
+        }else{
+          $('codeDialogSubtitle').textContent='sketch.js · '+tr('entireProgram');
+          renderHighlightedSource(full,0,0);
+        }
         if(scopeBlock)scopeBlock.setAttribute('aria-pressed','false');
         if(scopeAll)scopeAll.setAttribute('aria-pressed','true');
       }else{
         const node=nodeFor(block),nodeTitle=node?.fields?.name?.value||node?.calleeName||caption(node);
+        currentPlainCode=snippet;
         $('codeDialogTitle').textContent=tr('codePreview');
         $('codeDialogSubtitle').textContent=tr('selectedBlock')+(nodeTitle?' ('+nodeTitle+')':'');
-        $('codeDialogContent').textContent=snippet;
+        renderHighlightedSource(snippet,0,0);
         if(scopeBlock)scopeBlock.setAttribute('aria-pressed','true');
         if(scopeAll)scopeAll.setAttribute('aria-pressed','false');
       }
@@ -546,7 +574,7 @@
     const copyBtn=$('codeDialogCopy'),copyLabel=copyBtn.querySelector('span')||copyBtn;
     copyLabel.textContent=tr('copy');
     copyBtn.onclick=async()=>{
-      const textToCopy=$('codeDialogContent').textContent;
+      const textToCopy=currentPlainCode||$('codeDialogContent').textContent;
       try{
         let copied=false;
         if(navigator.clipboard?.writeText){

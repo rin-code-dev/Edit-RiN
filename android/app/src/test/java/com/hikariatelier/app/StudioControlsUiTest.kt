@@ -3,8 +3,13 @@ package com.hikariatelier.app
 import android.content.ComponentName
 import android.content.Context
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
@@ -15,8 +20,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
+import com.hikariatelier.app.ui.theme.AppThemeMode
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -210,5 +217,124 @@ class StudioControlsUiTest {
         compose.runOnIdle {
             assertEquals(choiceParam, resetParam)
         }
+    }
+
+    @Test fun fullscreenOverlayControlsWrapIntoPopupOnCompactPortraitAndStayWithinBounds() {
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.size(390.dp, 720.dp).testTag("preview-host")) {
+                    PreviewOverlayControls(
+                        fullscreen = true,
+                        showExpandControl = false,
+                        isLandscape = false,
+                        isRecordingOrCountingDown = false,
+                        recordingCountdownRemaining = 0,
+                        pendingRecordingFormat = null,
+                        isPreviewRecording = false,
+                        isRecordingSaving = false,
+                        recordingFormatLabel = "MP4",
+                        recordingLimitMillis = 0L,
+                        previewActionsExpanded = true,
+                        onTogglePreviewActions = {},
+                        onClosePreviewActions = {},
+                        onRotate = {},
+                        onScreenshot = {},
+                        onShareCard = {},
+                        onOpenParameters = {},
+                        onToggleRecording = {},
+                        onCancelCountdown = {},
+                        onToggleFullscreen = {},
+                        onStopRecording = {},
+                        colors = MaterialTheme.colorScheme,
+                        textTranslator = { s, _ -> s },
+                        showHud = true,
+                        hudMetricsProvider = { PreviewHudMetrics(fps = 60f, frameCount = 120, width = 800, height = 800, paused = true) },
+                        isPaused = true,
+                        onToggleHud = {},
+                        onStepFrame = {},
+                        onTogglePause = {}
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        val hostBounds = compose.onNodeWithTag("preview-host").fetchSemanticsNode().boundsInRoot
+        val hudBounds = compose.onNodeWithText("PAUSE · #120 · 800×800").fetchSemanticsNode().boundsInRoot
+        val toggleNode = compose.onNodeWithContentDescription("プレビュー操作を閉じる").assertIsDisplayed()
+        val toggleBounds = toggleNode.fetchSemanticsNode().boundsInRoot
+        assertTrue("Toggle button must stay inside host bounds", toggleBounds.right <= hostBounds.right + 1f)
+        assertTrue("Toggle button must not overlap HUD pill", toggleBounds.left >= hudBounds.right)
+
+        val closeBtn = compose.onNodeWithContentDescription("全画面表示を閉じる").assertIsDisplayed()
+        val shotBtn = compose.onNodeWithContentDescription("プレビューをスクリーンショット").assertIsDisplayed()
+        compose.onNodeWithContentDescription("FPS HUD").assertIsDisplayed()
+        compose.onNodeWithContentDescription("1コマ送り").assertIsDisplayed()
+        compose.onNodeWithContentDescription("再生").assertIsDisplayed()
+        compose.onNodeWithContentDescription("パラメータ").assertIsDisplayed()
+
+        // FlowRow wraps into multiple rows in the popup instead of overflowing a single wide row.
+        val pauseBounds = compose.onNodeWithContentDescription("再生").fetchSemanticsNode().boundsInRoot
+        val closeBounds = closeBtn.fetchSemanticsNode().boundsInRoot
+        val shotBounds = shotBtn.fetchSemanticsNode().boundsInRoot
+        assertTrue("Wrapped buttons should fit compact popup width", closeBounds.right <= hostBounds.width)
+        assertTrue("Popup FlowRow must wrap buttons onto a second row", closeBounds.top > pauseBounds.bottom || shotBounds.top > pauseBounds.bottom)
+    }
+
+    @Test fun portraitWorkspaceHidesPreviewActionsTrayInBlockModeAndFocusedEditor() {
+        var blockFullscreen by mutableStateOf(false)
+        var editorFocused by mutableStateOf(false)
+        compose.setContent {
+            MaterialTheme {
+                EditorWorkspaceLayout(
+                    state = EditorWorkspaceState(
+                        isLandscape = false,
+                        editorFocused = editorFocused,
+                        keyboardVisible = false,
+                        showResizeHandles = false,
+                        showConsole = false,
+                        showEditorAccessoryBar = false,
+                        themeMode = AppThemeMode.LIGHT,
+                        workPreviewRatio = 1f,
+                        animatedLandscapePreviewFraction = 0.5f,
+                        landscapeEditorOnLeft = true,
+                        previewActionsExpanded = true,
+                        landscapePreviewFraction = 0.5f,
+                        showLandscapeSplitLabel = false,
+                        activeWorkId = "work-1",
+                        previewRatioSelection = "1:1",
+                        portraitRatioDragging = false,
+                        codeFontFamily = FontFamily.Monospace,
+                        hasVisibleCompletions = false,
+                        blockModeFullscreen = blockFullscreen
+                    ),
+                    actions = EditorWorkspaceActions({}, {}, {}, {}, {}, {}),
+                    slots = EditorWorkspaceSlots(
+                        workBar = { Box(Modifier.fillMaxWidth().height(36.dp)) },
+                        landscapeBar = {},
+                        controlBar = { Box(Modifier.fillMaxWidth().height(36.dp)) },
+                        console = {},
+                        previewActions = { Box(it.fillMaxWidth().height(40.dp).testTag("preview-actions-tray")) },
+                        editor = { Box(it.fillMaxSize()) },
+                        completions = {},
+                        accessory = {},
+                        preview = { Box(it.fillMaxSize()) }
+                    ),
+                    textTranslator = { s, _ -> s }
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("preview-actions-tray").assertIsDisplayed()
+
+        compose.runOnIdle { blockFullscreen = true }
+        compose.waitForIdle()
+        compose.onNodeWithTag("preview-actions-tray").assertDoesNotExist()
+
+        compose.runOnIdle {
+            blockFullscreen = false
+            editorFocused = true
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("preview-actions-tray").assertDoesNotExist()
     }
 }

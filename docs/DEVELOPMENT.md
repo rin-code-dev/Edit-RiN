@@ -99,4 +99,4 @@ PLAYWRIGHT_MODULE=/path/to/playwright-core BROWSER_PATH=/path/to/chromium node t
 
 `p5_host.js` のGIFエンコード部分は独立性がありますが、分割には読込順とブラウザ試験の調整が必要です。現在の録画機能に必要な実装として扱います。
 
-文書上の要確認事項として、`CONTRIBUTING.md` の個別許可を要求する記述と、`LICENSE` / `README.md` のGPL記述が一致していません。今回のコード整理ではライセンス文書を変更していません。
+`CONTRIBUTING.md` のライセンス表記は `LICENSE` / `README.md` と同じ GPLv3+ の方針に揃えています。

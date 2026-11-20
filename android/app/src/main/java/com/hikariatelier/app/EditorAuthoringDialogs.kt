@@ -51,7 +51,7 @@ internal fun EditorAuthoringDialogs(
     onMp4BitrateChange: (Int) -> Unit,
     recordingCountdownSeconds: Int,
     onRecordingCountdownChange: (Int) -> Unit,
-    onRequestPreviewRecording: (String) -> Unit,
+    onRequestPreviewRecording: (String, Int, Boolean) -> Unit,
     showColorPickerDialog: Boolean,
     onColorPickerDialogChange: (Boolean) -> Unit,
     colorPickerInitial: Color,
@@ -134,6 +134,16 @@ internal fun EditorAuthoringDialogs(
     }
 
     if (showScreenshotScale) {
+        val dialogContext = androidx.compose.ui.platform.LocalContext.current
+        val editableWork = activeWork?.takeIf { !it.isSample }
+        val hasManualCover by produceState(
+            initialValue = editableWork != null && (preview.images.peekManualThumbnail(editableWork.id) == true),
+            editableWork?.id,
+            showScreenshotScale,
+            preview.images
+        ) {
+            value = editableWork != null && preview.images.isManualThumbnail(editableWork.id)
+        }
         ScreenshotScaleDialog(
             text = { uiText(it) },
             onCapture = { scale ->
@@ -141,7 +151,32 @@ internal fun EditorAuthoringDialogs(
                 onPendingScreenshotScale(scale)
                 preview.requestScreenshot(scale = scale)
             },
-            onDismiss = { onScreenshotScaleChange(false) }
+            onDismiss = { onScreenshotScaleChange(false) },
+            onSetAsThumbnail = editableWork?.let {
+                {
+                    onScreenshotScaleChange(false)
+                    preview.captureCurrentFrameAsThumbnail { saved ->
+                        android.widget.Toast.makeText(
+                            dialogContext,
+                            uiText(if (saved) "現在のフレームをサムネイルに設定しました" else "サムネイルを設定できませんでした"),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            },
+            hasManualThumbnail = hasManualCover,
+            onResetThumbnail = editableWork?.let { targetWork ->
+                {
+                    onScreenshotScaleChange(false)
+                    preview.resetManualThumbnail(targetWork.id) {
+                        android.widget.Toast.makeText(
+                            dialogContext,
+                            uiText("自動サムネイルに戻しました"),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
         )
     }
 
@@ -153,9 +188,9 @@ internal fun EditorAuthoringDialogs(
             onBitrate = onMp4BitrateChange,
             onCountdown = onRecordingCountdownChange,
             onDismiss = { onRecordingFormatDialogChange(false) },
-            onStart = { format ->
+            onStart = { format, durationSeconds, frameSync ->
                 onRecordingFormatDialogChange(false)
-                onRequestPreviewRecording(format)
+                onRequestPreviewRecording(format, durationSeconds, frameSync)
             }
         )
     }

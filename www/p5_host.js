@@ -189,6 +189,26 @@
           window.rinParams[name] = value;
           valid = true;
         }
+      } else if (Array.isArray(current) && current.length === 2 &&
+        typeof current[0] === 'number' && typeof current[1] === 'number') {
+        if (Array.isArray(value) && value.length === 2 &&
+          typeof value[0] === 'number' && Number.isFinite(value[0]) &&
+          typeof value[1] === 'number' && Number.isFinite(value[1])) {
+          const next = [value[0], value[1]];
+          window.rinParams[name] = next;
+          value = next;
+          valid = true;
+        }
+      } else if (current && typeof current === 'object' && !Array.isArray(current) &&
+        typeof current.x === 'number' && typeof current.y === 'number') {
+        if (value && typeof value === 'object' && !Array.isArray(value) &&
+          typeof value.x === 'number' && Number.isFinite(value.x) &&
+          typeof value.y === 'number' && Number.isFinite(value.y)) {
+          const next = { x: value.x, y: value.y };
+          window.rinParams[name] = next;
+          value = next;
+          valid = true;
+        }
       } else if (typeof current === 'string' && typeof value === 'string') {
         if (/^#[0-9a-fA-F]{6}$/.test(current)) {
           if (/^#[0-9a-fA-F]{6}$/.test(value)) {
@@ -579,6 +599,7 @@ window.pauseSketch = () => {
   }
   try { window.getAudioContext?.().suspend(); } catch (_) {}
   notifyAndroid('onStatusChanged', '一時停止中');
+  emitHudMetrics(true);
 };
 window.resumeSketch = () => {
   if (hostPaused) {
@@ -593,6 +614,199 @@ window.resumeSketch = () => {
   }
   try { window.getAudioContext?.().resume().catch(() => {}); } catch (_) {}
   if (!window.__editKiroRuntimeHasError) notifyAndroid('onStatusChanged', '実行中');
+  emitHudMetrics(true);
+};
+
+let hudEnabled = false;
+let hudFrame = 0;
+let hudLastEmit = 0;
+let hudWindowStart = 0;
+let hudWindowFrames = 0;
+let hudMeasuredFps = 0;
+let hudCustomFrameCount = 0;
+
+function readHudMetrics() {
+  let primaryApi = null;
+  for (const [instance] of instances) {
+    primaryApi = scope(instance);
+    if (primaryApi) break;
+  }
+  if (!primaryApi && typeof window.frameCount === 'number') primaryApi = window;
+  const canvas = sketchCanvas();
+  const frameCount = (primaryApi && typeof primaryApi.frameCount === 'number' && Number.isFinite(primaryApi.frameCount))
+    ? Math.max(0, Math.round(primaryApi.frameCount))
+    : hudCustomFrameCount;
+  const width = (primaryApi && typeof primaryApi.width === 'number' && primaryApi.width > 0)
+    ? Math.round(primaryApi.width)
+    : (canvas ? Math.round(canvas.width) : 0);
+  const height = (primaryApi && typeof primaryApi.height === 'number' && primaryApi.height > 0)
+    ? Math.round(primaryApi.height)
+    : (canvas ? Math.round(canvas.height) : 0);
+  let fps = 0;
+  if (!hostPaused) {
+    const p5Fps = primaryApi && typeof primaryApi.frameRate === 'function' ? primaryApi.frameRate() : NaN;
+    if (typeof p5Fps === 'number' && Number.isFinite(p5Fps) && p5Fps > 0) {
+      fps = Math.round(p5Fps * 10) / 10;
+    } else if (hudMeasuredFps > 0) {
+      fps = Math.round(hudMeasuredFps * 10) / 10;
+    }
+  }
+  return { fps, frameCount, width, height, paused: hostPaused };
+}
+
+const hudNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+
+function emitHudMetrics(force = false) {
+  if (!hudEnabled) return;
+  const now = hudNow();
+  if (!force && now - hudLastEmit < 240) return;
+  hudLastEmit = now;
+  try { notifyAndroid('onHudMetrics', JSON.stringify(readHudMetrics())); } catch (_) {}
+}
+
+function tickHud(now) {
+  hudFrame = 0;
+  if (!hudEnabled) return;
+  if (!hostPaused) {
+    if (!hudWindowStart) hudWindowStart = now;
+    hudWindowFrames++;
+    const elapsed = now - hudWindowStart;
+    if (elapsed >= 350) {
+      hudMeasuredFps = (hudWindowFrames * 1000) / elapsed;
+      hudWindowStart = now;
+      hudWindowFrames = 0;
+    }
+  } else {
+    hudWindowStart = 0;
+    hudWindowFrames = 0;
+    hudMeasuredFps = 0;
+  }
+  emitHudMetrics(false);
+  if (hudEnabled) hudFrame = hostFrame(tickHud);
+}
+
+window.__editRinSetHudEnabled = enabled => {
+  const next = Boolean(enabled);
+  if (hudEnabled === next) {
+    if (next) emitHudMetrics(true);
+    return;
+  }
+  hudEnabled = next;
+  if (hudFrame) { cancelHostFrame(hudFrame); hudFrame = 0; }
+  hudWindowStart = 0;
+  hudWindowFrames = 0;
+  hudMeasuredFps = 0;
+  if (hudEnabled) {
+    emitHudMetrics(true);
+    hudFrame = hostFrame(tickHud);
+  }
+};
+window.__editRinReadHudMetrics = readHudMetrics;
+
+window.stepSketchFrame = () => {
+  if (!hostPaused) window.pauseSketch();
+  let stepped = false;
+  for (const [instance] of instances) {
+    const api = scope(instance);
+    if (api && typeof api.redraw === 'function') {
+      try { api.redraw(); stepped = true; } catch (e) { window.__editKiroReportError?.(e?.message || String(e)); }
+    }
+  }
+  if (!stepped && typeof window.redraw === 'function') {
+    try { window.redraw(); stepped = true; } catch (e) { window.__editKiroReportError?.(e?.message || String(e)); }
+  }
+  if (artworkFrames.size > 0) {
+    const queued = [...artworkFrames.entries()];
+    for (const [id, entry] of queued) {
+      if (entry.native) cancelHostFrame(entry.native);
+      artworkFrames.delete(id);
+    }
+    const now = hudNow();
+    for (const [, entry] of queued) {
+      try { entry.callback(now); stepped = true; } catch (e) { window.__editKiroReportError?.(e?.message || String(e)); }
+    }
+  }
+  if (stepped) hudCustomFrameCount++;
+  emitHudMetrics(true);
+  return stepped;
+};
+
+function formatReplValue(value, depth = 0, seen = new WeakSet()) {
+  const MAX_LEN = 500;
+  const clip = s => s.length > MAX_LEN ? s.slice(0, MAX_LEN - 1) + '…' : s;
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  const type = typeof value;
+  if (type === 'string') return clip(JSON.stringify(value));
+  if (type === 'number') return Object.is(value, -0) ? '-0' : String(value);
+  if (type === 'boolean' || type === 'bigint' || type === 'symbol') return String(value);
+  if (type === 'function') return '[Function' + (value.name ? ': ' + value.name : '') + ']';
+  if (value instanceof Error) return clip(value.name + ': ' + value.message);
+  if (type === 'object') {
+    if (seen.has(value)) return '[Circular]';
+    if (depth >= 2) {
+      if (Array.isArray(value)) return 'Array(' + value.length + ')';
+      const ctor = value.constructor && value.constructor.name ? value.constructor.name : 'Object';
+      return '[' + ctor + ']';
+    }
+    seen.add(value);
+    try {
+      if (Array.isArray(value)) {
+        const limit = 20;
+        const parts = [];
+        for (let i = 0; i < Math.min(value.length, limit); i++) {
+          parts.push(formatReplValue(value[i], depth + 1, seen));
+        }
+        if (value.length > limit) parts.push('…+' + (value.length - limit));
+        return clip('[' + parts.join(', ') + ']');
+      }
+      if (ArrayBuffer.isView(value) && typeof value.length === 'number') {
+        const limit = 12;
+        const parts = [];
+        for (let i = 0; i < Math.min(value.length, limit); i++) parts.push(String(value[i]));
+        if (value.length > limit) parts.push('…+' + (value.length - limit));
+        return clip((value.constructor?.name || 'TypedArray') + '(' + value.length + ') [' + parts.join(', ') + ']');
+      }
+      const keys = Object.keys(value);
+      const limit = 12;
+      const parts = [];
+      for (let i = 0; i < Math.min(keys.length, limit); i++) {
+        const k = keys[i];
+        let prop;
+        try { prop = formatReplValue(value[k], depth + 1, seen); } catch (_) { prop = '[Unreadable]'; }
+        parts.push(k + ': ' + prop);
+      }
+      if (keys.length > limit) parts.push('…+' + (keys.length - limit));
+      const ctor = value.constructor && value.constructor.name && value.constructor.name !== 'Object'
+        ? value.constructor.name + ' ' : '';
+      return clip(ctor + '{' + parts.join(', ') + '}');
+    } finally {
+      seen.delete(value);
+    }
+  }
+  return clip(String(value));
+}
+
+window.__editRinEvalConsole = (token, expression) => {
+  if (token !== runToken || typeof expression !== 'string') return;
+  const trimmed = expression.trim();
+  if (!trimmed) return;
+  try {
+    let result;
+    try {
+      result = (0, eval)('(' + trimmed + ')');
+    } catch (firstErr) {
+      if (firstErr instanceof SyntaxError) {
+        result = (0, eval)(trimmed);
+      } else {
+        throw firstErr;
+      }
+    }
+    notifyAndroid('onConsoleEvalResult', JSON.stringify({ ok: true, value: formatReplValue(result) }));
+  } catch (err) {
+    const message = err && err.message ? ((err.name ? err.name + ': ' : '') + err.message) : String(err);
+    notifyAndroid('onConsoleEvalResult', JSON.stringify({ ok: false, error: message }));
+  }
 };
 const backgroundSuspendedContexts = new Set();
 window.__editRinSuspendBackgroundAudio = () => {
@@ -809,6 +1023,11 @@ window.__editKiroCaptureScreenshot = async (scale = 1) => {
 function releaseRecording(session) {
   clearTimeout(session.timer);
   clearInterval(session.captureTimer);
+  if (session.gifStepFrame) { cancelHostFrame(session.gifStepFrame); session.gifStepFrame = 0; }
+  if (session.gifFrameSync && !session.gifWasPaused && hostPaused) {
+    session.gifFrameSync = false;
+    window.resumeSketch?.();
+  }
   session.stream?.getTracks().forEach(track => track.stop());
   session.gifWorker?.terminate();
   if (session.gifWorkerUrl) URL.revokeObjectURL(session.gifWorkerUrl);
@@ -1144,7 +1363,7 @@ function finishRecordingTransfer(session, mimeType) {
   notifyAndroid('onRecordingStatusChanged', false);
 }
 
-function startGifRecording(session, canvas) {
+function startGifRecording(session, canvas, durationMs = 0, frameSync = false) {
   const longestSide = Math.max(canvas.width, canvas.height);
   const scale = Math.min(1, 720 / Math.max(1, longestSide));
   const width = Math.max(1, Math.round(canvas.width * scale));
@@ -1157,6 +1376,10 @@ function startGifRecording(session, canvas) {
     throw new Error('この端末はGIF録画に対応していません');
   }
 
+  const gifLimitMs = durationMs > 0 ? Math.max(1000, Math.min(15000, Math.round(durationMs))) : 15000;
+  const useFrameSync = Boolean(frameSync);
+  const targetFrames = useFrameSync ? Math.max(1, Math.min(450, Math.round((gifLimitMs / 1000) * 30))) : 0;
+
   session.format = 'gif';
   session.gifPending = 0;
   session.gifStopping = false;
@@ -1164,6 +1387,10 @@ function startGifRecording(session, canvas) {
   session.gifFrameIndex = 0;
   session.gifTickIndex = 0;
   session.gifPendingDelayCs = 0;
+  session.gifFrameSync = useFrameSync;
+  session.gifTargetFrames = targetFrames;
+  session.gifStepFrame = 0;
+  session.gifWasPaused = hostPaused;
   session.gifWorkerUrl = URL.createObjectURL(new Blob(
     [gifWorkerSource],
     { type: 'text/javascript' }
@@ -1173,11 +1400,41 @@ function startGifRecording(session, canvas) {
     session,
     event.message || 'GIFの作成中にエラーが発生しました'
   );
+
+  const captureSyncedFrame = () => {
+    if (recordingSession !== session || session.gifStopping) return;
+    try {
+      captureContext.drawImage(canvas, 0, 0, width, height);
+      const image = captureContext.getImageData(0, 0, width, height);
+      const delayCs = session.gifFrameIndex % 3 === 2 ? 4 : 3;
+      session.gifFrameIndex++;
+      session.gifPending++;
+      session.gifWorker.postMessage(
+        { type: 'frame', buffer: image.data.buffer, delayCs },
+        [image.data.buffer]
+      );
+      if (session.gifFrameIndex >= session.gifTargetFrames) {
+        window.__editKiroStopRecording();
+      }
+    } catch (error) {
+      failRecording(session, error?.message || String(error));
+    }
+  };
+
   session.gifWorker.onmessage = event => {
     if (recordingSession !== session) return;
     if (event.data.type === 'ready') {
       session.gifPending = Math.max(0, session.gifPending - 1);
-      finishGifWhenReady(session);
+      if (session.gifStopping) {
+        finishGifWhenReady(session);
+      } else if (session.gifFrameSync && session.gifPending === 0 && session.gifFrameIndex < session.gifTargetFrames) {
+        session.gifStepFrame = hostFrame(() => {
+          session.gifStepFrame = 0;
+          if (recordingSession !== session || session.gifStopping) return;
+          window.stepSketchFrame?.();
+          captureSyncedFrame();
+        });
+      }
     } else if (event.data.type === 'done') {
       session.pending = queueRecordingBlob(session, event.data.blob);
       session.pending.then(() => finishRecordingTransfer(session, 'image/gif'))
@@ -1185,6 +1442,12 @@ function startGifRecording(session, canvas) {
     }
   };
   session.gifWorker.postMessage({ type: 'init', width, height });
+
+  if (useFrameSync) {
+    if (!hostPaused) window.pauseSketch?.();
+    captureSyncedFrame();
+    return;
+  }
 
   const captureFrame = () => {
     if (recordingSession !== session || session.gifStopping) return;
@@ -1210,12 +1473,14 @@ function startGifRecording(session, canvas) {
   };
   captureFrame();
   session.captureTimer = setInterval(captureFrame, 1000 / 30);
-  session.timer = setTimeout(() => window.__editKiroStopRecording(), 15000);
+  session.timer = setTimeout(() => window.__editKiroStopRecording(), gifLimitMs);
 }
 
 window.__editKiroStartRecording = (
   requestedFormat = 'webm',
-  requestedVideoBitsPerSecond = 5000000
+  requestedVideoBitsPerSecond = 5000000,
+  requestedDurationMs = 0,
+  frameSync = false
 ) => {
   // Keep ownership through FileReader completion so a rapid restart cannot mix clips.
   if (recordingSession) return;
@@ -1234,8 +1499,10 @@ window.__editKiroStartRecording = (
         !window.Android.beginRecordingTransfer(runToken, session.transferId)) {
       throw new Error('録画の保存先を準備できませんでした');
     }
+    const parsedDurationMs = Number(requestedDurationMs);
+    const durationMs = Number.isFinite(parsedDurationMs) && parsedDurationMs > 0 ? parsedDurationMs : 0;
     if (requestedFormat === 'gif') {
-      startGifRecording(session, canvas);
+      startGifRecording(session, canvas, durationMs, frameSync);
       notifyAndroid('onRecordingStatusChanged', true);
       return;
     }
@@ -1294,7 +1561,8 @@ window.__editKiroStartRecording = (
     };
     recorder.start(1000);
     notifyAndroid('onRecordingStatusChanged', true);
-    session.timer = setTimeout(() => window.__editKiroStopRecording(), 60000);
+    const videoLimitMs = durationMs > 0 ? Math.max(1000, Math.min(60000, Math.round(durationMs))) : 60000;
+    session.timer = setTimeout(() => window.__editKiroStopRecording(), videoLimitMs);
   } catch (error) {
     failRecording(session, error?.message || String(error));
   }
@@ -1308,6 +1576,7 @@ window.__editKiroStopRecording = () => {
     notifyAndroid('onRecordingSaving');
     if (session.format === 'gif') {
       clearInterval(session.captureTimer);
+      if (session.gifStepFrame) { cancelHostFrame(session.gifStepFrame); session.gifStepFrame = 0; }
       session.gifStopping = true;
       if (session.gifFrameIndex === 0) {
         throw new Error('録画データが空です。少し長めに録画してください');
@@ -1638,6 +1907,8 @@ window.addEventListener('load', () => {
     for (const observer of canvasSizeObservers.values()) observer.disconnect();
     canvasSizeObservers.clear();
     cancelHostFrame(resizeFrame); cancelHostFrame(compositeFrame);
+    hudEnabled = false;
+    if (hudFrame) { cancelHostFrame(hudFrame); hudFrame = 0; }
     for (const entry of artworkFrames.values()) if (entry.native) cancelHostFrame(entry.native);
     artworkFrames.clear();
 

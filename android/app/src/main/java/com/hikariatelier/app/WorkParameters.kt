@@ -1,6 +1,38 @@
 package com.hikariatelier.app
 
+import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
+import java.util.UUID
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+internal const val MAX_PARAMETER_PRESETS = 12
+internal const val MAX_PARAMETER_PRESET_NAME = 40
+
+data class WorkParameterPreset(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val values: Map<String, String>
+)
+
+internal fun normalizeParameterPresets(presets: List<WorkParameterPreset>): List<WorkParameterPreset> {
+    val seenIds = mutableSetOf<String>()
+    return buildList {
+        for (preset in presets) {
+            if (size >= MAX_PARAMETER_PRESETS) break
+            val id = preset.id.trim().ifEmpty { UUID.randomUUID().toString() }
+            if (!seenIds.add(id)) continue
+            val name = preset.name.trim().take(MAX_PARAMETER_PRESET_NAME)
+            if (name.isEmpty()) continue
+            val values = linkedMapOf<String, String>()
+            preset.values.entries.take(16).forEach { (k, v) ->
+                if (k.isNotBlank()) values[k] = v
+            }
+            add(WorkParameterPreset(id = id, name = name, values = values))
+        }
+    }
+}
 
 internal sealed class WorkParameter(
     open val name: String,
@@ -18,14 +50,66 @@ internal sealed class WorkParameter(
     data class Choice(override val name: String, override val label: String, override val defaultValue: String,
                       val options: List<String>,
                       override val sourceFile: String = "sketch.js") : WorkParameter(name, label, defaultValue, sourceFile)
+    data class Point2D(
+        override val name: String,
+        override val label: String,
+        override val defaultValue: String,
+        val minX: Float,
+        val maxX: Float,
+        val stepX: Float,
+        val minY: Float,
+        val maxY: Float,
+        val stepY: Float,
+        val arrayStyle: kotlin.Boolean = false,
+        override val sourceFile: String = "sketch.js"
+    ) : WorkParameter(name, label, defaultValue, sourceFile)
 }
 
-private val parameterLine = Regex("^\\s*//\\s*@rin\\s+(number|color|boolean|choice)\\s+([A-Za-z_$][\\w$]*)\\s+\"([^\"]{1,40})\"\\s+(.+?)\\s*$")
+private val parameterLine = Regex("^\\s*//\\s*@rin\\s+(number|color|boolean|choice|xy)\\s+([A-Za-z_$][\\w$]*)\\s+\"([^\"]{1,40})\"\\s+(.+?)\\s*$")
 private val hexColor = Regex("#[0-9a-fA-F]{6}")
 private val choiceToken = Regex("^[A-Za-z0-9_.-]{1,32}$")
 private val inlineParameterRegex = Regex(
-    """^\s*(?:(?:let|const|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(.+?)\s*;?\s*//\s*@(slider|int|color|toggle|choice)(?:\(([^)]*)\))?(?:\s+(?:\"([^\"]+)\"|([^\n\r]+)))?\s*$"""
+    """^\s*(?:(?:let|const|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(.+?)\s*;?\s*//\s*@(slider|int|color|toggle|choice|xy)(?:\(([^)]*)\))?(?:\s+(?:\"([^\"]+)\"|([^\n\r]+)))?\s*$"""
 )
+private val point2DArrayLiteralRegex = Regex("""^\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]$""")
+private val point2DObjectXYLiteralRegex = Regex("""^\{\s*x\s*:\s*(-?\d+(?:\.\d+)?)\s*,\s*y\s*:\s*(-?\d+(?:\.\d+)?)\s*\}$""")
+private val point2DObjectYXLiteralRegex = Regex("""^\{\s*y\s*:\s*(-?\d+(?:\.\d+)?)\s*,\s*x\s*:\s*(-?\d+(?:\.\d+)?)\s*\}$""")
+
+internal fun parsePoint2DValue(raw: String?): Pair<Float, Float>? {
+    if (raw.isNullOrBlank()) return null
+    val parts = raw.split(',')
+    if (parts.size != 2) return null
+    val x = parts[0].trim().toFloatOrNull() ?: return null
+    val y = parts[1].trim().toFloatOrNull() ?: return null
+    if (!x.isFinite() || !y.isFinite()) return null
+    return x to y
+}
+
+internal fun formatPoint2DValue(x: Float, y: Float, stepX: Float, stepY: Float): String =
+    "${formatNumberValue(x, stepX)},${formatNumberValue(y, stepY)}"
+
+private fun parsePoint2DLiteral(literal: String): Triple<Float, Float, kotlin.Boolean>? {
+    val trimmed = literal.trim()
+    point2DArrayLiteralRegex.matchEntire(trimmed)?.let { m ->
+        val x = m.groupValues[1].toFloatOrNull() ?: return null
+        val y = m.groupValues[2].toFloatOrNull() ?: return null
+        if (!x.isFinite() || !y.isFinite()) return null
+        return Triple(x, y, true)
+    }
+    point2DObjectXYLiteralRegex.matchEntire(trimmed)?.let { m ->
+        val x = m.groupValues[1].toFloatOrNull() ?: return null
+        val y = m.groupValues[2].toFloatOrNull() ?: return null
+        if (!x.isFinite() || !y.isFinite()) return null
+        return Triple(x, y, false)
+    }
+    point2DObjectYXLiteralRegex.matchEntire(trimmed)?.let { m ->
+        val y = m.groupValues[1].toFloatOrNull() ?: return null
+        val x = m.groupValues[2].toFloatOrNull() ?: return null
+        if (!x.isFinite() || !y.isFinite()) return null
+        return Triple(x, y, false)
+    }
+    return null
+}
 
 /** Parameter declarations are comments, so older app versions can still run the sketch. */
 internal fun workParameters(sources: Map<String, String>): List<WorkParameter> = buildList {
@@ -66,6 +150,37 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                         val options = rawOptions.distinct()
                         if (options.size < 2 || defaultVal !in options || options.any { !choiceToken.matches(it) }) null
                         else WorkParameter.Choice(name, label, defaultVal, options, file)
+                    }
+                }
+                "xy" -> {
+                    if (parts.size !in 6..8) null else {
+                        val values = parts.map { it.toFloatOrNull() }
+                        val minX = values[0]; val maxX = values[1]; val initX = values[2]
+                        val minY = values[3]; val maxY = values[4]; val initY = values[5]
+                        val stepX = if (parts.size >= 7) values[6] else if (minX != null && maxX != null) (maxX - minX) / 100f else null
+                        val stepY = if (parts.size == 8) values[7] else if (parts.size == 7) values[6] else if (minY != null && maxY != null) (maxY - minY) / 100f else null
+                        if (minX == null || maxX == null || initX == null ||
+                            minY == null || maxY == null || initY == null ||
+                            stepX == null || stepY == null ||
+                            !minX.isFinite() || !maxX.isFinite() || !initX.isFinite() ||
+                            !minY.isFinite() || !maxY.isFinite() || !initY.isFinite() ||
+                            !stepX.isFinite() || !stepY.isFinite() ||
+                            minX >= maxX || minY >= maxY ||
+                            initX !in minX..maxX || initY !in minY..maxY ||
+                            stepX <= 0f || stepY <= 0f) null
+                        else WorkParameter.Point2D(
+                            name = name,
+                            label = label,
+                            defaultValue = formatPoint2DValue(initX, initY, stepX, stepY),
+                            minX = minX,
+                            maxX = maxX,
+                            stepX = stepX,
+                            minY = minY,
+                            maxY = maxY,
+                            stepY = stepY,
+                            arrayStyle = false,
+                            sourceFile = file
+                        )
                     }
                 }
                 else -> null
@@ -135,6 +250,43 @@ internal fun workParameters(sources: Map<String, String>): List<WorkParameter> =
                     WorkParameter.Choice(name, label, defaultVal, options, file)
                 }
             }
+            "xy" -> {
+                val literal = parsePoint2DLiteral(valueLiteral)
+                val parts = argsStr.split(Regex("""[\s,]+""")).filter { it.isNotEmpty() }.mapNotNull { it.toFloatOrNull() }
+                if (literal == null || parts.size !in 2..6) null else {
+                    val (rawX, rawY, isArray) = literal
+                    val bounds = when (parts.size) {
+                        2 -> floatArrayOf(parts[0], parts[1], parts[0], parts[1], (parts[1] - parts[0]) / 100f, (parts[1] - parts[0]) / 100f)
+                        3 -> floatArrayOf(parts[0], parts[1], parts[0], parts[1], parts[2], parts[2])
+                        4 -> floatArrayOf(parts[0], parts[1], parts[2], parts[3], (parts[1] - parts[0]) / 100f, (parts[3] - parts[2]) / 100f)
+                        5 -> floatArrayOf(parts[0], parts[1], parts[2], parts[3], parts[4], parts[4])
+                        else -> floatArrayOf(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+                    }
+                    val minX = bounds[0]; val maxX = bounds[1]
+                    val minY = bounds[2]; val maxY = bounds[3]
+                    val stepX = bounds[4]; val stepY = bounds[5]
+                    if (!minX.isFinite() || !maxX.isFinite() || !minY.isFinite() || !maxY.isFinite() ||
+                        !stepX.isFinite() || !stepY.isFinite() ||
+                        minX >= maxX || minY >= maxY || stepX <= 0f || stepY <= 0f) null
+                    else {
+                        val initX = rawX.coerceIn(minX, maxX)
+                        val initY = rawY.coerceIn(minY, maxY)
+                        WorkParameter.Point2D(
+                            name = name,
+                            label = label,
+                            defaultValue = formatPoint2DValue(initX, initY, stepX, stepY),
+                            minX = minX,
+                            maxX = maxX,
+                            stepX = stepX,
+                            minY = minY,
+                            maxY = maxY,
+                            stepY = stepY,
+                            arrayStyle = isArray,
+                            sourceFile = file
+                        )
+                    }
+                }
+            }
             else -> null
         }
         if (parameter != null) { add(parameter); names += name }
@@ -165,6 +317,26 @@ internal fun parameterValue(parameter: WorkParameter, saved: String?): String = 
         else -> parameter.defaultValue
     }
     is WorkParameter.Choice -> saved?.takeIf { it in parameter.options } ?: parameter.defaultValue
+    is WorkParameter.Point2D -> parsePoint2DValue(saved)
+        ?.takeIf { (x, y) -> x in parameter.minX..parameter.maxX && y in parameter.minY..parameter.maxY }
+        ?.let { (x, y) -> formatPoint2DValue(x, y, parameter.stepX, parameter.stepY) }
+        ?: parameter.defaultValue
+}
+
+internal fun parameterToJsonValue(parameter: WorkParameter, rawValue: String?): String {
+    val value = parameterValue(parameter, rawValue)
+    return when (parameter) {
+        is WorkParameter.Number, is WorkParameter.Boolean -> value
+        is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(value)
+        is WorkParameter.Point2D -> {
+            val (x, y) = parsePoint2DValue(value) ?: parsePoint2DValue(parameter.defaultValue) ?: (parameter.minX to parameter.minY)
+            if (parameter.arrayStyle) {
+                JSONArray().put(x.toDouble()).put(y.toDouble()).toString()
+            } else {
+                JSONObject().put("x", x.toDouble()).put("y", y.toDouble()).toString()
+            }
+        }
+    }
 }
 
 internal fun parameterValuesJson(parameters: List<WorkParameter>, values: Map<String, String>): String =
@@ -176,6 +348,14 @@ internal fun parameterValuesJson(parameters: List<WorkParameter>, values: Map<St
                 is WorkParameter.Boolean -> put(parameter.name, value.toBoolean())
                 is WorkParameter.Color -> put(parameter.name, value)
                 is WorkParameter.Choice -> put(parameter.name, value)
+                is WorkParameter.Point2D -> {
+                    val (x, y) = parsePoint2DValue(value) ?: parsePoint2DValue(parameter.defaultValue) ?: (parameter.minX to parameter.minY)
+                    if (parameter.arrayStyle) {
+                        put(parameter.name, JSONArray().put(x.toDouble()).put(y.toDouble()))
+                    } else {
+                        put(parameter.name, JSONObject().put("x", x.toDouble()).put("y", y.toDouble()))
+                    }
+                }
             }
         }
     }.toString()
@@ -205,6 +385,12 @@ internal fun updateParameterInSource(source: String, parameter: WorkParameter, n
                     val trimmedVal = oldValText.trim()
                     val quote = if (trimmedVal.startsWith("'")) "'" else if (trimmedVal.startsWith("\"")) "\"" else ""
                     "$quote$newValue$quote"
+                }
+                is WorkParameter.Point2D -> {
+                    val (x, y) = parsePoint2DValue(newValue) ?: parsePoint2DValue(parameter.defaultValue) ?: (parameter.minX to parameter.minY)
+                    val fx = formatNumberValue(x.coerceIn(parameter.minX, parameter.maxX), parameter.stepX)
+                    val fy = formatNumberValue(y.coerceIn(parameter.minY, parameter.maxY), parameter.stepY)
+                    if (parameter.arrayStyle) "[$fx, $fy]" else "{ x: $fx, y: $fy }"
                 }
             }
             if (oldValText.trim() != formattedNewVal) {
@@ -250,6 +436,16 @@ internal fun updateParameterInSource(source: String, parameter: WorkParameter, n
                         replaced = true
                     }
                 }
+                is WorkParameter.Point2D -> {
+                    val (x, y) = parsePoint2DValue(newValue) ?: parsePoint2DValue(parameter.defaultValue) ?: (parameter.minX to parameter.minY)
+                    val fx = formatNumberValue(x.coerceIn(parameter.minX, parameter.maxX), parameter.stepX)
+                    val fy = formatNumberValue(y.coerceIn(parameter.minY, parameter.maxY), parameter.stepY)
+                    if (parts.size >= 6 && (parts[2] != fx || parts[5] != fy)) {
+                        parts[2] = fx
+                        parts[5] = fy
+                        replaced = true
+                    }
+                }
             }
             if (replaced) {
                 changed = true
@@ -283,7 +479,7 @@ internal fun applyParameterDefaults(source: String, values: Map<String, String>)
 }
 
 private val PARAM_DECLARATION_LINE_REGEX = Regex(
-    """^\s*//\s*@rin\s+(?:number|color|boolean|choice)\s+([A-Za-z][A-Za-z0-9_]*)\b|^\s*(?:(?:let|const|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*.+?//\s*@(slider|int|color|toggle|choice)\b"""
+    """^\s*//\s*@rin\s+(?:number|color|boolean|choice|xy)\s+([A-Za-z][A-Za-z0-9_]*)\b|^\s*(?:(?:let|const|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*.+?//\s*@(slider|int|color|toggle|choice|xy)\b"""
 )
 
 internal fun findParameterDeclarationLine(
@@ -306,6 +502,20 @@ internal fun findParameterDeclarationLine(
     return null
 }
 
+private fun randomSteppedFloat(min: Float, max: Float, step: Float, random: kotlin.random.Random): Float {
+    val minD = min.toDouble()
+    val maxD = max.toDouble()
+    val range = (maxD - minD).coerceAtLeast(0.0)
+    val stepD = step.toDouble().takeIf { it > 0.0 && it.isFinite() } ?: 1.0
+    val stepsCount = if (range > 0.0) (range / stepD).toInt() else 0
+    val rawValue = if (stepsCount > 0) {
+        (minD + random.nextInt(0, stepsCount + 1) * stepD).coerceIn(minD, maxD)
+    } else {
+        minD + random.nextDouble() * range
+    }
+    return rawValue.toFloat()
+}
+
 internal fun randomizeWorkParameters(
     parameters: List<WorkParameter>,
     currentValues: Map<String, String>,
@@ -320,7 +530,7 @@ internal fun randomizeWorkParameters(
                 val r = random.nextInt(32, 240)
                 val g = random.nextInt(32, 240)
                 val b = random.nextInt(32, 240)
-                updated[param.name] = String.format(java.util.Locale.ROOT, "#%02X%02X%02X", r, g, b)
+                updated[param.name] = String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
             }
             is WorkParameter.Boolean -> {
                 updated[param.name] = random.nextBoolean().toString()
@@ -331,21 +541,112 @@ internal fun randomizeWorkParameters(
                 }
             }
             is WorkParameter.Number -> {
-                val min = param.min.toDouble()
-                val max = param.max.toDouble()
-                val range = (max - min).coerceAtLeast(0.0)
-                val step = param.step.toDouble().takeIf { it > 0.0 && it.isFinite() } ?: 1.0
-                val stepsCount = if (range > 0.0) (range / step).toInt() else 0
-                val rawValue = if (stepsCount > 0) {
-                    (min + random.nextInt(0, stepsCount + 1) * step).coerceIn(min, max)
-                } else {
-                    min + random.nextDouble() * range
-                }
+                val rawValue = randomSteppedFloat(param.min, param.max, param.step, random).toDouble()
                 val stepText = param.step.toString()
                 val decimals = if ('.' in stepText) stepText.substringAfter('.').trimEnd('0').length.coerceIn(0, 4) else 0
                 updated[param.name] = formatScrubbedNumber(rawValue, decimals)
             }
+            is WorkParameter.Point2D -> {
+                val rx = randomSteppedFloat(param.minX, param.maxX, param.stepX, random)
+                val ry = randomSteppedFloat(param.minY, param.maxY, param.stepY, random)
+                updated[param.name] = formatPoint2DValue(rx, ry, param.stepX, param.stepY)
+            }
         }
     }
     return updated
+}
+
+internal fun isParameterModified(parameter: WorkParameter, currentRaw: String?, defaultRaw: String?): Boolean {
+    val cur = parameterValue(parameter, currentRaw)
+    val def = parameterValue(parameter, defaultRaw)
+    return when (parameter) {
+        is WorkParameter.Color -> !cur.equals(def, ignoreCase = true)
+        is WorkParameter.Boolean -> !cur.equals(def, ignoreCase = true)
+        is WorkParameter.Choice -> cur != def
+        is WorkParameter.Number -> {
+            val curF = cur.toFloatOrNull() ?: 0f
+            val defF = def.toFloatOrNull() ?: 0f
+            abs(curF - defF) > 0.0001f
+        }
+        is WorkParameter.Point2D -> {
+            val (cx, cy) = parsePoint2DValue(cur) ?: return false
+            val (dx, dy) = parsePoint2DValue(def) ?: return false
+            abs(cx - dx) > 0.0001f || abs(cy - dy) > 0.0001f
+        }
+    }
+}
+
+internal fun parameterValuesMatch(
+    parameters: List<WorkParameter>,
+    a: Map<String, String>,
+    b: Map<String, String>
+): Boolean = parameters.isNotEmpty() && parameters.all { p ->
+    !isParameterModified(p, a[p.name], b[p.name])
+}
+
+internal fun smoothstep(t: Float): Float {
+    val x = t.coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
+}
+
+private fun snapInterpolatedFloat(from: Float, to: Float, fraction: Float, min: Float, max: Float, step: Float): Float {
+    val raw = (from + (to - from) * fraction).coerceIn(min, max)
+    if (!step.isFinite() || step <= 0f) return raw
+    val steps = ((raw - min) / step).roundToInt()
+    return (min + steps * step).coerceIn(min, max)
+}
+
+internal fun interpolateWorkParameters(
+    parameters: List<WorkParameter>,
+    fromValues: Map<String, String>,
+    toValues: Map<String, String>,
+    fraction: Float,
+    lockedNames: Set<String> = emptySet()
+): Map<String, String> {
+    val t = fraction.coerceIn(0f, 1f)
+    val result = linkedMapOf<String, String>()
+    for (param in parameters) {
+        val fromStr = parameterValue(param, fromValues[param.name])
+        if (param.name in lockedNames || t <= 0f) {
+            result[param.name] = fromStr
+            continue
+        }
+        val toStr = parameterValue(param, toValues[param.name])
+        if (t >= 1f) {
+            result[param.name] = toStr
+            continue
+        }
+        result[param.name] = when (param) {
+            is WorkParameter.Number -> {
+                val a = fromStr.toFloatOrNull() ?: param.min
+                val b = toStr.toFloatOrNull() ?: a
+                val v = snapInterpolatedFloat(a, b, t, param.min, param.max, param.step)
+                formatNumberValue(v, param.step)
+            }
+            is WorkParameter.Point2D -> {
+                val (ax, ay) = parsePoint2DValue(fromStr) ?: (param.minX to param.minY)
+                val (bx, by) = parsePoint2DValue(toStr) ?: (ax to ay)
+                val x = snapInterpolatedFloat(ax, bx, t, param.minX, param.maxX, param.stepX)
+                val y = snapInterpolatedFloat(ay, by, t, param.minY, param.maxY, param.stepY)
+                formatPoint2DValue(x, y, param.stepX, param.stepY)
+            }
+            is WorkParameter.Color -> {
+                val aHex = fromStr.removePrefix("#").toIntOrNull(16) ?: 0xFFFFFF
+                val bHex = toStr.removePrefix("#").toIntOrNull(16) ?: aHex
+                val ar = (aHex shr 16) and 0xFF
+                val ag = (aHex shr 8) and 0xFF
+                val ab = aHex and 0xFF
+                val br = (bHex shr 16) and 0xFF
+                val bg = (bHex shr 8) and 0xFF
+                val bb = bHex and 0xFF
+                val r = (ar + (br - ar) * t).roundToInt().coerceIn(0, 255)
+                val g = (ag + (bg - ag) * t).roundToInt().coerceIn(0, 255)
+                val b = (ab + (bb - ab) * t).roundToInt().coerceIn(0, 255)
+                String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
+            }
+            is WorkParameter.Boolean -> if (t < 0.5f) fromStr else toStr
+            is WorkParameter.Choice -> if (t < 0.5f) fromStr else toStr
+        }
+    }
+    return result
 }

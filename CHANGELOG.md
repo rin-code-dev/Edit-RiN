@@ -1,5 +1,44 @@
 # Changelog
 
+## 4.2.0 — 2026-11-21
+
+## English
+
+Requires Android 11 or later.
+
+- Parameter Presets, Morphing & 2D XY Pad: Save, switch, overwrite, rename, and delete live parameter presets; animate transitions smoothly over 650 ms or crossfade interactively with the A↔B blend slider; bind 2-axis controls with `@rin xy` / `@xy`; and edit parameters fullscreen in portrait alongside a floating PiP preview.
+- Cross-Work Code Search & Custom Cover Thumbnails: Search code across works with `file:line` snippets, folder-scope toggle, and direct line jump; capture and lock custom cover thumbnails from any frame or revert to auto capture anytime.
+- Inspection, Console REPL & Loop Recording Tools: Inspect sketches with a live FPS / `frameCount` / resolution HUD, 1-frame step (`+1`), and a 1-line console JavaScript REPL with command history; capture seamless loops with duration countdown presets and deterministic 30 fps frame-synced GIF export.
+- Shaders, Completions, Outline & Block Mode Upgrades: Added dedicated GLSL syntax highlighting (`.frag`, `.vert`, `.glsl`, `.wgsl`), expanded p5/WEBGL/`rinParams`/`p5.brush`/Matter/GLSL completions, a Code Outline jump dialog, full-code preview highlighting with auto-scroll in Block Mode, and bundled Block Mode templates for parameters, `p5.brush`, and `matter-js`.
+- Performance Architecture Overhaul & UI Fixes: Eliminated main-thread thumbnail I/O in the gallery, moved gallery transitions and high-frequency overlays off full-screen recomposition, kept the workspace mounted while pausing WebView under Settings, removed hot-path `BoxWithConstraints` passes, isolated per-card parameter recompositions and incremental block errors, auto-closed the camera actions tray in Block Mode / focused portrait editing, and wrapped fullscreen preview overlay actions into a bounded multi-row popup on compact screens.
+
+Edit:RiN includes a visual JavaScript block editor built with Blockly and Acorn. Blockly is licensed under Apache-2.0, and Acorn under MIT. Third-party license texts are available in the app's License information and in the corresponding source repository.
+
+## 日本語
+
+Android 11以降に対応しています。
+
+- パラメータのプリセット保存・補間・2D XYパッド: パラメータ値の組み合わせをプリセットとして保存・切替・上書き・名前変更・削除でき、650msのモーフィング補間やA↔Bブレンドスライダーで滑らかに変化させられます。`@rin xy` / `@xy` による2次元XYパッドと、縦画面全画面パラメータ編集時のPiPプレビュー表示にも対応しました。
+- 作品横断のコード検索と手動サムネイル設定: ギャラリー検索から全作品（フォルダー横断切替対応）のソース内を `file:line` スニペット付きで検索し、該当行へ直接ジャンプできます。プレビューの任意のフレームを保護付きカスタムサムネイルとして保存・自動生成へリセットする機能も追加しました。
+- 制作支援（1コマ送り・FPS HUD・REPL・フレーム同期録画）: プレビュー右上にFPS・フレーム数・解像度HUD、停止中の`+1`コマ送り、ログ画面に履歴付き1行JS評価（REPL）を追加しました。録画設定では自動停止プリセットや30fps確定ステップのフレーム同期GIF書き出しを利用できます。
+- GLSL強調・補完拡充・アウトライン・ブロック拡張: シェーダー（`.frag` / `.vert` / `.glsl` / `.wgsl`）の専用シンタックス強調、p5 / WEBGL / `rinParams` / `p5.brush` / Matter / GLSL の補完拡充、コードアウトライン一覧ジャンプを追加しました。ブロックモードでは全体コードプレビューの強調・自動スクロールに加え、パラメータ・`p5.brush`・`matter-js` のテンプレートとサンプルを搭載しました。
+- アプリ全体の高速化再設計とUI修正: ギャラリーのサムネイル判定I/Oの非同期キャッシュ化、遷移アニメや高頻度HUD/録画表示の再構成分離、設定画面の裏でのワークスペース保持（WebView一時停止付き）、ホットパス上の`BoxWithConstraints`撤去、パラメータカード単位のスキップ最適化、ブロックエラーの差分更新を実施しました。さらにブロックモード／縦画面コード入力時のカメラトレイ残留と、全画面プレビュー操作パネルの幅はみ出しを修正しました。
+
+Edit:RiNは、BlocklyとAcornを使用したブロック形式のJavaScript編集機能を備えています。BlocklyはApache-2.0、AcornはMITライセンスで提供されています。第三者ライセンスの全文は、アプリのライセンス情報と対応ソースのリポジトリで確認できます。
+
+## 中文
+
+需要 Android 11 或更高版本。
+
+- 参数预设、平滑插值与二维 XY 触控板: 支持保存、切换、覆盖、重命名和删除参数预设，通过 650 毫秒插值动画或 A↔B 混合滑块平滑过渡；支持 `@rin xy` / `@xy` 二维调节板，并在竖屏全屏参数面板下保留浮动 PiP 预览。
+- 跨作品代码搜索与自定义封面缩略图: 在作品库中跨文件夹搜索源码并显示 `file:line` 片段及行级跳转；支持将当前画面帧锁定为手动封面缩略图或随时恢复自动生成。
+- 逐帧步进、FPS HUD、控制台 REPL 与帧同步录制: 新增实时 FPS／帧数／分辨率 HUD、暂停 `+1` 逐帧步进及带历史记录的单行 JavaScript 控制台求值（REPL）；录制选项新增定时自动停止预设与 30fps 确定性帧同步 GIF 导出。
+- 着色器高亮、代码补全、大纲跳转与积木扩展: 新增 `.frag` / `.vert` / `.glsl` / `.wgsl` 语法高亮，扩展 p5 / WEBGL / `rinParams` / `p5.brush` / Matter / GLSL 自动补全，增加代码大纲跳转弹窗，并在积木模式加入全码预览高亮自动滚动以及参数、`p5.brush`、`matter-js` 模板与示例。
+- 全局架构性能优化与界面修复: 将作品库缩略图标记检查迁出主线程并加入缓存，使画廊过渡动画与高频状态更新脱离整页重组，在打开设置时保留后台工作区并暂停 WebView，移除热点路径的 `BoxWithConstraints`，实现参数卡片独立跳过与积木错误增量更新，并修复了切换至积木模式或聚焦编辑时顶部操作栏残留以及全屏预览操作按钮栏溢出的问题。
+
+Edit:RiN 内置基于 Blockly 与 Acorn 构建的可视化 JavaScript 积木编辑器。Blockly 采用 Apache-2.0 许可证，Acorn 采用 MIT 许可证。第三方许可证全文可在应用的许可证信息及对应源码仓库中查看。
+
+
 ## 4.1.0 — 2026-11-20
 
 ## English

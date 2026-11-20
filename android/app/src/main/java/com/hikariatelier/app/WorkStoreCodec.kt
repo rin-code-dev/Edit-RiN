@@ -33,6 +33,21 @@ internal fun serializeWorkJson(work: Work): JSONObject {
         .put("p5SoundEnabled", work.p5SoundEnabled)
         .put("libraries", JSONObject(work.libraries))
         .put("parameterValues", JSONObject(work.parameterValues as Map<*, *>))
+        .apply {
+            val presets = normalizeParameterPresets(work.parameterPresets)
+            if (presets.isNotEmpty()) {
+                put("parameterPresets", JSONArray().apply {
+                    presets.forEach { preset ->
+                        put(
+                            JSONObject()
+                                .put("id", preset.id)
+                                .put("name", preset.name)
+                                .put("values", JSONObject(preset.values as Map<*, *>))
+                        )
+                    }
+                })
+            }
+        }
         .put("createdAt", work.createdAt)
         .put("updatedAt", work.updatedAt)
         .put("folderName", work.folderName)
@@ -74,6 +89,7 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
         require(!item.has("blockEditorState") || item.isNull("blockEditorState") || item.get("blockEditorState") is String)
         require(!item.has("revisions") || item.get("revisions") is JSONArray)
         require(!item.has("assets") || item.get("assets") is JSONObject)
+        require(!item.has("parameterPresets") || item.isNull("parameterPresets") || item.get("parameterPresets") is JSONArray)
         val assetMap = item.optJSONObject("assets")?.let { assets ->
             assets.keys().asSequence().associateWith { name ->
                 val asset = assets.getJSONObject(name)
@@ -114,6 +130,19 @@ internal fun parseWorkStoreJson(json: String): WorkStore? = runCatching {
             }.orEmpty(),
             parameterValues = item.optJSONObject("parameterValues")?.let { values ->
                 values.keys().asSequence().take(16).associateWith { values.optString(it) }
+            }.orEmpty(),
+            parameterPresets = item.optJSONArray("parameterPresets")?.let { presetsArray ->
+                normalizeParameterPresets(
+                    List(minOf(presetsArray.length(), MAX_PARAMETER_PRESETS)) { presetIndex ->
+                        val presetObj = presetsArray.optJSONObject(presetIndex)
+                        val presetId = presetObj?.optString("id").orEmpty()
+                        val presetName = presetObj?.optString("name").orEmpty()
+                        val presetValues = presetObj?.optJSONObject("values")?.let { mapObj ->
+                            mapObj.keys().asSequence().take(16).associateWith { mapObj.optString(it) }
+                        }.orEmpty()
+                        WorkParameterPreset(id = presetId, name = presetName, values = presetValues)
+                    }
+                )
             }.orEmpty(),
             createdAt = item.optLong("createdAt", now),
             updatedAt = item.optLong("updatedAt", now),

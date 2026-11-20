@@ -6,9 +6,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.wrapContentSize
@@ -60,10 +59,10 @@ internal fun WorkGalleryPreview(
     bitmap: Bitmap?,
     start: Rect?,
     end: Rect?,
-    progress: Float,
+    progressProvider: () -> Float,
     modifier: Modifier = Modifier,
-    visible: Boolean = progress > 0f && progress < 1f,
-    opacity: Float = 1f
+    visible: Boolean,
+    opacityProvider: () -> Float = { 1f }
 ) {
     var localOrigin by remember { mutableStateOf<Offset?>(null) }
     val density = LocalDensity.current
@@ -74,9 +73,10 @@ internal fun WorkGalleryPreview(
     Box(modifier.onGloballyPositioned { localOrigin = it.boundsInRoot().topLeft }
         .clearAndSetSemantics { hideFromAccessibility() }) {
         val origin = localOrigin ?: return@Box
-        if (bitmap == null || bitmap.isRecycled || start == null || end == null ||
-            !start.usableGalleryBounds() || !end.usableGalleryBounds() ||
-            !progress.isFinite() || !visible) return@Box
+        if (!visible || bitmap == null || bitmap.isRecycled || start == null || end == null ||
+            !start.usableGalleryBounds() || !end.usableGalleryBounds()) return@Box
+        val progress = progressProvider()
+        if (!progress.isFinite()) return@Box
 
         val fraction = FastOutSlowInEasing.transform(progress.coerceIn(0f, 1f))
         val bounds = interpolateGalleryBounds(start, end, fraction)
@@ -91,7 +91,7 @@ internal fun WorkGalleryPreview(
                 // Measure the image at its interpolated size and keep overflow at its top-left.
                 .wrapContentSize(Alignment.TopStart, unbounded = true)
                 .requiredSize(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
-                .graphicsLayer { alpha = opacity.coerceIn(0f, 1f) }
+                .graphicsLayer { alpha = opacityProvider().coerceIn(0f, 1f) }
                 .clip(shape)
                 .background(Color.Black)
                 .border(1.dp, outline, shape)
@@ -99,12 +99,33 @@ internal fun WorkGalleryPreview(
     }
 }
 
+@Composable
+internal fun WorkGalleryPreview(
+    bitmap: Bitmap?,
+    start: Rect?,
+    end: Rect?,
+    progress: Float,
+    modifier: Modifier = Modifier,
+    visible: Boolean = progress > 0f && progress < 1f,
+    opacity: Float = 1f
+) {
+    WorkGalleryPreview(
+        bitmap = bitmap,
+        start = start,
+        end = end,
+        progressProvider = { progress },
+        modifier = modifier,
+        visible = visible,
+        opacityProvider = { opacity }
+    )
+}
+
 
 /** Keep foreground controls above the pinned image during its final handoff. */
 @Composable
 internal fun WorkGalleryPreviewChrome(
     bounds: Rect?, modifier: Modifier = Modifier, visible: Boolean,
-    content: @Composable BoxWithConstraintsScope.() -> Unit
+    content: @Composable BoxScope.() -> Unit
 ) {
     var localOrigin by remember { mutableStateOf<Offset?>(null) }
     val density = LocalDensity.current
@@ -112,7 +133,7 @@ internal fun WorkGalleryPreviewChrome(
         .clearAndSetSemantics { hideFromAccessibility() }) {
         val origin = localOrigin ?: return@Box
         if (!visible || bounds?.usableGalleryBounds() != true) return@Box
-        BoxWithConstraints(Modifier
+        Box(Modifier
             .offset { IntOffset((bounds.left - origin.x).roundToInt(), (bounds.top - origin.y).roundToInt()) }
             .wrapContentSize(Alignment.TopStart, unbounded = true)
             .requiredSize(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })

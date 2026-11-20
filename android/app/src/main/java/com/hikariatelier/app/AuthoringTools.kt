@@ -12,17 +12,34 @@ internal fun prependDeclarations(value: TextFieldValue, declarations: String): T
 }
 
 internal enum class ParameterKind(val title: String, val token: String) {
-    NUMBER("数値", "number"), COLOR("色", "color"), BOOLEAN("真偽値", "boolean")
+    NUMBER("数値", "number"), COLOR("色", "color"), BOOLEAN("真偽値", "boolean"), XY("2D座標", "xy")
 }
 
 /** Reuse the runtime parser so the dialog can never emit a declaration the panel ignores. */
-internal fun parameterDeclaration(kind: ParameterKind, name: String, label: String, initial: String,
-    min: String, max: String, step: String, existingNames: Set<String>, count: Int): String? {
+internal fun parameterDeclaration(
+    kind: ParameterKind,
+    name: String,
+    label: String,
+    initial: String,
+    min: String,
+    max: String,
+    step: String,
+    existingNames: Set<String>,
+    count: Int,
+    minY: String = min,
+    maxY: String = max,
+    initialY: String = initial,
+    stepY: String = step
+): String? {
     if (count >= 16 || !Regex("[A-Za-z][A-Za-z0-9_]*").matches(name) || name in existingNames ||
         name in setOf("__proto__", "prototype", "constructor") ||
         label.isBlank() || label.length > 40 || label.any { it == '"' || it == '\n' || it == '\r' }) return null
-    if (listOf(initial, min, max, step).any { field -> field.any { it.isWhitespace() } }) return null
-    val tail = if (kind == ParameterKind.NUMBER) "$min $max $initial $step" else initial
+    if (listOf(initial, min, max, step, initialY, minY, maxY, stepY).any { field -> field.any { it.isWhitespace() } }) return null
+    val tail = when (kind) {
+        ParameterKind.NUMBER -> "$min $max $initial $step"
+        ParameterKind.XY -> if (stepY == step) "$min $max $initial $minY $maxY $initialY $step" else "$min $max $initial $minY $maxY $initialY $step $stepY"
+        ParameterKind.COLOR, ParameterKind.BOOLEAN -> initial
+    }
     val line = "// @rin ${kind.token} $name \"$label\" $tail\n"
     return line.takeIf { workParameters(mapOf("sketch.js" to line)).size == 1 }
 }

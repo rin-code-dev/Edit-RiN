@@ -5,9 +5,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -20,7 +24,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -28,6 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -60,16 +69,84 @@ internal fun WorkParameterPanel(
     onJumpToParameter: ((String) -> Unit)? = null,
     topPadding: androidx.compose.ui.unit.Dp = 0.dp,
     onCompareHold: ((Boolean) -> Unit)? = null,
-    initialDefaults: Map<String, String>? = null
+    initialDefaults: Map<String, String>? = null,
+    presets: List<WorkParameterPreset> = emptyList(),
+    onSavePreset: ((String, Map<String, String>, String?) -> Boolean)? = null,
+    onRenamePreset: ((String, String) -> Boolean)? = null,
+    onDeletePreset: ((String) -> Boolean)? = null,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var morphJob by remember { mutableStateOf<Job?>(null) }
+    var morphEnabled by rememberSaveable { mutableStateOf(true) }
+    var showBlendBar by rememberSaveable { mutableStateOf(false) }
+    var blendPresetAId by rememberSaveable { mutableStateOf<String?>(null) }
+    var blendPresetBId by rememberSaveable { mutableStateOf<String?>(null) }
+    var blendFraction by remember { mutableFloatStateOf(0f) }
+    var showSavePresetDialog by rememberSaveable { mutableStateOf(false) }
+    var renamingPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var lockedParameters by rememberSaveable { mutableStateOf(emptySet<String>()) }
     val compareInteractionSource = remember { MutableInteractionSource() }
     val isComparing by compareInteractionSource.collectIsPressedAsState()
     var comparisonSnapshot by remember { mutableStateOf<Map<String, String>?>(null) }
 
+    val latestParameters by rememberUpdatedState(parameters)
+    val latestValues by rememberUpdatedState(values)
+    val latestLocked by rememberUpdatedState(lockedParameters)
+    val latestOnChange by rememberUpdatedState(onChange)
+    val latestOnCommit by rememberUpdatedState(onCommit)
+    val latestOnResetParameter by rememberUpdatedState(onResetParameter)
+    val latestOnJumpToParameter by rememberUpdatedState(onJumpToParameter)
+    val latestText by rememberUpdatedState(text)
+
+    val cancelMorph: () -> Unit = remember {
+        {
+            morphJob?.cancel()
+            morphJob = null
+        }
+    }
+    val emitManualChange: (WorkParameter, String) -> Unit = remember {
+        { param, nextVal ->
+            cancelMorph()
+            val currentVal = latestValues[param.name]
+            val same = currentVal == nextVal || (currentVal == null && param.defaultValue == nextVal)
+            if (!same) {
+                latestOnChange(param, nextVal)
+            }
+        }
+    }
+    val stableOnCommit: () -> Unit = remember { { latestOnCommit() } }
+    val stableOnToggleLock: (String) -> Unit = remember {
+        { name ->
+            lockedParameters = if (name in latestLocked) {
+                latestLocked - name
+            } else {
+                latestLocked + name
+            }
+        }
+    }
+    val stableOnResetParameter: ((WorkParameter) -> Unit)? = if (onResetParameter != null) {
+        remember {
+            { param ->
+                cancelMorph()
+                latestOnResetParameter?.invoke(param)
+            }
+        }
+    } else null
+    val stableOnJumpToParameter: ((String) -> Unit)? = if (onJumpToParameter != null) {
+        remember { { name -> latestOnJumpToParameter?.invoke(name) } }
+    } else null
+    val stableText: (String) -> String = remember { { s -> latestText(s) } }
+
+    DisposableEffect(Unit) {
+        onDispose { morphJob?.cancel() }
+    }
+
     LaunchedEffect(isComparing) {
         if (parameters.isEmpty()) return@LaunchedEffect
+        if (isComparing) cancelMorph()
         if (onCompareHold != null) {
             onCompareHold(isComparing)
         } else {
@@ -95,18 +172,52 @@ internal fun WorkParameterPanel(
     }
     val hasModified = remember(parameters, values, initialDefaults) {
         parameters.any { p ->
-            val cur = parameterValue(p, values[p.name])
             val defValue = initialDefaults?.get(p.name) ?: p.defaultValue
-            when (p) {
-                is WorkParameter.Color -> !cur.equals(defValue, ignoreCase = true)
-                is WorkParameter.Boolean -> !cur.equals(defValue, ignoreCase = true)
-                is WorkParameter.Choice -> cur != defValue
-                is WorkParameter.Number -> {
-                    val curF = cur.toFloatOrNull() ?: 0f
-                    val defF = defValue.toFloatOrNull() ?: 0f
-                    Math.abs(curF - defF) > 0.0001f
+            isParameterModified(p, values[p.name], defValue)
+        }
+    }
+
+    fun applyPreset(preset: WorkParameterPreset) {
+        cancelMorph()
+        val params = latestParameters
+        if (params.isEmpty()) return
+        val startValues = params.associate { it.name to parameterValue(it, latestValues[it.name]) }
+        val targetValues = params.associate { it.name to parameterValue(it, preset.values[it.name]) }
+        val locked = latestLocked
+        if (!morphEnabled) {
+            var changedAny = false
+            params.forEach { param ->
+                if (param.name !in locked) {
+                    val target = targetValues[param.name] ?: param.defaultValue
+                    if (isParameterModified(param, startValues[param.name], target)) {
+                        latestOnChange(param, target)
+                        changedAny = true
+                    }
                 }
             }
+            if (changedAny) latestOnCommit()
+            return
+        }
+        morphJob = coroutineScope.launch {
+            val durationNanos = 650_000_000L
+            val startNanos = withFrameNanos { it }
+            val lastEmitted = startValues.toMutableMap()
+            while (true) {
+                val now = withFrameNanos { it }
+                val progress = ((now - startNanos).toFloat() / durationNanos.toFloat()).coerceIn(0f, 1f)
+                val eased = smoothstep(progress)
+                val frameValues = interpolateWorkParameters(params, startValues, targetValues, eased, locked)
+                params.forEach { param ->
+                    val nextVal = frameValues[param.name] ?: return@forEach
+                    if (lastEmitted[param.name] != nextVal) {
+                        lastEmitted[param.name] = nextVal
+                        latestOnChange(param, nextVal)
+                    }
+                }
+                if (progress >= 1f) break
+            }
+            latestOnCommit()
+            morphJob = null
         }
     }
 
@@ -115,7 +226,7 @@ internal fun WorkParameterPanel(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = topPadding, bottom = 32.dp),
+            .padding(top = topPadding, bottom = if (isFullscreen) 180.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Header
@@ -148,6 +259,7 @@ internal fun WorkParameterPanel(
                     ) {
                         IconButton(
                             onClick = {
+                                cancelMorph()
                                 val randomMap = randomizeWorkParameters(parameters, values, lockedParameters)
                                 randomMap.forEach { (name, value) ->
                                     val param = parameters.find { it.name == name }
@@ -189,7 +301,41 @@ internal fun WorkParameterPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (hasModified && onApplyDefaults != null) {
+                onToggleFullscreen?.let { toggleFullscreen ->
+                    IconButton(
+                        onClick = toggleFullscreen,
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = if (isFullscreen) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            contentColor = if (isFullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_pip_expand),
+                            contentDescription = text(if (isFullscreen) "分割表示に戻す" else "全画面（PiPプレビュー）"),
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
+                onDismiss?.let { dismiss ->
+                    IconButton(onClick = dismiss, shape = UNIT_CONTROL_SHAPE) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close),
+                            contentDescription = text("閉じる")
+                        )
+                    }
+                }
+            }
+        }
+
+        if (hasModified && (onApplyDefaults != null || onResetAll != null)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onApplyDefaults != null) {
                     TextButton(
                         onClick = onApplyDefaults,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -208,9 +354,12 @@ internal fun WorkParameterPanel(
                         )
                     }
                 }
-                if (hasModified && onResetAll != null) {
+                if (onResetAll != null) {
                     TextButton(
-                        onClick = onResetAll,
+                        onClick = {
+                            cancelMorph()
+                            onResetAll()
+                        },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(
@@ -227,20 +376,304 @@ internal fun WorkParameterPanel(
                         )
                     }
                 }
-                onDismiss?.let { dismiss ->
-                    IconButton(onClick = dismiss, shape = UNIT_CONTROL_SHAPE) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_close),
-                            contentDescription = text("閉じる")
-                        )
-                    }
-                }
             }
         }
 
         onAddParameter?.let { add ->
             OutlinedButton(onClick = add, enabled = parameters.size < 16, modifier = Modifier.fillMaxWidth()) {
                 Text(text("＋ パラメータ追加"))
+            }
+        }
+
+        // Parameter presets & morphing section
+        if (parameters.isNotEmpty() && (onSavePreset != null || presets.isNotEmpty())) {
+            val effectiveCurrentValues = remember(parameters, values) {
+                parameters.associate { it.name to parameterValue(it, values[it.name]) }
+            }
+            val activePresetId = remember(parameters, effectiveCurrentValues, presets) {
+                presets.firstOrNull { preset ->
+                    parameterValuesMatch(parameters, effectiveCurrentValues, preset.values)
+                }?.id
+            }
+            val resolvedA = presets.firstOrNull { it.id == blendPresetAId } ?: presets.getOrNull(0)
+            val resolvedB = presets.firstOrNull { it.id == blendPresetBId && it.id != resolvedA?.id }
+                ?: presets.firstOrNull { it.id != resolvedA?.id }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = text("プリセット"),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "${presets.size}/$MAX_PARAMETER_PRESETS",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (presets.isNotEmpty()) {
+                                FilterChip(
+                                    selected = morphEnabled,
+                                    onClick = { morphEnabled = !morphEnabled },
+                                    label = {
+                                        Text(
+                                            text = text("補間"),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    modifier = Modifier.height(30.dp)
+                                )
+                            }
+                            if (presets.size >= 2) {
+                                FilterChip(
+                                    selected = showBlendBar,
+                                    onClick = {
+                                        showBlendBar = !showBlendBar
+                                        if (showBlendBar && resolvedA != null && resolvedB != null) {
+                                            blendPresetAId = resolvedA.id
+                                            blendPresetBId = resolvedB.id
+                                            blendFraction = 0f
+                                        }
+                                    },
+                                    label = {
+                                        Text(
+                                            text = "A↔B",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    },
+                                    modifier = Modifier.height(30.dp)
+                                )
+                            }
+                            if (onSavePreset != null) {
+                                FilledTonalButton(
+                                    onClick = { showSavePresetDialog = true },
+                                    enabled = presets.size < MAX_PARAMETER_PRESETS,
+                                    shape = UNIT_CONTROL_SHAPE,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_add),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = text("保存"),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (presets.isEmpty()) {
+                        Text(
+                            text = text("気に入ったパラメータの組み合わせを保存し、ワンタップで切り替えや補間ができます"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            presets.forEach { preset ->
+                                val isActive = preset.id == activePresetId
+                                var menuOpen by remember(preset.id) { mutableStateOf(false) }
+                                Box {
+                                    Surface(
+                                        shape = UNIT_CONTROL_SHAPE,
+                                        color = if (isActive) MaterialTheme.colorScheme.primaryContainer
+                                            else MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isActive) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.outlineVariant
+                                        )
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .clip(UNIT_CONTROL_SHAPE)
+                                                .clickable { applyPreset(preset) }
+                                                .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = preset.name,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
+                                                    else MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.widthIn(max = 128.dp)
+                                            )
+                                            if (onSavePreset != null || onRenamePreset != null || onDeletePreset != null) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                                        .clickable { menuOpen = true },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.ic_more_vertical),
+                                                        contentDescription = text("プリセット操作"),
+                                                        tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
+                                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+                                            } else {
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                        }
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = menuOpen,
+                                        onDismissRequest = { menuOpen = false }
+                                    ) {
+                                        if (onSavePreset != null) {
+                                            DropdownMenuItem(
+                                                text = { Text(text("現在の値で上書き")) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.ic_save),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    if (onSavePreset(preset.name, effectiveCurrentValues, preset.id)) {
+                                                        Toast.makeText(context, text("プリセットを更新しました"), Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        if (onRenamePreset != null) {
+                                            DropdownMenuItem(
+                                                text = { Text(text("名前を変更")) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.ic_rename),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    renamingPresetId = preset.id
+                                                }
+                                            )
+                                        }
+                                        if (onDeletePreset != null) {
+                                            DropdownMenuItem(
+                                                text = { Text(text("削除"), color = MaterialTheme.colorScheme.error) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.ic_delete),
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    onDeletePreset(preset.id)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (showBlendBar && resolvedA != null && resolvedB != null) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    PresetSelectorChip(
+                                        prefix = "A",
+                                        selected = resolvedA,
+                                        presets = presets,
+                                        onSelect = { blendPresetAId = it.id }
+                                    )
+                                    Text(
+                                        text = "${(blendFraction * 100f).roundToInt()}%",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    PresetSelectorChip(
+                                        prefix = "B",
+                                        selected = resolvedB,
+                                        presets = presets,
+                                        onSelect = { blendPresetBId = it.id }
+                                    )
+                                }
+                                StudioSlider(
+                                    value = blendFraction,
+                                    onValueChange = { fraction ->
+                                        cancelMorph()
+                                        blendFraction = fraction
+                                        val blended = interpolateWorkParameters(
+                                            parameters, resolvedA.values, resolvedB.values, fraction, lockedParameters
+                                        )
+                                        parameters.forEach { param ->
+                                            val nextVal = blended[param.name] ?: return@forEach
+                                            if (values[param.name] != nextVal) {
+                                                onChange(param, nextVal)
+                                            }
+                                        }
+                                    },
+                                    onValueChangeFinished = onCommit,
+                                    valueRange = 0f..1f,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -309,369 +742,905 @@ internal fun WorkParameterPanel(
             }
         }
 
-        @Composable
-        fun ParameterLabelHeader(parameter: WorkParameter) {
-            val isLocked = parameter.name in lockedParameters
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                IconButton(
-                    onClick = {
-                        lockedParameters = if (isLocked) {
-                            lockedParameters - parameter.name
-                        } else {
-                            lockedParameters + parameter.name
-                        }
-                    },
-                    shape = UNIT_COMPACT_CONTROL_SHAPE,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(if (isLocked) R.drawable.ic_pin_filled else R.drawable.ic_pin),
-                        contentDescription = text(if (isLocked) "パラメータの固定を解除" else "パラメータを固定"),
-                        modifier = Modifier.size(16.dp),
-                        tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (onJumpToParameter != null) {
-                                Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { onJumpToParameter(parameter.name) }
-                            } else Modifier
-                        )
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = parameter.label,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (onJumpToParameter != null) {
-                            Text(
-                                text = "↗",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    Text(
-                        text = "rinParams.${parameter.name}",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
         // Parameter items
         parameters.forEach { parameter ->
-            val value = parameterValue(parameter, values[parameter.name])
-            val defValue = initialDefaults?.get(parameter.name) ?: parameter.defaultValue
-            val isModified = when (parameter) {
-                is WorkParameter.Color -> !value.equals(defValue, ignoreCase = true)
-                is WorkParameter.Boolean -> !value.equals(defValue, ignoreCase = true)
-                is WorkParameter.Choice -> value != defValue
-                is WorkParameter.Number -> {
-                    val curF = value.toFloatOrNull() ?: 0f
-                    val defF = defValue.toFloatOrNull() ?: 0f
-                    Math.abs(curF - defF) > 0.0001f
+            key(parameter.name) {
+                val value = parameterValue(parameter, values[parameter.name])
+                val defValue = initialDefaults?.get(parameter.name) ?: parameter.defaultValue
+                val isModified = isParameterModified(parameter, value, defValue)
+                val isLocked = parameter.name in lockedParameters
+
+                ParameterItemCard(
+                    parameter = parameter,
+                    value = value,
+                    defValue = defValue,
+                    isModified = isModified,
+                    isLocked = isLocked,
+                    onToggleLock = stableOnToggleLock,
+                    onJumpToParameter = stableOnJumpToParameter,
+                    onEmitManualChange = emitManualChange,
+                    onCommit = stableOnCommit,
+                    onResetParameter = stableOnResetParameter,
+                    text = stableText
+                )
+            }
+        }
+    }
+
+    if (showSavePresetDialog && onSavePreset != null) {
+        val suggestedName = remember(presets) {
+            val existingNames = presets.map { it.name }.toSet()
+            var index = presets.size + 1
+            while ("Look $index" in existingNames) index++
+            "Look $index"
+        }
+        ParameterPresetNameDialog(
+            title = text("プリセットを保存"),
+            initialName = suggestedName,
+            confirmLabel = text("保存"),
+            text = text,
+            onConfirm = { enteredName ->
+                val snapshot = parameters.associate { it.name to parameterValue(it, values[it.name]) }
+                if (onSavePreset(enteredName, snapshot, null)) {
+                    Toast.makeText(context, text("プリセットを保存しました"), Toast.LENGTH_SHORT).show()
+                    showSavePresetDialog = false
+                }
+            },
+            onDismiss = { showSavePresetDialog = false }
+        )
+    }
+
+    val renamingPreset = presets.firstOrNull { it.id == renamingPresetId }
+    if (renamingPreset != null && onRenamePreset != null) {
+        ParameterPresetNameDialog(
+            title = text("プリセット名を変更"),
+            initialName = renamingPreset.name,
+            confirmLabel = text("変更"),
+            text = text,
+            onConfirm = { enteredName ->
+                if (onRenamePreset(renamingPreset.id, enteredName)) {
+                    renamingPresetId = null
+                }
+            },
+            onDismiss = { renamingPresetId = null }
+        )
+    }
+}
+
+@Composable
+private fun RowScope.ParameterLabelHeader(
+    parameter: WorkParameter,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    text: (String) -> String
+) {
+    Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        IconButton(
+            onClick = { onToggleLock(parameter.name) },
+            shape = UNIT_COMPACT_CONTROL_SHAPE,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                painter = painterResource(if (isLocked) R.drawable.ic_pin_filled else R.drawable.ic_pin),
+                contentDescription = text(if (isLocked) "パラメータの固定を解除" else "パラメータを固定"),
+                modifier = Modifier.size(16.dp),
+                tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .then(
+                    if (onJumpToParameter != null) {
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onJumpToParameter(parameter.name) }
+                    } else Modifier
+                )
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = parameter.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (onJumpToParameter != null) {
+                    Text(
+                        text = "↗",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
+            Text(
+                text = "rinParams.${parameter.name}",
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+@Composable
+private fun ParameterItemCard(
+    parameter: WorkParameter,
+    value: String,
+    defValue: String,
+    isModified: Boolean,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    onEmitManualChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    onResetParameter: ((WorkParameter) -> Unit)?,
+    text: (String) -> String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            when (parameter) {
+                is WorkParameter.Number -> NumberParameterCard(
+                    parameter = parameter,
+                    value = value,
+                    defValue = defValue,
+                    isModified = isModified,
+                    isLocked = isLocked,
+                    onToggleLock = onToggleLock,
+                    onJumpToParameter = onJumpToParameter,
+                    onEmitManualChange = onEmitManualChange,
+                    onCommit = onCommit,
+                    onResetParameter = onResetParameter,
+                    text = text
                 )
+                is WorkParameter.Boolean -> BooleanParameterCard(
+                    parameter = parameter,
+                    value = value,
+                    isModified = isModified,
+                    isLocked = isLocked,
+                    onToggleLock = onToggleLock,
+                    onJumpToParameter = onJumpToParameter,
+                    onEmitManualChange = onEmitManualChange,
+                    onCommit = onCommit,
+                    onResetParameter = onResetParameter,
+                    text = text
+                )
+                is WorkParameter.Color -> ColorParameterCard(
+                    parameter = parameter,
+                    value = value,
+                    isModified = isModified,
+                    isLocked = isLocked,
+                    onToggleLock = onToggleLock,
+                    onJumpToParameter = onJumpToParameter,
+                    onEmitManualChange = onEmitManualChange,
+                    onCommit = onCommit,
+                    onResetParameter = onResetParameter,
+                    text = text
+                )
+                is WorkParameter.Choice -> ChoiceParameterCard(
+                    parameter = parameter,
+                    value = value,
+                    isModified = isModified,
+                    isLocked = isLocked,
+                    onToggleLock = onToggleLock,
+                    onJumpToParameter = onJumpToParameter,
+                    onEmitManualChange = onEmitManualChange,
+                    onCommit = onCommit,
+                    onResetParameter = onResetParameter,
+                    text = text
+                )
+                is WorkParameter.Point2D -> Point2DParameterCard(
+                    parameter = parameter,
+                    value = value,
+                    defValue = defValue,
+                    isModified = isModified,
+                    isLocked = isLocked,
+                    onToggleLock = onToggleLock,
+                    onJumpToParameter = onJumpToParameter,
+                    onEmitManualChange = onEmitManualChange,
+                    onCommit = onCommit,
+                    onResetParameter = onResetParameter,
+                    text = text
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NumberParameterCard(
+    parameter: WorkParameter.Number,
+    value: String,
+    defValue: String,
+    isModified: Boolean,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    onEmitManualChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    onResetParameter: ((WorkParameter) -> Unit)?,
+    text: (String) -> String
+) {
+    val numeric = value.toFloatOrNull() ?: parameter.defaultValue.toFloatOrNull() ?: 0f
+    val formattedVal = formatNumberValue(numeric, parameter.step)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ParameterLabelHeader(
+            parameter = parameter,
+            isLocked = isLocked,
+            onToggleLock = onToggleLock,
+            onJumpToParameter = onJumpToParameter,
+            text = text
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                Text(
+                    text = formattedVal,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+
+            if (isModified && onResetParameter != null) {
+                IconButton(
+                    onClick = { onResetParameter(parameter) },
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    when (parameter) {
-                        is WorkParameter.Number -> {
-                            val numeric = value.toFloatOrNull() ?: parameter.defaultValue.toFloatOrNull() ?: 0f
-                            val formattedVal = formatNumberValue(numeric, parameter.step)
-
-                            // Item Header
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ParameterLabelHeader(parameter)
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Text(
-                                            text = formattedVal,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                        )
-                                    }
-
-                                    if (isModified && onResetParameter != null) {
-                                        IconButton(
-                                            onClick = { onResetParameter(parameter) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_restore),
-                                                contentDescription = text("初期値に戻す"),
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Stepper & Slider
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        val nextVal = (numeric - parameter.step).coerceIn(parameter.min, parameter.max)
-                                        val nextStr = formatNumberValue(nextVal, parameter.step)
-                                        onChange(parameter, nextStr)
-                                        onCommit()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp),
-                                    enabled = numeric > parameter.min
-                                ) {
-                                    Text("−", fontWeight = FontWeight.Bold)
-                                }
-
-                                StudioSlider(
-                                    value = numeric,
-                                    onValueChange = { raw ->
-                                        val steps = ((raw - parameter.min) / parameter.step).roundToInt()
-                                        val snapped = (parameter.min + steps * parameter.step)
-                                            .coerceIn(parameter.min, parameter.max)
-                                        onChange(parameter, formatNumberValue(snapped, parameter.step))
-                                    },
-                                    onValueChangeFinished = onCommit,
-                                    valueRange = parameter.min..parameter.max,
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                OutlinedButton(
-                                    onClick = {
-                                        val nextVal = (numeric + parameter.step).coerceIn(parameter.min, parameter.max)
-                                        val nextStr = formatNumberValue(nextVal, parameter.step)
-                                        onChange(parameter, nextStr)
-                                        onCommit()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp),
-                                    enabled = numeric < parameter.max
-                                ) {
-                                    Text("+", fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            // Range hint footer
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "${formatNumberValue(parameter.min, parameter.step)} .. ${formatNumberValue(parameter.max, parameter.step)} (step: ${formatNumberValue(parameter.step, parameter.step)})",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (isModified) {
-                                    Text(
-                                        text = "${text("初期値")}: $defValue",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        is WorkParameter.Boolean -> {
-                            val boolVal = value.toBoolean()
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ParameterLabelHeader(parameter)
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (boolVal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Text(
-                                            text = if (boolVal) "ON" else "OFF",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (boolVal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                        )
-                                    }
-
-                                    Switch(
-                                        checked = boolVal,
-                                        onCheckedChange = { checked ->
-                                            onChange(parameter, checked.toString())
-                                            onCommit()
-                                        }
-                                    )
-
-                                    if (isModified && onResetParameter != null) {
-                                        IconButton(
-                                            onClick = { onResetParameter(parameter) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_restore),
-                                                contentDescription = text("初期値に戻す"),
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        is WorkParameter.Color -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ParameterLabelHeader(parameter)
-
-                                if (isModified && onResetParameter != null) {
-                                    IconButton(
-                                        onClick = { onResetParameter(parameter) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_restore),
-                                            contentDescription = text("初期値に戻す"),
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            CustomColorSetting(
-                                label = "",
-                                value = (value.removePrefix("#").toIntOrNull(16) ?: 0xFFFFFF) or 0xFF000000.toInt(),
-                                onChange = { color ->
-                                    onChange(parameter, "#%06X".format(color and 0xFFFFFF))
-                                    onCommit()
-                                },
-                                text = text
-                            )
-                        }
-
-                        is WorkParameter.Choice -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ParameterLabelHeader(parameter)
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Text(
-                                            text = value,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                        )
-                                    }
-
-                                    if (isModified && onResetParameter != null) {
-                                        IconButton(
-                                            onClick = { onResetParameter(parameter) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_restore),
-                                                contentDescription = text("初期値に戻す"),
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            val selectedIdx = parameter.options.indexOf(value).let { if (it >= 0) it else 0 }
-                            ScrollableChoiceGroup(
-                                labels = parameter.options,
-                                selectedIndex = selectedIdx,
-                                onSelect = { idx ->
-                                    if (idx in parameter.options.indices) {
-                                        onChange(parameter, parameter.options[idx])
-                                        onCommit()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            if (isModified) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    Text(
-                                        text = "${text("初期値")}: ${parameter.defaultValue}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    Icon(
+                        painter = painterResource(R.drawable.ic_restore),
+                        contentDescription = text("初期値に戻す"),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        OutlinedButton(
+            onClick = {
+                val nextVal = (numeric - parameter.step).coerceIn(parameter.min, parameter.max)
+                val nextStr = formatNumberValue(nextVal, parameter.step)
+                onEmitManualChange(parameter, nextStr)
+                onCommit()
+            },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp),
+            enabled = numeric > parameter.min
+        ) {
+            Text("−", fontWeight = FontWeight.Bold)
+        }
+
+        StudioSlider(
+            value = numeric,
+            onValueChange = { raw ->
+                val steps = ((raw - parameter.min) / parameter.step).roundToInt()
+                val snapped = (parameter.min + steps * parameter.step)
+                    .coerceIn(parameter.min, parameter.max)
+                onEmitManualChange(parameter, formatNumberValue(snapped, parameter.step))
+            },
+            onValueChangeFinished = onCommit,
+            valueRange = parameter.min..parameter.max,
+            modifier = Modifier.weight(1f)
+        )
+
+        OutlinedButton(
+            onClick = {
+                val nextVal = (numeric + parameter.step).coerceIn(parameter.min, parameter.max)
+                val nextStr = formatNumberValue(nextVal, parameter.step)
+                onEmitManualChange(parameter, nextStr)
+                onCommit()
+            },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp),
+            enabled = numeric < parameter.max
+        ) {
+            Text("+", fontWeight = FontWeight.Bold)
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "${formatNumberValue(parameter.min, parameter.step)} .. ${formatNumberValue(parameter.max, parameter.step)} (step: ${formatNumberValue(parameter.step, parameter.step)})",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (isModified) {
+            Text(
+                text = "${text("初期値")}: $defValue",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun BooleanParameterCard(
+    parameter: WorkParameter.Boolean,
+    value: String,
+    isModified: Boolean,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    onEmitManualChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    onResetParameter: ((WorkParameter) -> Unit)?,
+    text: (String) -> String
+) {
+    val boolVal = value.toBoolean()
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ParameterLabelHeader(
+            parameter = parameter,
+            isLocked = isLocked,
+            onToggleLock = onToggleLock,
+            onJumpToParameter = onJumpToParameter,
+            text = text
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (boolVal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Text(
+                    text = if (boolVal) "ON" else "OFF",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (boolVal) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+
+            Switch(
+                checked = boolVal,
+                onCheckedChange = { checked ->
+                    onEmitManualChange(parameter, checked.toString())
+                    onCommit()
+                }
+            )
+
+            if (isModified && onResetParameter != null) {
+                IconButton(
+                    onClick = { onResetParameter(parameter) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_restore),
+                        contentDescription = text("初期値に戻す"),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColorParameterCard(
+    parameter: WorkParameter.Color,
+    value: String,
+    isModified: Boolean,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    onEmitManualChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    onResetParameter: ((WorkParameter) -> Unit)?,
+    text: (String) -> String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ParameterLabelHeader(
+            parameter = parameter,
+            isLocked = isLocked,
+            onToggleLock = onToggleLock,
+            onJumpToParameter = onJumpToParameter,
+            text = text
+        )
+
+        if (isModified && onResetParameter != null) {
+            IconButton(
+                onClick = { onResetParameter(parameter) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_restore),
+                    contentDescription = text("初期値に戻す"),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+
+    CustomColorSetting(
+        label = "",
+        value = (value.removePrefix("#").toIntOrNull(16) ?: 0xFFFFFF) or 0xFF000000.toInt(),
+        onChange = { color ->
+            onEmitManualChange(parameter, "#%06X".format(color and 0xFFFFFF))
+            onCommit()
+        },
+        text = text
+    )
+}
+
+@Composable
+private fun ChoiceParameterCard(
+    parameter: WorkParameter.Choice,
+    value: String,
+    isModified: Boolean,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    onEmitManualChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    onResetParameter: ((WorkParameter) -> Unit)?,
+    text: (String) -> String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ParameterLabelHeader(
+            parameter = parameter,
+            isLocked = isLocked,
+            onToggleLock = onToggleLock,
+            onJumpToParameter = onJumpToParameter,
+            text = text
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+
+            if (isModified && onResetParameter != null) {
+                IconButton(
+                    onClick = { onResetParameter(parameter) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_restore),
+                        contentDescription = text("初期値に戻す"),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    val selectedIdx = parameter.options.indexOf(value).let { if (it >= 0) it else 0 }
+    ScrollableChoiceGroup(
+        labels = parameter.options,
+        selectedIndex = selectedIdx,
+        onSelect = { idx ->
+            if (idx in parameter.options.indices) {
+                onEmitManualChange(parameter, parameter.options[idx])
+                onCommit()
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    if (isModified) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Text(
+                text = "${text("初期値")}: ${parameter.defaultValue}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun Point2DParameterCard(
+    parameter: WorkParameter.Point2D,
+    value: String,
+    defValue: String,
+    isModified: Boolean,
+    isLocked: Boolean,
+    onToggleLock: (String) -> Unit,
+    onJumpToParameter: ((String) -> Unit)?,
+    onEmitManualChange: (WorkParameter, String) -> Unit,
+    onCommit: () -> Unit,
+    onResetParameter: ((WorkParameter) -> Unit)?,
+    text: (String) -> String
+) {
+    val (curX, curY) = parsePoint2DValue(value)
+        ?: parsePoint2DValue(parameter.defaultValue)
+        ?: (parameter.minX to parameter.minY)
+    val fx = formatNumberValue(curX, parameter.stepX)
+    val fy = formatNumberValue(curY, parameter.stepY)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ParameterLabelHeader(
+            parameter = parameter,
+            isLocked = isLocked,
+            onToggleLock = onToggleLock,
+            onJumpToParameter = onJumpToParameter,
+            text = text
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = "X:$fx  Y:$fy",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
+            if (isModified && onResetParameter != null) {
+                IconButton(
+                    onClick = { onResetParameter(parameter) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_restore),
+                        contentDescription = text("初期値に戻す"),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    ParameterXYPad(
+        parameter = parameter,
+        valueX = curX,
+        valueY = curY,
+        onValueChange = { nextX, nextY ->
+            onEmitManualChange(
+                parameter,
+                formatPoint2DValue(nextX, nextY, parameter.stepX, parameter.stepY)
+            )
+        },
+        onCommit = onCommit
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "X:${formatNumberValue(parameter.minX, parameter.stepX)}..${formatNumberValue(parameter.maxX, parameter.stepX)}  Y:${formatNumberValue(parameter.minY, parameter.stepY)}..${formatNumberValue(parameter.maxY, parameter.stepY)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (isModified) {
+            Text(
+                text = "${text("初期値")}: $defValue",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun PresetSelectorChip(
+    prefix: String,
+    selected: WorkParameterPreset,
+    presets: List<WorkParameterPreset>,
+    onSelect: (WorkParameterPreset) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Surface(
+            shape = UNIT_CONTROL_SHAPE,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(UNIT_CONTROL_SHAPE)
+                    .clickable { expanded = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "$prefix:",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = selected.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 90.dp)
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_chevron_down),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            presets.forEach { preset ->
+                DropdownMenuItem(
+                    text = { Text(preset.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    onClick = {
+                        expanded = false
+                        onSelect(preset)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParameterPresetNameDialog(
+    title: String,
+    initialName: String,
+    confirmLabel: String,
+    text: (String) -> String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
+    val trimmed = name.trim()
+    EditSettingsDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { if (it.length <= MAX_PARAMETER_PRESET_NAME) name = it },
+                label = { Text(text("プリセット名")) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = trimmed.isNotEmpty(),
+                onClick = { onConfirm(trimmed) }
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(text("キャンセル")) }
+        }
+    )
+}
+
+@Composable
+private fun ParameterXYPad(
+    parameter: WorkParameter.Point2D,
+    valueX: Float,
+    valueY: Float,
+    onValueChange: (Float, Float) -> Unit,
+    onCommit: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val latestParam by rememberUpdatedState(parameter)
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val latestOnCommit by rememberUpdatedState(onCommit)
+
+    val normX = if (parameter.maxX > parameter.minX) ((valueX - parameter.minX) / (parameter.maxX - parameter.minX)).coerceIn(0f, 1f) else 0.5f
+    val normY = if (parameter.maxY > parameter.minY) ((valueY - parameter.minY) / (parameter.maxY - parameter.minY)).coerceIn(0f, 1f) else 0.5f
+
+    val padShape = RoundedCornerShape(12.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(168.dp)
+            .clip(padShape)
+            .background(colors.surfaceContainerLowest)
+            .border(1.dp, colors.outlineVariant, padShape)
+            .pointerInput(parameter.name) {
+                var lastEmittedX = Float.NaN
+                var lastEmittedY = Float.NaN
+                fun emitForPosition(pos: Offset) {
+                    val p = latestParam
+                    val w = size.width.coerceAtLeast(1).toFloat()
+                    val h = size.height.coerceAtLeast(1).toFloat()
+                    val nx = (pos.x / w).coerceIn(0f, 1f)
+                    val ny = (pos.y / h).coerceIn(0f, 1f)
+                    val rawX = p.minX + nx * (p.maxX - p.minX)
+                    val rawY = p.minY + ny * (p.maxY - p.minY)
+                    val snappedX = if (p.stepX > 0f && p.stepX.isFinite()) {
+                        (p.minX + ((rawX - p.minX) / p.stepX).roundToInt() * p.stepX).coerceIn(p.minX, p.maxX)
+                    } else rawX
+                    val snappedY = if (p.stepY > 0f && p.stepY.isFinite()) {
+                        (p.minY + ((rawY - p.minY) / p.stepY).roundToInt() * p.stepY).coerceIn(p.minY, p.maxY)
+                    } else rawY
+                    if (snappedX == lastEmittedX && snappedY == lastEmittedY) return
+                    lastEmittedX = snappedX
+                    lastEmittedY = snappedY
+                    latestOnValueChange(snappedX, snappedY)
+                }
+
+                awaitEachGesture {
+                    lastEmittedX = Float.NaN
+                    lastEmittedY = Float.NaN
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    down.consume()
+                    emitForPosition(down.position)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull() ?: break
+                        if (!change.pressed) {
+                            change.consume()
+                            break
+                        }
+                        if (change.position != change.previousPosition) {
+                            change.consume()
+                            emitForPosition(change.position)
+                        }
+                    }
+                    latestOnCommit()
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val gridColor = colors.outlineVariant.copy(alpha = 0.35f)
+            val centerColor = colors.outlineVariant.copy(alpha = 0.7f)
+            val accentColor = colors.primary
+            val surfaceColor = colors.surface
+
+            for (i in 1..3) {
+                val frac = i / 4f
+                val isCenter = i == 2
+                val strokeColor = if (isCenter) centerColor else gridColor
+                val strokeWidth = if (isCenter) 1.25.dp.toPx() else 0.75.dp.toPx()
+                drawLine(
+                    color = strokeColor,
+                    start = Offset(size.width * frac, 0f),
+                    end = Offset(size.width * frac, size.height),
+                    strokeWidth = strokeWidth
+                )
+                drawLine(
+                    color = strokeColor,
+                    start = Offset(0f, size.height * frac),
+                    end = Offset(size.width, size.height * frac),
+                    strokeWidth = strokeWidth
+                )
+            }
+
+            val cx = (normX * size.width).coerceIn(0f, size.width)
+            val cy = (normY * size.height).coerceIn(0f, size.height)
+
+            drawLine(
+                color = accentColor.copy(alpha = 0.45f),
+                start = Offset(cx, 0f),
+                end = Offset(cx, size.height),
+                strokeWidth = 1.25.dp.toPx()
+            )
+            drawLine(
+                color = accentColor.copy(alpha = 0.45f),
+                start = Offset(0f, cy),
+                end = Offset(size.width, cy),
+                strokeWidth = 1.25.dp.toPx()
+            )
+            drawCircle(
+                color = accentColor.copy(alpha = 0.16f),
+                radius = 18.dp.toPx(),
+                center = Offset(cx, cy)
+            )
+            drawCircle(
+                color = accentColor,
+                radius = 8.dp.toPx(),
+                center = Offset(cx, cy)
+            )
+            drawCircle(
+                color = surfaceColor,
+                radius = 8.dp.toPx(),
+                center = Offset(cx, cy),
+                style = Stroke(width = 2.dp.toPx())
+            )
+        }
+
+        Text(
+            text = "${formatNumberValue(parameter.minX, parameter.stepX)}, ${formatNumberValue(parameter.minY, parameter.stepY)}",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+        Text(
+            text = "${formatNumberValue(parameter.maxX, parameter.stepX)}, ${formatNumberValue(parameter.maxY, parameter.stepY)}",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 
@@ -698,9 +1667,28 @@ internal fun WorkParameterBottomSheet(
     onInsertSample: (() -> Unit)? = null,
     onJumpToParameter: ((String) -> Unit)? = null,
     onCompareHold: ((Boolean) -> Unit)? = null,
-    initialDefaults: Map<String, String>? = null
+    initialDefaults: Map<String, String>? = null,
+    presets: List<WorkParameterPreset> = emptyList(),
+    onSavePreset: ((String, Map<String, String>, String?) -> Boolean)? = null,
+    onRenamePreset: ((String, String) -> Boolean)? = null,
+    onDeletePreset: ((String) -> Boolean)? = null,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null
 ) {
     if (!visible) return
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = isLandscape)
+    var sawPartiallyExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(sheetState.currentValue, isLandscape, onToggleFullscreen) {
+        if (!isLandscape && onToggleFullscreen != null) {
+            if (sheetState.currentValue == SheetValue.PartiallyExpanded) {
+                sawPartiallyExpanded = true
+            } else if (sawPartiallyExpanded && sheetState.currentValue == SheetValue.Expanded) {
+                sawPartiallyExpanded = false
+                onToggleFullscreen()
+            }
+        }
+    }
 
     val panelContent = @Composable {
         WorkParameterPanel(
@@ -717,13 +1705,19 @@ internal fun WorkParameterBottomSheet(
             onInsertSample = onInsertSample,
             onJumpToParameter = onJumpToParameter,
             onCompareHold = onCompareHold,
-            initialDefaults = initialDefaults
+            initialDefaults = initialDefaults,
+            presets = presets,
+            onSavePreset = onSavePreset,
+            onRenamePreset = onRenamePreset,
+            onDeletePreset = onDeletePreset,
+            isFullscreen = isFullscreen,
+            onToggleFullscreen = onToggleFullscreen
         )
     }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = isLandscape),
+        sheetState = sheetState,
         sheetGesturesEnabled = !isLandscape,
         containerColor = if (isLandscape) Color.Transparent else colors.surface,
         scrimColor = if (isLandscape) MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
@@ -774,7 +1768,13 @@ internal fun InlineWorkParameterPanel(
     onJumpToParameter: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
     onCompareHold: ((Boolean) -> Unit)? = null,
-    initialDefaults: Map<String, String>? = null
+    initialDefaults: Map<String, String>? = null,
+    presets: List<WorkParameterPreset> = emptyList(),
+    onSavePreset: ((String, Map<String, String>, String?) -> Boolean)? = null,
+    onRenamePreset: ((String, String) -> Boolean)? = null,
+    onDeletePreset: ((String) -> Boolean)? = null,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -808,7 +1808,13 @@ internal fun InlineWorkParameterPanel(
             onJumpToParameter = onJumpToParameter,
             topPadding = 16.dp,
             onCompareHold = onCompareHold,
-            initialDefaults = initialDefaults
+            initialDefaults = initialDefaults,
+            presets = presets,
+            onSavePreset = onSavePreset,
+            onRenamePreset = onRenamePreset,
+            onDeletePreset = onDeletePreset,
+            isFullscreen = isFullscreen,
+            onToggleFullscreen = onToggleFullscreen
         )
     }
 }

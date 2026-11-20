@@ -1,7 +1,9 @@
 package com.hikariatelier.app
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -25,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -43,7 +46,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private class GhostPointerNode(
@@ -315,14 +321,32 @@ internal fun FloatingPipPreviewHost(
         label = "pipHeaderAlpha"
     )
 
-    BoxWithConstraints(
-        modifier = modifier.fillMaxSize()
+    val coroutineScope = rememberCoroutineScope()
+    var containerSize by remember(density, containerWidthDp, containerHeightDp) {
+        mutableStateOf(
+            with(density) {
+                IntSize(
+                    containerWidthDp.dp.roundToPx().coerceAtLeast(1),
+                    containerHeightDp.dp.roundToPx().coerceAtLeast(1)
+                )
+            }
+        )
+    }
+    val marginPx = with(density) { 8.dp.toPx() }
+    val targetCardWidthPx = with(density) { targetWidth.toPx() }
+    val targetCardHeightPx = with(density) { targetHeight.toPx() }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onSizeChanged { size ->
+                if (size.width > 0 && size.height > 0 && size != containerSize) {
+                    containerSize = size
+                }
+            }
     ) {
-        val marginPx = with(density) { 8.dp.toPx() }
-        val cardWidthPx = with(density) { animatedWidth.toPx() }
-        val cardHeightPx = with(density) { animatedHeight.toPx() }
-        val maxX = (constraints.maxWidth.toFloat() - cardWidthPx - marginPx).coerceAtLeast(marginPx)
-        val maxY = (constraints.maxHeight.toFloat() - cardHeightPx - marginPx).coerceAtLeast(marginPx)
+        val maxX = (containerSize.width.toFloat() - targetCardWidthPx - marginPx).coerceAtLeast(marginPx)
+        val maxY = (containerSize.height.toFloat() - targetCardHeightPx - marginPx).coerceAtLeast(marginPx)
 
         val anchorX = when (snapCorner) {
             PipCorner.TOP_START, PipCorner.BOTTOM_START -> marginPx
@@ -333,47 +357,51 @@ internal fun FloatingPipPreviewHost(
             PipCorner.BOTTOM_START, PipCorner.BOTTOM_END -> maxY
         }
 
-        var isDragging by remember { mutableStateOf(false) }
-        var dragDx by remember { mutableFloatStateOf(0f) }
-        var dragDy by remember { mutableFloatStateOf(0f) }
-
-        val targetX = (anchorX + dragDx).coerceIn(marginPx, maxX)
-        val targetY = (anchorY + dragDy).coerceIn(marginPx, maxY)
-
         val animatedX by animateFloatAsState(
-            targetValue = targetX,
-            animationSpec = if (isDragging) spring(stiffness = Spring.StiffnessHigh)
-            else spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+            targetValue = anchorX,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
             label = "pipOffsetX"
         )
         val animatedY by animateFloatAsState(
-            targetValue = targetY,
-            animationSpec = if (isDragging) spring(stiffness = Spring.StiffnessHigh)
-            else spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+            targetValue = anchorY,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
             label = "pipOffsetY"
         )
+
+        var draggingActive by remember { mutableStateOf(false) }
+        var dragDx by remember { mutableFloatStateOf(0f) }
+        var dragDy by remember { mutableFloatStateOf(0f) }
+        val releaseAnim = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+        var releaseJob by remember { mutableStateOf<Job?>(null) }
 
         val currentMaxX by rememberUpdatedState(maxX)
         val currentMaxY by rememberUpdatedState(maxY)
         val currentMarginPx by rememberUpdatedState(marginPx)
-        val currentAnchorX by rememberUpdatedState(anchorX)
-        val currentAnchorY by rememberUpdatedState(anchorY)
+        val currentAnimatedXState = rememberUpdatedState(animatedX)
+        val currentAnimatedYState = rememberUpdatedState(animatedY)
         val currentSnapCorner by rememberUpdatedState(snapCorner)
         val currentOnSnapCornerChange by rememberUpdatedState(onSnapCornerChange)
 
         val headerDragGestureModifier = Modifier.pointerInput(Unit) {
             detectDragGestures(
                 onDragStart = {
-                    isDragging = true
+                    releaseJob?.cancel()
+                    releaseJob = null
+                    val residual = releaseAnim.value
+                    dragDx = residual.x
+                    dragDy = residual.y
+                    draggingActive = true
                 },
                 onDrag = { change, dragAmount ->
                     change.consume()
-                    dragDx += dragAmount.x
-                    dragDy += dragAmount.y
+                    val clampedX = (currentAnimatedXState.value + dragDx + dragAmount.x).coerceIn(currentMarginPx, currentMaxX)
+                    val clampedY = (currentAnimatedYState.value + dragDy + dragAmount.y).coerceIn(currentMarginPx, currentMaxY)
+                    dragDx = clampedX - currentAnimatedXState.value
+                    dragDy = clampedY - currentAnimatedYState.value
                 },
                 onDragEnd = {
-                    val finalX = (currentAnchorX + dragDx).coerceIn(currentMarginPx, currentMaxX)
-                    val finalY = (currentAnchorY + dragDy).coerceIn(currentMarginPx, currentMaxY)
+                    val finalX = (currentAnimatedXState.value + dragDx).coerceIn(currentMarginPx, currentMaxX)
+                    val finalY = (currentAnimatedYState.value + dragDy).coerceIn(currentMarginPx, currentMaxY)
                     val preferRight = finalX >= (currentMarginPx + currentMaxX) * 0.5f
                     val preferBottom = finalY >= (currentMarginPx + currentMaxY) * 0.5f
                     val nextCorner = when {
@@ -382,18 +410,37 @@ internal fun FloatingPipPreviewHost(
                         !preferBottom && preferRight -> PipCorner.TOP_END
                         else -> PipCorner.TOP_START
                     }
-                    if (nextCorner != currentSnapCorner) {
+                    val cornerChanged = nextCorner != currentSnapCorner
+                    if (cornerChanged) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
                     currentOnSnapCornerChange(nextCorner)
+                    val startOffset = Offset(finalX - currentAnimatedXState.value, finalY - currentAnimatedYState.value)
                     dragDx = 0f
                     dragDy = 0f
-                    isDragging = false
+                    releaseJob?.cancel()
+                    releaseJob = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        releaseAnim.snapTo(startOffset)
+                        draggingActive = false
+                        releaseAnim.animateTo(
+                            Offset.Zero,
+                            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                        )
+                    }
                 },
                 onDragCancel = {
+                    val residual = Offset(dragDx, dragDy)
                     dragDx = 0f
                     dragDy = 0f
-                    isDragging = false
+                    releaseJob?.cancel()
+                    releaseJob = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        releaseAnim.snapTo(residual)
+                        draggingActive = false
+                        releaseAnim.animateTo(
+                            Offset.Zero,
+                            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                        )
+                    }
                 }
             )
         }
@@ -402,9 +449,15 @@ internal fun FloatingPipPreviewHost(
         Box(
             modifier = Modifier
                 .offset {
+                    val liveCardW = animatedWidth.toPx()
+                    val liveCardH = animatedHeight.toPx()
+                    val liveMaxX = (containerSize.width.toFloat() - liveCardW - marginPx).coerceAtLeast(marginPx)
+                    val liveMaxY = (containerSize.height.toFloat() - liveCardH - marginPx).coerceAtLeast(marginPx)
+                    val dx = if (draggingActive) dragDx else releaseAnim.value.x
+                    val dy = if (draggingActive) dragDy else releaseAnim.value.y
                     IntOffset(
-                        x = (if (isDragging) targetX else animatedX).roundToInt(),
-                        y = (if (isDragging) targetY else animatedY).roundToInt()
+                        x = (currentAnimatedXState.value + dx).coerceIn(marginPx, liveMaxX).roundToInt(),
+                        y = (currentAnimatedYState.value + dy).coerceIn(marginPx, liveMaxY).roundToInt()
                     )
                 }
                 .size(animatedWidth, animatedHeight)

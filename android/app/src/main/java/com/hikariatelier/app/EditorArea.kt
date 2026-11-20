@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -150,7 +152,8 @@ internal fun EditorArea(
 ) {
     val blockMode = remember(activeWorkId, sessionViewModel.auxiliaryEditorGeneration) { sessionViewModel.blockModeState(activeWorkId) }
     val modeScope = rememberCoroutineScope()
-    val showingBlocks = selectedEditorFile == "sketch.js" && blockMode.value && activeWork != null
+    val blockWork = activeWork?.takeIf { selectedEditorFile == "sketch.js" && blockMode.value }
+    val showingBlocks = blockWork != null
     val copyToClipboard = rememberClipboardCopy()
     val keyboardController = LocalSoftwareKeyboardController.current
     var textLayoutCoordinates by remember(editingKey) { mutableStateOf<LayoutCoordinates?>(null) }
@@ -460,7 +463,12 @@ internal fun EditorArea(
                     DocumentHeader()
                 }
                 if (!showingBlocks) inlineSearch()
-                if (!errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }) {
+                val hasPreviousWorkError by remember(activeWorkId, errorsCurrent, consoleEntries) {
+                    derivedStateOf {
+                        !errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
+                    }
+                }
+                if (hasPreviousWorkError) {
                     Text(
                         textTranslator("前回の実行時に発生したエラーです", emptyArray()),
                         Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -468,12 +476,16 @@ internal fun EditorArea(
                         color = colors.tertiary
                     )
                 }
-                val latestError = if (showErrorBanner && errorsCurrent) {
-                    consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
-                } else null
-                if (latestError != null) {
+                val latestError by remember(activeWorkId, showErrorBanner, errorsCurrent, consoleEntries) {
+                    derivedStateOf {
+                        if (showErrorBanner && errorsCurrent) {
+                            consoleEntries.lastOrNull { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
+                        } else null
+                    }
+                }
+                latestError?.let { err ->
                     InlineDiagnosticBanner(
-                        latestError = latestError,
+                        latestError = err,
                         editingFile = editingFile,
                         editingValue = editingValue,
                         p5Version = activeWork?.p5Version,
@@ -485,17 +497,22 @@ internal fun EditorArea(
                         onCopyError = { copyToClipboard(it) }
                     )
                 }
-                if (showingBlocks && activeWork != null) {
+                if (blockWork != null) {
+                    val blockErrors by remember(activeWorkId, errorsCurrent, consoleEntries) {
+                        derivedStateOf {
+                            if (errorsCurrent) consoleEntries.filter {
+                                it.level == ConsoleLevel.ERROR && it.workId == activeWorkId && it.file == "sketch.js"
+                            } else emptyList()
+                        }
+                    }
                     BlockWorkspaceView(
-                        work = activeWork,
+                        work = blockWork,
                         source = editingText,
                         session = sessionViewModel,
                         language = blockLanguage,
                         dark = darkEditorTheme,
                         readOnly = readOnly,
-                        errors = if (errorsCurrent) consoleEntries.filter {
-                            it.level == ConsoleLevel.ERROR && it.workId == activeWorkId && it.file == "sketch.js"
-                        } else emptyList(),
+                        errors = blockErrors,
                         onOpenCode = { start, end ->
                             blockMode.value = false
                             onOpenBlockCode(start, end)
@@ -507,30 +524,39 @@ internal fun EditorArea(
                         textTranslator = textTranslator,
                         modifier = Modifier.fillMaxSize()
                     )
-                } else BoxWithConstraints(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
-                    val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
+                } else {
+                    var editorContainerSize by remember { mutableStateOf(IntSize.Zero) }
                     val localDensity = LocalDensity.current
-                    val gutterMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-                    val singleDigitAndFoldWidth = remember(gutterMeasurer, codeFontFamily, effectiveFontSize, localDensity) {
-                        val style = TextStyle(
-                            fontFamily = codeFontFamily,
-                            fontSize = effectiveFontSize.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        val maxDigit = ('0'..'9').maxOf { digit ->
-                            gutterMeasurer.measure(AnnotatedString(digit.toString()), style = style, softWrap = false).size.width
+                    val fallbackConfig = LocalConfiguration.current
+                    val containerWidthDp = if (editorContainerSize.width > 0) with(localDensity) { editorContainerSize.width.toDp() }
+                        else fallbackConfig.screenWidthDp.dp
+                    val containerHeightDp = if (editorContainerSize.height > 0) with(localDensity) { editorContainerSize.height.toDp() }
+                        else fallbackConfig.screenHeightDp.dp
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onSizeChanged { if (it != editorContainerSize) editorContainerSize = it }
+                    ) {
+                        val editorScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).vertical }
+                        val editorHorizontalScrollState = remember(editingKey) { sessionViewModel.editorScroll(editingKey).horizontal }
+                        val gutterMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+                        val singleDigitAndFoldWidth = remember(gutterMeasurer, codeFontFamily, effectiveFontSize, localDensity) {
+                            val style = TextStyle(
+                                fontFamily = codeFontFamily,
+                                fontSize = effectiveFontSize.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val maxDigit = ('0'..'9').maxOf { digit ->
+                                gutterMeasurer.measure(AnnotatedString(digit.toString()), style = style, softWrap = false).size.width
+                            }
+                            val foldArrow = gutterMeasurer.measure(AnnotatedString("▾"), style = style, softWrap = false).size.width
+                            maxDigit to foldArrow
                         }
-                        val foldArrow = gutterMeasurer.measure(AnnotatedString("▾"), style = style, softWrap = false).size.width
-                        maxDigit to foldArrow
-                    }
-                    val gutterPixels = (if (hasFolds) singleDigitAndFoldWidth.second else 0) +
-                        (if (showLineNumbers) singleDigitAndFoldWidth.first * lineNumberDigits else 0)
-                    val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
-                    val viewportWidth = with(localDensity) { (maxWidth - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
-                    val viewportHeightPx = with(localDensity) { maxHeight.toPx() }
+                        val gutterPixels = (if (hasFolds) singleDigitAndFoldWidth.second else 0) +
+                            (if (showLineNumbers) singleDigitAndFoldWidth.first * lineNumberDigits else 0)
+                        val gutterWidth = with(localDensity) { gutterPixels.toDp() } + 10.dp
+                        val viewportWidth = with(localDensity) { (containerWidthDp - gutterWidth - 30.dp).toPx().coerceAtLeast(24.dp.toPx()) }
+                        val viewportHeightPx = with(localDensity) { containerHeightDp.toPx() }
 
                     LaunchedEffect(navigationSequence, editingKey, editorTextLayout, projection) {
                         val target = navigationTarget ?: return@LaunchedEffect
@@ -596,14 +622,14 @@ internal fun EditorArea(
                         pipSafeRatio,
                         pipBaseSize,
                         pipCardHeightDp,
-                        maxWidth,
-                        maxHeight
+                        containerWidthDp,
+                        containerHeightDp
                     ) {
                         derivedStateOf {
                             if (!useFloatingPip) return@derivedStateOf false
 
-                            val containerWidthPx = with(localDensity) { maxWidth.toPx() }
-                            val containerHeightPx = with(localDensity) { maxHeight.toPx() }
+                            val containerWidthPx = with(localDensity) { containerWidthDp.toPx() }
+                            val containerHeightPx = with(localDensity) { containerHeightDp.toPx() }
                             val pipCanvasWidthDp = if (pipSafeRatio >= 1f) pipBaseSize.dp else (pipBaseSize * pipSafeRatio).dp
                             val pipWidthDp = if (sessionViewModel.pipMinimized) 164.dp else maxOf(164.dp, pipCanvasWidthDp)
                             val pipWidthPx = with(localDensity) { pipWidthDp.toPx() }
@@ -711,7 +737,7 @@ internal fun EditorArea(
                         }
                     }
 
-                    val containerMaxHeight = maxHeight
+                    val containerMaxHeight = containerHeightDp
                     val contentMinHeight = (containerMaxHeight - 32.dp + pipBottomPadding).coerceAtLeast(0.dp)
 
                     Row(
@@ -818,7 +844,7 @@ internal fun EditorArea(
                         logicalLineStarts = logicalLineStarts,
                         projection = projection,
                         textLayout = editorTextLayout,
-                        scrollValue = editorScrollState.value,
+                        scrollState = editorScrollState,
                         viewportHeightPx = viewportHeightPx,
                         codeFontFamily = codeFontFamily,
                         colors = colors,
@@ -961,6 +987,7 @@ internal fun EditorArea(
                                 textTranslator = textTranslator
                             )
                         }
+                    }
                     }
                 }
             }

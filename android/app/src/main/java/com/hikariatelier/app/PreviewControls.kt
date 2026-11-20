@@ -38,17 +38,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import kotlin.math.roundToInt
 
 @Composable
 internal fun PreviewOverlayButton(
@@ -160,7 +165,10 @@ internal fun PreviewActionsTray(
     onRecordToggle: () -> Unit,
     onFullscreen: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showHud: Boolean = false,
+    onToggleHud: (() -> Unit)? = null,
+    onStepFrame: (() -> Unit)? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -238,6 +246,21 @@ internal fun PreviewActionsTray(
                 label = uiText("全画面"),
                 onClick = onFullscreen
             )
+            if (onStepFrame != null) {
+                ActionChip(
+                    iconRes = R.drawable.ic_play,
+                    label = uiText("1コマ送り"),
+                    onClick = onStepFrame
+                )
+            }
+            if (onToggleHud != null) {
+                ActionChip(
+                    iconRes = R.drawable.ic_terminal,
+                    label = "FPS HUD",
+                    active = showHud,
+                    onClick = onToggleHud
+                )
+            }
 
             // Export group: everything that produces a file or a card
             Box(
@@ -289,7 +312,8 @@ internal fun RunStatusControls(
     onReload: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
     modifier: Modifier = Modifier,
-    hasPendingChanges: Boolean = false
+    hasPendingChanges: Boolean = false,
+    onStepFrame: (() -> Unit)? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -360,6 +384,29 @@ internal fun RunStatusControls(
                 tint = colors.onSurface,
                 modifier = Modifier.size(iconSize)
             )
+        }
+        if (isPaused && onStepFrame != null) {
+            Box(
+                modifier = Modifier
+                    .height(buttonSize)
+                    .widthIn(min = buttonSize)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onStepFrame()
+                    })
+                    .semantics { contentDescription = uiText("1コマ送り") }
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "+1",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary
+                )
+            }
         }
         Box(
             modifier = Modifier
@@ -582,7 +629,71 @@ internal fun SaveRestoreControls(
 }
 
 @Composable
-internal fun BoxWithConstraintsScope.PreviewOverlayControls(
+private fun PreviewHudOverlay(
+    hudMetricsProvider: () -> PreviewHudMetrics?,
+    isPaused: Boolean,
+    colors: ColorScheme,
+    modifier: Modifier = Modifier
+) {
+    val hudMetrics = hudMetricsProvider() ?: return
+    val sizePart = if (hudMetrics.width > 0 && hudMetrics.height > 0) {
+        " · ${hudMetrics.width}×${hudMetrics.height}"
+    } else ""
+    val fpsPart = if (hudMetrics.paused || isPaused) "PAUSE" else "${hudMetrics.fps.roundToInt()} fps"
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = Color.Black.copy(alpha = 0.68f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(if (hudMetrics.paused || isPaused) colors.tertiary else Color(0xFF4ADE80))
+            )
+            Text(
+                text = "$fpsPart · #${hudMetrics.frameCount}$sizePart",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun LiveRecordingStatus(
+    format: String,
+    elapsedProvider: () -> Long,
+    limitMillis: Long,
+    saving: Boolean,
+    text: (String) -> String,
+    modifier: Modifier = Modifier,
+    onStop: () -> Unit
+) {
+    val elapsed = elapsedProvider()
+    RecordingStatus(
+        format = format,
+        elapsed = elapsed,
+        remaining = (limitMillis - elapsed).coerceAtLeast(0),
+        saving = saving,
+        text = text,
+        modifier = modifier,
+        onStop = onStop
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun BoxScope.PreviewOverlayControls(
     fullscreen: Boolean,
     showExpandControl: Boolean,
     isLandscape: Boolean,
@@ -592,7 +703,8 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
     isPreviewRecording: Boolean,
     isRecordingSaving: Boolean,
     recordingFormatLabel: String,
-    recordingElapsedMillis: Long,
+    recordingElapsedMillis: Long = 0L,
+    recordingElapsedMillisProvider: () -> Long = { recordingElapsedMillis },
     recordingLimitMillis: Long,
     previewActionsExpanded: Boolean,
     onTogglePreviewActions: () -> Unit,
@@ -606,85 +718,168 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
     onToggleFullscreen: () -> Unit,
     onStopRecording: () -> Unit,
     colors: ColorScheme,
-    textTranslator: (String, Array<out Any?>) -> String
+    textTranslator: (String, Array<out Any?>) -> String,
+    showHud: Boolean = false,
+    hudMetrics: PreviewHudMetrics? = null,
+    hudMetricsProvider: () -> PreviewHudMetrics? = { hudMetrics },
+    isPaused: Boolean = false,
+    onToggleHud: (() -> Unit)? = null,
+    onStepFrame: (() -> Unit)? = null,
+    onTogglePause: (() -> Unit)? = null
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
+    if (showHud) {
+        val hudModifier = Modifier
+            .align(Alignment.TopStart)
+            .then(
+                if (fullscreen) Modifier.windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                ) else Modifier
+            )
+            .padding(10.dp)
+        PreviewHudOverlay(
+            hudMetricsProvider = hudMetricsProvider,
+            isPaused = isPaused,
+            colors = colors,
+            modifier = hudModifier
+        )
+    }
+
     @Composable
-    fun PreviewActionButtons() {
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            if (fullscreen) {
-                PreviewOverlayButton(
-                    iconRes = R.drawable.ic_rotate,
-                    description = uiText("画面を回転"),
-                    colors = colors,
-                    onClick = onRotate
-                )
+    fun PreviewActionButtonItems() {
+        if (fullscreen && onTogglePause != null) {
+            PreviewOverlayButton(
+                iconRes = if (isPaused) R.drawable.ic_play else R.drawable.ic_pause,
+                description = uiText(if (isPaused) "再生" else "一時停止"),
+                colors = colors,
+                active = isPaused,
+                onClick = onTogglePause
+            )
+        }
+        if (fullscreen && isPaused && onStepFrame != null) {
+            Surface(
+                onClick = onStepFrame,
+                modifier = Modifier.requiredSize(40.dp),
+                shape = RoundedCornerShape(11.dp),
+                color = colors.surface.copy(alpha = 0.94f),
+                border = BorderStroke(1.dp, colors.primary)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.semantics { contentDescription = uiText("1コマ送り") }
+                ) {
+                    Text(
+                        text = "+1",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.primary
+                    )
+                }
             }
+        }
+        if (fullscreen && onToggleHud != null) {
             PreviewOverlayButton(
-                iconRes = R.drawable.ic_camera,
-                description = uiText("プレビューをスクリーンショット"),
+                iconRes = R.drawable.ic_terminal,
+                description = "FPS HUD",
                 colors = colors,
-                onClick = onScreenshot
+                active = showHud,
+                onClick = onToggleHud
             )
-
+        }
+        if (fullscreen) {
             PreviewOverlayButton(
-                iconRes = R.drawable.ic_share_card,
-                description = uiText("シェアカードを作成"),
+                iconRes = R.drawable.ic_rotate,
+                description = uiText("画面を回転"),
                 colors = colors,
-                onClick = onShareCard
+                onClick = onRotate
             )
+        }
+        PreviewOverlayButton(
+            iconRes = R.drawable.ic_camera,
+            description = uiText("プレビューをスクリーンショット"),
+            colors = colors,
+            onClick = onScreenshot
+        )
 
-            PreviewOverlayButton(
-                iconRes = R.drawable.ic_tune,
-                description = uiText("パラメータ"),
-                colors = colors,
-                onClick = onOpenParameters
-            )
+        PreviewOverlayButton(
+            iconRes = R.drawable.ic_share_card,
+            description = uiText("シェアカードを作成"),
+            colors = colors,
+            onClick = onShareCard
+        )
 
-            PreviewOverlayButton(
-                iconRes = if (isRecordingOrCountingDown) {
-                    R.drawable.ic_stop
-                } else {
-                    R.drawable.ic_record
-                },
-                description = when {
-                    pendingRecordingFormat != null -> uiText("録画カウントダウンを中止")
-                    isPreviewRecording -> uiText("録画を停止")
-                    else -> uiText("プレビューを録画")
-                },
-                colors = colors,
-                active = isRecordingOrCountingDown,
-                onClick = onToggleRecording
-            )
+        PreviewOverlayButton(
+            iconRes = R.drawable.ic_tune,
+            description = uiText("パラメータ"),
+            colors = colors,
+            onClick = onOpenParameters
+        )
 
-            if (showExpandControl) {
-                PreviewOverlayButton(
-                    iconRes = R.drawable.ic_fullscreen,
-                    description = uiText("プレビューを全画面表示"),
-                    colors = colors,
-                    onClick = onToggleFullscreen
-                )
+        PreviewOverlayButton(
+            iconRes = if (isRecordingOrCountingDown) {
+                R.drawable.ic_stop
             } else {
-                PreviewOverlayButton(
-                    iconRes = R.drawable.ic_close,
-                    description = uiText("全画面表示を閉じる"),
-                    colors = colors,
-                    onClick = onToggleFullscreen
-                )
-            }
+                R.drawable.ic_record
+            },
+            description = when {
+                pendingRecordingFormat != null -> uiText("録画カウントダウンを中止")
+                isPreviewRecording -> uiText("録画を停止")
+                else -> uiText("プレビューを録画")
+            },
+            colors = colors,
+            active = isRecordingOrCountingDown,
+            onClick = onToggleRecording
+        )
+
+        if (showExpandControl) {
+            PreviewOverlayButton(
+                iconRes = R.drawable.ic_fullscreen,
+                description = uiText("プレビューを全画面表示"),
+                colors = colors,
+                onClick = onToggleFullscreen
+            )
+        } else {
+            PreviewOverlayButton(
+                iconRes = R.drawable.ic_close,
+                description = uiText("全画面表示を閉じる"),
+                colors = colors,
+                onClick = onToggleFullscreen
+            )
         }
     }
 
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
-    val availableWidth = maxWidth - if (fullscreen) with(density) {
+    val configuration = LocalConfiguration.current
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    if (fullscreen) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .onSizeChanged { if (it != containerSize) containerSize = it }
+        )
+    }
+    val containerWidthDp = if (containerSize.width > 0) with(density) { containerSize.width.toDp() }
+        else configuration.screenWidthDp.dp
+    val containerHeightDp = if (containerSize.height > 0) with(density) { containerSize.height.toDp() }
+        else configuration.screenHeightDp.dp
+    val availableWidth = containerWidthDp - if (fullscreen) with(density) {
         (WindowInsets.safeDrawing.getLeft(density, direction) +
             WindowInsets.safeDrawing.getRight(density, direction)).toDp()
     } else 0.dp
-    val requiredInlineWidth = (if (fullscreen) 345.dp else 298.dp) +
-        (if (isPreviewRecording || isRecordingSaving) 120.dp else 0.dp)
-    val usePopup = availableWidth < requiredInlineWidth || maxHeight < 60.dp
+    val actionButtonCount =
+        5 +
+        (if (fullscreen) 1 else 0) +
+        (if (fullscreen && onTogglePause != null) 1 else 0) +
+        (if (fullscreen && isPaused && onStepFrame != null) 1 else 0) +
+        (if (fullscreen && onToggleHud != null) 1 else 0)
+    val buttonsWidth = 40.dp * actionButtonCount + 7.dp * (actionButtonCount - 1).coerceAtLeast(0)
+    val requiredInlineWidth = buttonsWidth + 68.dp +
+        (if (showHud) 190.dp else 0.dp) +
+        (if (isPreviewRecording || isRecordingSaving) 148.dp else 0.dp)
+    val usePopup = availableWidth < requiredInlineWidth || containerHeightDp < 60.dp
 
     if (recordingCountdownRemaining > 0) {
         Surface(
@@ -725,16 +920,19 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
             horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             if (isPreviewRecording || isRecordingSaving) {
-                RecordingStatus(
-                    format = recordingFormatLabel, elapsed = recordingElapsedMillis,
-                    remaining = (recordingLimitMillis - recordingElapsedMillis).coerceAtLeast(0),
-                    saving = isRecordingSaving, text = ::uiText,
+                LiveRecordingStatus(
+                    format = recordingFormatLabel,
+                    elapsedProvider = recordingElapsedMillisProvider,
+                    limitMillis = recordingLimitMillis,
+                    saving = isRecordingSaving,
+                    text = ::uiText,
                     modifier = Modifier.weight(1f, fill = false),
                     onStop = onStopRecording
                 )
             }
             AnimatedVisibility(
                 visible = previewActionsExpanded && !usePopup,
+                modifier = Modifier.weight(1f, fill = false),
                 enter = fadeIn(tween(130)) + expandHorizontally(
                     animationSpec = tween(210, easing = FastOutSlowInEasing),
                     expandFrom = Alignment.End
@@ -744,10 +942,16 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                     shrinkTowards = Alignment.End
                 )
             ) {
-                PreviewActionButtons()
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    PreviewActionButtonItems()
+                }
             }
 
             if (previewActionsExpanded && usePopup) {
+                val popupMaxWidth = (availableWidth - 20.dp).coerceIn(180.dp, 340.dp)
                 Popup(
                     alignment = Alignment.TopEnd,
                     offset = IntOffset(0, with(density) { 48.dp.roundToPx() }),
@@ -759,10 +963,15 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                         color = colors.surface,
                         border = BorderStroke(1.dp, colors.outlineVariant),
                         shadowElevation = 6.dp,
-                        modifier = Modifier.widthIn(max = 300.dp)
+                        modifier = Modifier.widthIn(max = popupMaxWidth)
                     ) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()).padding(8.dp)) {
-                            PreviewActionButtons()
+                        FlowRow(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                            maxItemsInEachRow = 5
+                        ) {
+                            PreviewActionButtonItems()
                         }
                     }
                 }
@@ -782,10 +991,12 @@ internal fun BoxWithConstraintsScope.PreviewOverlayControls(
                 .align(Alignment.TopEnd)
                 .padding(10.dp)
         ) {
-            RecordingStatus(
-                format = recordingFormatLabel, elapsed = recordingElapsedMillis,
-                remaining = (recordingLimitMillis - recordingElapsedMillis).coerceAtLeast(0),
-                saving = isRecordingSaving, text = ::uiText,
+            LiveRecordingStatus(
+                format = recordingFormatLabel,
+                elapsedProvider = recordingElapsedMillisProvider,
+                limitMillis = recordingLimitMillis,
+                saving = isRecordingSaving,
+                text = ::uiText,
                 onStop = onStopRecording
             )
         }

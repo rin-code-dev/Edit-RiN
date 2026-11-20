@@ -260,6 +260,7 @@ internal fun snapshotWork(work: Work, assets: Map<String, ProjectAsset> = work.a
     p5Version = work.p5Version, p5SoundEnabled = work.p5SoundEnabled,
     libraries = work.libraries.toMap(),
     parameterValues = work.parameterValues.toMap(),
+    parameterPresets = work.parameterPresets.toList(),
     createdAt = work.createdAt, updatedAt = work.updatedAt,
     isPinned = work.isPinned, tags = work.tags.toList(), folderName = work.folderName, isSample = work.isSample,
     blockEditorState = work.blockEditorState

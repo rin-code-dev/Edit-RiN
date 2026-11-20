@@ -352,7 +352,7 @@ internal fun BlockWorkspaceView(
             .put("onErrorContainer", colors.onErrorContainer.toHexCss())
     }
     val payload = remember(work.id, source, metadata, revision, language, dark, themeJson, readOnly,
-        work.p5Version, work.p5SoundEnabled, work.assets.toMap(), errors, sourceType, displayPreferences) {
+        work.p5Version, work.p5SoundEnabled, work.assets.toMap(), sourceType, displayPreferences) {
         JSONObject().put("type", "load").put("workId", work.id).put("file", "sketch.js")
             .put("nativeChrome", true)
             .put("source", source).put("revision", revision)
@@ -455,7 +455,7 @@ internal fun BlockWorkspaceView(
             host.setFullscreen(isFullscreenWorkspace)
         }
     }
-    LaunchedEffect(errors, hostReady) {
+    LaunchedEffect(errors, hostReady, hostFailure) {
         if (!hostFailure && hostReady) {
             val jsonErrors = JSONArray().apply {
                 errors.forEach { error ->

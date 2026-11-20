@@ -408,3 +408,18 @@ test('Phase 4 friendly error translation formats common JavaScript and p5 runtim
  assert.equal(fe('circle() was expecting at least 3 arguments, but received only 2','en'),'Function "circle" expects at least 3 arguments, but received only 2.');
  assert.equal(fe('SyntaxError: Unexpected token'),'文法エラー: Unexpected token');
 });
+
+test('parameters, brush, and physics templates and example project cleanly without parse errors', () => {
+ for (const cat of ['parameters', 'brush', 'physics']) {
+  assert.ok(catalogue.CATEGORY_LABELS[cat], `missing category label: ${cat}`);
+  const items = catalogue.TEMPLATES.filter(t => t.category === cat);
+  assert.ok(items.length >= 5, `expected templates in ${cat}`);
+  for (const item of items) {
+   const projected = core.parse(item.source);
+   assert.equal(projected.ok, true, `template ${item.id} failed to project`);
+  }
+ }
+ const paramExample = catalogue.EXAMPLES.find(e => e.id === 'parameters');
+ assert.ok(paramExample);
+ assert.equal(core.parse(paramExample.source).ok, true);
+});

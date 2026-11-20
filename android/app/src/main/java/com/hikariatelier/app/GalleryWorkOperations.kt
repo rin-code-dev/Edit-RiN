@@ -18,7 +18,7 @@ private fun newGalleryWork(source: Work, title: String = source.title): Work = W
     files = source.files.toMutableMap(), assets = source.assets.toMap(),
     previewAspectRatio = source.previewAspectRatio, p5Version = source.p5Version,
     p5SoundEnabled = source.p5SoundEnabled, libraries = source.libraries.toMap(),
-    parameterValues = source.parameterValues.toMap(), isPinned = source.isPinned,
+    parameterValues = source.parameterValues.toMap(), parameterPresets = source.parameterPresets.toList(), isPinned = source.isPinned,
     tags = source.tags.toList(), folderName = source.folderName, blockEditorState = source.blockEditorState
 )
 

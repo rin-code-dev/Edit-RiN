@@ -55,8 +55,13 @@ function draw() {
 }
 ```
 
-### Editing and preview in v4.1.0
+### Editing and preview in v4.2.0
 
+- **Parameter Presets, Morphing & 2D XY Pad**: Save and switch parameter presets with 650 ms smooth morphing or an A↔B blend slider, declare 2-axis controls via `@rin xy` / `@xy`, and tune parameters fullscreen in portrait alongside a floating PiP preview.
+- **Cross-Work Code Search & Custom Covers**: Search source files across works directly from the gallery with `file:line` jumps, and pin or reset custom preview thumbnails from any frame.
+- **Inspection, REPL & Loop Recording**: Toggle a live FPS/`frameCount`/resolution HUD, step frame by frame (`+1`), evaluate expressions in a console REPL with history, and export frame-synced 30 fps GIFs or timed loop recordings.
+- **Shaders, Completions, Outline & Block Upgrades**: GLSL syntax highlighting (`.frag`, `.vert`, `.glsl`, `.wgsl`), expanded p5/`p5.brush`/Matter/GLSL completions, Code Outline jump, Block Mode whole-code highlight with auto-scroll, and bundled `parameters`/`p5.brush`/`matter-js` block templates.
+- **Performance Architecture & UI Fixes**: Async-cached gallery thumbnail flags, draw/layer-phase gallery transitions, kept-alive workspace under Settings, reduced `BoxWithConstraints` overhead, per-card parameter skipping, and responsive wrapped fullscreen preview controls.
 - **Redesigned Landscape Workspace & Gallery**: Evenly spaced vertical tool rail, balanced 50/50 editor and 1:1 preview layout, and a minimal collapsible sidebar with 1:1 square artwork thumbnails and uniform horizontal sample cards.
 - **Floating Unit Modals & Unified Controls**: Menus, inspectors, and dialogs appear as bordered floating Units in both portrait and landscape, with crisp light-mode contrast, unified rounded-square control shapes, and consistent touch highlights.
 - **Compact Portrait Editor Overlay**: Floating top-right mode/file capsule hides redundant `sketch.js` labels on single-file works and auto-hides while typing to maximize code space.
@@ -74,7 +79,7 @@ function draw() {
 
 ## Installation & Requirements
 
-- **Supported OS**: Android 11 (API level 30) or later for the current v4.1.0 release. Older v2.3.1 supports Android 6.0 or later.
+- **Supported OS**: Android 11 (API level 30) or later for the current v4.2.0 release. Older v2.3.1 supports Android 6.0 or later.
 - **Download**: Get the latest signed APK from [GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases).
 - **Updates**: Starting with the v2.3.0 release app, download future updates within the app, then install through Android’s confirmation screen. Download progress and cancellation are available.
 
@@ -133,7 +138,9 @@ Edit:RiN は、Android 端末で p5.js のコードを書き、ジェネラテ�
 - アプリ内更新：v2.3.0以降の正式版では、次回以降の更新用APKをアプリ内でダウンロードできます。進捗の確認や中止に対応し、Androidの確認画面からインストールします。
 - プライバシー：作品の編集・実行はオフラインでも利用できます。広告やトラッキングはありません。公開作品の取り込みや更新確認には通信が必要です。
 
-現在のv4.1.0はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+現在のv4.2.0はAndroid 11以降に対応しています。旧バージョンのv2.3.1はAndroid 6.0以降に対応しています。初回のインストールには、[GitHub Releases](https://github.com/rin-code-dev/Edit-RiN/releases) から最新版の署名済みAPKをダウンロードしてください。
+
+v4.2.0ではパラメータのプリセット保存・650ms補間・A↔Bブレンド・2D XYパッドと縦画面全画面パラメータ編集時のPiPプレビュー、ギャラリーからの作品横断コード検索と手動サムネイル設定、1コマ送り・FPS HUD・履歴付きコンソールREPL・フレーム同期GIF録画、GLSL構文強調・補完拡充・コードアウトラインジャンプを追加し、アプリ全体の描画・再構成パフォーマンスを再設計しました。
 
 v4.1.0では横画面UIを全面刷新し、均等間隔の縦ツールレール、1:1作品に最適化した左右バランス、折りたたみ対応サイドバーと1:1正方形サムネイルの作品選択画面（サンプル解説カード対応）を備えています。作品メニューや設定シートも縦横共通の枠付きユニットへ統一し、縦画面のコード編集では入力中に自動で隠れる省スペースなモード／ファイル切替カプセルを採用しました。
 

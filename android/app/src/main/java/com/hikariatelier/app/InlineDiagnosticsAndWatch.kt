@@ -246,7 +246,7 @@ internal fun BoxScope.LiveWatchOverlayColumn(
     logicalLineStarts: List<Int>,
     projection: FoldProjection,
     textLayout: androidx.compose.ui.text.TextLayoutResult?,
-    scrollValue: Int,
+    scrollState: androidx.compose.foundation.ScrollState,
     viewportHeightPx: Float,
     codeFontFamily: FontFamily,
     colors: ColorScheme,
@@ -254,6 +254,7 @@ internal fun BoxScope.LiveWatchOverlayColumn(
     modifier: Modifier = Modifier
 ) {
     if (watchValues.isEmpty() || textLayout == null) return
+    val scrollValue = scrollState.value
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     watchValues.forEach { (logicalLine, formattedValue) ->

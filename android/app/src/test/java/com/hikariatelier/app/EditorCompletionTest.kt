@@ -48,11 +48,26 @@ class EditorCompletionTest {
         val code = "// long document\n".repeat(100000) + "cre"
         val value = TextFieldValue(code, TextRange(code.length))
         assertEquals("cre", completionPrefix(value))
-        assertEquals(listOf(CompletionCandidate("createCanvas")), projectCompletions(value, emptyList(), "sketch.js"))
+        assertEquals(
+            listOf(
+                CompletionCandidate("createCanvas"),
+                CompletionCandidate("createVector"),
+                CompletionCandidate("createGraphics"),
+                CompletionCandidate("createShader")
+            ),
+            projectCompletions(value, emptyList(), "sketch.js")
+        )
     }
     @Test fun suggestionsIgnoreCaseButExcludeExactMatchAndShortPrefix() {
-        assertEquals(listOf(CompletionCandidate("createCanvas")),
-            projectCompletions(TextFieldValue("CRE", TextRange(3)), emptyList(), "sketch.js"))
+        assertEquals(
+            listOf(
+                CompletionCandidate("createCanvas"),
+                CompletionCandidate("createVector"),
+                CompletionCandidate("createGraphics"),
+                CompletionCandidate("createShader")
+            ),
+            projectCompletions(TextFieldValue("CRE", TextRange(3)), emptyList(), "sketch.js")
+        )
         assertTrue(projectCompletions(TextFieldValue("createCanvas", TextRange(12)), emptyList(), "sketch.js").isEmpty())
         assertTrue(projectCompletions(TextFieldValue("c", TextRange(1)), emptyList(), "sketch.js").isEmpty())
     }
@@ -68,7 +83,10 @@ class EditorCompletionTest {
             CompletionCandidate("createBrush", "sketch.js"),
             CompletionCandidate("createParticles", "helper.js"),
             CompletionCandidate("createPalette", "helper.js"),
-            CompletionCandidate("createCanvas")
+            CompletionCandidate("createCanvas"),
+            CompletionCandidate("createVector"),
+            CompletionCandidate("createGraphics"),
+            CompletionCandidate("createShader")
         ), projectCompletions(value, symbols, "sketch.js"))
     }
 
@@ -89,7 +107,22 @@ class EditorCompletionTest {
 
     @Test fun projectNameOverridesDuplicateBundledName() {
         val symbols = projectSymbols(mapOf("sketch.js" to "function createCanvas() {}"))
-        assertEquals(listOf(CompletionCandidate("createCanvas", "sketch.js")),
-            projectCompletions(TextFieldValue("cre", TextRange(3)), symbols, "sketch.js"))
+        assertEquals(
+            CompletionCandidate("createCanvas", "sketch.js"),
+            projectCompletions(TextFieldValue("cre", TextRange(3)), symbols, "sketch.js").first()
+        )
+    }
+
+    @Test fun shaderFilesReceiveGlslCompletionsAndWebglLibraryHintsWork() {
+        assertEquals(
+            listOf(CompletionCandidate("smoothstep")),
+            projectCompletions(TextFieldValue("smoo", TextRange(4)), emptyList(), "effect.frag")
+        )
+        assertTrue(projectCompletions(TextFieldValue("orb", TextRange(3)), emptyList(), "sketch.js")
+            .any { it.name == "orbitControl" })
+        assertTrue(projectCompletions(TextFieldValue("rin", TextRange(3)), emptyList(), "sketch.js")
+            .any { it.name == "rinParams" })
+        assertTrue(completionHelp("rinParams") { it }.contains("ライブパラメータ値"))
+        assertTrue(completionHelp("smoothstep") { it }.contains("GLSL"))
     }
 }

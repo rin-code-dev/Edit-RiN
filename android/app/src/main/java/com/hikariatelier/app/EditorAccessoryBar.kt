@@ -148,6 +148,7 @@ internal fun EditorAccessoryBar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onSearch: () -> Unit,
+    onOutline: () -> Unit = {},
     onFormat: () -> Unit,
     onSnippets: () -> Unit,
     onReference: () -> Unit,
@@ -518,6 +519,7 @@ internal fun EditorAccessoryBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FlatIconKey(R.drawable.ic_search, uiText("検索と置換"), onClick = onSearch)
+                    FlatIconKey(R.drawable.ic_outline, uiText("アウトライン"), onClick = onOutline)
                     FlatIconKey(R.drawable.ic_snippet, uiText("スニペット"), onClick = onSnippets)
                     FlatIconKey(R.drawable.ic_help, uiText("p5.jsリファレンス"), onClick = onReference)
                     FlatIconKey(R.drawable.ic_format, uiText("コードを整形"), onClick = onFormat)
@@ -609,7 +611,7 @@ internal fun CompletionBar(
                     val chipShape = RoundedCornerShape(8.dp)
                     Box(
                         modifier = Modifier
-                            .height(28.dp)
+                            .defaultMinSize(minHeight = 28.dp)
                             .clip(chipShape)
                             .background(colors.primary.copy(alpha = 0.14f))
                             .border(1.dp, colors.primary.copy(alpha = 0.7f), chipShape)
@@ -620,7 +622,7 @@ internal fun CompletionBar(
                                     onApplyCompletion(prependDeclarations(editingValue, declaration))
                                 }
                             }
-                            .padding(horizontal = 9.dp),
+                            .padding(horizontal = 9.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -628,7 +630,9 @@ internal fun CompletionBar(
                             fontFamily = codeFontFamily,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = colors.primary
+                            color = colors.primary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -649,7 +653,7 @@ internal fun CompletionBar(
                                     )
                                 )
                             }
-                            .padding(horizontal = 9.dp, vertical = 2.dp),
+                            .padding(horizontal = 9.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -657,7 +661,9 @@ internal fun CompletionBar(
                                 ?: completionHelp(suggestion.name) { s -> textTranslator(s, emptyArray()) },
                             fontFamily = codeFontFamily,
                             fontSize = 12.sp,
-                            color = colors.onSurface
+                            color = colors.onSurface,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

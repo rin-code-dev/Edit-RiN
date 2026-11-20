@@ -16,13 +16,15 @@ private data class SavedWork(
     val id: String, val title: String, val code: String, val files: Map<String, String>,
     val assets: Map<String, ProjectAsset>, val revisions: List<WorkRevision>,
     val ratio: String, val runtime: String, val sound: Boolean, val libraries: Map<String, String>,
-    val parameters: Map<String, String>, val createdAt: Long, val updatedAt: Long,
+    val parameters: Map<String, String>, val parameterPresets: List<WorkParameterPreset>,
+    val createdAt: Long, val updatedAt: Long,
     val pinned: Boolean, val tags: List<String>, val folder: String, val blockEditorState: String?
 ) {
     companion object {
         fun of(work: Work) = SavedWork(work.id, work.title, work.code, work.files.toMap(), work.assets.toMap(),
             work.revisions.takeLast(3), work.previewAspectRatio, work.p5Version, work.p5SoundEnabled,
-            work.libraries.toMap(), work.parameterValues.toMap(), work.createdAt, work.updatedAt,
+            work.libraries.toMap(), work.parameterValues.toMap(), work.parameterPresets.toList(),
+            work.createdAt, work.updatedAt,
             work.isPinned, work.tags.toList(), work.folderName, work.blockEditorState)
     }
 }
@@ -195,6 +197,7 @@ internal class SplitWorkStore(
         if (incoming.revisions.takeLast(3) != base.revisions) { revisions.clear(); revisions.addAll(incoming.revisions) }
         if (incoming.libraries != base.libraries) libraries = incoming.libraries
         if (incoming.parameterValues.toMap() != base.parameters) { parameterValues.clear(); parameterValues.putAll(incoming.parameterValues) }
+        if (incoming.parameterPresets.toList() != base.parameterPresets) { parameterPresets.clear(); parameterPresets.addAll(incoming.parameterPresets) }
     }
 
     @Synchronized

@@ -37,35 +37,52 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
     }
     var isRecordingSaving by mutableStateOf(false)
     var pendingRecordingFormat by mutableStateOf<String?>(null)
+    var pendingRecordingDurationSeconds by mutableIntStateOf(0)
+    var pendingRecordingFrameSync by mutableStateOf(false)
     var recordingCountdownRemaining by mutableIntStateOf(0)
 
     fun startSelectedRecording(
         format: String,
         mp4BitrateMbps: Int,
+        durationSeconds: Int = pendingRecordingDurationSeconds,
+        frameSync: Boolean = pendingRecordingFrameSync,
         evaluateJavascript: (String) -> Unit
     ) {
         if (!canStartRecording()) return
         savedPreviewMedia = null
         recordingFormatLabel = format.uppercase()
-        recordingLimitMillis = if (format == "gif") 15_000L else 60_000L
+        val maxSeconds = if (format == "gif") 15 else 60
+        val effectiveSeconds = durationSeconds.coerceIn(0, maxSeconds)
+        val effectiveFrameSync = frameSync && format == "gif"
+        recordingLimitMillis = if (effectiveSeconds > 0) effectiveSeconds * 1_000L else maxSeconds * 1_000L
         recordingStartedAt = SystemClock.elapsedRealtime()
         recordingElapsedMillis = 0L
         recordingCountdownRemaining = 0
+        pendingRecordingDurationSeconds = 0
+        pendingRecordingFrameSync = false
         val bitrate = mp4BitrateMbps * 1_000_000
-        evaluateJavascript("window.__editKiroStartRecording?.('$format', $bitrate)")
+        val durationMs = if (effectiveSeconds > 0) effectiveSeconds * 1_000L else 0L
+        evaluateJavascript("window.__editKiroStartRecording?.('$format', $bitrate, $durationMs, $effectiveFrameSync)")
     }
 
     fun requestPreviewRecording(
         format: String,
         countdownSeconds: Int,
         mp4BitrateMbps: Int,
+        durationSeconds: Int = 0,
+        frameSync: Boolean = false,
         evaluateJavascript: (String) -> Unit
     ) {
         if (!canStartRecording()) return
+        val maxSeconds = if (format == "gif") 15 else 60
+        val effectiveSeconds = durationSeconds.coerceIn(0, maxSeconds)
+        val effectiveFrameSync = frameSync && format == "gif"
         recordingFormatLabel = format.uppercase()
-        recordingLimitMillis = if (format == "gif") 15_000L else 60_000L
+        recordingLimitMillis = if (effectiveSeconds > 0) effectiveSeconds * 1_000L else maxSeconds * 1_000L
+        pendingRecordingDurationSeconds = effectiveSeconds
+        pendingRecordingFrameSync = effectiveFrameSync
         if (countdownSeconds == 0) {
-            startSelectedRecording(format, mp4BitrateMbps, evaluateJavascript)
+            startSelectedRecording(format, mp4BitrateMbps, effectiveSeconds, effectiveFrameSync, evaluateJavascript)
         } else {
             pendingRecordingFormat = format
             recordingCountdownRemaining = countdownSeconds
@@ -243,6 +260,8 @@ internal class RecordingViewModel(private val mediaRepository: PreviewMediaRepos
 
     fun cancelRecordingCountdown() {
         pendingRecordingFormat = null
+        pendingRecordingDurationSeconds = 0
+        pendingRecordingFrameSync = false
         recordingCountdownRemaining = 0
     }
 }

@@ -221,6 +221,7 @@ body.rin-dragging .blocklyTrash{opacity:.85;pointer-events:auto}
 .scope-button[aria-pressed=true]{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent;font-weight:600}
 .code-container{flex:1;min-height:120px;max-height:min(380px,50vh);overflow:auto;background:var(--surface-container);border:1px solid var(--outline-variant);border-radius:12px;padding:12px 14px;-webkit-user-select:text;user-select:text}
 .code-container pre{margin:0;font-family:ui-monospace,"Roboto Mono","SF Mono",monospace;font-size:13px;line-height:1.55;color:var(--text);white-space:pre;word-break:normal;tab-size:2}
+.code-container mark.rin-code-highlight{background:var(--secondary-container);color:var(--on-secondary-container);border-radius:4px;padding:1px 3px;box-shadow:0 0 0 1px var(--primary)}
 .code-dialog-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:4px;flex-shrink:0}
 .code-dialog-actions .filled{height:40px;padding:0 24px;border-radius:20px;background:var(--primary);color:var(--on-primary);font-weight:500;font-size:14px}
 

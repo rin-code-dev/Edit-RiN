@@ -11,7 +11,7 @@ internal fun sampleCatalog(definitions: List<Work>, users: List<Work>): List<Wor
         Work(id, source.title, source.code, files = source.files.toMutableMap(), assets = source.assets.toMap(),
             previewAspectRatio = source.previewAspectRatio, p5Version = source.p5Version,
             p5SoundEnabled = source.p5SoundEnabled, libraries = source.libraries.toMap(),
-            parameterValues = source.parameterValues.toMap(), createdAt = source.createdAt,
+            parameterValues = source.parameterValues.toMap(), parameterPresets = source.parameterPresets.toList(), createdAt = source.createdAt,
             updatedAt = source.updatedAt, isSample = true, blockEditorState = source.blockEditorState)
     }
 }

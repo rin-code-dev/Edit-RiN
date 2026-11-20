@@ -56,12 +56,15 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -84,8 +87,11 @@ internal fun workPreviewFile(cacheDir: File, id: String): File {
     return File(cacheDir, "work-previews/$key.png")
 }
 
-internal fun captureWorkPreview(view: WebView, onResult: (String) -> Unit) {
-    if (previewCaptures.put(view, true) != null) return
+internal fun captureWorkPreview(view: WebView, onFailure: () -> Unit = {}, onResult: (String) -> Unit) {
+    if (previewCaptures.put(view, true) != null) {
+        onFailure()
+        return
+    }
     // Copy the canvas without resizing it or changing its drawing/animation state.
     view.evaluateJavascript("""
         (() => {
@@ -104,21 +110,33 @@ internal fun captureWorkPreview(view: WebView, onResult: (String) -> Unit) {
         previewCaptures.remove(view)
         val data = runCatching { JSONTokener(result).nextValue() as? String }.getOrNull()
         if (data != null && data.startsWith("data:image/png;base64,")) onResult(data.substringAfter(','))
+        else onFailure()
     }
 }
 
 private val previewCaptures = java.util.WeakHashMap<WebView, Boolean>()
 private val previewWriteMutex = Mutex()
 internal suspend fun storeWorkPreview(
-    file: File, encoded: String, expectedModified: Long? = null, fingerprint: String? = null
+    file: File, encoded: String, expectedModified: Long? = null, fingerprint: String? = null,
+    allowOverwriteManual: Boolean = false
 ): Boolean {
     val bytes = withContext(Dispatchers.Default) { runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() }
         ?: return false
-    return storeWorkPreviewBytes(file, bytes, expectedModified, fingerprint)
+    return storeWorkPreviewBytes(file, bytes, expectedModified, fingerprint, allowOverwriteManual)
+}
+
+internal suspend fun clearWorkPreview(file: File): Boolean = withContext(Dispatchers.IO) {
+    previewWriteMutex.withLock {
+        val existed = file.exists() || thumbnailStampFile(file).exists()
+        file.delete()
+        thumbnailStampFile(file).delete()
+        existed
+    }
 }
 
 internal suspend fun storeWorkPreviewBytes(
-    file: File, bytes: ByteArray, expectedModified: Long? = null, fingerprint: String? = null
+    file: File, bytes: ByteArray, expectedModified: Long? = null, fingerprint: String? = null,
+    allowOverwriteManual: Boolean = false
 ): Boolean = withContext(Dispatchers.IO) {
     // Reject broken or unexpectedly large renderer output before publishing disposable data.
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -134,6 +152,7 @@ internal suspend fun storeWorkPreviewBytes(
     } finally { bitmap.recycle() }
     if (!visible) return@withContext false
     previewWriteMutex.withLock {
+        if (!allowOverwriteManual && hasManualThumbnail(file)) return@withLock false
         val previousModified = file.lastModified()
         if (expectedModified != null && previousModified != expectedModified) return@withLock false
         runCatching {
@@ -156,9 +175,12 @@ internal suspend fun storeWorkPreviewBytes(
             val files = file.parentFile?.listFiles { candidate -> candidate.name.matches(Regex("[a-f0-9]{64}\\.png")) }
                 .orEmpty().sortedByDescending { it.lastModified() }
             var total = 0L
-            files.forEachIndexed { index, candidate ->
+            var autoCount = 0
+            files.forEach { candidate ->
+                if (hasManualThumbnail(candidate)) return@forEach
                 total += candidate.length()
-                if (index >= 120 || total > 32L * 1024 * 1024) {
+                autoCount++
+                if (autoCount > 120 || total > 32L * 1024 * 1024) {
                     candidate.delete(); thumbnailStampFile(candidate).delete()
                 }
             }
@@ -188,8 +210,11 @@ internal class WorkGalleryState internal constructor(
     var selectedFolder by selectedFolderState
         private set
     var sidePanelExpanded by sidePanelExpandedState
+    var searchAllFolders by mutableStateOf(false)
     fun inFolder(work: Work): Boolean = if (selectedFolder == SAMPLE_FOLDER) work.isSample
         else !work.isSample && (selectedFolder == null || work.folderName == selectedFolder)
+    fun matchesScope(work: Work): Boolean =
+        if (searching && query.isNotBlank() && searchAllFolders) true else inFolder(work)
     fun changeFolder(folder: String?) {
         if (selectedFolder != folder) {
             // LazyGridState also owns item animation state. A different collection
@@ -225,6 +250,7 @@ internal class WorkGalleryState internal constructor(
     fun closeSearch() {
         searching = false
         query = ""
+        searchAllFolders = false
     }
 }
 
@@ -460,12 +486,14 @@ internal fun InlineWorkGallery(
     onThumbnailPriority: (List<String>) -> Unit = {},
     onThumbnailScrolling: (Boolean) -> Unit = {},
     navigationWhileBusy: Boolean = false,
-    landscapeHeader: (@Composable (Int) -> Unit)? = null
+    landscapeHeader: (@Composable (Int) -> Unit)? = null,
+    onOpenCodeMatch: ((Work, GalleryCodeMatch, String) -> Unit)? = null,
+    onResetThumbnail: ((Work) -> Unit)? = null
 ) {
     WorkGalleryContent(works, activeId, unsaved, sort, cacheDir, previewRevision, updatedPreviewId,
         text, onOpen, onAdd, state, modifier, MaterialTheme.colorScheme.background, onTogglePin,
         onEditTags, onDeleteGlobalTag, busy, onRename, onDuplicate, onDelete,
-        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs, previewRevisions, onThumbnailPriority, images, onThumbnailScrolling, navigationWhileBusy, onPrepareOpen, landscapeHeader)
+        morphWorkId, onActiveThumbnailBounds, suppressMorphThumbnail, morphProgress, folders, tabs, onManageFolders, onMove, onReorderTabs, previewRevisions, onThumbnailPriority, images, onThumbnailScrolling, navigationWhileBusy, onPrepareOpen, landscapeHeader, onOpenCodeMatch, onResetThumbnail)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -501,7 +529,9 @@ private fun WorkGalleryContent(
     onThumbnailScrolling: (Boolean) -> Unit,
     navigationWhileBusy: Boolean,
     onPrepareOpen: (Work, Bitmap?, Rect?) -> Unit,
-    landscapeHeader: (@Composable (Int) -> Unit)? = null
+    landscapeHeader: (@Composable (Int) -> Unit)? = null,
+    onOpenCodeMatch: ((Work, GalleryCodeMatch, String) -> Unit)? = null,
+    onResetThumbnail: ((Work) -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     val configuration = LocalConfiguration.current
@@ -541,14 +571,43 @@ private fun WorkGalleryContent(
     val workDatabase = remember(galleryContext) { WorkDatabase.getInstance(galleryContext) }
     val ftsMatchedIds by produceState(emptySet<String>(), state.query, works) {
         val q = state.query.trim()
-        value = if (q.isEmpty()) emptySet() else withContext(Dispatchers.IO) {
-            runCatching { workDatabase.searchWorkIds(q) }.getOrDefault(emptySet())
+        if (q.isEmpty()) {
+            value = emptySet()
+        } else {
+            kotlinx.coroutines.delay(75)
+            value = withContext(Dispatchers.IO) {
+                runCatching { workDatabase.searchWorkIds(q) }.getOrDefault(emptySet())
+            }
+        }
+    }
+    val codeMatches by produceState(emptyMap<String, GalleryCodeMatch>(), state.query, works) {
+        val q = state.query.trim()
+        if (q.isEmpty()) {
+            value = emptyMap()
+        } else {
+            kotlinx.coroutines.delay(75)
+            value = withContext(Dispatchers.IO) {
+                val fromDb = runCatching { workDatabase.searchCodeMatches(q) }.getOrDefault(emptyMap())
+                val merged = linkedMapOf<String, GalleryCodeMatch>()
+                merged.putAll(fromDb)
+                works.forEach { work ->
+                    if (work.bodyLoaded) {
+                        val sources = buildMap {
+                            put("sketch.js", work.code)
+                            putAll(work.files)
+                        }
+                        val exact = findFirstCodeMatchInSources(work.id, sources, q)
+                        if (exact != null) merged[work.id] = exact else merged.remove(work.id)
+                    }
+                }
+                merged
+            }
         }
     }
     val recentRevision = RecentWorks.revision
-    val visibleWorks = remember(works, sort, state.query, state.selectedTag, state.selectedFolder, recentRevision, ftsMatchedIds) {
+    val visibleWorks = remember(works, sort, state.query, state.selectedTag, state.selectedFolder, state.searchAllFolders, recentRevision, ftsMatchedIds) {
         val trimmed = state.query.trim()
-        val scoped = works.filter(state::inFolder)
+        val scoped = works.filter(state::matchesScope)
         val byTag = if (state.selectedTag != null) {
             scoped.filter { work -> work.tags.any { it.equals(state.selectedTag, ignoreCase = true) } }
         } else scoped
@@ -690,10 +749,23 @@ private fun WorkGalleryContent(
         } else 0.dp
         val thumbShape = RoundedCornerShape(if (landscape) 14.dp else 10.dp)
         if (visibleWorks.isEmpty()) {
-            Text(text("一致する作品がありません"), Modifier.align(Alignment.Center).padding(24.dp),
-                color = colors.onSurfaceVariant)
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(text("一致する作品がありません"), color = colors.onSurfaceVariant)
+                if (state.searching && state.query.isNotBlank() && !state.searchAllFolders && state.selectedFolder != null) {
+                    OutlinedButton(
+                        onClick = { state.searchAllFolders = true },
+                        shape = UNIT_CONTROL_SHAPE
+                    ) {
+                        Text(text("すべての作品から検索"))
+                    }
+                }
+            }
         }
-        key(state.selectedFolder) {
+        key(state.selectedFolder to state.searchAllFolders) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columnCount),
                 state = gridState,
@@ -710,8 +782,18 @@ private fun WorkGalleryContent(
                 items(visibleWorks, key = { it.id }, contentType = { if (it.isSample) "sample_card" else "work_card" }) { work ->
                     val isSelected = if (state.selecting) work.id in state.selectedIds else work.id == activeId
                     val isActiveWork = work.id == activeId
-                    val bitmap by produceState(images.peek(work.id), work.id, work, images,
-                        previewRevisions[work.id] ?: if (work.id == updatedPreviewId) previewRevision else 0) {
+                    val workPreviewRev = previewRevisions[work.id] ?: if (work.id == updatedPreviewId) previewRevision else 0
+                    val hasManualCover by produceState(
+                        initialValue = !work.isSample && (images.peekManualThumbnail(work.id) == true),
+                        work.id,
+                        work.isSample,
+                        workPreviewRev,
+                        images
+                    ) {
+                        value = if (work.isSample) false else images.isManualThumbnail(work.id)
+                    }
+                    val codeMatch = if (state.query.isNotBlank()) codeMatches[work.id] else null
+                    val bitmap by produceState(images.peek(work.id), work.id, work, images, workPreviewRev) {
                         val sampleInput = if (work.isSample) capturePreviewRun(work, work.code, work.files, work.assets, token = "") else null
                         val filename = images.file(work.id).name
                         images.changes.filter { it == null || it == filename }.onStart { emit(null) }.collectLatest {
@@ -802,6 +884,11 @@ private fun WorkGalleryContent(
                                     DropdownMenuItem(text = { Text(text("フォルダーへ移動")) },
                                         leadingIcon = { Icon(painterResource(R.drawable.ic_folder_code), null, Modifier.size(18.dp)) },
                                         onClick = { state.cardMenuWorkId = null; onMove(work) })
+                                    if (hasManualCover && onResetThumbnail != null) {
+                                        DropdownMenuItem(text = { Text(text("自動サムネイルに戻す")) },
+                                            leadingIcon = { Icon(painterResource(R.drawable.ic_restore), null, Modifier.size(18.dp)) },
+                                            onClick = { state.cardMenuWorkId = null; onResetThumbnail(work) })
+                                    }
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
@@ -911,6 +998,21 @@ private fun WorkGalleryContent(
                                         color = colors.onSurfaceVariant,
                                         style = sampleGuideStyle,
                                         modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                if (codeMatch != null) {
+                                    GalleryCodeMatchBadge(
+                                        match = codeMatch,
+                                        colors = colors,
+                                        modifier = Modifier.padding(top = 4.dp),
+                                        onClick = {
+                                            if (!busy || navigationWhileBusy) {
+                                                finishSearchInput()
+                                                onPrepareOpen(work, bitmap, thumbnailBounds)
+                                                if (onOpenCodeMatch != null) onOpenCodeMatch(work, codeMatch, state.query.trim())
+                                                else onOpen(work, false)
+                                            }
+                                        }
                                     )
                                 }
                             }
@@ -1024,6 +1126,26 @@ private fun WorkGalleryContent(
                                     )
                                 }
                             }
+                            if (hasManualCover && !state.selecting) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = colors.surface.copy(alpha = 0.9f),
+                                    border = BorderStroke(1.dp, colors.outlineVariant),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(6.dp)
+                                        .size(22.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_camera),
+                                            text("手動設定のサムネイル"),
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Row(
                             modifier = Modifier
@@ -1059,6 +1181,21 @@ private fun WorkGalleryContent(
                                 fontSize = 11.sp, lineHeight = 16.sp,
                                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp, start = 2.dp))
                         }
+                        if (codeMatch != null) {
+                            GalleryCodeMatchBadge(
+                                match = codeMatch,
+                                colors = colors,
+                                modifier = Modifier.padding(top = 4.dp),
+                                onClick = {
+                                    if (!busy || navigationWhileBusy) {
+                                        finishSearchInput()
+                                        onPrepareOpen(work, bitmap, thumbnailBounds)
+                                        if (onOpenCodeMatch != null) onOpenCodeMatch(work, codeMatch, state.query.trim())
+                                        else onOpen(work, false)
+                                    }
+                                }
+                            )
+                        }
                         if (work.tags.isNotEmpty() && !landscape) {
                             Text(
                                 text = work.tags.joinToString(" ") { "#$it" },
@@ -1093,6 +1230,48 @@ private fun WorkGalleryContent(
         }
     }
 
+    @Composable
+    fun GallerySearchScopeStrip(modifier: Modifier = Modifier) {
+        if (!state.searching || state.query.isBlank()) return
+        val visibleCodeMatches = remember(visibleWorks, codeMatches) {
+            visibleWorks.count { it.id in codeMatches }
+        }
+        if (state.selectedFolder == null && visibleCodeMatches == 0) return
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (state.selectedFolder != null) {
+                FilterChip(
+                    selected = state.searchAllFolders,
+                    onClick = { state.searchAllFolders = !state.searchAllFolders },
+                    label = { Text(text("すべての作品から検索"), fontSize = 12.sp) },
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitFilterChipColors(colors),
+                    border = unitFilterChipBorder(state.searchAllFolders, true, colors),
+                    modifier = Modifier.height(30.dp)
+                )
+            }
+            if (visibleCodeMatches > 0) {
+                Surface(
+                    shape = UNIT_CONTROL_SHAPE,
+                    color = colors.primaryContainer.copy(alpha = 0.7f)
+                ) {
+                    Text(
+                        text = "${text("コード一致")}: $visibleCodeMatches",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = colors.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+
     if (landscape) {
         Row(
             modifier = modifier
@@ -1119,6 +1298,7 @@ private fun WorkGalleryContent(
             }
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 landscapeHeader?.invoke(visibleWorks.size)
+                GallerySearchScopeStrip(Modifier.padding(top = 6.dp, bottom = 2.dp))
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     GalleryGrid()
                 }
@@ -1226,6 +1406,7 @@ private fun WorkGalleryContent(
         if (state.searching) {
             WorkGallerySearch(state, text, interactive,
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            GallerySearchScopeStrip(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
         if (allTags.isNotEmpty()) {
             Row(
@@ -1304,4 +1485,93 @@ internal fun matchesGalleryQuery(work: Work, trimmedQuery: String, ftsMatchedIds
         ) return true
     }
     return false
+}
+
+@Composable
+private fun GalleryCodeMatchBadge(
+    match: GalleryCodeMatch,
+    colors: ColorScheme,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(8.dp)
+    val highlightedExcerpt = remember(match.excerpt, match.matchedToken, colors) {
+        buildAnnotatedString {
+            val idx = if (match.matchedToken.isNotEmpty()) {
+                match.excerpt.indexOf(match.matchedToken, ignoreCase = true)
+            } else -1
+            if (idx >= 0) {
+                append(match.excerpt.substring(0, idx))
+                withStyle(
+                    SpanStyle(
+                        color = colors.primary,
+                        fontWeight = FontWeight.Bold,
+                        background = colors.primaryContainer.copy(alpha = 0.7f)
+                    )
+                ) {
+                    append(match.excerpt.substring(idx, (idx + match.matchedToken.length).coerceAtMost(match.excerpt.length)))
+                }
+                append(match.excerpt.substring((idx + match.matchedToken.length).coerceAtMost(match.excerpt.length)))
+            } else {
+                append(match.excerpt)
+            }
+        }
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${match.file}:${match.line}",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (match.matchCount > 1) {
+                        Text(
+                            text = if (match.matchCount >= 99) "99+" else "+${match.matchCount - 1}",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = "↗",
+                        fontSize = 10.sp,
+                        color = colors.primary
+                    )
+                }
+            }
+            Text(
+                text = highlightedExcerpt,
+                fontSize = 10.5.sp,
+                lineHeight = 14.sp,
+                fontFamily = FontFamily.Monospace,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }

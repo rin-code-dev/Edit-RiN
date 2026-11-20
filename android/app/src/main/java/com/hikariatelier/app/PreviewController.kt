@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
+import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
@@ -74,6 +75,10 @@ internal class PreviewController(
     private var controlPort: WebMessagePort? = null
     private var portToken: String? = null
     var isError by mutableStateOf(false)
+    var showHud by mutableStateOf(false)
+        private set
+    var hudMetrics by mutableStateOf<PreviewHudMetrics?>(null)
+        private set
     private var pausedState by mutableStateOf(false)
     private var activityActive = true
     var isPaused: Boolean
@@ -150,17 +155,84 @@ internal class PreviewController(
         }
     }
 
+    private val pendingParameterUpdates = linkedMapOf<String, String>()
+    private var parameterFlushScheduled = false
+    private val parameterFrameCallback = Choreographer.FrameCallback {
+        flushPendingParameters()
+    }
+
     fun evaluate(script: String) {
         if (!disposed) webView?.evaluateJavascript(script, null)
     }
 
     fun setParameter(name: String, jsonValue: String) {
-        if (disposed) return
+        if (disposed || webView == null) return
+        pendingParameterUpdates[name] = jsonValue
+        if (!parameterFlushScheduled) {
+            parameterFlushScheduled = true
+            val scheduled = runCatching {
+                Choreographer.getInstance().postFrameCallback(parameterFrameCallback)
+            }.isSuccess
+            if (!scheduled) {
+                flushPendingParameters()
+            }
+        }
+    }
+
+    private fun flushPendingParameters() {
+        parameterFlushScheduled = false
+        if (disposed || pendingParameterUpdates.isEmpty()) {
+            pendingParameterUpdates.clear()
+            return
+        }
+        val updates = pendingParameterUpdates.toMap()
+        pendingParameterUpdates.clear()
         val port = controlPort
         if (port != null && portToken == session.assets.token) {
-            if (runCatching { port.postMessage(WebMessage("P:$name:$jsonValue")) }.isSuccess) return
+            var allSent = true
+            for ((paramName, jsonVal) in updates) {
+                if (runCatching { port.postMessage(WebMessage("P:$paramName:$jsonVal")) }.isFailure) {
+                    allSent = false
+                    break
+                }
+            }
+            if (allSent) return
         }
-        evaluate("window.__editRinSetParameter?.(${JSONObject.quote(name)},$jsonValue)")
+        val script = buildString {
+            updates.forEach { (paramName, jsonVal) ->
+                append("window.__editRinSetParameter?.(")
+                append(JSONObject.quote(paramName))
+                append(',')
+                append(jsonVal)
+                append(");")
+            }
+        }
+        evaluate(script)
+    }
+
+    fun setHudEnabled(enabled: Boolean) {
+        showHud = enabled
+        if (!enabled) hudMetrics = null
+        evaluate("window.__editRinSetHudEnabled?.($enabled)")
+    }
+
+    fun stepFrame() {
+        if (disposed || webView == null || isError || isLoading) return
+        isPaused = true
+        evaluate("window.stepSketchFrame?.()")
+    }
+
+    fun evaluateConsoleExpression(expression: String) {
+        val trimmed = expression.trim()
+        if (trimmed.isEmpty()) return
+        models.console.recordReplCommand(trimmed)
+        models.console.appendImmediate(ConsoleLevel.LOG, "> $trimmed")
+        if (disposed || webView == null) {
+            models.console.appendImmediate(ConsoleLevel.ERROR, text("プレビューが実行されていません"))
+            return
+        }
+        val token = session.assets.token
+        evaluate("window.__editRinEvalConsole?.(${JSONObject.quote(token)},${JSONObject.quote(trimmed)})")
     }
 
     fun requestScreenshot(forShareCard: Boolean = false, scale: Int = 1) {
@@ -405,7 +477,49 @@ internal class PreviewController(
         loadingFallbackJob?.cancel()
         isLoading = false
         executionCoordinator.notifyVisualReady(token)
+        if (showHud) evaluate("window.__editRinSetHudEnabled?.(true)")
         schedulePassThroughThumbnailCapture(token)
+    }
+
+    fun captureCurrentFrameAsThumbnail(onResult: (Boolean) -> Unit) {
+        val view = webView
+        val owner = session.workId
+        val work = currentWork()
+        if (disposed || isError || view == null || owner == null || work == null || work.isSample) {
+            onResult(false)
+            return
+        }
+        val token = session.assets.token
+        captureWorkPreview(
+            view = view,
+            onFailure = { onResult(false) }
+        ) { encoded ->
+            activity.lifecycleScope.launch {
+                if (disposed || session.workId != owner || session.assets.token != token) {
+                    onResult(false)
+                    return@launch
+                }
+                val bitmap = images.storeManualEncoded(owner, encoded)
+                if (bitmap != null) {
+                    models.works.notifyPreviewUpdated(owner)
+                    onResult(true)
+                } else {
+                    onResult(false)
+                }
+            }
+        }
+    }
+
+    fun resetManualThumbnail(workId: String, onResult: (Boolean) -> Unit = {}) {
+        activity.lifecycleScope.launch {
+            val cleared = images.clearManualThumbnail(workId)
+            models.works.notifyPreviewUpdated(workId)
+            if (!disposed && !isError && session.workId == workId) {
+                val token = session.assets.token
+                if (runInput?.token == token) schedulePassThroughThumbnailCapture(token)
+            }
+            onResult(cleared)
+        }
     }
 
     private fun schedulePassThroughThumbnailCapture(token: String) {
@@ -420,6 +534,10 @@ internal class PreviewController(
 
     private fun beginLoading(workId: String?, token: String) {
         isLoading = true
+        hudMetrics = null
+        parameterFlushScheduled = false
+        pendingParameterUpdates.clear()
+        runCatching { Choreographer.getInstance().removeFrameCallback(parameterFrameCallback) }
         loadingThumbnail = workId?.let(images::peek)
         runStartedAt = SystemClock.elapsedRealtime()
         if (workId != null) activity.lifecycleScope.launch {
@@ -568,6 +686,9 @@ internal class PreviewController(
     fun close() {
         if (disposed) return
         disposed = true
+        parameterFlushScheduled = false
+        pendingParameterUpdates.clear()
+        runCatching { Choreographer.getInstance().removeFrameCallback(parameterFrameCallback) }
         executionCoordinator.notifyDisposed()
         performance.close()
         images.close()
@@ -871,8 +992,49 @@ internal class PreviewController(
                 Toast.makeText(activity, text(message), Toast.LENGTH_LONG).show()
             }
         }
+
+        @JavascriptInterface
+        fun onHudMetrics(token: String, json: String) {
+            onMain(token) {
+                if (showHud) {
+                    parsePreviewHudMetrics(json)?.let { hudMetrics = it }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onConsoleEvalResult(token: String, json: String) {
+            onMain(token) {
+                runCatching {
+                    val obj = JSONObject(json)
+                    if (obj.optBoolean("ok", false)) {
+                        models.console.appendImmediate(ConsoleLevel.LOG, "← ${obj.optString("value", "undefined")}")
+                    } else {
+                        models.console.appendImmediate(ConsoleLevel.ERROR, "← ${obj.optString("error", "Error")}")
+                    }
+                }
+            }
+        }
     }
 }
+
+internal data class PreviewHudMetrics(
+    val fps: Float = 0f,
+    val frameCount: Int = 0,
+    val width: Int = 0,
+    val height: Int = 0,
+    val paused: Boolean = false
+)
+
+internal fun parsePreviewHudMetrics(json: String): PreviewHudMetrics? = runCatching {
+    val obj = JSONObject(json)
+    val fps = obj.optDouble("fps", 0.0).toFloat().takeIf { it.isFinite() && it >= 0f } ?: 0f
+    val frameCount = obj.optInt("frameCount", 0).coerceAtLeast(0)
+    val width = obj.optInt("width", 0).coerceAtLeast(0)
+    val height = obj.optInt("height", 0).coerceAtLeast(0)
+    val paused = obj.optBoolean("paused", false)
+    PreviewHudMetrics(fps = fps, frameCount = frameCount, width = width, height = height, paused = paused)
+}.getOrNull()
 
 private val SENSOR_KEYWORDS_REGEX = Regex(
     """\b(rotation[XYZ]|acceleration[XYZ]|pRotation[XYZ]|pAcceleration[XYZ]|device(?:Moved|Turned|Shaken|Orientation)|deviceorientation|devicemotion)\b"""

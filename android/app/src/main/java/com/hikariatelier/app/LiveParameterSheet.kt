@@ -7,7 +7,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import org.json.JSONObject
 
 internal const val USE_INLINE_PARAMETER_PANEL = true
 
@@ -20,23 +19,33 @@ internal fun LiveParameterSheet(
     workManagementViewModel: WorkManagementViewModel, preview: PreviewController,
     layout: ParameterSheetLayout, textTranslator: (String, Array<out Any?>) -> String,
     onDismiss: () -> Unit,
-    onJumpToParameter: ((String) -> Unit)? = null
+    onJumpToParameter: ((String) -> Unit)? = null,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null
 ) {
     var showAddParameter by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
     val parameterWork = work
-    val sources = parameterWork?.files.orEmpty().mapValues { (name, code) ->
-        sessionViewModel.fileDrafts["${parameterWork?.id}/$name"] ?: code
-    } + ("sketch.js" to editorText)
-    val declarations = remember(parameterWork?.id, editorText, parameterWork?.files?.toMap(), sessionViewModel.fileDrafts.toMap()) {
-        workParameters(sources)
+    val workId = parameterWork?.id
+    val savedFilesSnapshot = remember(workId, parameterWork?.files) {
+        parameterWork?.files?.toMap().orEmpty()
+    }
+    val auxDraftValues by remember(workId, savedFilesSnapshot) {
+        derivedStateOf {
+            savedFilesSnapshot.keys.map { name -> sessionViewModel.fileDrafts["$workId/$name"] }
+        }
+    }
+    val declarations = remember(workId, editorText, savedFilesSnapshot, auxDraftValues) {
+        workParameters(
+            projectSearchSources(workId.orEmpty(), editorText, savedFilesSnapshot, sessionViewModel.fileDrafts)
+        )
     }
     val initialDefaults = remember(parameterWork?.id) {
         declarations.associate { it.name to it.defaultValue }
     }
-    val pendingLiveChanges = remember { mutableStateMapOf<String, Pair<WorkParameter, String>>() }
+    val pendingLiveChanges = remember { linkedMapOf<String, Pair<WorkParameter, String>>() }
     val syncPreviewSource = {
         val updatedSource = sessionViewModel.editorValueState.value.text
         val workId = parameterWork?.id
@@ -69,6 +78,19 @@ internal fun LiveParameterSheet(
         parameterWork?.let { workManagementViewModel.flushParameterSave(it.id) }
         onDismiss()
     }
+    DisposableEffect(parameterWork?.id) {
+        onDispose {
+            if (pendingLiveChanges.isNotEmpty()) {
+                pendingLiveChanges.values.forEach { (param, valStr) ->
+                    sessionViewModel.applyLiveParameterToEditor(param, valStr)
+                }
+                pendingLiveChanges.clear()
+                syncPreviewSource()
+                sessionViewModel.commitLiveParameterChange()
+                parameterWork?.let { workManagementViewModel.flushParameterSave(it.id) }
+            }
+        }
+    }
     WorkParameterBottomSheet(
         visible = true,
         declarations = declarations,
@@ -80,21 +102,13 @@ internal fun LiveParameterSheet(
         colors = colors,
         onChange = { parameter, value ->
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, value) }
-            val jsonValue = when (parameter) {
-                is WorkParameter.Number, is WorkParameter.Boolean -> value
-                is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(value)
-            }
-            preview.setParameter(parameter.name, jsonValue)
+            preview.setParameter(parameter.name, parameterToJsonValue(parameter, value))
             pendingLiveChanges[parameter.name] = parameter to value
         },
         onResetParameter = { parameter ->
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
             val resetVal = initialDefaults[parameter.name] ?: parameter.defaultValue
-            val jsonValue = when (parameter) {
-                is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
-                is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
-            }
-            preview.setParameter(parameter.name, jsonValue)
+            preview.setParameter(parameter.name, parameterToJsonValue(parameter, resetVal))
             pendingLiveChanges.remove(parameter.name)
             sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             syncPreviewSource()
@@ -104,11 +118,7 @@ internal fun LiveParameterSheet(
             declarations.forEach { parameter ->
                 parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
                 val resetVal = initialDefaults[parameter.name] ?: parameter.defaultValue
-                val jsonValue = when (parameter) {
-                    is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
-                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
-                }
-                preview.setParameter(parameter.name, jsonValue)
+                preview.setParameter(parameter.name, parameterToJsonValue(parameter, resetVal))
                 sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             }
             pendingLiveChanges.clear()
@@ -139,14 +149,22 @@ internal fun LiveParameterSheet(
             }
             declarations.forEach { param ->
                 val rawVal = if (holding) (initialDefaults[param.name] ?: param.defaultValue) else parameterValue(param, targetMap[param.name])
-                val jsonValue = when (param) {
-                    is WorkParameter.Number, is WorkParameter.Boolean -> rawVal
-                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(rawVal)
-                }
-                preview.setParameter(param.name, jsonValue)
+                preview.setParameter(param.name, parameterToJsonValue(param, rawVal))
             }
         },
-        initialDefaults = initialDefaults
+        initialDefaults = initialDefaults,
+        presets = workManagementViewModel.parameterPresets(parameterWork),
+        onSavePreset = { name, values, overwriteId ->
+            parameterWork != null && workManagementViewModel.saveParameterPreset(parameterWork.id, name, values, overwriteId)
+        },
+        onRenamePreset = { presetId, newName ->
+            parameterWork != null && workManagementViewModel.renameParameterPreset(parameterWork.id, presetId, newName)
+        },
+        onDeletePreset = { presetId ->
+            parameterWork != null && workManagementViewModel.deleteParameterPreset(parameterWork.id, presetId)
+        },
+        isFullscreen = isFullscreen,
+        onToggleFullscreen = onToggleFullscreen
     )
     if (showAddParameter) {
         AddParameterDialog(declarations, text = { uiText(it) },
@@ -165,22 +183,32 @@ internal fun LiveParameterPanel(
     textTranslator: (String, Array<out Any?>) -> String,
     onDismiss: () -> Unit,
     onJumpToParameter: ((String) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null
 ) {
     var showAddParameter by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     fun uiText(source: String, vararg args: Any?) = textTranslator(source, args)
     val parameterWork = work
-    val sources = parameterWork?.files.orEmpty().mapValues { (name, code) ->
-        sessionViewModel.fileDrafts["${parameterWork?.id}/$name"] ?: code
-    } + ("sketch.js" to editorText)
-    val declarations = remember(parameterWork?.id, editorText, parameterWork?.files?.toMap(), sessionViewModel.fileDrafts.toMap()) {
-        workParameters(sources)
+    val workId = parameterWork?.id
+    val savedFilesSnapshot = remember(workId, parameterWork?.files) {
+        parameterWork?.files?.toMap().orEmpty()
+    }
+    val auxDraftValues by remember(workId, savedFilesSnapshot) {
+        derivedStateOf {
+            savedFilesSnapshot.keys.map { name -> sessionViewModel.fileDrafts["$workId/$name"] }
+        }
+    }
+    val declarations = remember(workId, editorText, savedFilesSnapshot, auxDraftValues) {
+        workParameters(
+            projectSearchSources(workId.orEmpty(), editorText, savedFilesSnapshot, sessionViewModel.fileDrafts)
+        )
     }
     val initialDefaults = remember(parameterWork?.id) {
         declarations.associate { it.name to it.defaultValue }
     }
-    val pendingLiveChanges = remember { mutableStateMapOf<String, Pair<WorkParameter, String>>() }
+    val pendingLiveChanges = remember { linkedMapOf<String, Pair<WorkParameter, String>>() }
     val syncPreviewSource = {
         val updatedSource = sessionViewModel.editorValueState.value.text
         val workId = parameterWork?.id
@@ -213,27 +241,32 @@ internal fun LiveParameterPanel(
         parameterWork?.let { workManagementViewModel.flushParameterSave(it.id) }
         onDismiss()
     }
+    DisposableEffect(parameterWork?.id) {
+        onDispose {
+            if (pendingLiveChanges.isNotEmpty()) {
+                pendingLiveChanges.values.forEach { (param, valStr) ->
+                    sessionViewModel.applyLiveParameterToEditor(param, valStr)
+                }
+                pendingLiveChanges.clear()
+                syncPreviewSource()
+                sessionViewModel.commitLiveParameterChange()
+                parameterWork?.let { workManagementViewModel.flushParameterSave(it.id) }
+            }
+        }
+    }
 
     InlineWorkParameterPanel(
         parameters = declarations,
         values = workManagementViewModel.parameterValues(parameterWork),
         onChange = { parameter, value ->
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, value) }
-            val jsonValue = when (parameter) {
-                is WorkParameter.Number, is WorkParameter.Boolean -> value
-                is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(value)
-            }
-            preview.setParameter(parameter.name, jsonValue)
+            preview.setParameter(parameter.name, parameterToJsonValue(parameter, value))
             pendingLiveChanges[parameter.name] = parameter to value
         },
         onResetParameter = { parameter ->
             parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
             val resetVal = initialDefaults[parameter.name] ?: parameter.defaultValue
-            val jsonValue = when (parameter) {
-                is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
-                is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
-            }
-            preview.setParameter(parameter.name, jsonValue)
+            preview.setParameter(parameter.name, parameterToJsonValue(parameter, resetVal))
             pendingLiveChanges.remove(parameter.name)
             sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             syncPreviewSource()
@@ -243,11 +276,7 @@ internal fun LiveParameterPanel(
             declarations.forEach { parameter ->
                 parameterWork?.let { workManagementViewModel.updateParameter(it.id, parameter.name, null) }
                 val resetVal = initialDefaults[parameter.name] ?: parameter.defaultValue
-                val jsonValue = when (parameter) {
-                    is WorkParameter.Number, is WorkParameter.Boolean -> resetVal
-                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(resetVal)
-                }
-                preview.setParameter(parameter.name, jsonValue)
+                preview.setParameter(parameter.name, parameterToJsonValue(parameter, resetVal))
                 sessionViewModel.applyLiveParameterToEditor(parameter, resetVal)
             }
             pendingLiveChanges.clear()
@@ -278,14 +307,22 @@ internal fun LiveParameterPanel(
             }
             declarations.forEach { param ->
                 val rawVal = if (holding) (initialDefaults[param.name] ?: param.defaultValue) else parameterValue(param, targetMap[param.name])
-                val jsonValue = when (param) {
-                    is WorkParameter.Number, is WorkParameter.Boolean -> rawVal
-                    is WorkParameter.Color, is WorkParameter.Choice -> JSONObject.quote(rawVal)
-                }
-                preview.setParameter(param.name, jsonValue)
+                preview.setParameter(param.name, parameterToJsonValue(param, rawVal))
             }
         },
-        initialDefaults = initialDefaults
+        initialDefaults = initialDefaults,
+        presets = workManagementViewModel.parameterPresets(parameterWork),
+        onSavePreset = { name, values, overwriteId ->
+            parameterWork != null && workManagementViewModel.saveParameterPreset(parameterWork.id, name, values, overwriteId)
+        },
+        onRenamePreset = { presetId, newName ->
+            parameterWork != null && workManagementViewModel.renameParameterPreset(parameterWork.id, presetId, newName)
+        },
+        onDeletePreset = { presetId ->
+            parameterWork != null && workManagementViewModel.deleteParameterPreset(parameterWork.id, presetId)
+        },
+        isFullscreen = isFullscreen,
+        onToggleFullscreen = onToggleFullscreen
     )
 
     if (showAddParameter) {

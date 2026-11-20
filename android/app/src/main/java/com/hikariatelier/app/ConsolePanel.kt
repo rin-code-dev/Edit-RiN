@@ -13,12 +13,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -26,9 +30,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -41,7 +48,8 @@ internal fun ConsolePanel(
     onNavigateToSource: (String, Int) -> Unit,
     codeFontFamily: FontFamily,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onEvaluateExpression: ((String) -> Unit)? = null
 ) {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current.density
@@ -242,7 +250,7 @@ internal fun ConsolePanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(
-                                max = (effectiveMaxHeightDp - 42f).coerceAtLeast(1f).dp
+                                max = (effectiveMaxHeightDp - if (onEvaluateExpression != null) 82f else 42f).coerceAtLeast(1f).dp
                             ),
                         contentPadding = PaddingValues(top = 4.dp, bottom = if (followLatest) 4.dp else 36.dp)
                     ) {
@@ -333,6 +341,128 @@ internal fun ConsolePanel(
                                 Text(uiText("最新へ"), style = MaterialTheme.typography.labelSmall)
                             }
                         }
+                    }
+                }
+            }
+
+            if (onEvaluateExpression != null) {
+                var replText by rememberSaveable { mutableStateOf("") }
+                var historyIndex by remember { mutableIntStateOf(-1) }
+                val history = viewModel.replHistory
+                fun submitRepl() {
+                    val trimmed = replText.trim()
+                    if (trimmed.isEmpty()) return
+                    followLatest = true
+                    historyIndex = -1
+                    replText = ""
+                    onEvaluateExpression(trimmed)
+                }
+
+                HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.65f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 36.dp)
+                        .background(colors.surfaceContainerLowest)
+                        .padding(start = 10.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = ">",
+                        fontFamily = codeFontFamily,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.primary
+                    )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (replText.isEmpty()) {
+                            Text(
+                                text = uiText("式を実行 (例: frameCount, width)"),
+                                fontFamily = codeFontFamily,
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant.copy(alpha = 0.6f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = replText,
+                            onValueChange = {
+                                replText = it
+                                historyIndex = -1
+                            },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                fontFamily = codeFontFamily,
+                                fontSize = 12.sp,
+                                color = colors.onSurface
+                            ),
+                            cursorBrush = SolidColor(colors.primary),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(onSend = { submitRepl() }),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (history.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                .clickable {
+                                    val nextIdx = if (historyIndex < 0) history.lastIndex else (historyIndex - 1).coerceAtLeast(0)
+                                    historyIndex = nextIdx
+                                    replText = history[nextIdx]
+                                }
+                                .semantics { contentDescription = uiText("前のコマンド") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "↑",
+                                fontFamily = codeFontFamily,
+                                fontSize = 12.sp,
+                                color = colors.onSurfaceVariant
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                .clickable(enabled = historyIndex >= 0) {
+                                    if (historyIndex in 0 until history.lastIndex) {
+                                        historyIndex += 1
+                                        replText = history[historyIndex]
+                                    } else {
+                                        historyIndex = -1
+                                        replText = ""
+                                    }
+                                }
+                                .semantics { contentDescription = uiText("次のコマンド") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "↓",
+                                fontFamily = codeFontFamily,
+                                fontSize = 12.sp,
+                                color = if (historyIndex >= 0) colors.onSurfaceVariant else colors.onSurfaceVariant.copy(alpha = 0.35f)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { submitRepl() },
+                        enabled = replText.isNotBlank(),
+                        shape = UNIT_COMPACT_CONTROL_SHAPE,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_play),
+                            contentDescription = uiText("式を実行"),
+                            tint = if (replText.isNotBlank()) colors.primary else colors.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(15.dp)
+                        )
                     }
                 }
             }

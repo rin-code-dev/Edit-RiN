@@ -46,6 +46,7 @@ internal class PreviewImageRepository(
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
     private val files = java.util.concurrent.ConcurrentHashMap<String, File>()
     private val fileIds = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val manualFlags = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private val lock = Any()
     private val reads = mutableMapOf<String, Deferred<Bitmap?>>()
     private val permits = Semaphore(concurrentPermits)
@@ -91,7 +92,13 @@ internal class PreviewImageRepository(
         synchronized(lock) {
             if (closed) return
             epoch++
-            if (name == null) bitmaps.evictAll() else bitmaps.remove(File(cacheDir, "work-previews/$name").path)
+            if (name == null) {
+                bitmaps.evictAll()
+                manualFlags.clear()
+            } else {
+                bitmaps.remove(File(cacheDir, "work-previews/$name").path)
+                fileIds[name]?.let(manualFlags::remove)
+            }
         }
         changesMutable.tryEmit(name)
     }
@@ -160,21 +167,78 @@ internal class PreviewImageRepository(
         }
     }
 
-    suspend fun store(id: String, bytes: ByteArray, expectedModified: Long? = null, fingerprint: String? = null): Boolean =
+    fun peekManualThumbnail(id: String): Boolean? = manualFlags[id]
+
+    fun hasManualThumbnail(id: String): Boolean {
+        val targetFile = file(id)
+        return manualFlags.computeIfAbsent(id) { hasManualThumbnail(targetFile) }
+    }
+
+    suspend fun isManualThumbnail(id: String): Boolean {
+        manualFlags[id]?.let { return it }
+        val targetFile = file(id)
+        val readEpoch = synchronized(lock) { epoch }
+        val value = withContext(Dispatchers.IO) { hasManualThumbnail(targetFile) }
+        synchronized(lock) {
+            if (!closed && epoch == readEpoch) {
+                manualFlags[id] = value
+            }
+        }
+        return value
+    }
+
+    suspend fun store(
+        id: String,
+        bytes: ByteArray,
+        expectedModified: Long? = null,
+        fingerprint: String? = null,
+        allowOverwriteManual: Boolean = false
+    ): Boolean =
         metrics.measure(PerformanceOperation.IMAGE_WRITE) {
             val file = file(id)
-            storeWorkPreviewBytes(file, bytes, expectedModified, fingerprint).also { if (it) invalidate(file.name) }
+            val stored = storeWorkPreviewBytes(file, bytes, expectedModified, fingerprint, allowOverwriteManual)
+            if (stored) {
+                invalidate(file.name)
+                synchronized(lock) {
+                    if (!closed) {
+                        manualFlags[id] = (fingerprint == MANUAL_THUMBNAIL_FINGERPRINT)
+                    }
+                }
+            }
+            stored
         }
 
-    suspend fun storeEncoded(id: String, encoded: String, fingerprint: String?): Bitmap? {
+    suspend fun storeEncoded(
+        id: String,
+        encoded: String,
+        fingerprint: String?,
+        allowOverwriteManual: Boolean = false
+    ): Bitmap? {
         val bytes = withContext(Dispatchers.Default) { runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() } ?: return null
-        if (!store(id, bytes, fingerprint = fingerprint)) return null
+        if (!store(id, bytes, fingerprint = fingerprint, allowOverwriteManual = allowOverwriteManual)) return null
         return load(id)
+    }
+
+    suspend fun storeManualEncoded(id: String, encoded: String): Bitmap? =
+        storeEncoded(id, encoded, fingerprint = MANUAL_THUMBNAIL_FINGERPRINT, allowOverwriteManual = true)
+
+    suspend fun clearManualThumbnail(id: String): Boolean {
+        val file = file(id)
+        val removed = clearWorkPreview(file)
+        if (removed) {
+            invalidate(file.name)
+            synchronized(lock) {
+                if (!closed) {
+                    manualFlags[id] = false
+                }
+            }
+        }
+        return removed
     }
 
     fun close() {
         synchronized(lock) {
-            closed = true; observer?.stopWatching(); rootObserver?.stopWatching(); bitmaps.evictAll()
+            closed = true; observer?.stopWatching(); rootObserver?.stopWatching(); bitmaps.evictAll(); manualFlags.clear()
         }
         scope.cancel()
     }

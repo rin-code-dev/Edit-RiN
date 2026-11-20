@@ -21,6 +21,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.*
@@ -56,6 +57,8 @@ internal data class EditorWorkspaceState(
     val isSample: Boolean = false,
     val galleryVisible: Boolean = false,
     val galleryProgress: Float = 0f,
+    val galleryProgressProvider: () -> Float = { galleryProgress },
+    val gallerySettled: Boolean = galleryProgress >= 1f,
     val pipModeWhenEditing: Boolean = true,
     val autoRunEnabled: Boolean = false,
     val previewHasChanges: Boolean = false,
@@ -64,7 +67,8 @@ internal data class EditorWorkspaceState(
     val pipMinimized: Boolean = true,
     val pipSnapCorner: PipCorner = PipCorner.TOP_END,
     val pipAutoGhosted: Boolean = false,
-    val blockModeFullscreen: Boolean = false
+    val blockModeFullscreen: Boolean = false,
+    val parameterFullscreen: Boolean = false
 )
 
 internal data class EditorWorkspaceActions(
@@ -120,17 +124,24 @@ internal fun EditorWorkspaceLayout(
     val editorContent = remember { movableContentOf<Modifier> { currentEditor.value(it) } }
     var portraitBodySize by remember(state.isLandscape, density) { mutableStateOf(IntSize.Zero) }
     var landscapeWorkspaceSize by remember(state.isLandscape, density) { mutableStateOf(IntSize.Zero) }
+    var rootSize by remember(density) { mutableStateOf(IntSize.Zero) }
+    var landscapeInnerSize by remember(state.isLandscape, density) { mutableStateOf(IntSize.Zero) }
+    var previewPaneSize by remember(state.isLandscape, density) { mutableStateOf(IntSize.Zero) }
+    val configuration = LocalConfiguration.current
     val currentLandscapePreviewFraction = rememberUpdatedState(state.landscapePreviewFraction)
     val currentPreviewRatio = rememberUpdatedState(state.previewRatioSelection)
     val currentRatioChange = rememberUpdatedState(actions.onSavePreviewRatio)
     fun text(source: String, vararg args: Any?) = textTranslator(source, args)
 
-    BoxWithConstraints(
+    Box(
         modifier
             .fillMaxSize()
             .background(colors.background)
             .imePadding()
+            .onSizeChanged { if (it != rootSize) rootSize = it }
     ) {
+        val maxWidth = if (rootSize.width > 0) with(density) { rootSize.width.toDp() } else configuration.screenWidthDp.dp
+        val maxHeight = if (rootSize.height > 0) with(density) { rootSize.height.toDp() } else configuration.screenHeightDp.dp
         val containerMaxWidthDp = maxWidth.value
         val containerMaxHeightDp = maxHeight.value
         val hasVisibleCompletions = state.hasVisibleCompletions
@@ -143,11 +154,12 @@ internal fun EditorWorkspaceLayout(
 
         // In portrait mode, editing ("そのまま" & "縮小" removed -> "隠す" only by default)
         // always hides the top preview viewport and shows the floating PiP window when enabled.
+        val isPortraitFullscreenOverlay = state.blockModeFullscreen || state.parameterFullscreen
         val isPortraitEditing = !state.isLandscape &&
-            (state.editorFocused || state.keyboardVisible || state.blockModeFullscreen) &&
+            (state.editorFocused || state.keyboardVisible || isPortraitFullscreenOverlay) &&
             !state.galleryVisible
 
-        val useFloatingPipInPortrait = isPortraitEditing && (state.pipModeWhenEditing || state.blockModeFullscreen)
+        val useFloatingPipInPortrait = isPortraitEditing && (state.pipModeWhenEditing || isPortraitFullscreenOverlay)
 
         val previewHeightLimit = availableForEditing * 0.65f
         var portraitPreviewHeightLimit by remember(state.isLandscape, density) {
@@ -176,7 +188,7 @@ internal fun EditorWorkspaceLayout(
                 )
         ) {
             AnimatedVisibility(
-                visible = !state.isLandscape && !state.editorFocused && !state.blockModeFullscreen,
+                visible = !state.isLandscape && !state.editorFocused && !isPortraitFullscreenOverlay,
                 enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
                 exit = fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
             ) {
@@ -184,9 +196,10 @@ internal fun EditorWorkspaceLayout(
             }
 
             if (state.isLandscape) {
-                val galleryProgress = state.galleryProgress.coerceIn(0f, 1f)
+                val galleryProgressProvider = state.galleryProgressProvider
+                val gallerySettled = state.gallerySettled
                 val galleryPresent = state.galleryVisible
-                val useFloatingPipInLandscape = state.blockModeFullscreen && !galleryPresent
+                val useFloatingPipInLandscape = (state.blockModeFullscreen || state.parameterFullscreen) && !galleryPresent
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -203,28 +216,35 @@ internal fun EditorWorkspaceLayout(
                         }
                     } else Modifier.fillMaxSize()
 
-                    BoxWithConstraints(
+                    Box(
                         modifier = workspaceSize
                             .then(if (galleryPresent) Modifier.clearAndSetSemantics {} else Modifier)
                             .focusProperties { if (galleryPresent) canFocus = false }
                             .onPreviewKeyEvent { galleryPresent }
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                            .padding(horizontal = 10.dp, vertical = 10.dp)
+                            .onSizeChanged { size ->
+                                if (!galleryPresent && size != landscapeInnerSize) landscapeInnerSize = size
+                            },
                         contentAlignment = Alignment.Center
                     ) {
+                        val innerMaxWidth = if (landscapeInnerSize.width > 0) with(density) { landscapeInnerSize.width.toDp() }
+                            else (maxWidth - 20.dp).coerceAtLeast(0.dp)
+                        val innerMaxHeight = if (landscapeInnerSize.height > 0) with(density) { landscapeInnerSize.height.toDp() }
+                            else (maxHeight - 20.dp).coerceAtLeast(0.dp)
                         val dividerWidth = if (state.showResizeHandles) 18.dp else 8.dp
                         val isSquareWork = kotlin.math.abs(state.workPreviewRatio - 1f) < 0.01f
-                        val previewPaneWidth = ((maxWidth - dividerWidth) * state.animatedLandscapePreviewFraction)
+                        val previewPaneWidth = ((innerMaxWidth - dividerWidth) * state.animatedLandscapePreviewFraction)
                             .coerceAtLeast(0.dp)
                         val alignedRowHeight = if (
                             !useFloatingPipInLandscape &&
                             !state.keyboardVisible &&
                             isSquareWork &&
                             state.animatedLandscapePreviewFraction >= 0.49f &&
-                            previewPaneWidth in 220.dp..maxHeight
+                            previewPaneWidth in 220.dp..innerMaxHeight
                         ) {
                             previewPaneWidth
                         } else {
-                            maxHeight
+                            innerMaxHeight
                         }
 
                         Row(
@@ -237,7 +257,7 @@ internal fun EditorWorkspaceLayout(
                             val hasLandscapeRail = slots.landscapeRail != null
                             val railPane: @Composable () -> Unit = {
                                 slots.landscapeRail?.invoke(
-                                    Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS)
+                                    Modifier.galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS)
                                 )
                             }
                             val editorColumn: @Composable (Modifier) -> Unit = { editorModifier ->
@@ -252,7 +272,7 @@ internal fun EditorWorkspaceLayout(
                                             enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
                                             exit = fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top)
                                         ) {
-                                            Box(Modifier.galleryChrome(galleryProgress, GalleryPart.TITLE)) { slots.landscapeBar() }
+                                            Box(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.TITLE)) { slots.landscapeBar() }
                                         }
                                     }
 
@@ -261,7 +281,7 @@ internal fun EditorWorkspaceLayout(
                                         enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
                                         exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                     ) {
-                                        slots.console(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 4.dp))
+                                        slots.console(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS).padding(bottom = 4.dp))
                                     }
 
                                     AnimatedVisibility(
@@ -269,33 +289,27 @@ internal fun EditorWorkspaceLayout(
                                         enter = fadeIn(tween(140)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
                                         exit = fadeOut(tween(110)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                     ) {
-                                        slots.previewActions(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(bottom = 4.dp))
+                                        slots.previewActions(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS).padding(bottom = 4.dp))
                                     }
 
-                                    Crossfade(
-                                        targetState = state.showParameterPanel,
-                                        animationSpec = tween(180),
+                                    EditorAndParameterContainer(
+                                        showParameterPanel = state.showParameterPanel,
+                                        editorContent = editorContent,
+                                        parameterPanel = slots.parameterPanel,
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxWidth()
-                                            .galleryEditorReveal(galleryProgress, true, state.landscapeEditorOnLeft),
-                                        label = "landscapeEditorParameterCrossfade"
-                                    ) { isParameter ->
-                                        if (isParameter) {
-                                            slots.parameterPanel(Modifier.fillMaxSize())
-                                        } else {
-                                            editorContent(Modifier.fillMaxSize())
-                                        }
-                                    }
+                                            .galleryEditorReveal(galleryProgressProvider, true, state.landscapeEditorOnLeft)
+                                    )
 
-                                    slots.completions(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 4.dp))
+                                    slots.completions(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS).padding(top = 4.dp))
 
                                     AnimatedVisibility(
                                         visible = state.editorFocused && state.showEditorAccessoryBar,
                                         enter = fadeIn(tween(120)) + expandVertically(spring(stiffness = Spring.StiffnessMediumLow)),
                                         exit = fadeOut(tween(90)) + shrinkVertically(spring(stiffness = Spring.StiffnessMedium))
                                     ) {
-                                        slots.accessory(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS).padding(top = 4.dp))
+                                        slots.accessory(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS).padding(top = 4.dp))
                                     }
                                 }
                             }
@@ -331,17 +345,22 @@ internal fun EditorWorkspaceLayout(
                                     onSplitChanged = { next -> actions.onSplitChanged(next) },
                                     onLabelVisibilityChanged = { actions.onSplitLabelChanged(it) },
                                     textTranslator = textTranslator,
-                                    modifier = Modifier.galleryChrome(galleryProgress, GalleryPart.SECONDARY)
+                                    modifier = Modifier.galleryChrome(galleryProgressProvider, GalleryPart.SECONDARY)
                                 )
                             }
 
                             val previewPane: @Composable RowScope.() -> Unit = {
-                                BoxWithConstraints(
+                                Box(
                                     modifier = Modifier
                                         .weight(state.animatedLandscapePreviewFraction)
                                         .fillMaxHeight()
+                                        .onSizeChanged { size ->
+                                            if (!galleryPresent && size != previewPaneSize) previewPaneSize = size
+                                        }
                                 ) {
-                                    val previewSize = fitPreviewSize(maxWidth.value, maxHeight.value, state.workPreviewRatio)
+                                    val paneWidthDp = if (previewPaneSize.width > 0) with(density) { previewPaneSize.width.toDp() } else previewPaneWidth
+                                    val paneHeightDp = if (previewPaneSize.height > 0) with(density) { previewPaneSize.height.toDp() } else alignedRowHeight
+                                    val previewSize = fitPreviewSize(paneWidthDp.value, paneHeightDp.value, state.workPreviewRatio)
                                     slots.preview(
                                         Modifier
                                             .size(previewSize.width.dp, previewSize.height.dp)
@@ -364,7 +383,7 @@ internal fun EditorWorkspaceLayout(
                         }
                     }
                     if (useFloatingPipInLandscape) {
-                        val bottomReserved = 72.dp
+                        val bottomReserved = if (state.parameterFullscreen) 12.dp else 72.dp
                         FloatingPipPreviewHost(
                             aspectRatio = state.workPreviewRatio,
                             containerWidthDp = containerMaxWidthDp,
@@ -383,7 +402,7 @@ internal fun EditorWorkspaceLayout(
                             onMinimizedChange = actions.onPipMinimizedChanged,
                             snapCorner = state.pipSnapCorner,
                             onSnapCornerChange = actions.onPipSnapCornerChanged,
-                            isGhosted = state.pipAutoGhosted,
+                            isGhosted = if (state.parameterFullscreen) false else state.pipAutoGhosted,
                             onTapCanvas = actions.onPipCanvasTap,
                             onExpandFullscreen = actions.onExpandPipFullscreen,
                             modifier = Modifier
@@ -398,9 +417,9 @@ internal fun EditorWorkspaceLayout(
                         Column(
                             Modifier
                                 .matchParentSize()
-                                .graphicsLayer { alpha = galleryLayerAlpha(galleryProgress) }
+                                .graphicsLayer { alpha = galleryLayerAlpha(galleryProgressProvider()) }
                                 .background(colors.background)
-                                .then(if (galleryProgress < 1f) Modifier.clearAndSetSemantics {} else Modifier)
+                                .then(if (!gallerySettled) Modifier.clearAndSetSemantics {} else Modifier)
                         ) {
                             slots.landscapeGalleryBar()
                             slots.gallery(Modifier.fillMaxWidth().weight(1f))
@@ -408,10 +427,11 @@ internal fun EditorWorkspaceLayout(
                     }
                     slots.galleryPreview(Modifier.matchParentSize())
                     slots.previewChrome(Modifier.matchParentSize())
-                    if (galleryPresent && galleryProgress < 1f) Box(Modifier.matchParentSize().blockGalleryInput())
+                    if (galleryPresent && !gallerySettled) Box(Modifier.matchParentSize().blockGalleryInput())
                 }
             } else {
-                val galleryProgress = state.galleryProgress.coerceIn(0f, 1f)
+                val galleryProgressProvider = state.galleryProgressProvider
+                val gallerySettled = state.gallerySettled
                 val galleryPresent = state.galleryVisible
                 Box(
                     Modifier
@@ -453,12 +473,12 @@ internal fun EditorWorkspaceLayout(
                         }
 
                         Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                            if (state.showResizeHandles && !state.editorFocused && !state.blockModeFullscreen) {
+                            if (state.showResizeHandles && !state.editorFocused && !isPortraitFullscreenOverlay) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(28.dp)
-                                        .galleryChrome(galleryProgress, GalleryPart.SECONDARY)
+                                        .galleryChrome(galleryProgressProvider, GalleryPart.SECONDARY)
                                         .pointerInput(state.activeWorkId) {
                                             var accumulated = 0f
                                             var ratioOptions = previewAspectRatioOptions(currentPreviewRatio.value)
@@ -570,12 +590,12 @@ internal fun EditorWorkspaceLayout(
                             }
 
                             AnimatedVisibility(
-                                visible = !state.editorFocused && !state.blockModeFullscreen,
+                                visible = !state.editorFocused && !isPortraitFullscreenOverlay,
                                 enter = fadeIn(tween(180)) + expandVertically(tween(220)),
                                 exit = fadeOut(tween(140)) + shrinkVertically(tween(220))
                             ) {
                                 Box(modifier = Modifier.padding(horizontal = 12.dp)) {
-                                    Box(Modifier.galleryChrome(galleryProgress, GalleryPart.CONTROLS)) { slots.controlBar() }
+                                    Box(Modifier.galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS)) { slots.controlBar() }
                                 }
                             }
 
@@ -586,52 +606,46 @@ internal fun EditorWorkspaceLayout(
                             ) {
                                 slots.console(
                                     Modifier
-                                        .galleryChrome(galleryProgress, GalleryPart.CONTROLS)
+                                        .galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS)
                                         .padding(horizontal = 12.dp)
                                         .padding(bottom = 6.dp)
                                 )
                             }
 
                             AnimatedVisibility(
-                                visible = state.previewActionsExpanded,
+                                visible = state.previewActionsExpanded && !state.editorFocused && !isPortraitFullscreenOverlay,
                                 enter = fadeIn(tween(140)) + expandVertically(tween(180)),
                                 exit = fadeOut(tween(110)) + shrinkVertically(tween(160))
                             ) {
                                 slots.previewActions(
                                     Modifier
-                                        .galleryChrome(galleryProgress, GalleryPart.CONTROLS)
+                                        .galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS)
                                         .padding(horizontal = 12.dp)
                                         .padding(bottom = 6.dp)
                                 )
                             }
 
                             val editorBottomPadding by animateDpAsState(
-                                targetValue = if (state.blockModeFullscreen) 6.dp else if (!state.isSample && state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
+                                targetValue = if (isPortraitFullscreenOverlay) 6.dp else if (!state.isSample && state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
                                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                 label = "editorBottomPadding"
                             )
 
-                            Crossfade(
-                                targetState = state.showParameterPanel,
-                                animationSpec = tween(180),
+                            EditorAndParameterContainer(
+                                showParameterPanel = state.showParameterPanel,
+                                editorContent = editorContent,
+                                parameterPanel = slots.parameterPanel,
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
-                                    .galleryEditorReveal(galleryProgress, false, state.landscapeEditorOnLeft)
+                                    .galleryEditorReveal(galleryProgressProvider, false, state.landscapeEditorOnLeft)
                                     .padding(horizontal = 12.dp)
-                                    .padding(bottom = editorBottomPadding),
-                                label = "portraitEditorParameterCrossfade"
-                            ) { isParameter ->
-                                if (isParameter) {
-                                    slots.parameterPanel(Modifier.fillMaxSize())
-                                } else {
-                                    editorContent(Modifier.fillMaxSize())
-                                }
-                            }
+                                    .padding(bottom = editorBottomPadding)
+                            )
 
                             slots.completions(
                                 Modifier
-                                    .galleryChrome(galleryProgress, GalleryPart.CONTROLS)
+                                    .galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS)
                                     .padding(start = 12.dp, end = 12.dp, top = 6.dp)
                             )
 
@@ -642,7 +656,7 @@ internal fun EditorWorkspaceLayout(
                             ) {
                                 slots.accessory(
                                     Modifier
-                                        .galleryChrome(galleryProgress, GalleryPart.CONTROLS)
+                                        .galleryChrome(galleryProgressProvider, GalleryPart.CONTROLS)
                                         .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 2.dp)
                                 )
                             }
@@ -651,8 +665,8 @@ internal fun EditorWorkspaceLayout(
 
                     // Floating PiP Preview Window when the top preview is hidden during portrait editing
                     if (useFloatingPipInPortrait) {
-                        val bottomReserved = (if (state.blockModeFullscreen) 72.dp else if (state.showEditorAccessoryBar && !state.isSample) 54.dp else 12.dp) +
-                            (if (hasVisibleCompletions) 44.dp else 0.dp)
+                        val bottomReserved = (if (state.parameterFullscreen) 12.dp else if (state.blockModeFullscreen) 72.dp else if (state.showEditorAccessoryBar && !state.isSample) 54.dp else 12.dp) +
+                            (if (hasVisibleCompletions && !state.parameterFullscreen) 44.dp else 0.dp)
                         FloatingPipPreviewHost(
                             aspectRatio = state.workPreviewRatio,
                             containerWidthDp = containerMaxWidthDp,
@@ -671,7 +685,7 @@ internal fun EditorWorkspaceLayout(
                             onMinimizedChange = actions.onPipMinimizedChanged,
                             snapCorner = state.pipSnapCorner,
                             onSnapCornerChange = actions.onPipSnapCornerChanged,
-                            isGhosted = state.pipAutoGhosted,
+                            isGhosted = if (state.parameterFullscreen) false else state.pipAutoGhosted,
                             onTapCanvas = actions.onPipCanvasTap,
                             onExpandFullscreen = actions.onExpandPipFullscreen,
                             modifier = Modifier
@@ -687,19 +701,49 @@ internal fun EditorWorkspaceLayout(
                         slots.gallery(
                             Modifier
                                 .matchParentSize()
-                                .graphicsLayer { alpha = galleryLayerAlpha(galleryProgress) }
+                                .graphicsLayer { alpha = galleryLayerAlpha(galleryProgressProvider()) }
                                 .background(colors.background)
                                 .then(
-                                    if (galleryProgress < 1f) Modifier.clearAndSetSemantics {}
+                                    if (!gallerySettled) Modifier.clearAndSetSemantics {}
                                     else Modifier
                                 )
                         )
                     }
                     slots.galleryPreview(Modifier.matchParentSize())
                     slots.previewChrome(Modifier.matchParentSize())
-                    if (galleryPresent && galleryProgress < 1f) Box(Modifier.matchParentSize().blockGalleryInput())
+                    if (galleryPresent && !gallerySettled) Box(Modifier.matchParentSize().blockGalleryInput())
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun EditorAndParameterContainer(
+    showParameterPanel: Boolean,
+    editorContent: @Composable (Modifier) -> Unit,
+    parameterPanel: @Composable (Modifier) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = if (showParameterPanel) 0f else 1f }
+                .then(if (showParameterPanel) Modifier.clearAndSetSemantics { hideFromAccessibility() } else Modifier)
+                .focusProperties { if (showParameterPanel) canFocus = false }
+                .onPreviewKeyEvent { showParameterPanel }
+                .then(if (showParameterPanel) Modifier.blockGalleryInput() else Modifier)
+        ) {
+            editorContent(Modifier.fillMaxSize())
+        }
+        AnimatedVisibility(
+            visible = showParameterPanel,
+            enter = fadeIn(tween(140)),
+            exit = fadeOut(tween(100)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            parameterPanel(Modifier.fillMaxSize())
         }
     }
 }

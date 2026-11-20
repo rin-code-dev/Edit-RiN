@@ -6,8 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.BoxWithConstraintsScope
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -38,10 +37,11 @@ internal fun PreviewSurface(
     modifier: Modifier,
     onClearEditorFocus: () -> Unit,
     galleryProgress: Float = 0f,
+    galleryProgressProvider: () -> Float = { galleryProgress },
     galleryMorphActive: Boolean = false,
     chromeLifted: Boolean = false,
     clearFocusOnTouch: Boolean = true,
-    controls: @Composable BoxWithConstraintsScope.() -> Unit
+    controls: @Composable BoxScope.() -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
@@ -54,7 +54,7 @@ internal fun PreviewSurface(
         colors = CardDefaults.cardColors(containerColor = if (galleryMorphActive) Color.Transparent else Color.Black),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             PreviewWebView(
                 preview = preview,
                 logicalSize = logicalSize,
@@ -90,11 +90,11 @@ internal fun PreviewSurface(
                     if (showLoading) CircularProgressIndicator(Modifier.align(Alignment.Center))
                 }
             }
-            BoxWithConstraints(
+            Box(
                 Modifier
                     .matchParentSize()
                     .graphicsLayer { alpha = if (chromeLifted) 0f else 1f }
-                    .galleryChrome(galleryProgress, GalleryPart.SECONDARY)
+                    .galleryChrome(galleryProgressProvider, GalleryPart.SECONDARY)
             ) {
                 controls()
             }

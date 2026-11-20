@@ -28,6 +28,7 @@ class SampleCodeLocalizationTest {
                             is WorkParameter.Color -> translated.copy(label = original.label)
                             is WorkParameter.Boolean -> translated.copy(label = original.label)
                             is WorkParameter.Choice -> translated.copy(label = original.label)
+                            is WorkParameter.Point2D -> translated.copy(label = original.label)
                         }
                         assertEquals("$name parameter contract $index", original, normalized)
                         if (name == "wave Parameter" || name == "WebGPU") {

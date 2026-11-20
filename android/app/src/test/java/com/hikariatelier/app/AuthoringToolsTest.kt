@@ -17,7 +17,12 @@ class AuthoringToolsTest {
     }
     @Test fun allDialogTypesRoundTripThroughRuntimeParser() {
         ParameterKind.entries.forEach { kind ->
-            val initial = when (kind) { ParameterKind.NUMBER -> "1"; ParameterKind.COLOR -> "#123ABC"; ParameterKind.BOOLEAN -> "true" }
+            val initial = when (kind) {
+                ParameterKind.NUMBER -> "1"
+                ParameterKind.COLOR -> "#123ABC"
+                ParameterKind.BOOLEAN -> "true"
+                ParameterKind.XY -> "1"
+            }
             val line = parameterDeclaration(kind, "speed_2", "速さ", initial, "0", "3", "0.1", emptySet(), 0)!!
             val parameter = workParameters(mapOf("sketch.js" to line)).single()
             assertEquals("speed_2", parameter.name)

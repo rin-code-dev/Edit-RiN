@@ -15,6 +15,7 @@ internal fun recoveredDraftWorks(snapshot: DraftSnapshot, files: Map<String, Str
             assets = base?.assets.orEmpty(), previewAspectRatio = base?.previewAspectRatio ?: "1:1",
             p5Version = base?.p5Version ?: P5_VERSION_CURRENT, p5SoundEnabled = base?.p5SoundEnabled == true,
             libraries = base?.libraries.orEmpty(), parameterValues = base?.parameterValues.orEmpty(),
+            parameterPresets = base?.parameterPresets?.toList().orEmpty(),
             blockEditorState = if (snapshot.blockEditorDrafts.containsKey(id)) snapshot.blockEditorDrafts[id] else base?.blockEditorState)
     }
 }

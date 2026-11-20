@@ -21,9 +21,14 @@ internal fun thumbnailFingerprint(input: PreviewRunInput): String {
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
+internal const val MANUAL_THUMBNAIL_FINGERPRINT = "manual-cover-v1"
+
 internal fun thumbnailStampFile(file: File) = File(file.parentFile, "${file.name}.stamp")
 
 internal fun thumbnailCacheMatches(file: File, fingerprint: String): Boolean = runCatching {
     val stamp = thumbnailStampFile(file).readLines()
     file.length() > 0 && stamp == listOf(fingerprint, file.length().toString(), file.lastModified().toString())
 }.getOrDefault(false)
+
+internal fun hasManualThumbnail(file: File): Boolean =
+    thumbnailCacheMatches(file, MANUAL_THUMBNAIL_FINGERPRINT)
