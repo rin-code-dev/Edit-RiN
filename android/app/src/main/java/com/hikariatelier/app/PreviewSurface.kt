@@ -8,7 +8,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,12 +45,12 @@ internal fun PreviewSurface(
     val colors = MaterialTheme.colorScheme
     Card(
         modifier = if (fullscreen) modifier else modifier.border(
-            1.dp,
+            UNIT_BORDER_WIDTH,
             if (galleryMorphActive) Color.Transparent else if (isError) colors.error else colors.outlineVariant,
-            RoundedCornerShape(18.dp)
+            UNIT_SHAPE
         ),
-        shape = if (fullscreen) RectangleShape else RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = if (galleryMorphActive) Color.Transparent else Color.Black),
+        shape = if (fullscreen) RectangleShape else UNIT_SHAPE,
+        colors = CardDefaults.cardColors(containerColor = if (galleryMorphActive) Color.Transparent else colors.surfaceContainerLowest),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -82,7 +81,7 @@ internal fun PreviewSurface(
                         .graphicsLayer {
                             alpha = if (galleryMorphActive) 0f else if (preview.isLoading) 1f else loadingAlpha
                         }
-                        .background(Color.Black)
+                        .background(colors.surfaceContainerLowest)
                 ) {
                     preview.loadingThumbnail?.takeUnless { it.isRecycled }?.let {
                         Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)

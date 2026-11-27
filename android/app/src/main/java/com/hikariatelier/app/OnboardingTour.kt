@@ -2,6 +2,9 @@ package com.hikariatelier.app
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -118,18 +121,26 @@ internal fun OnboardingTour(
                             .clickable { step = index },
                         contentAlignment = Alignment.Center
                     ) {
+                        val targetSegmentColor = if (index <= safeStep) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+                        val segmentColor by if (animate) {
+                            animateColorAsState(targetSegmentColor, tween(200), label = "onboardingStepColor")
+                        } else {
+                            rememberUpdatedState(targetSegmentColor)
+                        }
                         Box(
                             Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    if (index <= safeStep) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-                                )
+                                .background(segmentColor)
                         )
                     }
                 }
             }
             if (allowSkip) {
-                TextButton(onClick = onSkip, modifier = Modifier.testTag("onboarding-skip")) {
+                TextButton(
+                    onClick = onSkip,
+                    shape = UNIT_CONTROL_SHAPE,
+                    modifier = Modifier.testTag("onboarding-skip")
+                ) {
                     Text(t("スキップ", "Skip", "跳过"))
                 }
             }
@@ -168,6 +179,8 @@ internal fun OnboardingTour(
                 if (safeStep > 0) {
                     OutlinedButton(
                         onClick = { step = safeStep - 1 },
+                        shape = UNIT_CONTROL_SHAPE,
+                        border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("onboarding-back")
                     ) {
                         Text(t("戻る", "Back", "返回"))
@@ -175,6 +188,7 @@ internal fun OnboardingTour(
                 }
                 Button(
                     onClick = { if (last) onFinish() else step = safeStep + 1 },
+                    shape = UNIT_CONTROL_SHAPE,
                     modifier = Modifier.weight(if (safeStep > 0) 2f else 1f).heightIn(min = 48.dp).testTag("onboarding-next")
                 ) {
                     Text(if (last) t("始める", "Start Creating", "开始创作") else t("次へ", "Next", "下一步"))
@@ -184,6 +198,9 @@ internal fun OnboardingTour(
                 val sampleAction = onTrySample ?: onOpenPracticeTour
                 FilledTonalButton(
                     onClick = sampleAction,
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitTonalButtonColors(),
+                    border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onboarding-try-sample")
                 ) {
@@ -193,6 +210,7 @@ internal fun OnboardingTour(
                 }
                 TextButton(
                     onClick = onOpenDetailedGuide,
+                    shape = UNIT_CONTROL_SHAPE,
                     modifier = Modifier.fillMaxWidth().testTag("onboarding-guide")
                 ) {
                     Text(t("詳しい使い方を見る", "Open the User Guide", "查看使用指南"))

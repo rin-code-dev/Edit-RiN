@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.hikariatelier.app.ui.theme.LocalCustomTheme
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -40,8 +39,6 @@ internal fun WorkTagsDialog(
     onDismiss: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val background = if (LocalCustomTheme.current) colors.background
-    else colors.surfaceContainerHigh
     var newTagInput by rememberSaveable { mutableStateOf("") }
 
     val cleanInput = newTagInput.trim().removePrefix("#").trim()
@@ -71,10 +68,12 @@ internal fun WorkTagsDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight(),
-            shape = RoundedCornerShape(16.dp),
-            color = background,
-            tonalElevation = 6.dp,
-            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f))
+            shape = UNIT_SHAPE,
+            color = colors.surface,
+            contentColor = colors.onSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant)
         ) {
             Column(
                 modifier = Modifier
@@ -276,8 +275,6 @@ internal fun AllTagsManageDialog(
     onDismiss: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val background = if (LocalCustomTheme.current) colors.background
-    else colors.surfaceContainerHigh
     var tagToDelete by remember { mutableStateOf<String?>(null) }
 
     Dialog(
@@ -288,10 +285,12 @@ internal fun AllTagsManageDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight(),
-            shape = RoundedCornerShape(16.dp),
-            color = background,
-            tonalElevation = 6.dp,
-            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f))
+            shape = UNIT_SHAPE,
+            color = colors.surface,
+            contentColor = colors.onSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant)
         ) {
             Column(
                 modifier = Modifier
@@ -408,7 +407,7 @@ internal fun AllTagsManageDialog(
     }
 
     tagToDelete?.let { tag ->
-        AlertDialog(
+        UnitAlertDialog(
             onDismissRequest = { tagToDelete = null },
             title = { Text(text("全作品からタグを削除")) },
             text = { Text(text("「#%s」をすべての作品から削除しますか？").format(tag)) },
@@ -418,13 +417,14 @@ internal fun AllTagsManageDialog(
                         onDeleteTag(tag)
                         tagToDelete = null
                     },
+                    shape = UNIT_CONTROL_SHAPE,
                     colors = ButtonDefaults.textButtonColors(contentColor = colors.error)
                 ) {
                     Text(text("削除"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { tagToDelete = null }) {
+                TextButton(onClick = { tagToDelete = null }, shape = UNIT_CONTROL_SHAPE) {
                     Text(text("キャンセル"))
                 }
             }

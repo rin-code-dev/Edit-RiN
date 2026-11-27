@@ -16,7 +16,8 @@
       ctx.send({type:'view',viewport:{x:workspace.scrollX,y:workspace.scrollY,scale:workspace.scale,selected:ctx.selectedId()||null}});
     }
     function scheduleView(){clearTimeout(viewTimer);viewTimer=setTimeout(sendView,150);}
-    const parts=()=>ctx.workspace()?.getTopBlocks(false).filter(block=>block.id!=='rin_program'&&ctx.model(block))||[];
+    const isDetachedRoot=block=>!!block&&block.id!=='rin_program'&&!block.getParent()&&!!ctx.model(block)&&!ctx.model(block).bound;
+    const parts=()=>ctx.workspace()?.getTopBlocks(false).filter(isDetachedRoot)||[];
     function syncBadge(){
       const count=parts().length,button=$('partsBadge');button.hidden=!count;
       button.textContent=words('未接続 '+count,'Detached '+count,'未连接 '+count);
@@ -25,16 +26,13 @@
     function decorateParts(){
       const workspace=ctx.workspace();if(!workspace)return;
       for(const block of workspace.getAllBlocks(false)){
-        const detached=block.id!=='rin_program'&&!block.getParent()&&ctx.model(block)&&!ctx.model(block).bound;
+        const detached=isDetachedRoot(block);
         block.getSvgRoot()?.classList.toggle('rin-detached',!!detached);
+        if(block.getInput('DETACHED_STATUS'))block.removeInput('DETACHED_STATUS');
         if(detached){
-          if(!block.getInput('DETACHED_STATUS')){
-            const first=block.inputList[0]?.name;
-            block.appendDummyInput('DETACHED_STATUS').appendField(words('未接続 · 実行しません','Detached · does not run','未连接 · 不执行'));
-            if(first)block.moveInputBefore('DETACHED_STATUS',first);
-          }
-          block.setTooltip(words('未接続の部品です。作品の処理につなぐまで実行されません。','Detached part. Connect it to the program to run it.','未连接的部件。连接到程序后才会执行。')+'\n'+ctx.node(block).raw.slice(0,1000));
-        }else if(block.getInput('DETACHED_STATUS'))block.removeInput('DETACHED_STATUS');
+          const rawText=ctx.node(block)?.raw||ctx.model(block)?.easyItem?.summary||'';
+          block.setTooltip(words('未接続の部品です。作品の処理につなぐまで実行されません。','Detached part. Connect it to the program to run it.','未连接的部件。连接到程序后才会执行。')+(rawText?'\n'+rawText.slice(0,1000):''));
+        }
       }
       syncBadge();
     }
@@ -45,7 +43,7 @@
     function afterRender(){
       if(pendingFocus){const block=parts().find(block=>(block.rinOrphanId||block.id)===pendingFocus);pendingFocus=null;focus(block);}
       syncBadge();
-      if($('navigatorDialog').open)renderResults();
+      if($('navigatorDialog').open){renderTabs();renderResults();}
     }
     function bounds(block){const r=block.getBoundingRectangle();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom};}
     function placeDetached(block,preferred){
@@ -66,8 +64,9 @@
       let parent=node,owner='';
       while(parent?.parentId){parent=ctx.projectionNode(model.projection,parent.parentId);if(parent?.kind==='function'){owner=parent.fields.name?.value||'';break;}}
       const displayNode=node.kind==='expression_statement'?ctx.projectionNode(model.projection,node.inputs.expression)||node:node;
-      const title=ctx.caption(displayNode),source=node.raw.replace(/\s+/g,' ').trim();
-      return {block,node,title,source,owner,detached:block.getRootBlock().id!=='rin_program'};
+      const title=model.easyItem?.title||(ctx.caption(displayNode)),source=node.raw.replace(/\s+/g,' ').trim();
+      const root=block.getRootBlock();
+      return {block,node,title,source,owner,detached:root.id!=='rin_program'&&!ctx.model(root)?.bound};
     }
     function findEntries(nextMode,search){
       const query=search.trim().toLocaleLowerCase(),workspace=ctx.workspace();
@@ -95,13 +94,29 @@
       $('navigatorResults').replaceChildren(fragment);
       $('navigatorHint').textContent=!entries.length?words('一致するブロックがありません。','No matching blocks.','没有匹配的积木。'):entries.length>100?words('100件を表示しています。検索して絞り込めます。','Showing 100 results. Search to narrow the list.','显示 100 个结果，请搜索以缩小范围。'):words(entries.length+'件 · 選ぶとその場所へ移動します。',entries.length+' results · Select to locate.',entries.length+' 个结果 · 选择以定位。');
     }
+    function renderTabs(){
+      const host=$('navigatorTabs');if(!host)return;
+      const partCount=parts().length;
+      const tabs=[
+        ['search',words('すべて','All','全部')],
+        ['functions',words('処理の一覧','Functions','函数')],
+        ['parts',words('未接続','Detached','未连接')+(partCount>0?' ('+partCount+')':'')]
+      ];
+      host.replaceChildren(...tabs.map(([id,title])=>{
+        const btn=document.createElement('button');btn.type='button';btn.setAttribute('role','tab');
+        btn.setAttribute('aria-selected',String(mode===id));
+        btn.textContent=title;
+        btn.onclick=()=>{mode=id;renderTabs();renderResults();};
+        return btn;
+      }));
+    }
     function openNavigator(nextMode='search'){
       if(!ctx.workspace())return;
       ctx.closeOverlays();returnFocus=document.activeElement;mode=nextMode;
-      $('navigatorTitle').textContent=mode==='parts'?words('未接続の部品','Detached parts','未连接的部件'):mode==='functions'?words('処理の一覧','Functions and events','函数与事件'):words('作品内を探す','Find in work','在作品中查找');
+      $('navigatorTitle').textContent=words('作品内を探す','Find in work','在作品中查找');
       const label=words('名前・関数・コードで検索','Search names, functions or code','搜索名称、函数或代码');
       $('navigatorSearchLabel').textContent=label;$('navigatorSearch').placeholder=label;$('navigatorSearch').value='';
-      renderResults();$('navigatorDialog').showModal();$('navigatorSearch').focus();
+      renderTabs();renderResults();$('navigatorDialog').showModal();$('navigatorSearch').focus();
     }
     async function showDisplaySettings(){
       if(!await ctx.flush())return;

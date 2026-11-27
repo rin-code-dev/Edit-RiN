@@ -1,5 +1,41 @@
 # Changelog
 
+## 4.3.0 — 2026-11-28
+
+## English
+
+Requires Android 11 or later.
+
+- Streamlined Block Mode UI: Compacted the bottom dock to `[+ Add] [Undo] [Redo] [More]`, consolidated the overflow menu to six core actions, unified work search tabs (`All`, `Functions`, `Detached`), unified palette categories into six groups with clean 1-line cards, and shrank the tapped-block bar to a 3-icon pill (`Duplicate`, `Delete`, `More`).
+- Detailed Default with Easy-Mode Onboarding: Set Detailed AST blocks as the default projection while preserving Easy mode switching in the menu and adding a dismissible quick-switch hint banner in Detailed mode so first-time users can discover Easy blocks in one tap.
+- Cleaner Canvas & PiP Layout: Removed redundant detached-part status rows, simplified block labels and grid contrast, kept PiP preview controls out of the top document bar in fullscreen block mode, and suppressed duplicate diagnostic/read-only banners.
+- Workspace & Visual Polish: Refined color palettes, typography, gallery cards, work creation flow, and editor/preview controls across light and dark themes.
+
+Edit:RiN includes a visual JavaScript block editor built with Blockly and Acorn. Blockly is licensed under Apache-2.0, and Acorn under MIT. Third-party license texts are available in the app's License information and in the corresponding source repository.
+
+## 日本語
+
+Android 11以降に対応しています。
+
+- ブロックモードUIの整理・スリム化: 下部ドックを `[＋ 追加] [Undo] [Redo] [⋮]` に集約し、その他メニューを6項目へ厳選、作品内検索を1つのタブ付きダイアログ（`すべて`・`処理の一覧`・`未接続`）へ統合しました。追加パレットも6カテゴリー・1行カード表示に統一し、ブロックタップ時の操作バーをアイコン3つ（`複製`・`削除`・`⋯`）の極小ピルに縮小しました。
+- 詳細モードのデフォルト化とかんたん切替案内: ブロックモードの初期表示を「詳細」に統一しつつ、初見の方でも「かんたんブロック」に気付いて1タップで切り替えられる閉じ可能な案内バナーを追加しました。
+- キャンバス表示とPiP重なりの整理: 未接続部品の冗長な説明行・日英二重表記・グリッドの主張を抑え、全画面ブロック時のPiP小窓位置と上部バー／エラー表示の重複を解消しました。
+- ワークスペース全体の洗練: ライト／ダークテーマの配色、タイポグラフィ、作品ギャラリーや新規作成ダイアログ、エディター周辺の操作感をブラッシュアップしました。
+
+Edit:RiNは、BlocklyとAcornを使用したブロック形式のJavaScript編集機能を備えています。BlocklyはApache-2.0、AcornはMITライセンスで提供されています。第三者ライセンスの全文は、アプリのライセンス情報と対応ソースのリポジトリで確認できます。
+
+## 中文
+
+需要 Android 11 或更高版本。
+
+- 积木模式界面精简重构: 将底部操作栏精简为 `[＋ 添加] [Undo] [Redo] [⋮]`，菜单整合为 6 项核心操作，作品内查找合并为带标签页（`全部`、`函数`、`未连接`）的统一弹窗；添加面板统一为 6 大分类与单行卡片，点击积木时的操作栏缩小为 3 图标胶囊（`复制`、`删除`、`⋯`）。
+- 默认详细模式与简易模式引导: 将详细 AST 积木设为默认模式，同时在详细模式底部增加可关闭的一键切换提示横幅，方便初次使用的用户快速发现并切换至简易积木。
+- 画布与 PiP 布局优化: 去除未连接部件的冗余文字行与重复英文后缀，柔化网格对比度，消除全屏积木模式下顶部栏与 PiP 小窗按钮及错误提示的重复显示。
+- 整体视觉与工作区打磨: 优化浅色与深色主题配色、排版、作品库卡片与新建作品流程。
+
+Edit:RiN 内置基于 Blockly 与 Acorn 构建的可视化 JavaScript 积木编辑器。Blockly 采用 Apache-2.0 许可证，Acorn 采用 MIT 许可证。第三方许可证全文可在应用的许可证信息及对应源码仓库中查看。
+
+
 ## 4.2.0 — 2026-11-21
 
 ## English

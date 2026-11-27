@@ -227,8 +227,10 @@ async function run() {
       await command('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:tapPoint.x,y:tapPoint.y}]});
       await command('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
       await waitFor(`!document.getElementById('blockActions').hidden`,'block actions shown on tap');
-      const labels=await evaluate(`Array.from(document.querySelectorAll('#blockActions button span')).map(s=>s.textContent)`);
-      assert.ok(labels.includes('項目を編集')&&labels.includes('コード')&&labels.includes('複製')&&labels.includes('削除'),JSON.stringify(labels));
+      const pillInfo=await evaluate(`({actions:Array.from(document.querySelectorAll('#blockActions button')).map(b=>b.dataset.action),aria:Array.from(document.querySelectorAll('#blockActions button')).map(b=>b.getAttribute('aria-label')),spans:document.querySelectorAll('#blockActions button span').length})`);
+      assert.deepEqual(pillInfo.actions,['duplicate','delete','more']);
+      assert.deepEqual(pillInfo.aria,['複製','削除','その他']);
+      assert.equal(pillInfo.spans,0,'block action pill must be icon-only unless showing an error');
       await command('Emulation.setDeviceMetricsOverride',{width:339,height:250,deviceScaleFactor:1,mobile:true});
       await waitFor(`innerHeight===250`,'return to short pane');
     });
@@ -237,7 +239,7 @@ async function run() {
       await evaluate(`document.getElementById('paletteToggle').click()`);
       const palette=await evaluate(`(() => {const p=document.getElementById('palette'),items=document.getElementById('paletteItems');items.scrollTop=items.scrollHeight;const last=items.lastElementChild.getBoundingClientRect(),r=p.getBoundingClientRect();return {hidden:p.hidden,top:r.top,bottom:r.bottom,height:r.height,listHeight:items.clientHeight,listScroll:items.scrollHeight,lastBottom:last.bottom};})()`);
       assert.equal(palette.hidden,false);
-      assert.equal(await evaluate(`getComputedStyle(document.getElementById('paletteTargetBar')).display!=='none' && document.getElementById('paletteTargetModeBtn').getBoundingClientRect().height>0`),true,'statement target controls stay available in a short pane');
+      assert.equal(await evaluate(`getComputedStyle(document.getElementById('paletteTargetBar')).display==='none' && !document.querySelector('#paletteItems .palette-item small')`),true,'palette hides target bar and 2nd-line JS snippets');
       assert.ok(palette.top>=0&&palette.bottom<=250&&palette.listHeight>0&&palette.listScroll>palette.listHeight,JSON.stringify(palette));
       assert.ok(palette.lastBottom<=palette.bottom,JSON.stringify(palette));
       await evaluate(`document.getElementById('paletteToggle').click();document.getElementById('help').click()`);
@@ -511,7 +513,9 @@ async function run() {
       assert.equal(await evaluate('document.documentElement.lang'), 'zh');
       if(process.env.BLOCKS_DARK_SCREENSHOT_PATH){const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(process.env.BLOCKS_DARK_SCREENSHOT_PATH,Buffer.from(shot.data,'base64'));}
       const previousMessages=await evaluate('__native.messages.filter(m=>m.type==="openCode").length');
-      await evaluate(`(() => {const node=RinBlocksEditor.projection.nodes.find(n=>n.kind==='raw_statement'&&n.raw.startsWith('class Particle'));RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+node.id));const button=Array.from(document.querySelectorAll('#blockActions button')).find(b=>b.textContent==='在代码中编辑');if(!button)throw Error('missing direct code action');button.click();})()`);
+      await evaluate(`(() => {const node=RinBlocksEditor.projection.nodes.find(n=>n.kind==='raw_statement'&&n.raw.startsWith('class Particle'));RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+node.id));const moreBtn=document.querySelector('#blockActions button[data-action="more"]');if(!moreBtn)throw Error('missing more action');moreBtn.click();})()`);
+      await waitFor(`document.getElementById('actionDialog').open`,'custom code more dialog');
+      await evaluate(`(() => {const btn=Array.from(document.querySelectorAll('#dialogChoices button')).find(b=>b.textContent==='在代码中编辑');if(!btn)throw Error('missing direct code action');btn.click();})()`);
       await waitFor(`__native.messages.filter(m=>m.type==="openCode").length>${previousMessages}`,'custom code navigation');
       assert.equal(await evaluate('__native.messages.filter(m=>m.type==="openCode").at(-1).start===__native.source.indexOf("class Particle")'),true);
     });
@@ -558,7 +562,7 @@ async function run() {
       const detached=await evaluate(`(async()=>{const n=RinBlocksEditor.projection.nodes.find(n=>n.kind==='expression_statement'&&n.raw.startsWith('circle('));const block=RinBlocksEditor.workspace.getBlockById('bound_'+n.id);block.unplug(false);block.moveBy(100,50);const ok=await __flush();return {ok,source:__native.source,parts:JSON.parse(__native.metadata).orphans};})()`);
       assert.equal(detached.ok,true);assert.equal(detached.source.includes('circle('),false);assert.equal(detached.source.includes('rect('),false);
       assert.equal(detached.parts.length,1);assert.equal(detached.parts[0].source,'circle(10,20,30);\nrect(40,50,60,70);');
-      assert.equal(await evaluate(`RinBlocksEditor.workspace.getAllBlocks(false).filter(block=>block.getInput('TITLE')?.fieldRow.some(field=>field.getText()?.includes('circle'))).length`),1);
+      assert.equal(await evaluate(`RinBlocksEditor.workspace.getAllBlocks(false).filter(block=>block.getInput('TITLE')?.fieldRow.some(field=>field.getText()==='円')).length`),1);
       await evaluate('__load()');await settled();
       assert.equal(await evaluate(`RinBlocksEditor.workspace.getTopBlocks(false).filter(block=>block.id!=='rin_program').length`),1);
       const source=await evaluate('__native.source');
@@ -576,7 +580,7 @@ async function run() {
         assert.equal(detached.parts.length,1);assert.match(detached.parts[0].source,/circle\(10,20,30\);[\s\S]*rect\(40,50,60,70\);/);
         assert.equal(detached.source.includes('background('),!wholeFunction);
         await evaluate('__load()');await settled();
-        assert.equal(await evaluate(`RinBlocksEditor.workspace.getAllBlocks(false).filter(block=>block.getInput('TITLE')?.fieldRow.some(field=>field.getText()?.includes('circle'))).length`),1);
+        assert.equal(await evaluate(`RinBlocksEditor.workspace.getAllBlocks(false).filter(block=>block.getInput('TITLE')?.fieldRow.some(field=>field.getText()==='円')).length`),1);
         assert.equal(await evaluate('JSON.parse(__native.metadata).orphans.length'),1);
       }
     });
@@ -794,21 +798,11 @@ async function run() {
       })()`);
       await evaluate(`(() => {
         const block = RinBlocksEditor.workspace.getBlockById(${JSON.stringify(fillBlockId)});
-        RinBlocksEditor.showBlockActions(block);
+        const swatch = block.getField('SWATCH_COLOR');
+        if (!swatch) throw new Error('Missing inline SWATCH_COLOR on fill block');
+        swatch.showEditor_();
       })()`);
-      const actionButtons = await evaluate(`(() => {
-        return Array.from(document.querySelectorAll('#blockActions button')).map(b => ({
-          text: b.textContent.trim(),
-          hasSwatch: !!b.querySelector('.swatch')
-        }));
-      })()`);
-      assert.ok(actionButtons.some(b => b.text === '色' && b.hasSwatch), 'Action bar on fill block must include color button with swatch');
-
-      await evaluate(`(() => {
-        const btn = Array.from(document.querySelectorAll('#blockActions button')).find(b => b.textContent.trim() === '色');
-        btn.click();
-      })()`);
-      assert.equal(await evaluate(`document.getElementById('actionDialog').open`), true, 'Color picker dialog should open');
+      assert.equal(await evaluate(`document.getElementById('actionDialog').open`), true, 'Color picker dialog should open from inline swatch');
       assert.equal(await evaluate(`document.querySelectorAll('.rin-color-preset-btn').length >= 16`), true, 'Preset buttons should be present');
 
       await evaluate(`(() => {
@@ -840,20 +834,15 @@ async function run() {
       await evaluate(`(() => {
         const block = RinBlocksEditor.workspace.getBlockById(${JSON.stringify(stmtBlockId)});
         RinBlocksEditor.showBlockActions(block);
+        document.querySelector('#blockActions button[data-action="more"]').click();
       })()`);
-      const buttons = await evaluate(`(() => {
-        return Array.from(document.querySelectorAll('#blockActions button')).map(b => ({
-          text: b.textContent.trim(),
-          hasSwatch: !!b.querySelector('.swatch')
-        }));
-      })()`);
-      assert.ok(buttons.some(b => b.text === '色' && b.hasSwatch), 'Action bar on background statement must include color button');
-
+      await waitFor(`document.getElementById('actionDialog').open`, 'more menu open for background statement');
       await evaluate(`(() => {
-        const btn = Array.from(document.querySelectorAll('#blockActions button')).find(b => b.textContent.trim() === '色');
+        const btn = Array.from(document.querySelectorAll('#dialogChoices button')).find(b => b.textContent.trim() === '色を選ぶ');
+        if (!btn) throw new Error('Missing Choose color in more menu');
         btn.click();
       })()`);
-      assert.equal(await evaluate(`document.getElementById('actionDialog').open`), true, 'Dialog should open for background');
+      await waitFor(`!!document.querySelector('.rin-color-picker')`, 'Color picker opened from more menu');
 
       await evaluate(`(() => {
         const preset = Array.from(document.querySelectorAll('.rin-color-preset-btn')).find(b => b.dataset.color.toLowerCase() === '#0984e3');
@@ -865,13 +854,11 @@ async function run() {
       await settled();
       assert.ok((await evaluate(`__native.source`)).includes('background("#0984e3")'), 'Source should contain background("#0984e3")');
 
-      // Test backdrop dismissal
+      // Test backdrop dismissal via inline swatch
       await evaluate(`(() => {
-        const stmtNode = RinBlocksEditor.projection.nodes.find(n => n.kind === 'expression_statement');
-        const block = RinBlocksEditor.workspace.getBlockById('bound_' + stmtNode.id);
-        RinBlocksEditor.showBlockActions(block);
-        const btn = Array.from(document.querySelectorAll('#blockActions button')).find(b => b.textContent.trim() === '色');
-        btn.click();
+        const callNode = RinBlocksEditor.projection.nodes.find(n => n.calleeName === 'background');
+        const block = RinBlocksEditor.workspace.getBlockById('bound_' + callNode.id);
+        block.getField('SWATCH_COLOR').showEditor_();
       })()`);
       assert.equal(await evaluate(`document.getElementById('actionDialog').open`), true, 'Dialog should be open again');
       await evaluate(`(() => {
@@ -1139,8 +1126,10 @@ async function run() {
       await loadSource('let x=1;let y=2;function draw(){let local=3;circle(x,local,10);}function other(){let second=4;circle(x,second,20);}');
       const choices=await evaluate(`RinBlocksEditor.projection.nodes.filter(n=>n.kind==='identifier'&&n.raw==='x'&&!n.declaration).map(n=>RinBlocksEditor.workspace.getBlockById('bound_'+n.id).getField('F_name').getOptions().map(x=>x[1]))`);
       assert.ok(choices[0].includes('local')&&!choices[0].includes('second'));assert.ok(choices[1].includes('second')&&!choices[1].includes('local'));
-      await evaluate(`(() => {const n=RinBlocksEditor.projection.nodes.find(n=>n.kind==='identifier'&&n.raw==='x'&&!n.declaration);RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+n.id));Array.from(document.querySelectorAll('#blockActions button')).find(b=>b.textContent==='名前').click();})()`);
-      await waitFor('document.getElementById("actionDialog").open','visible names');await clickChoice('local');
+      await evaluate(`(() => {const n=RinBlocksEditor.projection.nodes.find(n=>n.kind==='identifier'&&n.raw==='x'&&!n.declaration);RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+n.id));document.querySelector('#blockActions button[data-action="more"]').click();})()`);
+      await waitFor('document.getElementById("actionDialog").open','more menu for identifier');
+      await clickChoice('名前を選ぶ');
+      await waitFor('document.getElementById("actionDialog").open && Array.from(document.querySelectorAll("#dialogChoices button")).some(b=>b.textContent==="local")','visible names');await clickChoice('local');
       assert.equal(await evaluate('__flush()'),true);await settled();
       const changedSource=await evaluate('__native.source');assert.ok(changedSource.includes('circle(local,local,10)'),changedSource);
       assert.ok((await evaluate('__native.source')).includes('circle(x,second,20)'));
@@ -1165,9 +1154,9 @@ async function run() {
       const newer='function draw(){background(0);}';await loadSource(newer);
       await evaluate(`document.querySelector('#dialogChoices button.filled').click()`);await sleep(150);assert.equal(await evaluate('__native.source'),newer);
       await loadSource('function fill(first,second){} function draw(){fill(1,2);clear();}');
-      assert.equal(await evaluate(`['fill','clear'].every(name=>{const n=RinBlocksEditor.projection.nodes.find(n=>n.calleeName===name);RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+n.id));return !Array.from(document.querySelectorAll('#blockActions button')).some(button=>button.textContent==='色');})`),true,'custom functions and clear must not receive the p5 colour-argument rewrite');
+      assert.equal(await evaluate(`['fill','clear'].every(name=>{const n=RinBlocksEditor.projection.nodes.find(n=>n.calleeName===name);const blk=RinBlocksEditor.workspace.getBlockById('bound_'+n.id);return !blk.getField('SWATCH_COLOR');})`),true,'custom functions and clear must not receive the p5 colour-argument rewrite');
     });
-    await check('short split panes retain visible action labels and field ACKs preserve detached blocks and collapsed state',async()=>{
+    await check('short split panes retain compact icon actions and field ACKs preserve detached blocks and collapsed state',async()=>{
       await loadSource('function draw(){circle(1,2,3);}');
       await evaluate(`RinBlocksEditor.addTemplate('rect','tray')`);await settled();
       await evaluate(`(() => {const fn=RinBlocksEditor.projection.nodes.find(n=>n.kind==='function');RinBlocksEditor.workspace.getBlockById('bound_'+fn.id).setCollapsed(true);})()`);
@@ -1178,7 +1167,7 @@ async function run() {
       const after=await evaluate('JSON.parse(__native.metadata)');assert.deepEqual(after.orphans,original.orphans);assert.deepEqual(after.collapsed,original.collapsed);
       await command('Emulation.setDeviceMetricsOverride',{width:390,height:320,deviceScaleFactor:1,mobile:true});
       await evaluate(`(() => {const n=RinBlocksEditor.projection.nodes.find(n=>n.kind==='function');RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+n.id));})()`);
-      assert.equal(await evaluate(`Array.from(document.querySelectorAll('#blockActions button span')).every(span=>getComputedStyle(span).display!=='none')`),true);
+      assert.equal(await evaluate(`Array.from(document.querySelectorAll('#blockActions button')).every(b=>b.classList.contains('icon-only')&&b.getBoundingClientRect().width>=34)`),true);
       await command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
     });
     await check('rejected connections keep an actionable message until dismissed',async()=>{
@@ -1204,9 +1193,10 @@ async function run() {
     });
     await check('detached parts have a visible state, avoid the program and can be located from their list',async()=>{
       await loadSource('function draw(){circle(10,20,30);}');await evaluate(`RinBlocksEditor.addTemplate('rect','tray')`);await settled();
-      const result=await evaluate(`(()=>{const parts=RinBlocksEditor.workspace.getTopBlocks(false).filter(b=>b.id!=='rin_program'),part=parts[0],a=part.getBoundingRectangle(),b=RinBlocksEditor.workspace.getBlockById('rin_program').getBoundingRectangle();return {overlap:a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top,label:part.getInput('DETACHED_STATUS').fieldRow[0].getText(),badge:document.getElementById('partsBadge').textContent,source:__native.source,edits:__native.edits.length};})()`);
-      assert.equal(result.overlap,false);assert.match(result.label,/未接続/);assert.match(result.badge,/1/);
+      const result=await evaluate(`(()=>{const parts=RinBlocksEditor.workspace.getTopBlocks(false).filter(b=>b.id!=='rin_program'),part=parts[0],a=part.getBoundingRectangle(),b=RinBlocksEditor.workspace.getBlockById('rin_program').getBoundingRectangle();return {overlap:a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top,hasExtraRow:!!part.getInput('DETACHED_STATUS'),hasDetachedClass:part.getSvgRoot().classList.contains('rin-detached'),badge:document.getElementById('partsBadge').textContent,source:__native.source,edits:__native.edits.length};})()`);
+      assert.equal(result.overlap,false);assert.equal(result.hasExtraRow,false);assert.equal(result.hasDetachedClass,true);assert.match(result.badge,/1/);
       await evaluate(`document.getElementById('partsBadge').click()`);assert.equal(await evaluate(`document.getElementById('navigatorDialog').open`),true);
+      assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#navigatorTabs button')).map(b=>b.textContent)`),['すべて','処理の一覧','未接続 (1)']);
       assert.equal(await evaluate(`document.querySelectorAll('#navigatorResults button').length`),1);
       await evaluate(`document.querySelector('#navigatorResults button').click()`);
       assert.equal(await evaluate(`Blockly.getSelected()?.getRootBlock().id!=='rin_program'`),true);
@@ -1341,7 +1331,7 @@ async function run() {
       assert.match(await evaluate('__native.source'),/35/);assert.equal(await evaluate(`document.body.classList.contains('native-chrome')`),true);
       await evaluate(`__load({nativeChrome:true,readOnly:true})`);await waitFor('RinBlocksEditor.document.readOnly&&!RinBlocksEditor.document.loading','native read only');
       await nativeCommand('add');await sleep(80);assert.equal(await evaluate(`document.getElementById('palette').hidden`),true);
-      await waitFor(`__native.messages.filter(m=>m.type==='chrome').at(-1)?.notice===true`,'read only notice');
+      assert.equal(await evaluate(`__native.messages.filter(m=>m.type==='chrome').at(-1)?.notice`),false,'read-only state does not duplicate native sample banner with a floating pill');
       await evaluate(`__load({nativeChrome:false,readOnly:false,preferences:{fontSize:12.5,density:'standard'}})`);await settled();
       assert.equal(await evaluate(`getComputedStyle(document.getElementById('tools')).display`),'flex');
     });
@@ -1379,11 +1369,14 @@ async function run() {
       await waitFor(`__native.messages.filter(m=>m.type==='chrome').at(-1)?.palette===true`,'chrome palette true');
       const sheetInfo=await evaluate(`(()=>{
         const r=document.getElementById('palette').getBoundingClientRect();
-        const targetText=document.getElementById('paletteTargetLabel')?.textContent||'';
-        return {height:r.height,inner:innerHeight,targetText};
+        const targetDisplay=getComputedStyle(document.getElementById('paletteTargetBar')).display;
+        const cats=Array.from(document.querySelectorAll('#categories button')).map(b=>b.textContent);
+        return {height:r.height,inner:innerHeight,targetDisplay,cats,hasSmall:!!document.querySelector('#paletteItems .palette-item small')};
       })()`);
       assert.ok(sheetInfo.height<=sheetInfo.inner*0.6,'half-sheet keeps upper canvas visible: '+JSON.stringify(sheetInfo));
-      assert.ok(sheetInfo.targetText.startsWith('処理の追加先: '),'target bar shows the statement insertion target: '+sheetInfo.targetText);
+      assert.equal(sheetInfo.targetDisplay,'none','target bar is hidden for clean 1-line palette');
+      assert.equal(sheetInfo.hasSmall,false,'raw JS snippets are hidden in Detailed palette too');
+      assert.deepEqual(sheetInfo.cats,['すべて','描く','色と効果','配置と制御','変数と計算','イベント','拡張']);
       await evaluate(`(()=>{
         document.getElementById('search').value='circle';
         document.getElementById('search').dispatchEvent(new Event('input'));
@@ -1395,6 +1388,102 @@ async function run() {
       assert.equal(await evaluate(`document.getElementById('palette').hidden`),true,'palette closes after 1-tap insertion');
       await waitFor(`__native.messages.filter(m=>m.type==='chrome').at(-1)?.palette===false`,'chrome palette false after insertion');
       await evaluate(`document.getElementById('search').value='';document.getElementById('search').dispatchEvent(new Event('input'));__load({nativeChrome:false})`);
+      await settled();
+    });
+    await check('easy mode removes outer wrapper, flattens 1-line blocks with capsules, switches cleanly, and keeps streamlined actions',async()=>{
+      const richSource='let size = 80;\nfunction setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(10, 14, 26, 36);\n  push();\n  translate(width / 2, height / 2);\n  for (let i = 0; i < 12; i++) {\n    rotate(TWO_PI / 12);\n    circle(72, 0, size);\n  }\n  pop();\n}\n';
+      await evaluate(`__native.source=${JSON.stringify(richSource)};__native.metadata=null;__load({nativeChrome:true,easyMode:true})`);
+      await settled();
+      await waitFor(`RinBlocksEditor.easyMode===true && __native.messages.some(m=>m.type==='chrome'&&m.easy===true&&!m.busy)`,'easy mode active');
+
+      // No rin_program wrapper; top-level cards and 0 false detached parts!
+      const summary=await evaluate(`(()=>{
+        const all=RinBlocksEditor.workspace.getAllBlocks(false);
+        return {
+          hasProgramRoot:!!RinBlocksEditor.workspace.getBlockById('rin_program'),
+          totalBlocks:all.length,
+          parts:__native.messages.filter(m=>m.type==='chrome').at(-1)?.parts,
+          kinds:Array.from(RinBlocksEditor.easyGraph.items.values()).map(i=>i.easyKind)
+        };
+      })()`);
+      assert.equal(summary.hasProgramRoot,false,'Easy mode must not render rin_program wrapper');
+      assert.equal(summary.parts,0,'Top-level setup/draw cards must not count as detached parts');
+      assert.ok(summary.totalBlocks<=8,'Rich radial sketch must flatten into <= 8 blocks, got '+summary.totalBlocks);
+      assert.ok(summary.kinds.includes('trail_bg')&&summary.kinds.includes('radial_loop'),'Must project trail_bg and radial_loop');
+
+      // Easy palette shows 6 unified categories, hides target bar and raw code, and keeps Make Variable inside Vars & math
+      await nativeCommand('add');
+      await waitFor(`!document.getElementById('palette').hidden`,'easy palette open');
+      const palState=await evaluate(`({
+        targetDisplay:getComputedStyle(document.getElementById('paletteTargetBar')).display,
+        cats:Array.from(document.querySelectorAll('#categories button')).map(b=>b.textContent),
+        hasSmall:!!document.querySelector('#paletteItems .palette-item small'),
+        makeVarOnAll:!!document.querySelector('.palette-make-var-btn')
+      })`);
+      assert.equal(palState.targetDisplay,'none','Target selector bar must be hidden in Easy mode');
+      assert.equal(palState.hasSmall,false,'Raw JS code lines must be omitted in Easy mode palette');
+      assert.equal(palState.makeVarOnAll,false,'Make Variable banner must not clutter All category');
+      assert.deepEqual(palState.cats,['すべて','描く','色と効果','配置と制御','変数と計算','イベント','拡張']);
+      await nativeCommand('dismiss');
+      await waitFor(`document.getElementById('palette').hidden`,'easy palette closed');
+
+      // Capsule editor updates radial count in both loop header and rotate(TWO_PI / N)
+      await evaluate(`(()=>{
+        const radial=Array.from(RinBlocksEditor.easyGraph.items.values()).find(i=>i.easyKind==='radial_loop');
+        const blk=RinBlocksEditor.workspace.getBlockById('bound_'+radial.id);
+        RinBlocksEditor.openCapsuleEditor(blk,'count');
+      })()`);
+      await waitFor(`document.getElementById('actionDialog').open`,'capsule dialog open');
+      await evaluate(`Array.from(document.querySelectorAll('.rin-capsule-preset-chip')).find(b=>b.textContent==='16').click()`);
+      await waitFor(`__native.source.includes('i < 16') && __native.source.includes('TWO_PI / 16')`,'capsule preset applied');
+      await settled();
+
+      // Simplified floating action pill has icon-only Duplicate, Delete, More
+      await evaluate(`(()=>{
+        const circleItem=Array.from(RinBlocksEditor.easyGraph.items.values()).find(i=>i.calleeName==='circle');
+        RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+circleItem.id));
+      })()`);
+      const actionLabels=await evaluate(`Array.from(document.querySelectorAll('#blockActions button')).map(b=>b.getAttribute('aria-label'))`);
+      assert.deepEqual(actionLabels,['複製','削除','その他']);
+
+      // Switching Easy -> Detailed -> Easy preserves exact source
+      const srcBeforeSwitch=await evaluate('__native.source');
+      await nativeCommand('toggleEasyMode');
+      await waitFor(`RinBlocksEditor.easyMode===false && !!RinBlocksEditor.workspace.getBlockById('rin_program')`,'switched to detailed mode');
+      assert.equal(await evaluate('__native.source'),srcBeforeSwitch);
+      await nativeCommand('setEasyMode',{easy:true});
+      await waitFor(`RinBlocksEditor.easyMode===true && !RinBlocksEditor.workspace.getBlockById('rin_program')`,'switched back to easy mode');
+      assert.equal(await evaluate('__native.source'),srcBeforeSwitch);
+
+      // Smart 1-tap insertion in Easy mode appends to draw without opening dialog, and inline + Else toggles cleanly
+      await nativeCommand('add');
+      await waitFor(`!document.getElementById('palette').hidden`,'easy palette reopen');
+      await evaluate(`(()=>{
+        document.getElementById('search').value='if';
+        document.getElementById('search').dispatchEvent(new Event('input'));
+        document.querySelector('#paletteItems .palette-item').click();
+      })()`);
+      await waitFor(`__native.source.includes('if (mouseIsPressed)')`,'1-tap if inserted into draw');
+      await settled();
+      assert.equal(await evaluate(`document.getElementById('actionDialog').open`),false);
+      await evaluate(`(()=>{
+        const ifItem=Array.from(RinBlocksEditor.easyGraph.items.values()).find(i=>i.easyKind==='if_stmt');
+        const blk=RinBlocksEditor.workspace.getBlockById('bound_'+ifItem.id);
+        blk.getField('CHIP_ADD_ELSE').showEditor_();
+      })()`);
+      await waitFor(`__native.source.includes('else {')`,'inline + Else added else branch');
+      await settled();
+
+      // Duplicating an Easy block creates a detached Easy part with parts===1
+      await evaluate(`(()=>{
+        const circleItem=Array.from(RinBlocksEditor.easyGraph.items.values()).find(i=>i.calleeName==='circle');
+        RinBlocksEditor.showBlockActions(RinBlocksEditor.workspace.getBlockById('bound_'+circleItem.id));
+        document.querySelector('#blockActions button[data-action="duplicate"]').click();
+      })()`);
+      await waitFor(`__native.messages.filter(m=>m.type==='chrome').at(-1)?.parts===1`,'easy duplicate creates 1 detached part');
+      await settled();
+
+      await evaluate(`document.getElementById('search').value='';document.getElementById('search').dispatchEvent(new Event('input'));__load({nativeChrome:false,easyMode:false})`);
       await settled();
     });
     passed=true;

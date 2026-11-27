@@ -1,11 +1,12 @@
 package com.hikariatelier.app
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import com.hikariatelier.app.ui.theme.CodeSyntaxPalette
+import com.hikariatelier.app.ui.theme.defaultSyntaxPalette
 
 internal enum class ProjectTextSyntax { JAVASCRIPT, HTML, CSS, JSON, SHADER, PLAIN }
 
@@ -18,10 +19,15 @@ internal fun projectTextSyntax(file: String): ProjectTextSyntax = when (file.sub
     else -> ProjectTextSyntax.PLAIN
 }
 
-internal fun projectFileHighlighter(file: String, dark: Boolean, errors: Set<Int>): VisualTransformation =
+internal fun projectFileHighlighter(
+    file: String,
+    dark: Boolean,
+    errors: Set<Int>,
+    palette: CodeSyntaxPalette = defaultSyntaxPalette(dark)
+): VisualTransformation =
     when (val syntax = projectTextSyntax(file)) {
-        ProjectTextSyntax.JAVASCRIPT -> JavaScriptHighlighter(dark, errors)
-        else -> ProjectTextHighlighter(syntax, dark, errors)
+        ProjectTextSyntax.JAVASCRIPT -> JavaScriptHighlighter(dark, errors, palette)
+        else -> ProjectTextHighlighter(syntax, dark, errors, palette)
     }
 
 private val SHADER_KEYWORDS = setOf(
@@ -57,16 +63,17 @@ private val SHADER_BUILTINS = setOf(
 internal class ProjectTextHighlighter(
     private val syntax: ProjectTextSyntax,
     dark: Boolean,
-    private val errorLines: Set<Int> = emptySet()
+    private val errorLines: Set<Int> = emptySet(),
+    palette: CodeSyntaxPalette = defaultSyntaxPalette(dark)
 ) : VisualTransformation {
-    private val keyword = SpanStyle(color = if (dark) Color(0xFFC792EA) else Color(0xFF7B1FA2))
-    private val shaderType = SpanStyle(color = if (dark) Color(0xFF82AAFF) else Color(0xFF1565C0))
-    private val shaderBuiltin = SpanStyle(color = if (dark) Color(0xFF80CBC4) else Color(0xFF00695C))
-    private val preprocessor = SpanStyle(color = if (dark) Color(0xFFFFCB6B) else Color(0xFF9A5B00))
-    private val string = SpanStyle(color = if (dark) Color(0xFFC3E88D) else Color(0xFF2E7D32))
-    private val number = SpanStyle(color = if (dark) Color(0xFFF78C6C) else Color(0xFFD84315))
-    private val comment = SpanStyle(color = if (dark) Color(0xFF78909C) else Color(0xFF607D8B))
-    private val error = SpanStyle(background = if (dark) Color(0x334F1118) else Color(0x22B3261E))
+    private val keyword = SpanStyle(color = palette.keyword)
+    private val shaderType = SpanStyle(color = palette.shaderType)
+    private val shaderBuiltin = SpanStyle(color = palette.shaderBuiltin)
+    private val preprocessor = SpanStyle(color = palette.preprocessor)
+    private val string = SpanStyle(color = palette.string)
+    private val number = SpanStyle(color = palette.number)
+    private val comment = SpanStyle(color = palette.comment)
+    private val error = SpanStyle(background = palette.errorLineBackground)
 
     override fun filter(text: AnnotatedString): TransformedText {
         val source = text.text

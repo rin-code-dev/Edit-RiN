@@ -1,34 +1,24 @@
 package com.hikariatelier.app
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import com.hikariatelier.app.ui.theme.CodeSyntaxPalette
+import com.hikariatelier.app.ui.theme.defaultSyntaxPalette
 
 class JavaScriptHighlighter(
     darkTheme: Boolean,
-    private val errorLines: Set<Int> = emptySet()
+    private val errorLines: Set<Int> = emptySet(),
+    palette: CodeSyntaxPalette = defaultSyntaxPalette(darkTheme)
 ) : VisualTransformation {
-    private val keywordStyle = SpanStyle(
-        color = if (darkTheme) Color(0xFFC792EA) else Color(0xFF7B1FA2)
-    )
-    private val functionStyle = SpanStyle(
-        color = if (darkTheme) Color(0xFF82AAFF) else Color(0xFF1565C0)
-    )
-    private val stringStyle = SpanStyle(
-        color = if (darkTheme) Color(0xFFC3E88D) else Color(0xFF2E7D32)
-    )
-    private val numberStyle = SpanStyle(
-        color = if (darkTheme) Color(0xFFF78C6C) else Color(0xFFD84315)
-    )
-    private val commentStyle = SpanStyle(
-        color = if (darkTheme) Color(0xFF78909C) else Color(0xFF607D8B)
-    )
-    private val errorLineStyle = SpanStyle(
-        background = if (darkTheme) Color(0x334F1118) else Color(0x22B3261E)
-    )
+    private val keywordStyle = SpanStyle(color = palette.keyword)
+    private val functionStyle = SpanStyle(color = palette.function)
+    private val stringStyle = SpanStyle(color = palette.string)
+    private val numberStyle = SpanStyle(color = palette.number)
+    private val commentStyle = SpanStyle(color = palette.comment)
+    private val errorLineStyle = SpanStyle(background = palette.errorLineBackground)
     private var cachedInput: AnnotatedString? = null
     private var cachedResult = AnnotatedString("")
 

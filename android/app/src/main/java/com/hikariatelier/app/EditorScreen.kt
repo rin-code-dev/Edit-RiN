@@ -534,7 +534,13 @@ internal fun EditorScreen(
     val workSaving = workManagementViewModel.workSaving
     if (workSaving && workManagementViewModel.showBlockingProgress) {
         Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
-            Surface(shape = RoundedCornerShape(16.dp)) {
+            Surface(
+                shape = UNIT_SHAPE,
+                color = colors.surface,
+                contentColor = colors.onSurface,
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+                tonalElevation = 0.dp
+            ) {
                 Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp))
                     Spacer(Modifier.width(16.dp))
@@ -1037,6 +1043,23 @@ internal fun EditorScreen(
         }
     }
 
+    fun openNewWorkStudio(
+        folder: String = "",
+        category: WorkTemplateCategory = WorkTemplateCategory.BASIC
+    ) {
+        val owner = activeWorkId
+        val activation = sessionViewModel.blockEditorActivationGeneration
+        if (sessionViewModel.blockEditorFlusher == null || !sessionViewModel.blockModeState(owner).value) {
+            workManagementViewModel.openNewWorkDialog(folder, category)
+        } else {
+            editorToolScope.launch {
+                if (flushOwnedBlockEditor(owner, activation)) {
+                    workManagementViewModel.openNewWorkDialog(folder, category)
+                }
+            }
+        }
+    }
+
     val currentSaveLabel = when {
         workManagementViewModel.operationState == WorkOperationState.CONFLICT -> uiText("保存内容の競合")
         workManagementViewModel.operationState == WorkOperationState.FAILED -> uiText("保存失敗")
@@ -1094,7 +1117,8 @@ internal fun EditorScreen(
             try {
                 combine(
                     snapshotFlow {
-                        workMenuExpanded && !workManagementViewModel.thumbnailScrolling &&
+                        workMenuExpanded && !workManagementViewModel.showAddDialog &&
+                            !workManagementViewModel.thumbnailScrolling &&
                             !workManagementViewModel.workSaving && !sessionViewModel.assetBusy &&
                             sessionViewModel.snapshotOperationWorkId == null &&
                             !recordingViewModel.isPreviewRecording && !recordingViewModel.isRecordingSaving &&
@@ -1394,7 +1418,12 @@ internal fun EditorScreen(
                     workManagementViewModel.selectWork(work.id, openMenu)
                 }
             },
-            onAdd = { workManagementViewModel.newWorkFolder = workGalleryState.selectedFolder?.takeIf { it in workManagementViewModel.galleryFolders }.orEmpty(); closeWorkGallery(); showAddDialog = true },
+            onAdd = {
+                openNewWorkStudio(
+                    folder = workGalleryState.selectedFolder?.takeIf { it in workManagementViewModel.galleryFolders }.orEmpty(),
+                    category = WorkTemplateCategory.BASIC
+                )
+            },
             state = workGalleryState,
             modifier = modifier.semantics { paneTitle = uiText("作品") },
             onTogglePin = { workManagementViewModel.togglePin(it.id) },
@@ -1542,6 +1571,12 @@ internal fun EditorScreen(
             tweetModeEnabled = sessionViewModel.tweetModeEnabled,
             onToggleTweetMode = { sessionViewModel.tweetModeEnabled = !sessionViewModel.tweetModeEnabled },
             onOpenMinify = { openCodeTool { sessionViewModel.showMinifySheet = true } },
+            onCreateNewWork = {
+                openNewWorkStudio(
+                    folder = activeWork?.folderName.orEmpty(),
+                    category = if (isBlockModeActive) WorkTemplateCategory.BLOCKS else WorkTemplateCategory.BASIC
+                )
+            },
             textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() },
             showButtons = showButtons
@@ -1589,7 +1624,8 @@ internal fun EditorScreen(
 
     @Composable
     fun ParameterButton(
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        borderless: Boolean = false
     ) {
         com.hikariatelier.app.ParameterButton(
             parameterCount = liveParameterCount,
@@ -1600,13 +1636,15 @@ internal fun EditorScreen(
             onClick = ::openPreviewParameters,
             textTranslator = { s, args -> uiText(s, *args) },
             modifier = modifier,
-            active = showParameterSheet
+            active = showParameterSheet,
+            borderless = borderless
         )
     }
 
     @Composable
     fun PreviewActionsToggleButton(
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        borderless: Boolean = false
     ) {
         com.hikariatelier.app.PreviewActionsToggleButton(
             isRecordingOrCountingDown = isRecordingOrCountingDown,
@@ -1615,7 +1653,8 @@ internal fun EditorScreen(
             colors = colors,
             onClick = { previewActionsExpanded = !previewActionsExpanded },
             textTranslator = { s, args -> uiText(s, *args) },
-            modifier = modifier
+            modifier = modifier,
+            borderless = borderless
         )
     }
 
@@ -1718,7 +1757,7 @@ internal fun EditorScreen(
                         tint = if (hasUnsavedChanges) colors.primary else null,
                         dotColor = if (hasUnsavedChanges) colors.primary else null
                     )
-                    DropdownMenu(
+                    UnitDropdownMenu(
                         expanded = historyExpanded,
                         onDismissRequest = { historyExpanded = false }
                     ) {
@@ -1760,7 +1799,7 @@ internal fun EditorScreen(
                         label = uiText("設定"),
                         onClick = { settingsExpanded = true }
                     )
-                    DropdownMenu(
+                    UnitDropdownMenu(
                         expanded = settingsExpanded,
                         onDismissRequest = { settingsExpanded = false }
                     ) {
@@ -1993,54 +2032,81 @@ internal fun EditorScreen(
 
     @Composable
     fun ControlBar() {
+        val barHeight = if (isLandscape) 32.dp else 36.dp
+        val unitBorderColor = if (isError || hasConsoleError) {
+            colors.error.copy(alpha = 0.85f)
+        } else {
+            colors.outlineVariant
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (isLandscape) 36.dp else 46.dp)
-                .padding(vertical = if (isLandscape) 2.dp else 4.dp),
+                .then(
+                    if (isLandscape) {
+                        Modifier.height(36.dp).padding(vertical = 2.dp)
+                    } else {
+                        Modifier.padding(top = if (showResizeHandles) 0.dp else 4.dp, bottom = 6.dp)
+                    }
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RunStatusControls(
-                isError = isError,
-                isPaused = isPaused,
-                hasPendingChanges = previewHasChanges && !preview.isLoading,
-                colors = colors,
-                height = if (isLandscape) 32.dp else 36.dp,
-                buttonSize = if (isLandscape) 26.dp else 28.dp,
-                iconSize = if (isLandscape) 15.dp else 16.dp,
-                onTogglePause = ::togglePreviewPlayback,
-                onReload = { runSketch() },
-                textTranslator = { s, args -> uiText(s, *args) },
-                onStepFrame = { preview.stepFrame() }
-            )
+            Surface(
+                shape = UNIT_CONTROL_SHAPE,
+                color = colors.surface,
+                border = BorderStroke(UNIT_BORDER_WIDTH, unitBorderColor),
+                tonalElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.height(barHeight).padding(end = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RunStatusControls(
+                        isError = isError,
+                        isPaused = isPaused,
+                        hasPendingChanges = previewHasChanges && !preview.isLoading,
+                        colors = colors,
+                        height = barHeight,
+                        buttonSize = if (isLandscape) 26.dp else 28.dp,
+                        iconSize = if (isLandscape) 15.dp else 16.dp,
+                        onTogglePause = ::togglePreviewPlayback,
+                        onReload = { runSketch() },
+                        textTranslator = { s, args -> uiText(s, *args) },
+                        onStepFrame = { preview.stepFrame() },
+                        borderless = true
+                    )
 
-            Spacer(Modifier.width(4.dp))
+                    Box(
+                        Modifier
+                            .padding(horizontal = 2.dp)
+                            .width(1.dp)
+                            .height(16.dp)
+                            .background(colors.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
+                    )
 
-            ConsoleButton(
-                hasError = hasConsoleError,
-                entryCount = consoleEntries.size,
-                colors = colors,
-                height = if (isLandscape) 32.dp else 36.dp,
-                minWidth = if (isLandscape) 32.dp else 36.dp,
-                iconSize = if (isLandscape) 15.dp else 16.dp,
-                onClick = { showConsole = !showConsole },
-                textTranslator = { s, args -> uiText(s, *args) }
-            )
+                    ConsoleButton(
+                        hasError = hasConsoleError,
+                        entryCount = consoleEntries.size,
+                        colors = colors,
+                        height = barHeight,
+                        minWidth = if (isLandscape) 32.dp else 34.dp,
+                        iconSize = if (isLandscape) 15.dp else 16.dp,
+                        onClick = { showConsole = !showConsole },
+                        textTranslator = { s, args -> uiText(s, *args) },
+                        borderless = true
+                    )
 
-            Spacer(Modifier.width(4.dp))
+                    ParameterButton(borderless = true)
 
-            ParameterButton()
-
-            Spacer(Modifier.width(4.dp))
-
-            PreviewActionsToggleButton()
+                    PreviewActionsToggleButton(borderless = true)
+                }
+            }
 
             Spacer(Modifier.weight(1f))
 
             SaveRestoreControls(
                 hasUnsavedChanges = hasUnsavedChanges,
                 colors = colors,
-                height = if (isLandscape) 32.dp else 36.dp,
+                height = barHeight,
                 buttonSize = if (isLandscape) 26.dp else 28.dp,
                 iconSize = if (isLandscape) 16.dp else 17.dp,
                 onSnapshot = { editUserWork { showSnapshotSheet = true } },
@@ -2247,6 +2313,12 @@ internal fun EditorScreen(
                 }
             },
             onOpenFullPreview = { openFullPreviewFromEditor() },
+            onOpenBlockExamples = {
+                openNewWorkStudio(
+                    folder = activeWork?.folderName.orEmpty(),
+                    category = WorkTemplateCategory.BLOCKS
+                )
+            },
             documentLeadingContent = if (isLandscape) ({
                 CompactWorkTitleButton(
                     title = activeWork?.title,
@@ -2551,7 +2623,23 @@ internal fun EditorScreen(
 
     PreviewMediaSheets(models, preview, mediaActions, editorValue)
 
-    EditorWorkDialogs(models, pendingRevision, dialogCoordinator) { pendingRevision = it }
+    EditorWorkDialogs(
+        models = models,
+        pendingRevision = pendingRevision,
+        dialogCoordinator = dialogCoordinator,
+        onImportJs = {
+            importJsLauncher.launch(
+                arrayOf(
+                    "application/javascript",
+                    "text/javascript",
+                    "text/plain",
+                    "application/octet-stream"
+                )
+            )
+        },
+        onImportZip = { importWorkZip.launch(arrayOf("application/zip", "application/octet-stream")) },
+        onImportP5 = { workManagementViewModel.resetP5Results(); showP5Import = true }
+    ) { pendingRevision = it }
 
     EditorProjectDialogs(
         models = models,

@@ -6,7 +6,11 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const text = fs.readFileSync(path.join(root, 'android/app/src/main/java/com/hikariatelier/app/WorkTemplate.kt'), 'utf8');
-const names = ['CIRCLE','ANIMATION','INPUT','PARAMETERS','PATTERN','PARTICLES','WEBGL','SHADER','MATTER','WEBGPU'];
+const names = [
+  'CIRCLE','ANIMATION','INPUT','PARAMETERS','PATTERN','PARTICLES',
+  'BLOCK_FOLLOW','BLOCK_PAINT','BLOCK_PATTERN','BLOCK_SOUND','BLOCK_THREE','BLOCK_PARAMETERS',
+  'WEBGL','SHADER','MATTER','BRUSH','WEBGPU'
+];
 function source(name) {
   const id = name === 'PARAMETERS' ? 'WAVE_PARAMETERS' : name;
   if (name === 'CIRCLE') {
@@ -38,9 +42,10 @@ const server = http.createServer((req, res) => {
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(({ code, name }) => {
         window.__template = { ready: false, errors: [] };
+        const libs = name === 'MATTER' ? { 'matter-js': '0.20.0' } : name === 'BRUSH' ? { 'p5.brush': '2.2.1' } : {};
         window.Android = {
-          getSketchCode: () => code, getP5Version: () => '2.3.4', isP5SoundEnabled: () => false,
-          getWorkLibraries: () => JSON.stringify(name === 'MATTER' ? { 'matter-js': '0.20.0' } : {}),
+          getSketchCode: () => code, getP5Version: () => '2.3.4', isP5SoundEnabled: () => name === 'BLOCK_SOUND',
+          getWorkLibraries: () => JSON.stringify(libs),
           getWorkParameters: () => JSON.stringify({ size: 0.3, ink: '#A8C7FA' }), getWorkShaders: () => '{}',
           getProjectConfig: () => JSON.stringify({ thumbnailOnly: true, documentMode: false, moduleMode: false, classicScripts: [], libraries: [] }),
           onPreviewVisualReady: () => { window.__template.ready = true; },

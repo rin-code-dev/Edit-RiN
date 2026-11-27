@@ -155,6 +155,14 @@
     {id:'matterBox',category:'physics',label:words('物理の床・箱を作る Bodies.rectangle','Physics box/ground · Bodies.rectangle','物理方块/地面 · Bodies.rectangle'),source:'const ground = Matter.Bodies.rectangle(200, 380, 380, 24, { isStatic: true });'},
     {id:'matterAdd',category:'physics',label:words('物理ワールドへ追加 Composite.add','Add to physics world · Composite.add','添加到物理世界 · Composite.add'),source:'Matter.Composite.add(engine.world, [ball, ground]);'},
     {id:'matterUpdate',category:'physics',label:words('物理を1ステップ進める Engine.update','Step physics · Engine.update','更新物理模拟 · Engine.update'),source:'Matter.Engine.update(engine);'},
+    {id:'trailBg',category:'style',easyCategory:'easy_style',label:words('残像つきの背景','Motion trail background','残影背景'),source:'background(10, 14, 26, 36);'},
+    {id:'glowBlend',category:'style',easyCategory:'easy_style',label:words('重なりを光らせる','Glow blend (ADD)','发光叠加'),source:'blendMode(ADD);'},
+    {id:'normalBlend',category:'style',easyCategory:'easy_style',label:words('通常の合成に戻す','Normal blend','恢复正常混合'),source:'blendMode(BLEND);'},
+    {id:'rainbowFill',category:'style',easyCategory:'easy_style',label:words('時間で変わる虹色の塗り','Animated rainbow fill','动态彩虹填充'),source:'fill("hsl(" + floor((frameCount * 2 + 0) % 360) + ", 85%, 65%)");'},
+    {id:'rainbowStroke',category:'style',easyCategory:'easy_style',label:words('時間で変わる虹色の線','Animated rainbow stroke','动态彩虹描边'),source:'stroke("hsl(" + floor((frameCount * 2 + 0) % 360) + ", 85%, 65%)");'},
+    {id:'isolateTransform',category:'transform',easyCategory:'easy_layout',label:words('移動・回転の範囲を分ける','Isolate transform (push/pop)','独立变换范围'),source:'push();\ntranslate(width / 2, height / 2);\nrotate(frameCount * 0.02);\ncircle(60, 0, 32);\npop();\n'},
+    {id:'radialArrange',category:'control',easyCategory:'easy_layout',label:words('円形に並べる','Arrange in circle','环形排列'),source:'push();\ntranslate(width / 2, height / 2);\nfor (let i = 0; i < 12; i++) {\n  rotate(TWO_PI / 12);\n  circle(80, 0, 28);\n}\npop();\n'},
+    {id:'gridArrange',category:'control',easyCategory:'easy_layout',label:words('縦横に並べる','Arrange in grid','网格排列'),source:'for (let gy = 0; gy < 5; gy++) {\n  for (let gx = 0; gx < 5; gx++) {\n    push();\n    translate(((gx + 0.5) * width) / 5, ((gy + 0.5) * height) / 5);\n    circle(0, 0, 28);\n    pop();\n  }\n}\n'},
   ];
   // Guided actions make complete source edits; placeholder snippets are never inserted directly.
   const eventLabels = {
@@ -212,14 +220,46 @@
   for(const template of TEMPLATES)if(template.category==='three'&&!template.authoringAction)template.requiresWebGL=true;
   for(const template of TEMPLATES){if(['imageLoader','asyncSetup','soundLoader'].includes(template.id))template.hiddenFromPalette=true;if(template.id==='texture')template.requiresWebGL=true;if(['imageLoader','loadImage','asyncSetup'].includes(template.id))template.label=words('画像を読み込む','Load an image','加载图像');if(['soundLoader','loadSound'].includes(template.id))template.label=words('音を読み込む','Load audio','加载音频');if(template.id==='oscillator')template.label=words('音の発生器を用意する','Prepare oscillator','准备振荡器');}
   const EXAMPLES = [
-    {id:'drawing',label:words('指についてくる円','Follow your finger','跟随手指的圆'),source:'function setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(240);\n  noStroke();\n  fill("#6c5ce7");\n  circle(mouseX, mouseY, 80);\n}\n'},
-    {id:'paint',label:words('指でお絵描き','Draw with your finger','用手指绘画'),source:'function setup() {\n  createCanvas(400, 400);\n  background(255);\n}\n\nfunction draw() {\n  if (mouseIsPressed) {\n    noStroke();\n    fill("#6c5ce7");\n    circle(mouseX, mouseY, 20);\n  }\n}\n'},
-    {id:'pattern',label:words('回る模様','Rotating pattern','旋转图案'),source:'function setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background("#17233d");\n  translate(width / 2, height / 2);\n  rotate(frameCount * 0.01);\n  noFill();\n  stroke("#a8c7fa");\n  for (let i = 0; i < 12; i++) {\n    rotate(TWO_PI / 12);\n    circle(80, 0, 100);\n  }\n}\n'},
-    {id:'sound',requiresSound:true,label:words('タップして音を鳴らす','Tap to play a tone','点击播放音调'),source:'let tone;\nlet toneStarted = false;\n\nfunction setup() {\n  createCanvas(400, 400);\n  tone = new p5.Oscillator("sine");\n  tone.amp(0);\n}\n\nfunction draw() {\n  background("#17233d");\n  fill("#a8c7fa");\n  noStroke();\n  circle(mouseX, mouseY, mouseIsPressed ? 100 : 50);\n}\n\nfunction mousePressed() {\n  userStartAudio();\n  if (!toneStarted) { tone.start(); toneStarted = true; }\n  tone.freq(map(mouseX, 0, width, 220, 880));\n  tone.amp(0.1, 0.05);\n}\n\nfunction mouseReleased() {\n  tone.amp(0, 0.1);\n}\n'},
-    {id:'three',label:words('回る3D立方体','Rotating 3D box','旋转的 3D 立方体'),source:'function setup() {\n  createCanvas(400, 400, WEBGL);\n}\n\nfunction draw() {\n  background(24);\n  orbitControl();\n  normalMaterial();\n  rotateX(frameCount * 0.01);\n  rotateY(frameCount * 0.02);\n  box(120);\n}\n'},
-    {id:'parameters',label:words('スライダーとXYパッドで動かす円','Interactive parameters & XY pad','使用参数与XY板控制的圆'),source:'let pos = { x: 0.5, y: 0.5 }; // @xy(0, 1) "Position"\nlet size = 90; // @slider(20, 200, 2) "Size"\nlet ink = "#BA90E2"; // @color "Ink"\n\nfunction setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(22);\n  noStroke();\n  fill(ink);\n  circle(pos.x * width, pos.y * height, size);\n}\n'},
+    {id:'drawing',label:words('光の軌跡と追従する円','Glowing trail follower','发光残影跟随圆'),source:'function setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(10, 14, 26, 36);\n  blendMode(ADD);\n  noStroke();\n  fill("#6c5ce7");\n  circle(mouseX, mouseY, 80 + sin(frameCount * 0.06) * 24);\n  blendMode(BLEND);\n}\n'},
+    {id:'paint',label:words('虹色リボンでお絵描き','Rainbow ribbon paint','彩虹丝带绘画'),source:'function setup() {\n  createCanvas(400, 400);\n  background(12, 14, 24);\n}\n\nfunction draw() {\n  if (mouseIsPressed) {\n    noStroke();\n    fill("hsl(" + floor((frameCount * 3 + 0) % 360) + ", 85%, 65%)");\n    circle(mouseX, mouseY, 28);\n  }\n}\n'},
+    {id:'pattern',label:words('回る万華鏡リング','Kaleidoscope flower ring','旋转万花筒光环'),source:'function setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(10, 14, 26, 48);\n  noFill();\n  stroke("hsl(" + floor((frameCount * 2 + 0) % 360) + ", 85%, 65%)");\n  strokeWeight(2);\n  push();\n  translate(width / 2, height / 2);\n  rotate(frameCount * 0.01);\n  for (let i = 0; i < 12; i++) {\n    rotate(TWO_PI / 12);\n    circle(72, 0, 96);\n  }\n  pop();\n}\n'},
+    {id:'grid',label:words('波打つ光のグリッド','Rippling light grid','律动光点网格'),source:'function setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(10, 14, 26);\n  noStroke();\n  fill("#a8c7fa");\n  for (let gy = 0; gy < 6; gy++) {\n    for (let gx = 0; gx < 6; gx++) {\n      push();\n      translate(((gx + 0.5) * width) / 6, ((gy + 0.5) * height) / 6);\n      circle(0, 0, 26 + sin(frameCount * 0.06 + gx + gy) * 14);\n      pop();\n    }\n  }\n}\n'},
+    {id:'sound',requiresSound:true,label:words('タップして音を鳴らす','Tap to play a tone','点击播放音调'),source:'let tone;\nlet toneStarted = false;\n\nfunction setup() {\n  createCanvas(400, 400);\n  tone = new p5.Oscillator("sine");\n  tone.amp(0);\n}\n\nfunction draw() {\n  background(10, 18, 36, 45);\n  fill("#a8c7fa");\n  noStroke();\n  circle(mouseX, mouseY, mouseIsPressed ? 100 : 50);\n}\n\nfunction mousePressed() {\n  userStartAudio();\n  if (!toneStarted) { tone.start(); toneStarted = true; }\n  tone.freq(map(mouseX, 0, width, 220, 880));\n  tone.amp(0.1, 0.05);\n}\n\nfunction mouseReleased() {\n  tone.amp(0, 0.1);\n}\n'},
+    {id:'three',label:words('回る3D立方体','Rotating 3D box','旋转的 3D 立方体'),source:'function setup() {\n  createCanvas(400, 400, WEBGL);\n}\n\nfunction draw() {\n  background(16, 18, 28);\n  orbitControl();\n  normalMaterial();\n  rotateX(frameCount * 0.01);\n  rotateY(frameCount * 0.02);\n  box(120);\n}\n'},
+    {id:'parameters',label:words('スライダーとXYパッドで動かす円','Interactive parameters & XY pad','使用参数与XY板控制的圆'),source:'let pos = { x: 0.5, y: 0.5 }; // @xy(0, 1) "Position"\nlet size = 90; // @slider(20, 200, 2) "Size"\nlet ink = "#BA90E2"; // @color "Ink"\n\nfunction setup() {\n  createCanvas(400, 400);\n}\n\nfunction draw() {\n  background(14, 16, 26, 40);\n  noStroke();\n  fill(ink);\n  circle(pos.x * width, pos.y * height, size);\n}\n'},
   ];
   const CATEGORY_LABELS = {events:words('イベント','Events','事件'),drawing:words('描く','Drawing','绘图'),style:words('色と線','Color & style','颜色与样式'),transform:words('移動と回転','Transforms','变换'),control:words('制御','Control','控制'),variables:words('変数と配列','Variables & arrays','变量与数组'),parameters:words('パラメータ','Parameters','参数'),math:words('計算','Math','数学'),input:words('入力と時間','Input & time','输入与时间'),text:words('文字','Text','文本'),functions:words('関数','Functions','函数'),assets:words('素材','Assets','素材'),sound:words('音','Sound','声音'),three:words('3D','3D','3D'),brush:words('ブラシ','Brush','画笔'),physics:words('物理','Physics','物理')};
+  const PALETTE_CATEGORIES = {
+    draw: words('描く', 'Draw', '绘图'),
+    style: words('色と効果', 'Color & style', '颜色与效果'),
+    control: words('配置と制御', 'Layout & control', '排列与控制'),
+    variables: words('変数と計算', 'Vars & math', '变量与计算'),
+    events: words('イベント', 'Events', '事件'),
+    extensions: words('拡張', 'Extensions', '扩展')
+  };
+  const PALETTE_GROUP_MAP = {
+    draw: ['drawing', 'text'],
+    style: ['style'],
+    control: ['control', 'transform'],
+    variables: ['variables', 'math', 'input'],
+    events: ['events'],
+    extensions: ['three', 'brush', 'physics', 'sound', 'assets', 'parameters', 'functions']
+  };
+  const EASY_BASIC_CATEGORIES = {
+    easy_draw: words('描く', 'Draw', '绘图'),
+    easy_style: words('色と効果', 'Color & style', '颜色与效果'),
+    easy_layout: words('配置と制御', 'Layout & control', '排列与控制'),
+    easy_logic: words('変数と計算', 'Vars & math', '变量与计算'),
+    easy_events: words('イベント', 'Events', '事件')
+  };
+  const EASY_EXTENSION_CATEGORIES = ['three', 'brush', 'physics', 'sound', 'assets', 'parameters', 'functions'];
+  const EASY_PALETTE_GROUPS = {
+    draw: ['circle', 'rect', 'square', 'ellipse', 'line', 'triangle', 'arc', 'point', 'text', 'createCanvas', 'resizeCanvas', 'clear'],
+    style: ['background', 'trailBg', 'fill', 'rainbowFill', 'noFill', 'stroke', 'rainbowStroke', 'noStroke', 'strokeWeight', 'glowBlend', 'normalBlend', 'textSize', 'textAlign', 'rectMode'],
+    control: ['for', 'radialArrange', 'gridArrange', 'isolateTransform', 'if', 'ifelse', 'translate', 'rotate', 'scale'],
+    variables: ['let', 'const', 'assignment', 'update'],
+    events: ['setup', 'draw', 'mousePressed', 'mouseDragged', 'mouseReleased', 'keyPressed', 'windowResized', 'noLoop', 'loop']
+  };
   const NODE_LABELS = {function:words('関数','Function','函数'),expression_statement:words('実行','Do','执行'),call:words('呼び出し','Call','调用'),literal:words('値','Value','值'),identifier:words('名前','Name','名称'),binary:words('計算・比較','Math / comparison','计算与比较'),unary:words('単項演算','Unary','一元运算'),assignment:words('代入','Assign','赋值'),update:words('増減','Update','增减'),variable_declaration:words('宣言','Declare','声明'),variable_declarator:words('変数','Variable','变量'),array:words('配列','Array','数组'),member:words('プロパティ','Property','属性'),if:words('もし','If','如果'),for:words('繰り返し','For','循环'),for_of:words('要素ごとに','For each','遍历'),return:words('返す','Return','返回'),new:words('作成','Create','创建'),await:words('完了を待つ','Await','等待'),conditional:words('条件による値','Conditional value','条件值'),block:words('処理のまとまり','Statements','语句块'),raw_statement:words('カスタムコード','Custom code','自定义代码'),raw_expression:words('カスタム式','Custom expression','自定义表达式'),comment:words('コメント','Comment','注释')};
   Object.assign(NODE_LABELS,{logical:words('条件の組み合わせ','Logical operation','逻辑运算'),parenthesized:words('括弧','Parentheses','括号'),break:words('ループを抜ける','Break','跳出循环'),continue:words('次の繰り返しへ','Continue','继续循环'),empty:words('空の処理','Empty statement','空语句')});
   const P5_NAMES = Array.from(new Set(('createCanvas resizeCanvas background clear color fill noFill stroke noStroke strokeWeight strokeCap strokeJoin rect square circle ellipse arc line point triangle quad beginShape endShape vertex curveVertex bezierVertex quadraticVertex text textSize textFont textAlign textLeading textStyle textWidth image imageMode tint noTint loadImage loadFont loadJSON loadStrings loadSound soundFormats userStartAudio getAudioContext push pop translate rotate rotateX rotateY rotateZ scale applyMatrix resetMatrix angleMode rectMode ellipseMode frameRate noLoop loop redraw random randomSeed noise noiseSeed noiseDetail map constrain lerp norm dist mag abs ceil floor round min max pow sqrt sq exp log sin cos tan asin acos atan atan2 degrees radians millis second minute hour day month year keyIsDown touches accelerationX accelerationY accelerationZ pAccelerationX pAccelerationY pAccelerationZ rotationX rotationY rotationZ fullscreen pixelDensity displayDensity windowResized saveCanvas saveGif box sphere cylinder cone torus plane ellipsoid ambientLight directionalLight pointLight spotLight lights noLights ambientMaterial specularMaterial normalMaterial emissiveMaterial shininess texture textureMode orbitControl camera perspective ortho createVector createImage createGraphics blendMode erase noErase cursor noCursor smooth noSmooth').split(/\s+/).concat(Object.keys(P5_CALLS))));
@@ -323,7 +363,7 @@
     return firstLine || (lang === 'ja' ? '実行時エラーが発生しました' : lang === 'zh' ? '发生运行时错误' : 'Runtime error occurred');
   }
 
-  const catalogue = Object.freeze({API_VERSION:2,P5_CALLS,P5_NAMES,EVENTS,EVENT_NAMES:EVENTS.map(event=>event.name),TEMPLATES,EXAMPLES,CATEGORY_LABELS,NODE_LABELS,friendlyErrorMessage});
+  const catalogue = Object.freeze({API_VERSION:2,P5_CALLS,P5_NAMES,EVENTS,EVENT_NAMES:EVENTS.map(event=>event.name),TEMPLATES,EXAMPLES,CATEGORY_LABELS,PALETTE_CATEGORIES,PALETTE_GROUP_MAP,EASY_BASIC_CATEGORIES,EASY_EXTENSION_CATEGORIES,EASY_PALETTE_GROUPS,NODE_LABELS,friendlyErrorMessage});
   root.EditRinBlockCatalogue = catalogue;
   if(typeof module==='object'&&module.exports)module.exports=catalogue;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

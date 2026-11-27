@@ -3,6 +3,7 @@ package com.hikariatelier.app.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 enum class AppThemeMode {
@@ -32,6 +34,104 @@ enum class AppThemeMode {
 }
 
 val LocalCustomTheme = staticCompositionLocalOf { false }
+val LocalAppThemeMode = staticCompositionLocalOf { AppThemeMode.SYSTEM }
+
+data class CodeSyntaxPalette(
+    val keyword: Color,
+    val function: Color,
+    val shaderType: Color,
+    val shaderBuiltin: Color,
+    val preprocessor: Color,
+    val string: Color,
+    val number: Color,
+    val comment: Color,
+    val errorLineBackground: Color
+)
+
+internal val LightSyntaxPalette = CodeSyntaxPalette(
+    keyword = Color(0xFF6A3D9A),
+    function = Color(0xFF1A5A7A),
+    shaderType = Color(0xFF28558A),
+    shaderBuiltin = Color(0xFF1E635B),
+    preprocessor = Color(0xFF8A5210),
+    string = Color(0xFF2F6638),
+    number = Color(0xFFA63E26),
+    comment = Color(0xFF6B6258),
+    errorLineBackground = Color(0x22BA1A1A)
+)
+
+internal val SumiSyntaxPalette = CodeSyntaxPalette(
+    keyword = Color(0xFFD0B2EE),
+    function = Color(0xFF93C4DA),
+    shaderType = Color(0xFF9CBBE0),
+    shaderBuiltin = Color(0xFF8DC8BD),
+    preprocessor = Color(0xFFE9C484),
+    string = Color(0xFFB4D3A3),
+    number = Color(0xFFE8A084),
+    comment = Color(0xFFA69E94),
+    errorLineBackground = Color(0x3893000A)
+)
+
+internal val DarkSyntaxPalette = CodeSyntaxPalette(
+    keyword = Color(0xFFCCA7F0),
+    function = Color(0xFF8BB6FA),
+    shaderType = Color(0xFF8BB6FA),
+    shaderBuiltin = Color(0xFF80CBC4),
+    preprocessor = Color(0xFFF0C678),
+    string = Color(0xFFB5DA9B),
+    number = Color(0xFFEC9B7A),
+    comment = Color(0xFF88929D),
+    errorLineBackground = Color(0x385A1A1A)
+)
+
+fun defaultSyntaxPalette(dark: Boolean): CodeSyntaxPalette =
+    if (dark) DarkSyntaxPalette else LightSyntaxPalette
+
+private fun syntaxContrastRatio(a: Color, b: Color): Float {
+    val bright = maxOf(a.luminance(), b.luminance())
+    val dark = minOf(a.luminance(), b.luminance())
+    return (bright + 0.05f) / (dark + 0.05f)
+}
+
+private fun ensureReadableSyntaxColor(color: Color, surface: Color, dark: Boolean): Color {
+    if (surface == Color.Unspecified || syntaxContrastRatio(color, surface) >= 4.5f) return color
+    val target = if (dark) Color.White else Color.Black
+    var adjusted = color
+    for (step in 1..6) {
+        adjusted = lerp(color, target, step * 0.14f)
+        if (syntaxContrastRatio(adjusted, surface) >= 4.5f) return adjusted
+    }
+    return adjusted
+}
+
+fun codeSyntaxPalette(
+    themeMode: AppThemeMode,
+    dark: Boolean,
+    surfaceColor: Color = Color.Unspecified
+): CodeSyntaxPalette {
+    val base = when (themeMode) {
+        AppThemeMode.SUMI -> SumiSyntaxPalette
+        AppThemeMode.LIGHT -> LightSyntaxPalette
+        AppThemeMode.DARK -> DarkSyntaxPalette
+        AppThemeMode.SYSTEM, AppThemeMode.CUSTOM -> {
+            if (dark) {
+                if (surfaceColor != Color.Unspecified && surfaceColor.luminance() > 0.025f) SumiSyntaxPalette
+                else DarkSyntaxPalette
+            } else LightSyntaxPalette
+        }
+    }
+    if (themeMode != AppThemeMode.CUSTOM || surfaceColor == Color.Unspecified) return base
+    return base.copy(
+        keyword = ensureReadableSyntaxColor(base.keyword, surfaceColor, dark),
+        function = ensureReadableSyntaxColor(base.function, surfaceColor, dark),
+        shaderType = ensureReadableSyntaxColor(base.shaderType, surfaceColor, dark),
+        shaderBuiltin = ensureReadableSyntaxColor(base.shaderBuiltin, surfaceColor, dark),
+        preprocessor = ensureReadableSyntaxColor(base.preprocessor, surfaceColor, dark),
+        string = ensureReadableSyntaxColor(base.string, surfaceColor, dark),
+        number = ensureReadableSyntaxColor(base.number, surfaceColor, dark),
+        comment = ensureReadableSyntaxColor(base.comment, surfaceColor, dark)
+    )
+}
 
 internal val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFA8C7FA),
@@ -39,17 +139,37 @@ internal val DarkColorScheme = darkColorScheme(
     primaryContainer = Color(0xFF183153),
     onPrimaryContainer = Color(0xFFD6E4FF),
     secondary = Color(0xFFC2C7D0),
+    onSecondary = Color(0xFF252830),
+    secondaryContainer = Color(0xFF23252C),
+    onSecondaryContainer = Color(0xFFE2E4EC),
+    tertiary = Color(0xFFD8C2A8),
+    onTertiary = Color(0xFF322618),
+    tertiaryContainer = Color(0xFF423324),
+    onTertiaryContainer = Color(0xFFF5E3CE),
     background = Color.Black,
     onBackground = Color(0xFFE6E6E9),
     surface = Color(0xFF09090B),
     onSurface = Color(0xFFE6E6E9),
     surfaceVariant = Color(0xFF16161A),
     onSurfaceVariant = Color(0xFFC5C6CE),
+    surfaceTint = Color(0xFFA8C7FA),
+    surfaceDim = Color(0xFF09090B),
+    surfaceBright = Color(0xFF1F1F26),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF0D0D10),
+    surfaceContainer = Color(0xFF121216),
+    surfaceContainerHigh = Color(0xFF18181D),
+    surfaceContainerHighest = Color(0xFF1F1F26),
+    inverseSurface = Color(0xFFE6E6E9),
+    inverseOnSurface = Color(0xFF141418),
+    inversePrimary = Color(0xFF2456A5),
     outline = Color(0xFF8E9099),
     outlineVariant = Color(0xFF303038),
     error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
     errorContainer = Color(0xFF5A1A1A),
-    onErrorContainer = Color(0xFFFFDAD6)
+    onErrorContainer = Color(0xFFFFDAD6),
+    scrim = Color(0xFF000000)
 )
 
 // Warm paper, charcoal and terracotta, shared with the bundled artworks.
@@ -163,6 +283,14 @@ private fun customColorScheme(background: Color, accent: Color): androidx.compos
     )
 }
 
+internal val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(18.dp)
+)
+
 @Composable
 fun AppTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
@@ -205,8 +333,8 @@ fun AppTheme(
     val typography = remember(customFont, ligatures) {
         fun TextStyle.withFont() = copy(
             fontFamily = customFont ?: fontFamily,
-            fontFeatureSettings = if (ligatures) "'liga' 1, 'clig' 1, 'calt' 1"
-                else "'liga' 0, 'clig' 0, 'calt' 0"
+            fontFeatureSettings = if (ligatures) "'tnum' 1, 'liga' 1, 'clig' 1, 'calt' 1"
+                else "'tnum' 1, 'liga' 0, 'clig' 0, 'calt' 0"
         )
         Typography.copy(
             displayLarge = Typography.displayLarge.withFont(),
@@ -226,11 +354,14 @@ fun AppTheme(
             labelSmall = Typography.labelSmall.withFont()
         )
     }
-    CompositionLocalProvider(LocalCustomTheme provides custom) {
+    CompositionLocalProvider(
+        LocalCustomTheme provides custom,
+        LocalAppThemeMode provides themeMode
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = typography,
-            shapes = Shapes(),
+            shapes = AppShapes,
             content = content
         )
     }

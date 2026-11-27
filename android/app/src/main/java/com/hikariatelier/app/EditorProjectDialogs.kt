@@ -59,11 +59,12 @@ internal fun EditorProjectDialogs(
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
     if (assetBusy && !showAssets && !workSaving && !sessionViewModel.snapshotRestoring) {
-        AlertDialog(
+        UnitAlertDialog(
             onDismissRequest = {},
             title = { Text(uiText("ファイルを処理中…")) },
             text = { LinearProgressIndicator(Modifier.fillMaxWidth()) },
-            confirmButton = {}
+            confirmButton = {},
+            showActions = false
         )
     }
 

@@ -78,9 +78,14 @@ private fun highlightBlocks(text: AnnotatedString): List<AnnotatedString> {
 }
 
 /** Diagnostics are transient and must never be carried over by the syntax cache. */
-internal fun withEditorErrorLines(text: AnnotatedString, dark: Boolean, errors: Set<Int>): AnnotatedString {
+internal fun withEditorErrorLines(
+    text: AnnotatedString,
+    dark: Boolean,
+    errors: Set<Int>,
+    errorBackground: Color = if (dark) Color(0x385A1A1A) else Color(0x22BA1A1A)
+): AnnotatedString {
     if (errors.isEmpty()) return text
-    val style = SpanStyle(background = if (dark) Color(0x334F1118) else Color(0x22B3261E))
+    val style = SpanStyle(background = errorBackground)
     return AnnotatedString.Builder(text).apply {
         var line = 1
         var start = 0

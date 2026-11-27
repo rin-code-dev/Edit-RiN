@@ -271,6 +271,7 @@ class EditorSessionViewModel : ViewModel() {
     internal var pipSizePreset by mutableStateOf(PipSizePreset.SMALL)
     internal var pipTranslucent by mutableStateOf(false)
     internal var pipMinimized by mutableStateOf(true)
+    internal var blockPipInitialized by mutableStateOf(false)
     internal var pipSnapCorner by mutableStateOf(PipCorner.TOP_END)
     internal var pipAutoGhosted by mutableStateOf(false)
     internal var pipCanvasTapHandler: ((LayoutCoordinates, Offset) -> Unit)? by mutableStateOf(null)

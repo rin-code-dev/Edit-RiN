@@ -35,6 +35,18 @@ internal fun decodeBlockEditorDisplayPreferences(value: JSONObject?): BlockEdito
 
 internal class BlockEditorPresentationStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("block_editor_presentation", Context.MODE_PRIVATE)
+    fun easyMode(): Boolean = runCatching { preferences.getBoolean("easy_mode", false) }.getOrDefault(false)
+    fun saveEasyMode(value: Boolean) {
+        preferences.edit().apply {
+            putBoolean("easy_mode", value)
+            if (value) putBoolean("easy_mode_hint_dismissed", true)
+        }.apply()
+    }
+    fun easyModeHintDismissed(): Boolean =
+        runCatching { preferences.getBoolean("easy_mode_hint_dismissed", false) }.getOrDefault(false)
+    fun dismissEasyModeHint() {
+        preferences.edit().putBoolean("easy_mode_hint_dismissed", true).apply()
+    }
     fun displayPreferences(): BlockEditorDisplayPreferences = runCatching {
         decodeBlockEditorDisplayPreferences(JSONObject(preferences.getString("display", "{}").orEmpty()))
     }.getOrNull() ?: BlockEditorDisplayPreferences()

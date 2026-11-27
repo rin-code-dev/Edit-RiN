@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="editor.css">
   <script defer src="vendor/blockly.js"></script>
   <script defer src="catalogue.js"></script>
+  <script defer src="easy.js"></script>
   <script defer src="presentation.js"></script>
   <script defer src="chrome.js"></script>
   <script defer src="editor.js"></script>
@@ -55,6 +56,7 @@
       <button id="more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu"><svg class="icon"><use href="#i-more"/></svg></button>
     </header>
     <div id="moreMenu" class="menu" role="menu" hidden>
+      <button id="menuModeToggle" type="button" role="menuitem"><svg class="icon"><use href="#i-tune"/></svg><span id="menuModeToggleLabel"></span></button>
       <button id="menuCodePreview" class="compact-action" type="button" role="menuitem"><svg class="icon"><use href="#i-code"/></svg><span id="menuCodePreviewLabel"></span></button>
       <button id="menuFit" class="compact-action" type="button" role="menuitem"><svg class="icon"><use href="#i-fit"/></svg><span id="menuFitLabel"></span></button>
       <button id="outline" type="button" role="menuitem"><svg class="icon"><use href="#i-items"/></svg><span id="outlineLabel"></span></button>
@@ -84,7 +86,7 @@
         </div>
         <button id="paletteClose" class="icon-button" type="button"><svg class="icon"><use href="#i-close"/></svg></button>
       </div>
-      <div id="paletteTargetBar" class="palette-target-bar">
+      <div id="paletteTargetBar" class="palette-target-bar" hidden>
         <span id="paletteTargetLabel" class="palette-target-label"></span>
         <button id="paletteTargetModeBtn" class="palette-target-mode-btn" type="button"></button>
       </div>
@@ -94,6 +96,7 @@
     <dialog id="actionDialog"><form method="dialog"><h2 id="dialogTitle"></h2><p id="dialogDescription"></p><div id="dialogChoices"></div><div class="dialog-actions"><button id="dialogCancel" class="text-button" type="submit" value="cancel">Cancel</button></div></form></dialog>
     <dialog id="navigatorDialog" class="navigator-dialog" aria-labelledby="navigatorTitle">
       <h2 id="navigatorTitle"></h2>
+      <div id="navigatorTabs" class="navigator-tabs" role="tablist"></div>
       <label id="navigatorSearchLabel" class="sr-only" for="navigatorSearch"></label>
       <input id="navigatorSearch" type="search" autocomplete="off" spellcheck="false">
       <p id="navigatorHint"></p>

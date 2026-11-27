@@ -43,7 +43,8 @@ internal fun EditorDocumentBar(
     modifier: Modifier = Modifier,
     onOpenFullPreview: (() -> Unit)? = null,
     leadingContent: (@Composable () -> Unit)? = null,
-    compact: Boolean = false
+    compact: Boolean = false,
+    showBlockPreviewControls: Boolean = true
 ) {
     val colors = MaterialTheme.colorScheme
     var showFiles by remember(files, selectedFile) { mutableStateOf(false) }
@@ -151,7 +152,7 @@ internal fun EditorDocumentBar(
                             textTranslator = textTranslator
                         )
                     }
-                    if (showingBlocks && !readOnly) {
+                    if (showingBlocks && showBlockPreviewControls && !readOnly) {
                         IconToggleButton(
                             checked = autoRunEnabled,
                             onCheckedChange = { onToggleAutoRun() },
@@ -178,7 +179,7 @@ internal fun EditorDocumentBar(
                             )
                         }
                     }
-                    if (showingBlocks && onOpenFullPreview != null) {
+                    if (showingBlocks && showBlockPreviewControls && onOpenFullPreview != null) {
                         IconButton(
                             onClick = onOpenFullPreview,
                             enabled = enabled,
@@ -258,7 +259,7 @@ internal fun EditorDocumentBar(
                 textTranslator = textTranslator
             )
         }
-        if (showingBlocks && !readOnly) {
+        if (showingBlocks && showBlockPreviewControls && !readOnly) {
             IconToggleButton(
                 checked = autoRunEnabled,
                 onCheckedChange = { onToggleAutoRun() },
@@ -272,7 +273,7 @@ internal fun EditorDocumentBar(
                 Icon(painterResource(R.drawable.ic_play), textTranslator("変更を実行", emptyArray()), Modifier.size(18.dp))
             }
         }
-        if (showingBlocks && onOpenFullPreview != null) {
+        if (showingBlocks && showBlockPreviewControls && onOpenFullPreview != null) {
             IconButton(onClick = onOpenFullPreview, enabled = enabled, shape = UNIT_CONTROL_SHAPE) {
                 Icon(
                     painterResource(R.drawable.ic_fullscreen),
@@ -473,7 +474,7 @@ private fun FileSwitcherDropdown(
     textTranslator: (String, Array<out Any?>) -> String
 ) {
     val colors = MaterialTheme.colorScheme
-    DropdownMenu(expanded, onDismiss, Modifier.heightIn(max = 320.dp).widthIn(max = 320.dp)) {
+    UnitDropdownMenu(expanded, onDismiss, Modifier.heightIn(max = 320.dp).widthIn(max = 320.dp)) {
         files.forEach { name ->
             DropdownMenuItem(
                 text = { Text(name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
@@ -515,7 +516,7 @@ private fun ModeSwitcherDropdown(
     onSelectBlocks: (Boolean) -> Unit,
     textTranslator: (String, Array<out Any?>) -> String
 ) {
-    DropdownMenu(expanded, onDismiss) {
+    UnitDropdownMenu(expanded, onDismiss) {
         listOf(false, true).forEach { blocks ->
             DropdownMenuItem(
                 text = { Text(textTranslator(if (blocks) "ブロック" else "コード", emptyArray())) },

@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -92,9 +93,12 @@ internal fun P5ReferenceDialog(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.90f),
-            shape = RoundedCornerShape(20.dp),
+            shape = UNIT_SHAPE,
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier

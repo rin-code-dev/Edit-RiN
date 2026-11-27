@@ -20,10 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
@@ -148,7 +151,8 @@ internal fun EditorArea(
     onBlockUndo: () -> Unit = {},
     onBlockRedo: () -> Unit = {},
     onOpenFullPreview: (() -> Unit)? = null,
-    documentLeadingContent: (@Composable () -> Unit)? = null
+    documentLeadingContent: (@Composable () -> Unit)? = null,
+    onOpenBlockExamples: (() -> Unit)? = null
 ) {
     val blockMode = remember(activeWorkId, sessionViewModel.auxiliaryEditorGeneration) { sessionViewModel.blockModeState(activeWorkId) }
     val modeScope = rememberCoroutineScope()
@@ -327,7 +331,11 @@ internal fun EditorArea(
             keyboardController?.hide()
             onFocusChange(false)
             sessionViewModel.blockSplitView = false
-            sessionViewModel.pipMinimized = false
+            if (!sessionViewModel.blockPipInitialized) {
+                sessionViewModel.pipSizePreset = PipSizePreset.SMALL
+                sessionViewModel.pipMinimized = false
+                sessionViewModel.blockPipInitialized = true
+            }
             blockMode.value = true
         } else {
             if (sessionViewModel.blockEditorFlusher == null) {
@@ -375,7 +383,8 @@ internal fun EditorArea(
             textTranslator = textTranslator,
             onOpenFullPreview = onOpenFullPreview,
             leadingContent = documentLeadingContent,
-            compact = compact
+            compact = compact,
+            showBlockPreviewControls = sessionViewModel.blockSplitView
         ) else if (documentLeadingContent != null) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
@@ -420,11 +429,11 @@ internal fun EditorArea(
                 }
             }
         }.border(
-            width = 1.dp,
+            width = UNIT_BORDER_WIDTH,
             color = colors.outlineVariant,
-            shape = RoundedCornerShape(18.dp)
+            shape = UNIT_SHAPE
         ),
-        shape = RoundedCornerShape(18.dp),
+        shape = UNIT_SHAPE,
         colors = CardDefaults.cardColors(
             containerColor = colors.surface
         ),
@@ -468,7 +477,7 @@ internal fun EditorArea(
                         !errorsCurrent && consoleEntries.any { it.level == ConsoleLevel.ERROR && it.workId == activeWorkId }
                     }
                 }
-                if (hasPreviousWorkError) {
+                if (hasPreviousWorkError && !showingBlocks) {
                     Text(
                         textTranslator("前回の実行時に発生したエラーです", emptyArray()),
                         Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -484,18 +493,20 @@ internal fun EditorArea(
                     }
                 }
                 latestError?.let { err ->
-                    InlineDiagnosticBanner(
-                        latestError = err,
-                        editingFile = editingFile,
-                        editingValue = editingValue,
-                        p5Version = activeWork?.p5Version,
-                        codeFontFamily = codeFontFamily,
-                        colors = colors,
-                        textTranslator = textTranslator,
-                        onJumpToSource = onJumpToSource,
-                        onSwitchRuntimeVersion = onSwitchRuntimeVersion,
-                        onCopyError = { copyToClipboard(it) }
-                    )
+                    if (!showingBlocks || (!err.file.isNullOrBlank() && err.file != "sketch.js")) {
+                        InlineDiagnosticBanner(
+                            latestError = err,
+                            editingFile = editingFile,
+                            editingValue = editingValue,
+                            p5Version = activeWork?.p5Version,
+                            codeFontFamily = codeFontFamily,
+                            colors = colors,
+                            textTranslator = textTranslator,
+                            onJumpToSource = onJumpToSource,
+                            onSwitchRuntimeVersion = onSwitchRuntimeVersion,
+                            onCopyError = { copyToClipboard(it) }
+                        )
+                    }
                 }
                 if (blockWork != null) {
                     val blockErrors by remember(activeWorkId, errorsCurrent, consoleEntries) {
@@ -522,7 +533,8 @@ internal fun EditorArea(
                         onRedo = onBlockRedo,
                         documentBar = { enabled -> DocumentHeader(enabled, compact = isPortraitEditor) },
                         textTranslator = textTranslator,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onOpenExamples = onOpenBlockExamples
                     )
                 } else {
                     var editorContainerSize by remember { mutableStateOf(IntSize.Zero) }
@@ -781,9 +793,29 @@ internal fun EditorArea(
                             )
                         }
 
+                        val activeLineBg = colors.onSurface.copy(alpha = if (darkEditorTheme) 0.055f else 0.045f)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
+                                .drawBehind {
+                                    if (editorFocused && !readOnly) {
+                                        val layout = editorTextLayout
+                                        if (layout != null && layout.layoutInput.text.text == displayText && layout.lineCount > 0) {
+                                            val transformedOffset = projection
+                                                .originalToTransformed(editingValue.selection.start.coerceIn(0, editingText.length))
+                                                .coerceIn(0, layout.layoutInput.text.length)
+                                            val visualLine = layout.getLineForOffset(transformedOffset)
+                                                .coerceIn(0, layout.lineCount - 1)
+                                            val topY = layout.getLineTop(visualLine)
+                                            val bottomY = layout.getLineBottom(visualLine)
+                                            drawRect(
+                                                color = activeLineBg,
+                                                topLeft = Offset(0f, topY),
+                                                size = Size(size.width, (bottomY - topY).coerceAtLeast(1f))
+                                            )
+                                        }
+                                    }
+                                }
                                 .then(
                                     if (!editorWordWrap) Modifier.horizontalScroll(editorHorizontalScrollState)
                                     else Modifier
@@ -855,7 +887,7 @@ internal fun EditorArea(
                     val showRunAction = !readOnly && previewHasChanges
                     val statsText = "${editingText.length}c · ${logicalLineStarts.size}L"
                     if (showRunAction || editorFocused || sessionViewModel.autoRunEnabled) {
-                        val itemShape = RoundedCornerShape(10.dp)
+                        val itemShape = UNIT_CONTROL_SHAPE
                         Row(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)

@@ -60,7 +60,7 @@ private class TemplatePreviewHost(context: Context, private val report: (String,
         stop()
         val template = WorkTemplate("1:1", 400, 400, kind)
         val work = Work(id = "template-preview", title = "", code = template.code(CanvasSizingMode.FIXED),
-            libraries = template.libraries)
+            p5SoundEnabled = template.requiresSound, libraries = template.libraries)
         val run = preparePreviewRun(capturePreviewRun(work, work.code, emptyMap(), emptyMap()))
         current = run
         terminalToken = null
@@ -106,7 +106,7 @@ private class TemplatePreviewHost(context: Context, private val report: (String,
         @JavascriptInterface fun onRuntimeErrorFile(token: String, message: String, file: String, line: Int) = finish(token, false)
         @JavascriptInterface fun getSketchCode(token: String) = run(token)?.sketchCode ?: ""
         @JavascriptInterface fun getP5Version(token: String) = run(token)?.p5Version ?: ""
-        @JavascriptInterface fun isP5SoundEnabled(token: String) = false
+        @JavascriptInterface fun isP5SoundEnabled(token: String) = run(token)?.soundEnabled == true
         @JavascriptInterface fun getWorkLibraries(token: String) = run(token)?.libraries ?: "{}"
         @JavascriptInterface fun getWorkParameters(token: String) = run(token)?.parameters ?: "{}"
         @JavascriptInterface fun getWorkShaders(token: String) = run(token)?.shaders ?: "{}"
@@ -117,7 +117,12 @@ private class TemplatePreviewHost(context: Context, private val report: (String,
 }
 
 @Composable
-internal fun TemplateLivePreview(kind: WorkTemplateKind, colors: ColorScheme, text: (String) -> String) {
+internal fun TemplateLivePreview(
+    kind: WorkTemplateKind,
+    colors: ColorScheme,
+    text: (String) -> String,
+    modifier: Modifier = Modifier.fillMaxWidth().height(180.dp)
+) {
     val context = LocalContext.current
     val lifecycle = LocalView.current.findViewTreeLifecycleOwner()?.lifecycle
     var started by remember(lifecycle) { mutableStateOf(lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) == true) }
@@ -153,7 +158,7 @@ internal fun TemplateLivePreview(kind: WorkTemplateKind, colors: ColorScheme, te
             if (activeToken == token && state == "loading") { host.stop(); state = "failed" }
         }
     }
-    Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         key(host) { AndroidView(factory = { host.view }, modifier = Modifier.fillMaxSize()) }
         if (state == "loading") CircularProgressIndicator(Modifier.size(28.dp), color = colors.primary)
         if (state == "failed") Surface(color = colors.surfaceContainer, modifier = Modifier.fillMaxSize()) {

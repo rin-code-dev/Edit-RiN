@@ -189,12 +189,12 @@ internal fun RecordingRecoverySheet(
 ) {
     var confirmDiscard by rememberSaveable(pending.displayName) { mutableStateOf(false) }
     if (confirmDiscard) {
-        AlertDialog(
+        UnitAlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text(text("保存待ちの録画を破棄しますか？")) },
             text = { Text(text("この録画はまだ保存されていません。破棄すると復元できません。")) },
-            confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscard() }) { Text(text("破棄")) } },
-            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(text("キャンセル")) } }
+            confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscard() }, shape = UNIT_CONTROL_SHAPE) { Text(text("破棄")) } },
+            dismissButton = { TextButton(onClick = { confirmDiscard = false }, shape = UNIT_CONTROL_SHAPE) { Text(text("キャンセル")) } }
         )
     }
     val landscape = isLandscapeLayout()

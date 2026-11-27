@@ -20,13 +20,18 @@ class BlockEditorPresentationTest {
 
     @Test fun displayPreferencesAndViewportSurviveStoreRecreation() {
         val store = BlockEditorPresentationStore(context)
+        assertFalse(store.easyMode())
+        assertFalse(store.easyModeHintDismissed())
         val display = BlockEditorDisplayPreferences(18.0, "comfortable")
         val first = BlockEditorViewport(-120.0, -450.0, 1.5, "bound_one")
         val second = BlockEditorViewport(-15.0, -20.0, 0.75, null)
+        store.saveEasyMode(true)
         store.saveDisplayPreferences(display)
         store.saveViewport("one", first)
         store.saveViewport("two", second)
         val reloaded = BlockEditorPresentationStore(context)
+        assertTrue(reloaded.easyMode())
+        assertTrue(reloaded.easyModeHintDismissed())
         assertEquals(display, reloaded.displayPreferences())
         assertEquals(first, reloaded.viewport("one"))
         assertEquals(second, reloaded.viewport("two"))

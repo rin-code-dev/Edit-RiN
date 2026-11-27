@@ -44,4 +44,28 @@ class ThemeContrastTest {
 
     @Test fun lightThemeKeepsTextReadableAcrossSurfaces() = verifyReadableRoles(LightColorScheme)
     @Test fun sumiThemeKeepsTextReadableAcrossSurfaces() = verifyReadableRoles(SumiColorScheme)
+    @Test fun darkThemeKeepsTextReadableAcrossSurfaces() = verifyReadableRoles(DarkColorScheme)
+
+    @Test fun syntaxPalettesKeepTextReadableAcrossThemes() {
+        val pairs = listOf(
+            LightSyntaxPalette to LightColorScheme.surface,
+            SumiSyntaxPalette to SumiColorScheme.surface,
+            DarkSyntaxPalette to DarkColorScheme.surface
+        )
+        for ((palette, surface) in pairs) {
+            val tokens = listOf(
+                "keyword" to palette.keyword,
+                "function" to palette.function,
+                "shaderType" to palette.shaderType,
+                "shaderBuiltin" to palette.shaderBuiltin,
+                "preprocessor" to palette.preprocessor,
+                "string" to palette.string,
+                "number" to palette.number,
+                "comment" to palette.comment
+            )
+            for ((name, color) in tokens) {
+                assertTrue("$name syntax contrast: ${contrast(color, surface)}", contrast(color, surface) >= 4.5f)
+            }
+        }
+    }
 }

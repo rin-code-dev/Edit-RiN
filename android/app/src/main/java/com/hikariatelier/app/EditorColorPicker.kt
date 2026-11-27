@@ -253,13 +253,16 @@ fun EditorColorPickerDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Card(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            shape = UNIT_SHAPE,
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier
@@ -546,7 +549,7 @@ fun EditorColorPickerDialog(
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = UNIT_CONTROL_SHAPE
                 ) {
                     Text(
                         text = if (target != null) text("適用") else text("挿入"),

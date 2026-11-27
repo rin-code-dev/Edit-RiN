@@ -2,35 +2,84 @@ package com.hikariatelier.app
 
 internal enum class CanvasSizingMode { FIXED, RESPONSIVE }
 
-internal enum class WorkTemplateKind(val title: String, val description: String, val advanced: Boolean) {
-    BASIC_2D("2D基本", "円を1つ描く最小構成。色や大きさを変えて始めましょう。", false),
-    ANIMATION("アニメーション", "時間に合わせて動く円。速度や動き方を変えてみましょう。", false),
-    INPUT("マウス・タッチ", "マウスやタッチの位置に円を描く最小構成。", false),
-    PARAMETERS("パラメータ", "円の大きさと色をライブパラメータで変更できます。", false),
-    PATTERN("反復模様", "図形を繰り返して模様を描きます。", false),
-    PARTICLES("パーティクル", "小さな粒が流れるアニメーションです。", false),
-    WEBGL_3D("3D WebGL", "回転する立体から3D作品を作り始めます。", true),
-    SHADER("シェーダー", "頂点シェーダーとフラグメントシェーダーを使って、色を描画します。", true),
-    PHYSICS_MATTER("物理演算", "Matter.jsを使って、落下や跳ね返りを試せます。", true),
-    WEBGPU("WebGPU", "WebGPUで3Dを描画します。非対応の環境ではWebGLに切り替えます。", true)
+internal enum class WorkTemplateCategory(val label: String, val description: String) {
+    BASIC("基本", "最小構成・動き・入力・パラメータ"),
+    BLOCKS("ブロックの例", "ブロックで組み立てやすい完成例"),
+    ADVANCED("応用", "3D・シェーダー・物理・ブラシ・WebGPU"),
+    USER("自作", "保存済みのマイテンプレートから作成")
+}
+
+internal enum class WorkTemplateKind(
+    val title: String,
+    val description: String,
+    val category: WorkTemplateCategory,
+    val badge: String,
+    val blockFriendly: Boolean = true,
+    val recommendedBlockMode: Boolean = false,
+    val requiresSound: Boolean = false
+) {
+    BASIC_2D("2D基本", "円を1つ描く最小構成。色や大きさを変えて始めましょう。", WorkTemplateCategory.BASIC, "2D"),
+    ANIMATION("アニメーション", "時間に合わせて動く円。速度や動き方を変えてみましょう。", WorkTemplateCategory.BASIC, "MOTION"),
+    INPUT("マウス・タッチ", "マウスやタッチの位置に円を描く最小構成。", WorkTemplateCategory.BASIC, "INPUT"),
+    PARAMETERS("パラメータ", "円の大きさと色をライブパラメータで変更できます。", WorkTemplateCategory.BASIC, "PARAM"),
+    PATTERN("反復模様", "図形を繰り返して模様を描きます。", WorkTemplateCategory.BASIC, "LOOP"),
+    PARTICLES("パーティクル", "小さな粒が流れるアニメーションです。", WorkTemplateCategory.BASIC, "MOTION"),
+    BLOCK_FOLLOW("指についてくる円", "マウスや指の位置に円が付いてくる、ブロック入門に最適な最小例。", WorkTemplateCategory.BLOCKS, "2D", recommendedBlockMode = true),
+    BLOCK_PAINT("指でお絵描き", "押している間だけキャンバスに描ける、条件分岐（if）の基本例。", WorkTemplateCategory.BLOCKS, "IF", recommendedBlockMode = true),
+    BLOCK_PATTERN("回る模様", "原点の移動・回転と繰り返しループで模様を描きます。", WorkTemplateCategory.BLOCKS, "LOOP", recommendedBlockMode = true),
+    BLOCK_SOUND("タップして音を鳴らす", "画面を押すと横位置に応じた高さの音が鳴ります（p5.sound 自動有効）。", WorkTemplateCategory.BLOCKS, "SOUND", recommendedBlockMode = true, requiresSound = true),
+    BLOCK_THREE("回る3D立方体", "指で視点を回せる3Dキャンバスに回転する立方体を描きます。", WorkTemplateCategory.BLOCKS, "3D", recommendedBlockMode = true),
+    BLOCK_PARAMETERS("スライダーとXYパッド", "2D XYパッド・スライダー・カラーで円を操作するブロック例。", WorkTemplateCategory.BLOCKS, "XY", recommendedBlockMode = true),
+    WEBGL_3D("3D WebGL", "回転する立体から3D作品を作り始めます。", WorkTemplateCategory.ADVANCED, "WEBGL"),
+    SHADER("シェーダー", "頂点シェーダーとフラグメントシェーダーを使って、色を描画します。", WorkTemplateCategory.ADVANCED, "GLSL", blockFriendly = false),
+    PHYSICS_MATTER("物理演算", "Matter.jsを使って、落下や跳ね返りを試せます。", WorkTemplateCategory.ADVANCED, "MATTER", blockFriendly = false),
+    BRUSH("水彩・ブラシ", "p5.brushを使って、水彩のにじみや鉛筆の質感を試せます。", WorkTemplateCategory.ADVANCED, "BRUSH"),
+    WEBGPU("WebGPU", "WebGPUで3Dを描画します。非対応の環境ではWebGLに切り替えます。", WorkTemplateCategory.ADVANCED, "WEBGPU", blockFriendly = false);
+
+    val advanced: Boolean get() = category == WorkTemplateCategory.ADVANCED
 }
 
 internal data class WorkTemplate(val ratio: String, val width: Int, val height: Int,
     val kind: WorkTemplateKind = WorkTemplateKind.BASIC_2D) {
     val libraries: Map<String, String>
-        get() = if (kind == WorkTemplateKind.PHYSICS_MATTER) mapOf("matter-js" to "0.20.0") else emptyMap()
+        get() = when (kind) {
+            WorkTemplateKind.PHYSICS_MATTER -> mapOf("matter-js" to "0.20.0")
+            WorkTemplateKind.BRUSH -> mapOf("p5.brush" to "2.2.1")
+            else -> emptyMap()
+        }
+
+    val requiresSound: Boolean
+        get() = kind.requiresSound
+
+    fun canvasCallPreview(mode: CanvasSizingMode): String {
+        val dims = if (mode == CanvasSizingMode.FIXED) "$width, $height" else "windowWidth, windowHeight"
+        return when (kind) {
+            WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER, WorkTemplateKind.BLOCK_THREE, WorkTemplateKind.BRUSH ->
+                "createCanvas($dims, WEBGL);"
+            WorkTemplateKind.WEBGPU ->
+                "await createCanvas($dims, renderer);"
+            else -> "createCanvas($dims);"
+        }
+    }
 
     fun code(mode: CanvasSizingMode): String {
         val source = when (kind) {
             WorkTemplateKind.BASIC_2D -> CIRCLE_TEMPLATE
             WorkTemplateKind.ANIMATION -> ANIMATION_TEMPLATE
             WorkTemplateKind.INPUT -> INPUT_TEMPLATE
-            WorkTemplateKind.WEBGL_3D -> WEBGL_TEMPLATE
-            WorkTemplateKind.SHADER -> SHADER_TEMPLATE
-            WorkTemplateKind.PHYSICS_MATTER -> MATTER_TEMPLATE
             WorkTemplateKind.PARAMETERS -> WAVE_PARAMETERS_TEMPLATE
             WorkTemplateKind.PATTERN -> PATTERN_TEMPLATE
             WorkTemplateKind.PARTICLES -> PARTICLES_TEMPLATE
+            WorkTemplateKind.BLOCK_FOLLOW -> BLOCK_FOLLOW_TEMPLATE
+            WorkTemplateKind.BLOCK_PAINT -> BLOCK_PAINT_TEMPLATE
+            WorkTemplateKind.BLOCK_PATTERN -> BLOCK_PATTERN_TEMPLATE
+            WorkTemplateKind.BLOCK_SOUND -> BLOCK_SOUND_TEMPLATE
+            WorkTemplateKind.BLOCK_THREE -> BLOCK_THREE_TEMPLATE
+            WorkTemplateKind.BLOCK_PARAMETERS -> BLOCK_PARAMETERS_TEMPLATE
+            WorkTemplateKind.WEBGL_3D -> WEBGL_TEMPLATE
+            WorkTemplateKind.SHADER -> SHADER_TEMPLATE
+            WorkTemplateKind.PHYSICS_MATTER -> MATTER_TEMPLATE
+            WorkTemplateKind.BRUSH -> BRUSH_TEMPLATE
             WorkTemplateKind.WEBGPU -> WEBGPU_TEMPLATE
         }
         if (mode == CanvasSizingMode.RESPONSIVE) return source
@@ -292,5 +341,175 @@ function touchMoved() {
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val BLOCK_FOLLOW_TEMPLATE = """
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(10, 14, 26, 36);
+  blendMode(ADD);
+  noStroke();
+  fill("#6c5ce7");
+  circle(mouseX, mouseY, 80 + sin(frameCount * 0.06) * 24);
+  blendMode(BLEND);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val BLOCK_PAINT_TEMPLATE = """
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  background(12, 14, 24);
+  noStroke();
+  fill("#a8c7fa");
+  circle(width / 2, height / 2, 24);
+}
+
+function draw() {
+  if (mouseIsPressed) {
+    noStroke();
+    fill("hsl(" + floor((frameCount * 3 + 0) % 360) + ", 85%, 65%)");
+    circle(mouseX, mouseY, 28);
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  background(12, 14, 24);
+}
+""".trimIndent() + "\n"
+
+internal val BLOCK_PATTERN_TEMPLATE = """
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(10, 14, 26, 48);
+  noFill();
+  stroke("hsl(" + floor((frameCount * 2 + 0) % 360) + ", 85%, 65%)");
+  strokeWeight(2);
+  push();
+  translate(width / 2, height / 2);
+  for (let i = 0; i < 12; i++) {
+    rotate(TWO_PI / 12);
+    circle(min(width, height) * 0.18, 0, min(width, height) * 0.24);
+  }
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val BLOCK_SOUND_TEMPLATE = """
+let tone;
+let toneStarted = false;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  tone = new p5.Oscillator("sine");
+  tone.amp(0);
+}
+
+function draw() {
+  background("#17233d");
+  fill("#a8c7fa");
+  noStroke();
+  circle(mouseX, mouseY, mouseIsPressed ? 100 : 50);
+}
+
+function mousePressed() {
+  userStartAudio();
+  if (!toneStarted) {
+    tone.start();
+    toneStarted = true;
+  }
+  tone.freq(map(mouseX, 0, width, 220, 880));
+  tone.amp(0.1, 0.05);
+}
+
+function mouseReleased() {
+  tone.amp(0, 0.1);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val BLOCK_THREE_TEMPLATE = """
+function setup() {
+  createCanvas(windowWidth, windowHeight, WEBGL);
+}
+
+function draw() {
+  background(24);
+  orbitControl();
+  normalMaterial();
+  rotateX(frameCount * 0.01);
+  rotateY(frameCount * 0.02);
+  box(min(width, height) * 0.3);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val BLOCK_PARAMETERS_TEMPLATE = """
+let pos = { x: 0.5, y: 0.5 }; // @xy(0, 1) "Position"
+let size = 90; // @slider(20, 200, 2) "Size"
+let ink = "#BA90E2"; // @color "Ink"
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(22);
+  noStroke();
+  fill(ink);
+  circle(pos.x * width, pos.y * height, size);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+""".trimIndent() + "\n"
+
+internal val BRUSH_TEMPLATE = """
+function drawArtwork() {
+  background("#f2efe7");
+  brush.pick("HB");
+  brush.stroke("#2b2825");
+  brush.strokeWeight(1.5);
+  brush.fill("#d67856", 90);
+  brush.fillBleed(0.25, "out");
+  brush.circle(0, 0, min(width, height) * 0.24);
+  brush.noFill();
+  brush.line(-width * 0.25, height * 0.28, width * 0.25, height * 0.28);
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight, WEBGL);
+  brush.load();
+  drawArtwork();
+}
+
+function draw() {
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  drawArtwork();
 }
 """.trimIndent() + "\n"

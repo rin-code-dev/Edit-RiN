@@ -42,7 +42,7 @@ internal fun SearchReplaceDialog(
     val colors = MaterialTheme.colorScheme
     fun uiText(source: String, vararg arguments: Any?): String =
         textTranslator(source, arguments)
-    AlertDialog(
+    UnitAlertDialog(
         onDismissRequest = {
             viewModel.showSearchDialog = false
         },
@@ -64,11 +64,17 @@ internal fun SearchReplaceDialog(
                     FilterChip(
                         selected = !viewModel.searchWholeWork,
                         onClick = { viewModel.searchWholeWork = false },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(colors),
+                        border = unitFilterChipBorder(!viewModel.searchWholeWork, true, colors),
                         label = { Text(uiText("現在のファイル")) }
                     )
                     FilterChip(
                         selected = viewModel.searchWholeWork,
                         onClick = { viewModel.searchWholeWork = true },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(colors),
+                        border = unitFilterChipBorder(viewModel.searchWholeWork, true, colors),
                         label = { Text(uiText("作品全体")) }
                     )
                 }
@@ -77,6 +83,7 @@ internal fun SearchReplaceDialog(
                     value = viewModel.searchQuery,
                     onValueChange = { viewModel.searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
+                    shape = UNIT_CONTROL_SHAPE,
                     label = { Text(uiText("検索する文字列")) },
                     singleLine = true
                 )
@@ -148,7 +155,8 @@ internal fun SearchReplaceDialog(
                 onClick = {
                     viewModel.showSearchDialog = false
                     editorFocusRequester.requestFocus()
-                }
+                },
+                shape = UNIT_CONTROL_SHAPE
             ) {
                 Text(uiText("閉じる"))
             }

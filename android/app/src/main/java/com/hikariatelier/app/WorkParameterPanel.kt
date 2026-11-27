@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -16,6 +19,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -24,7 +28,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -338,6 +344,7 @@ internal fun WorkParameterPanel(
                 if (onApplyDefaults != null) {
                     TextButton(
                         onClick = onApplyDefaults,
+                        shape = UNIT_CONTROL_SHAPE,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(
@@ -360,6 +367,7 @@ internal fun WorkParameterPanel(
                             cancelMorph()
                             onResetAll()
                         },
+                        shape = UNIT_CONTROL_SHAPE,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(
@@ -380,7 +388,13 @@ internal fun WorkParameterPanel(
         }
 
         onAddParameter?.let { add ->
-            OutlinedButton(onClick = add, enabled = parameters.size < 16, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = add,
+                enabled = parameters.size < 16,
+                shape = UNIT_CONTROL_SHAPE,
+                border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(text("＋ パラメータ追加"))
             }
         }
@@ -399,13 +413,12 @@ internal fun WorkParameterPanel(
             val resolvedB = presets.firstOrNull { it.id == blendPresetBId && it.id != resolvedA?.id }
                 ?: presets.firstOrNull { it.id != resolvedA?.id }
 
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = UNIT_CARD_SHAPE,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
+                tonalElevation = 0.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -443,6 +456,9 @@ internal fun WorkParameterPanel(
                                 FilterChip(
                                     selected = morphEnabled,
                                     onClick = { morphEnabled = !morphEnabled },
+                                    shape = UNIT_CONTROL_SHAPE,
+                                    colors = unitFilterChipColors(),
+                                    border = unitFilterChipBorder(morphEnabled),
                                     label = {
                                         Text(
                                             text = text("補間"),
@@ -463,6 +479,9 @@ internal fun WorkParameterPanel(
                                             blendFraction = 0f
                                         }
                                     },
+                                    shape = UNIT_CONTROL_SHAPE,
+                                    colors = unitFilterChipColors(),
+                                    border = unitFilterChipBorder(showBlendBar),
                                     label = {
                                         Text(
                                             text = "A↔B",
@@ -478,6 +497,7 @@ internal fun WorkParameterPanel(
                                     onClick = { showSavePresetDialog = true },
                                     enabled = presets.size < MAX_PARAMETER_PRESETS,
                                     shape = UNIT_CONTROL_SHAPE,
+                                    colors = unitTonalButtonColors(),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
@@ -511,112 +531,143 @@ internal fun WorkParameterPanel(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             presets.forEach { preset ->
-                                val isActive = preset.id == activePresetId
-                                var menuOpen by remember(preset.id) { mutableStateOf(false) }
-                                Box {
-                                    Surface(
-                                        shape = UNIT_CONTROL_SHAPE,
-                                        color = if (isActive) MaterialTheme.colorScheme.primaryContainer
-                                            else MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (isActive) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.outlineVariant
-                                        )
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier
-                                                .clip(UNIT_CONTROL_SHAPE)
-                                                .clickable { applyPreset(preset) }
-                                                .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = preset.name,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
-                                                    else MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.widthIn(max = 128.dp)
+                                key(preset.id) {
+                                    val isActive = preset.id == activePresetId
+                                    var menuOpen by remember(preset.id) { mutableStateOf(false) }
+                                    val presetColors = remember(preset.values, parameters) {
+                                        parameters.filterIsInstance<WorkParameter.Color>()
+                                            .mapNotNull { cp -> parseHexColor(preset.values[cp.name] ?: cp.defaultValue) }
+                                            .take(3)
+                                    }
+                                    Box {
+                                        Surface(
+                                            shape = UNIT_CONTROL_SHAPE,
+                                            color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                                else MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(
+                                                UNIT_BORDER_WIDTH,
+                                                if (isActive) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.outlineVariant
                                             )
-                                            if (onSavePreset != null || onRenamePreset != null || onDeletePreset != null) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(UNIT_COMPACT_CONTROL_SHAPE)
-                                                        .clickable { menuOpen = true },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.ic_more_vertical),
-                                                        contentDescription = text("プリセット操作"),
-                                                        tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
-                                                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(14.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .clip(UNIT_CONTROL_SHAPE)
+                                                    .clickable { applyPreset(preset) }
+                                                    .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp)
+                                            ) {
+                                                if (presetColors.isNotEmpty()) {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.padding(end = 6.dp)
+                                                    ) {
+                                                        presetColors.forEach { swatch ->
+                                                            Box(
+                                                                Modifier
+                                                                    .size(width = 4.dp, height = 12.dp)
+                                                                    .clip(RoundedCornerShape(2.dp))
+                                                                    .background(swatch)
+                                                            )
+                                                        }
+                                                    }
+                                                } else if (isActive) {
+                                                    Box(
+                                                        Modifier
+                                                            .padding(end = 6.dp)
+                                                            .size(6.dp)
+                                                            .clip(CircleShape)
+                                                            .background(MaterialTheme.colorScheme.primary)
                                                     )
                                                 }
-                                            } else {
-                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    text = preset.name,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                                    color = if (isActive) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.widthIn(max = 128.dp)
+                                                )
+                                                if (onSavePreset != null || onRenamePreset != null || onDeletePreset != null) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(24.dp)
+                                                            .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                                            .clickable { menuOpen = true },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.ic_more_vertical),
+                                                            contentDescription = text("プリセット操作"),
+                                                            tint = if (isActive) MaterialTheme.colorScheme.primary
+                                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                } else {
+                                                    Spacer(Modifier.width(8.dp))
+                                                }
                                             }
                                         }
-                                    }
 
-                                    DropdownMenu(
-                                        expanded = menuOpen,
-                                        onDismissRequest = { menuOpen = false }
-                                    ) {
-                                        if (onSavePreset != null) {
-                                            DropdownMenuItem(
-                                                text = { Text(text("現在の値で上書き")) },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.ic_save),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    if (onSavePreset(preset.name, effectiveCurrentValues, preset.id)) {
-                                                        Toast.makeText(context, text("プリセットを更新しました"), Toast.LENGTH_SHORT).show()
+                                        UnitDropdownMenu(
+                                            expanded = menuOpen,
+                                            onDismissRequest = { menuOpen = false }
+                                        ) {
+                                            if (onSavePreset != null) {
+                                                DropdownMenuItem(
+                                                    text = { Text(text("現在の値で上書き")) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.ic_save),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        if (onSavePreset(preset.name, effectiveCurrentValues, preset.id)) {
+                                                            Toast.makeText(context, text("プリセットを更新しました"), Toast.LENGTH_SHORT).show()
+                                                        }
                                                     }
-                                                }
-                                            )
-                                        }
-                                        if (onRenamePreset != null) {
-                                            DropdownMenuItem(
-                                                text = { Text(text("名前を変更")) },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.ic_rename),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    renamingPresetId = preset.id
-                                                }
-                                            )
-                                        }
-                                        if (onDeletePreset != null) {
-                                            DropdownMenuItem(
-                                                text = { Text(text("削除"), color = MaterialTheme.colorScheme.error) },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.ic_delete),
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.error,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    onDeletePreset(preset.id)
-                                                }
-                                            )
+                                                )
+                                            }
+                                            if (onRenamePreset != null) {
+                                                DropdownMenuItem(
+                                                    text = { Text(text("名前を変更")) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.ic_rename),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        renamingPresetId = preset.id
+                                                    }
+                                                )
+                                            }
+                                            if (onDeletePreset != null) {
+                                                DropdownMenuItem(
+                                                    text = { Text(text("削除"), color = MaterialTheme.colorScheme.error) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.ic_delete),
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.error,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        onDeletePreset(preset.id)
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -679,12 +730,12 @@ internal fun WorkParameterPanel(
 
         // Empty state
         if (parameters.isEmpty()) {
-            Card(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                )
+                shape = UNIT_CARD_SHAPE,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
+                tonalElevation = 0.dp
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
@@ -703,8 +754,12 @@ internal fun WorkParameterPanel(
 
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLowest
+                        shape = UNIT_CONTROL_SHAPE,
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        border = BorderStroke(
+                            UNIT_BORDER_WIDTH,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA)
+                        )
                     ) {
                         Text(
                             text = PARAMETER_SAMPLE.trimEnd(),
@@ -717,7 +772,7 @@ internal fun WorkParameterPanel(
                     }
 
                     onInsertSample?.let { insert ->
-                        Button(onClick = insert, modifier = Modifier.fillMaxWidth()) {
+                        Button(onClick = insert, shape = UNIT_CONTROL_SHAPE, modifier = Modifier.fillMaxWidth()) {
                             Text(text("コードに直接挿入"))
                         }
                     }
@@ -728,7 +783,7 @@ internal fun WorkParameterPanel(
                             Toast.makeText(context, text("テンプレートをコピーしました"), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = UNIT_CONTROL_SHAPE
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_duplicate),
@@ -882,16 +937,33 @@ private fun ParameterItemCard(
     onResetParameter: ((WorkParameter) -> Unit)?,
     text: (String) -> String
 ) {
-    Card(
+    val colors = MaterialTheme.colorScheme
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+        shape = UNIT_CARD_SHAPE,
+        color = colors.surface,
+        border = BorderStroke(
+            UNIT_BORDER_WIDTH,
+            if (isLocked) colors.primary.copy(alpha = 0.65f) else colors.outlineVariant
+        ),
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    if (isModified) {
+                        Modifier
+                            .clip(UNIT_CARD_SHAPE)
+                            .drawBehind {
+                                drawRect(
+                                    color = colors.primary,
+                                    topLeft = Offset.Zero,
+                                    size = Size(3.dp.toPx(), size.height)
+                                )
+                            }
+                    } else Modifier
+                )
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -998,7 +1070,7 @@ private fun NumberParameterCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 Text(
@@ -1014,6 +1086,7 @@ private fun NumberParameterCard(
             if (isModified && onResetParameter != null) {
                 IconButton(
                     onClick = { onResetParameter(parameter) },
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
@@ -1039,6 +1112,8 @@ private fun NumberParameterCard(
                 onEmitManualChange(parameter, nextStr)
                 onCommit()
             },
+            shape = UNIT_COMPACT_CONTROL_SHAPE,
+            border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
             modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp),
             enabled = numeric > parameter.min
@@ -1056,6 +1131,7 @@ private fun NumberParameterCard(
             },
             onValueChangeFinished = onCommit,
             valueRange = parameter.min..parameter.max,
+            defaultValue = defValue.toFloatOrNull(),
             modifier = Modifier.weight(1f)
         )
 
@@ -1066,6 +1142,8 @@ private fun NumberParameterCard(
                 onEmitManualChange(parameter, nextStr)
                 onCommit()
             },
+            shape = UNIT_COMPACT_CONTROL_SHAPE,
+            border = BorderStroke(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outlineVariant),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
             modifier = Modifier.defaultMinSize(minWidth = 36.dp, minHeight = 32.dp),
             enabled = numeric < parameter.max
@@ -1126,7 +1204,7 @@ private fun BooleanParameterCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 color = if (boolVal) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Text(
@@ -1143,12 +1221,14 @@ private fun BooleanParameterCard(
                 onCheckedChange = { checked ->
                     onEmitManualChange(parameter, checked.toString())
                     onCommit()
-                }
+                },
+                colors = unitSwitchColors()
             )
 
             if (isModified && onResetParameter != null) {
                 IconButton(
                     onClick = { onResetParameter(parameter) },
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
@@ -1192,6 +1272,7 @@ private fun ColorParameterCard(
         if (isModified && onResetParameter != null) {
             IconButton(
                 onClick = { onResetParameter(parameter) },
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
@@ -1246,7 +1327,7 @@ private fun ChoiceParameterCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 Text(
@@ -1262,6 +1343,7 @@ private fun ChoiceParameterCard(
             if (isModified && onResetParameter != null) {
                 IconButton(
                     onClick = { onResetParameter(parameter) },
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
@@ -1340,7 +1422,7 @@ private fun Point2DParameterCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 Text(
@@ -1356,6 +1438,7 @@ private fun Point2DParameterCard(
             if (isModified && onResetParameter != null) {
                 IconButton(
                     onClick = { onResetParameter(parameter) },
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
@@ -1369,10 +1452,13 @@ private fun Point2DParameterCard(
         }
     }
 
+    val defaultPair = parsePoint2DValue(defValue)
     ParameterXYPad(
         parameter = parameter,
         valueX = curX,
         valueY = curY,
+        defaultX = defaultPair?.first,
+        defaultY = defaultPair?.second,
         onValueChange = { nextX, nextY ->
             onEmitManualChange(
                 parameter,
@@ -1445,7 +1531,7 @@ private fun PresetSelectorChip(
                 )
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        UnitDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             presets.forEach { preset ->
                 DropdownMenuItem(
                     text = { Text(preset.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -1499,6 +1585,8 @@ private fun ParameterXYPad(
     parameter: WorkParameter.Point2D,
     valueX: Float,
     valueY: Float,
+    defaultX: Float? = null,
+    defaultY: Float? = null,
     onValueChange: (Float, Float) -> Unit,
     onCommit: () -> Unit
 ) {
@@ -1509,15 +1597,28 @@ private fun ParameterXYPad(
 
     val normX = if (parameter.maxX > parameter.minX) ((valueX - parameter.minX) / (parameter.maxX - parameter.minX)).coerceIn(0f, 1f) else 0.5f
     val normY = if (parameter.maxY > parameter.minY) ((valueY - parameter.minY) / (parameter.maxY - parameter.minY)).coerceIn(0f, 1f) else 0.5f
+    val defaultNormX = if (defaultX != null && parameter.maxX > parameter.minX) {
+        ((defaultX - parameter.minX) / (parameter.maxX - parameter.minX)).coerceIn(0f, 1f)
+    } else null
+    val defaultNormY = if (defaultY != null && parameter.maxY > parameter.minY) {
+        ((defaultY - parameter.minY) / (parameter.maxY - parameter.minY)).coerceIn(0f, 1f)
+    } else null
 
-    val padShape = RoundedCornerShape(12.dp)
+    var isDragging by remember { mutableStateOf(false) }
+    val haloRadius by animateDpAsState(
+        targetValue = if (isDragging) 22.dp else 15.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "xyHalo"
+    )
+
+    val padShape = UNIT_CONTROL_SHAPE
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(168.dp)
             .clip(padShape)
             .background(colors.surfaceContainerLowest)
-            .border(1.dp, colors.outlineVariant, padShape)
+            .border(UNIT_BORDER_WIDTH, colors.outlineVariant, padShape)
             .pointerInput(parameter.name) {
                 var lastEmittedX = Float.NaN
                 var lastEmittedY = Float.NaN
@@ -1546,76 +1647,99 @@ private fun ParameterXYPad(
                     lastEmittedY = Float.NaN
                     val down = awaitFirstDown(requireUnconsumed = false)
                     down.consume()
-                    emitForPosition(down.position)
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull() ?: break
-                        if (!change.pressed) {
-                            change.consume()
-                            break
+                    isDragging = true
+                    try {
+                        emitForPosition(down.position)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull() ?: break
+                            if (!change.pressed) {
+                                change.consume()
+                                break
+                            }
+                            if (change.position != change.previousPosition) {
+                                change.consume()
+                                emitForPosition(change.position)
+                            }
                         }
-                        if (change.position != change.previousPosition) {
-                            change.consume()
-                            emitForPosition(change.position)
-                        }
+                    } finally {
+                        isDragging = false
                     }
                     latestOnCommit()
                 }
             }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val gridColor = colors.outlineVariant.copy(alpha = 0.35f)
-            val centerColor = colors.outlineVariant.copy(alpha = 0.7f)
+            val dotColor = colors.outlineVariant.copy(alpha = 0.5f)
+            val centerColor = colors.outlineVariant.copy(alpha = 0.55f)
             val accentColor = colors.primary
             val surfaceColor = colors.surface
 
-            for (i in 1..3) {
-                val frac = i / 4f
-                val isCenter = i == 2
-                val strokeColor = if (isCenter) centerColor else gridColor
-                val strokeWidth = if (isCenter) 1.25.dp.toPx() else 0.75.dp.toPx()
-                drawLine(
-                    color = strokeColor,
-                    start = Offset(size.width * frac, 0f),
-                    end = Offset(size.width * frac, size.height),
-                    strokeWidth = strokeWidth
-                )
-                drawLine(
-                    color = strokeColor,
-                    start = Offset(0f, size.height * frac),
-                    end = Offset(size.width, size.height * frac),
-                    strokeWidth = strokeWidth
-                )
+            val dotRadius = 1.25.dp.toPx()
+            for (ix in 1..5) {
+                for (iy in 1..5) {
+                    drawCircle(
+                        color = dotColor,
+                        radius = dotRadius,
+                        center = Offset(size.width * (ix / 6f), size.height * (iy / 6f))
+                    )
+                }
             }
+
+            val centerStroke = 0.75.dp.toPx()
+            drawLine(
+                color = centerColor,
+                start = Offset(size.width / 2f, 0f),
+                end = Offset(size.width / 2f, size.height),
+                strokeWidth = centerStroke
+            )
+            drawLine(
+                color = centerColor,
+                start = Offset(0f, size.height / 2f),
+                end = Offset(size.width, size.height / 2f),
+                strokeWidth = centerStroke
+            )
 
             val cx = (normX * size.width).coerceIn(0f, size.width)
             val cy = (normY * size.height).coerceIn(0f, size.height)
 
+            if (defaultNormX != null && defaultNormY != null &&
+                (kotlin.math.abs(defaultNormX - normX) > 0.01f || kotlin.math.abs(defaultNormY - normY) > 0.01f)
+            ) {
+                drawCircle(
+                    color = colors.outline.copy(alpha = 0.7f),
+                    radius = 4.5.dp.toPx(),
+                    center = Offset(defaultNormX * size.width, defaultNormY * size.height),
+                    style = Stroke(width = 1.25.dp.toPx())
+                )
+            }
+
+            val crosshairAlpha = if (isDragging) 0.55f else 0.3f
             drawLine(
-                color = accentColor.copy(alpha = 0.45f),
+                color = accentColor.copy(alpha = crosshairAlpha),
                 start = Offset(cx, 0f),
                 end = Offset(cx, size.height),
-                strokeWidth = 1.25.dp.toPx()
+                strokeWidth = 1.dp.toPx()
             )
             drawLine(
-                color = accentColor.copy(alpha = 0.45f),
+                color = accentColor.copy(alpha = crosshairAlpha),
                 start = Offset(0f, cy),
                 end = Offset(size.width, cy),
-                strokeWidth = 1.25.dp.toPx()
+                strokeWidth = 1.dp.toPx()
             )
             drawCircle(
                 color = accentColor.copy(alpha = 0.16f),
-                radius = 18.dp.toPx(),
+                radius = haloRadius.toPx(),
                 center = Offset(cx, cy)
             )
             drawCircle(
                 color = accentColor,
-                radius = 8.dp.toPx(),
+                radius = 7.5.dp.toPx(),
                 center = Offset(cx, cy)
             )
             drawCircle(
                 color = surfaceColor,
-                radius = 8.dp.toPx(),
+                radius = 7.5.dp.toPx(),
                 center = Offset(cx, cy),
                 style = Stroke(width = 2.dp.toPx())
             )
@@ -1719,10 +1843,27 @@ internal fun WorkParameterBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         sheetGesturesEnabled = !isLandscape,
+        shape = RoundedCornerShape(topStart = UNIT_CORNER_RADIUS, topEnd = UNIT_CORNER_RADIUS),
         containerColor = if (isLandscape) Color.Transparent else colors.surface,
         scrimColor = if (isLandscape) MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
             else MaterialTheme.colorScheme.scrim.copy(alpha = 0.14f),
-        dragHandle = if (isLandscape) null else { { BottomSheetDefaults.DragHandle() } }
+        dragHandle = if (isLandscape) null else {
+            {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 32.dp, height = 3.dp)
+                            .clip(CircleShape)
+                            .background(colors.outlineVariant)
+                    )
+                }
+            }
+        }
     ) {
         windowSetup()
         if (isLandscape) {
@@ -1736,11 +1877,11 @@ internal fun WorkParameterBottomSheet(
                         .widthIn(min = 360.dp, max = 560.dp)
                         .fillMaxHeight(),
                     shape = if (landscapeEditorOnLeft)
-                        RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
+                        RoundedCornerShape(topEnd = UNIT_CORNER_RADIUS, bottomEnd = UNIT_CORNER_RADIUS)
                     else
-                        RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+                        RoundedCornerShape(topStart = UNIT_CORNER_RADIUS, bottomStart = UNIT_CORNER_RADIUS),
                     color = colors.surface,
-                    border = BorderStroke(1.dp, colors.outlineVariant),
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
                     tonalElevation = 0.dp
                 ) {
                     panelContent()

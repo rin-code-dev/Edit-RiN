@@ -1,5 +1,6 @@
 package com.hikariatelier.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -119,11 +120,18 @@ internal fun EditorAuthoringDialogs(
     }
 
     if (preview.screenshotBusy || recordingViewModel.screenshotSaving) {
+        val colors = MaterialTheme.colorScheme
         Dialog(
             onDismissRequest = {},
             properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
         ) {
-            Surface(shape = RoundedCornerShape(16.dp)) {
+            Surface(
+                shape = UNIT_SHAPE,
+                color = colors.surface,
+                contentColor = colors.onSurface,
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+                tonalElevation = 0.dp
+            ) {
                 Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp))
                     Spacer(Modifier.width(16.dp))

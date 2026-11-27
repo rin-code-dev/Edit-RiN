@@ -287,7 +287,7 @@ internal fun SnapshotSheet(
             value = null
             value = withContext(Dispatchers.Default) { snapshotDifference(current, target, blockStateLabel) }
         }
-        AlertDialog(
+        UnitAlertDialog(
             onDismissRequest = { diffTarget = null },
             title = { Text(text("変更内容を確認")) },
             text = {
@@ -336,13 +336,14 @@ internal fun SnapshotSheet(
                         diffTarget = null
                         onRestoreSnapshot(toRestore)
                     },
+                    shape = UNIT_CONTROL_SHAPE,
                     enabled = !target.matches(current) && !busy && !loading && error == null
                 ) {
                     Text(text("この状態に復元"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { diffTarget = null }) {
+                TextButton(onClick = { diffTarget = null }, shape = UNIT_CONTROL_SHAPE) {
                     Text(text("閉じる"))
                 }
             }
@@ -350,7 +351,7 @@ internal fun SnapshotSheet(
     }
 
     snapshotToDelete?.let { target ->
-        AlertDialog(
+        UnitAlertDialog(
             onDismissRequest = { snapshotToDelete = null },
             title = { Text(text("スナップショットを削除")) },
             text = { Text(text("このスナップショットを削除しますか？この操作は取り消せません。")) },
@@ -361,13 +362,14 @@ internal fun SnapshotSheet(
                         snapshotToDelete = null
                         onDeleteSnapshot(toDelete)
                     },
+                    shape = UNIT_CONTROL_SHAPE,
                     enabled = !busy && !loading && error == null
                 ) {
                     Text(text("削除"), color = colors.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { snapshotToDelete = null }) {
+                TextButton(onClick = { snapshotToDelete = null }, shape = UNIT_CONTROL_SHAPE) {
                     Text(text("キャンセル"))
                 }
             }

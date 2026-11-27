@@ -19,28 +19,33 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import com.hikariatelier.app.ui.theme.LocalAppThemeMode
+import com.hikariatelier.app.ui.theme.codeSyntaxPalette
 
 @Composable
 internal fun editorHighlight(
     source: String, dark: Boolean, errors: Set<Int>, file: String = "sketch.js", documentKey: String = file,
     change: EditorDocumentChange? = null
 ): VisualTransformation {
-    val immediate = remember(file, dark) { projectFileHighlighter(file, dark, emptySet()) }
-    val cache = remember(documentKey, file, dark) { EditorHighlightCache() }
-    val result = if (source.length < 500) null else key(documentKey, file, dark) {
+    val themeMode = LocalAppThemeMode.current
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val palette = remember(themeMode, dark, surfaceColor) { codeSyntaxPalette(themeMode, dark, surfaceColor) }
+    val immediate = remember(file, dark, palette) { projectFileHighlighter(file, dark, emptySet(), palette) }
+    val cache = remember(documentKey, file, dark, palette) { EditorHighlightCache() }
+    val result = if (source.length < 500) null else key(documentKey, file, dark, palette) {
         produceState<AnnotatedString?>(null, source) {
             // Rapid typing supersedes this job before a full-document scan begins.
             delay(120)
             value = withContext(Dispatchers.Default) {
-                projectFileHighlighter(file, dark, emptySet()).filter(AnnotatedString(source)).text
+                projectFileHighlighter(file, dark, emptySet(), palette).filter(AnnotatedString(source)).text
             }
         }.value
     }
-    return remember(source, result, immediate, cache, dark, errors, change) {
+    return remember(source, result, immediate, cache, dark, errors, change, palette) {
         VisualTransformation { text ->
             val completed = if (text.length < 500) immediate.filter(text).text else result
             val syntax = cache.highlight(text, completed, change)
-            TransformedText(withEditorErrorLines(syntax, dark, errors), OffsetMapping.Identity)
+            TransformedText(withEditorErrorLines(syntax, dark, errors, palette.errorLineBackground), OffsetMapping.Identity)
         }
     }
 }

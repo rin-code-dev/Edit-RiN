@@ -96,6 +96,7 @@ class BlockEditorChromeTest {
 
     @Test fun nativeSearchSelectsOnlyTheVisibleResult() {
         val model = BlockEditorChromeModel().apply {
+            state = BlockChromeState(editable = true, busy = false, parts = 2)
             openSearch("search")
             val request = beginSearch()
             acceptResults(results(request, "r1"), "r1")
@@ -104,8 +105,16 @@ class BlockEditorChromeTest {
         compose.setContent {
             MaterialTheme { BlockEditorSearchDialog(model, { it }, onQuery = { model.query = it }) { located = it.id } }
         }
+        compose.onNodeWithText("すべて").assertIsDisplayed()
+        compose.onNodeWithText("処理の一覧").assertIsDisplayed()
+        compose.onNodeWithText("未接続 (2)").assertIsDisplayed()
         compose.onNodeWithText("円").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals("bound_circle", located) }
+        compose.onNodeWithText("未接続 (2)").performClick()
+        compose.runOnIdle {
+            assertEquals("parts", model.searchMode)
+            assertTrue(model.entries.isEmpty())
+        }
         compose.onNodeWithText("閉じる").performClick()
         compose.runOnIdle { assertNull(model.searchMode) }
     }
@@ -121,14 +130,14 @@ class BlockEditorChromeTest {
                         showingBlocks = true, allowBlocks = true, enabled = true, readOnly = false,
                         autoRunEnabled = true, previewHasChanges = false, onSelectFile = {}, onSelectBlocks = {},
                         onAddFile = null, onToggleAutoRun = {}, onRunChanges = {}, textTranslator = { value, _ -> value },
-                        onOpenFullPreview = { fullPreviewOpened = true })
+                        onOpenFullPreview = { fullPreviewOpened = true }, showBlockPreviewControls = true)
                     BlockEditorFloatingDock(model, ready = true, fullscreen = false, canUndo = true, canRedo = true,
                         text = { it }, onCommand = {}, onSearch = {}, onDisplay = { displayOpened = true }, onFullscreen = {})
                 }
             }
         }
         val header = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
-        for (label in listOf("プレビューを全画面表示", "ブロックを追加", "元に戻す", "やり直す", "作品内を探す", "その他の操作")) {
+        for (label in listOf("プレビューを全画面表示", "ブロックを追加", "元に戻す", "やり直す", "その他の操作")) {
             val button = compose.onNodeWithContentDescription(label).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             assertTrue("$label: $button outside $header", button.left >= header.left && button.right <= header.right)
         }
@@ -139,7 +148,7 @@ class BlockEditorChromeTest {
                 .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
         }
         compose.onNodeWithContentDescription("その他の操作").performClick()
-        compose.onNodeWithText("処理の一覧").assertIsDisplayed()
+        compose.onNodeWithText("作品内を探す").assertIsDisplayed()
         compose.onNodeWithText("表示設定").performClick()
         compose.runOnIdle { assertTrue(displayOpened) }
     }
@@ -154,5 +163,64 @@ class BlockEditorChromeTest {
         compose.runOnIdle { assertNull(applied) }
         compose.onNodeWithText("適用").performClick()
         compose.runOnIdle { assertEquals(BlockEditorDisplayPreferences(18.5, "comfortable"), applied) }
+    }
+
+    @Test fun streamlinedEasyDockFits320AndSwitchesModesFromOverflowMenu() {
+        val model = BlockEditorChromeModel().apply { state = BlockChromeState(editable = true, busy = false, easy = true, parts = 3) }
+        var easy = true
+        var searched = ""
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.width(320.dp).testTag("easyDock")) {
+                    EditorDocumentBar(
+                        files = listOf("sketch.js"), selectedFile = "sketch.js", dirtyFiles = emptySet(),
+                        showingBlocks = true, allowBlocks = true, enabled = true, readOnly = false,
+                        autoRunEnabled = true, previewHasChanges = true, onSelectFile = {}, onSelectBlocks = {},
+                        onAddFile = null, onToggleAutoRun = {}, onRunChanges = {}, textTranslator = { value, _ -> value },
+                        onOpenFullPreview = {}, showBlockPreviewControls = false
+                    )
+                    BlockEditorFloatingDock(
+                        model = model, ready = true, fullscreen = true, canUndo = true, canRedo = true,
+                        text = { it }, onCommand = {}, onSearch = { searched = it }, onDisplay = {}, onFullscreen = {},
+                        easyMode = easy, onToggleEasyMode = { easy = !easy }
+                    )
+                }
+            }
+        }
+        compose.onAllNodesWithContentDescription("プレビューを全画面表示").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("自動実行を切り替え").assertCountEquals(0)
+        val root = compose.onNodeWithTag("easyDock").fetchSemanticsNode().boundsInRoot
+        for (label in listOf("ブロックを追加", "元に戻す", "やり直す", "その他の操作")) {
+            val button = compose.onNodeWithContentDescription(label).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue("$label: $button outside $root", button.left >= root.left && button.right <= root.right)
+        }
+        compose.onNodeWithContentDescription("その他の操作").performClick()
+        compose.onNodeWithText("詳細ブロックに切り替え").performClick()
+        compose.runOnIdle { assertFalse(easy) }
+        compose.onNodeWithContentDescription("その他の操作").performClick()
+        compose.onNodeWithText("作品内を探す").performClick()
+        compose.runOnIdle { assertEquals("search", searched) }
+    }
+
+    @Test fun easyModeHintBannerSwitchesAndDismisses() {
+        var switched = false
+        var dismissed = false
+        compose.setContent {
+            MaterialTheme {
+                BlockEditorEasyModeHintBanner(
+                    visible = true,
+                    text = { it },
+                    onSwitchToEasy = { switched = true },
+                    onDismiss = { dismissed = true }
+                )
+            }
+        }
+        compose.onNodeWithText("かんたんブロックも使えます").assertIsDisplayed()
+        compose.onNodeWithText("かんたんに切替").performClick()
+        compose.onNodeWithContentDescription("案内を閉じる").performClick()
+        compose.runOnIdle {
+            assertTrue(switched)
+            assertTrue(dismissed)
+        }
     }
 }

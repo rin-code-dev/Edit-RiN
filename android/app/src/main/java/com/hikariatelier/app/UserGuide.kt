@@ -16,22 +16,29 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.hikariatelier.app.ui.theme.LocalAppThemeMode
+import com.hikariatelier.app.ui.theme.codeSyntaxPalette
 import kotlinx.coroutines.launch
 
 internal data class GuideSection(
@@ -64,7 +71,7 @@ internal val userGuideSections by lazy { listOf(
         tag = "Create",
         steps = listOf(
             "Tap the plus button in the work list, enter a name, and choose a starting template.",
-            "Choose from 2D, Animation, Touch, and Parameters, as well as WebGL, Shaders, Physics, and WebGPU templates.",
+            "Explore Basic, Block examples (such as follow-finger, rotating patterns, sound, and XY pads), Advanced (WebGL, shaders, Matter.js, p5.brush, WebGPU), and Custom templates, then choose whether to start in Code or Blocks.",
             "Pick a preview aspect ratio that scales with your screen, or select Custom for fixed pixel dimensions.",
             "Use Save as template in the work menu to reuse a sketch along with its files, assets, and runtime settings."
         )
@@ -227,6 +234,7 @@ internal fun UserGuideScreen(
                             if (activeTab == GUIDE_TAB_PLAYGROUND) activeTab = GUIDE_TAB_ALL
                             selected = GUIDE_LIST
                         },
+                        shape = UNIT_CONTROL_SHAPE,
                         modifier = Modifier.then(if (compactHeight) Modifier.size(40.dp) else Modifier)
                     ) {
                         Icon(painterResource(R.drawable.ic_back), t("目次へ戻る", "Back to contents", "返回目录"))
@@ -256,7 +264,11 @@ internal fun UserGuideScreen(
                         )
                     }
                 }
-                IconButton(onClose, Modifier.then(if (compactHeight) Modifier.size(40.dp) else Modifier)) {
+                IconButton(
+                    onClick = onClose,
+                    shape = UNIT_CONTROL_SHAPE,
+                    modifier = Modifier.then(if (compactHeight) Modifier.size(40.dp) else Modifier)
+                ) {
                     Icon(painterResource(R.drawable.ic_close), t("閉じる", "Close", "关闭"))
                 }
             }
@@ -278,6 +290,9 @@ internal fun UserGuideScreen(
                     val isSelected = activeTab == tabId
                     FilterChip(
                         selected = isSelected,
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(),
+                        border = unitFilterChipBorder(isSelected),
                         onClick = {
                             activeTab = tabId
                             selected = when (tabId) {
@@ -291,7 +306,7 @@ internal fun UserGuideScreen(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
 
             if (landscape) {
                 Row(Modifier.fillMaxSize()) {
@@ -309,7 +324,7 @@ internal fun UserGuideScreen(
                             onStartPracticeTour = onStartPracticeTour
                         )
                     }
-                    VerticalDivider()
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         GuideBody(
                             language = language,
@@ -390,6 +405,7 @@ private fun GuideContents(
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.fillMaxWidth(),
+                shape = UNIT_CONTROL_SHAPE,
                 singleLine = true,
                 label = { Text(t("ガイドを検索", "Search the guide", "搜索指南")) },
                 leadingIcon = {
@@ -404,15 +420,23 @@ private fun GuideContents(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    val allSelected = refGroupFilter.isBlank()
                     FilterChip(
-                        selected = refGroupFilter.isBlank(),
+                        selected = allSelected,
                         onClick = { onRefGroupChange("") },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitFilterChipColors(),
+                        border = unitFilterChipBorder(allSelected),
                         label = { Text(t("すべて", "All", "全部")) }
                     )
                     refGroups.forEach { group ->
+                        val groupSelected = refGroupFilter == group
                         FilterChip(
-                            selected = refGroupFilter == group,
-                            onClick = { onRefGroupChange(if (refGroupFilter == group) "" else group) },
+                            selected = groupSelected,
+                            onClick = { onRefGroupChange(if (groupSelected) "" else group) },
+                            shape = UNIT_CONTROL_SHAPE,
+                            colors = unitFilterChipColors(),
+                            border = unitFilterChipBorder(groupSelected),
                             label = { Text(group) }
                         )
                     }
@@ -507,12 +531,16 @@ private fun GuideContentsEntry(
     onClick: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    OutlinedCard(
+    Surface(
         onClick = onClick,
+        shape = UNIT_CARD_SHAPE,
+        color = if (selected) colors.primaryContainer.copy(alpha = 0.25f) else colors.surface,
+        contentColor = colors.onSurface,
         border = BorderStroke(
-            if (selected) 2.dp else 1.dp,
+            if (selected) 1.5.dp else UNIT_BORDER_WIDTH,
             if (selected) colors.primary else colors.outlineVariant
-        )
+        ),
+        tonalElevation = 0.dp
     ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
@@ -523,7 +551,7 @@ private fun GuideContentsEntry(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(UNIT_CONTROL_SHAPE)
                         .background(if (selected) colors.primaryContainer else colors.surfaceContainerHigh),
                     contentAlignment = Alignment.Center
                 ) {
@@ -540,7 +568,7 @@ private fun GuideContentsEntry(
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
                     if (!badge.isNullOrBlank()) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = UNIT_COMPACT_CONTROL_SHAPE,
                             color = colors.secondaryContainer,
                             contentColor = colors.onSecondaryContainer
                         ) {
@@ -569,7 +597,6 @@ private fun GuideBody(
     onTryCodeInEditor: ((title: String, code: String) -> Unit)? = null
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
-    val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val compactHeight = LocalConfiguration.current.screenHeightDp < 480
     val headingStyle = if (compactHeight) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall
@@ -600,7 +627,7 @@ private fun GuideBody(
                 Column(Modifier.widthIn(max = maxContentWidth.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (section.tag.isNotBlank()) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = UNIT_COMPACT_CONTROL_SHAPE,
                             color = colors.primaryContainer,
                             contentColor = colors.onPrimaryContainer
                         ) {
@@ -625,9 +652,9 @@ private fun GuideBody(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         section.steps.forEachIndexed { index, step ->
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = colors.surfaceContainerLow,
-                                border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f)),
+                                shape = UNIT_CARD_SHAPE,
+                                color = colors.surface,
+                                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.7f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -662,35 +689,91 @@ private fun GuideBody(
 
                     section.codeSnippet?.let { snippet ->
                         Text(t("試せるコード", "Code to try", "示例代码"), style = MaterialTheme.typography.titleMedium)
-                        Surface(shape = RoundedCornerShape(12.dp), color = colors.surfaceContainerLow) {
-                            Text(snippet, Modifier.padding(12.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("code", snippet))
-                                    Toast.makeText(context, t("コードをコピーしました", "Code copied", "已复制代码"), Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                            ) { Text(t("コードをコピー", "Copy code", "复制代码"), maxLines = 1) }
-                            if (onTryCodeInEditor != null && !snippet.trimStart().startsWith("{")) {
-                                FilledTonalButton(
-                                    onClick = { onTryCodeInEditor(section.title, snippet) },
-                                    modifier = Modifier.weight(1f),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                                ) {
-                                    Text(t("エディターで試す", "Try in Editor", "在编辑器中尝试"), maxLines = 1)
-                                }
-                            }
-                        }
+                        GuideCodeSnippetBlock(section.title, snippet, language, onTryCodeInEditor)
                     }
 
-                    FilledTonalButton(onClick = { onOpen(if (current < sections.lastIndex) current + 1 else GUIDE_PRACTICE) }) {
+                    FilledTonalButton(
+                        onClick = { onOpen(if (current < sections.lastIndex) current + 1 else GUIDE_PRACTICE) },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitTonalButtonColors(),
+                        border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f))
+                    ) {
                         Text(if (current < sections.lastIndex) t("次の項目へ", "Next topic", "下一项") else t("操作の練習に戻る", "Back to practice", "返回练习"))
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuideCodeSnippetBlock(
+    title: String,
+    snippet: String,
+    language: String,
+    onTryCodeInEditor: ((title: String, code: String) -> Unit)? = null
+) {
+    fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val themeMode = LocalAppThemeMode.current
+    val dark = colors.surface.luminance() < 0.5f
+    val syntax = remember(themeMode, dark, colors.surface) {
+        codeSyntaxPalette(themeMode, dark, colors.surface)
+    }
+    val highlighted = remember(snippet, dark, syntax) {
+        val fileName = if (snippet.trimStart().startsWith("{")) "sample.json" else "sample.js"
+        projectFileHighlighter(fileName, dark, emptySet(), syntax).filter(AnnotatedString(snippet)).text
+    }
+
+    Surface(
+        shape = UNIT_CARD_SHAPE,
+        color = colors.surface,
+        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.75f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(UNIT_CARD_SHAPE)
+                .drawBehind {
+                    drawRect(
+                        color = colors.primary,
+                        topLeft = Offset.Zero,
+                        size = Size(3.dp.toPx(), size.height)
+                    )
+                }
+                .padding(start = 15.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)
+        ) {
+            Text(
+                text = highlighted,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("code", snippet))
+                Toast.makeText(context, t("コードをコピーしました", "Code copied", "已复制代码"), Toast.LENGTH_SHORT).show()
+            },
+            shape = UNIT_CONTROL_SHAPE,
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+        ) { AutoFitSingleLineText(t("コードをコピー", "Copy code", "复制代码"), minFontSize = 10.5.sp) }
+        if (onTryCodeInEditor != null && !snippet.trimStart().startsWith("{")) {
+            FilledTonalButton(
+                onClick = { onTryCodeInEditor(title, snippet) },
+                shape = UNIT_CONTROL_SHAPE,
+                colors = unitTonalButtonColors(),
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                AutoFitSingleLineText(t("エディターで試す", "Try in Editor", "在编辑器中尝试"), minFontSize = 10.5.sp)
             }
         }
     }
@@ -704,36 +787,13 @@ private fun GuideReferenceContent(
     onTryCodeInEditor: ((title: String, code: String) -> Unit)? = null
 ) {
     fun t(ja: String, en: String, zh: String) = guideText(language, ja, en, zh)
-    val context = LocalContext.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(entry.group, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(entry.title, style = MaterialTheme.typography.headlineSmall)
         Text(entry.summary, style = MaterialTheme.typography.bodyLarge)
         entry.paragraphs.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
         entry.code?.let { snippet ->
-            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Text(snippet, Modifier.padding(12.dp), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("code", snippet))
-                        Toast.makeText(context, t("コードをコピーしました", "Code copied", "已复制代码"), Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                ) { Text(t("コードをコピー", "Copy code", "复制代码"), maxLines = 1) }
-                if (onTryCodeInEditor != null && !snippet.trimStart().startsWith("{")) {
-                    FilledTonalButton(
-                        onClick = { onTryCodeInEditor(entry.title, snippet) },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                    ) {
-                        Text(t("エディターで試す", "Try in Editor", "在编辑器中尝试"), maxLines = 1)
-                    }
-                }
-            }
+            GuideCodeSnippetBlock(entry.title, snippet, language, onTryCodeInEditor)
         }
         if (entry.notes.isNotEmpty()) {
             Text(t("注意", "Notes", "注意"), style = MaterialTheme.typography.titleMedium)

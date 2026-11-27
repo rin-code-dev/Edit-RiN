@@ -499,7 +499,7 @@ private fun CollapsedSidePanel(
                     tint = if (state.selectedFolder != null) colors.primary else colors.onSurface
                 )
             }
-            DropdownMenu(folderMenu, { folderMenu = false }, Modifier.heightIn(max = 320.dp)) {
+            UnitDropdownMenu(folderMenu, { folderMenu = false }, Modifier.heightIn(max = 320.dp)) {
                 (listOf<String?>(null) + tabs).forEach { folder ->
                     DropdownMenuItem(
                         text = { Text(galleryFolderLabel(folder, text), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -535,7 +535,7 @@ private fun CollapsedSidePanel(
                     )
                 }
             }
-            DropdownMenu(tagMenu, { tagMenu = false }, Modifier.heightIn(max = 320.dp)) {
+            UnitDropdownMenu(tagMenu, { tagMenu = false }, Modifier.heightIn(max = 320.dp)) {
                 if (tags.isNotEmpty()) {
                     (listOf<String?>(null) + tags).forEach { tag ->
                         DropdownMenuItem(

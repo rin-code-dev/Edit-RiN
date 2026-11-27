@@ -7,6 +7,7 @@ import android.util.Base64
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,7 +32,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -351,7 +355,7 @@ private fun WorkGalleryActionButtons(
             Icon(painterResource(R.drawable.ic_sort),
                 text("並び替え"), Modifier.size(19.dp))
         }
-        DropdownMenu(expanded = state.sorting, onDismissRequest = { state.sorting = false }) {
+        UnitDropdownMenu(expanded = state.sorting, onDismissRequest = { state.sorting = false }) {
             listOf("更新順", "最近開いた順", "名前順").forEach { value ->
                 DropdownMenuItem(text = { Text(text(value)) },
                     modifier = Modifier.semantics { selected = sort == value },
@@ -439,19 +443,61 @@ internal fun WorkGallerySearch(
         }
         return
     }
-    TextField(value = state.query, onValueChange = { state.query = it }, singleLine = true,
-        modifier = modifier.focusRequester(focusRequester),
-        placeholder = { Text(text("作品名・タグ・コードで検索"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = {
-            focusManager.clearFocus(force = true)
-            keyboardController?.hide()
-        }),
-        colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent,
-            unfocusedContainerColor = Color.Transparent),
-        trailingIcon = { if (state.query.isNotEmpty()) IconButton(onClick = { state.query = "" }, shape = UNIT_CONTROL_SHAPE) {
-            Icon(painterResource(R.drawable.ic_close), text("検索をクリア"), Modifier.size(18.dp))
-        } })
+    Surface(
+        modifier = modifier.height(42.dp),
+        shape = UNIT_CONTROL_SHAPE,
+        color = colors.surface,
+        border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.65f))
+    ) {
+        Row(
+            Modifier.fillMaxSize().padding(start = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_search),
+                null,
+                Modifier.size(16.dp),
+                tint = colors.onSurfaceVariant
+            )
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (state.query.isEmpty()) {
+                    Text(
+                        text("作品名・タグ・コードで検索"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                BasicTextField(
+                    value = state.query,
+                    onValueChange = { state.query = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = colors.onSurface,
+                        fontSize = 14.sp
+                    ),
+                    cursorBrush = SolidColor(colors.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    })
+                )
+            }
+            if (state.query.isNotEmpty()) {
+                IconButton(
+                    onClick = { state.query = "" },
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(painterResource(R.drawable.ic_close), text("検索をクリア"), Modifier.size(16.dp))
+                }
+            }
+        }
+    }
 }
 
 /** Gallery body; actions live in the workspace toolbar for each orientation. */
@@ -747,20 +793,40 @@ private fun WorkGalleryContent(
                 }
             }
         } else 0.dp
-        val thumbShape = RoundedCornerShape(if (landscape) 14.dp else 10.dp)
+        val thumbShape = UNIT_CARD_SHAPE
         if (visibleWorks.isEmpty()) {
             Column(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(text("一致する作品がありません"), color = colors.onSurfaceVariant)
-                if (state.searching && state.query.isNotBlank() && !state.searchAllFolders && state.selectedFolder != null) {
-                    OutlinedButton(
-                        onClick = { state.searchAllFolders = true },
-                        shape = UNIT_CONTROL_SHAPE
-                    ) {
-                        Text(text("すべての作品から検索"))
+                Icon(
+                    painterResource(if (state.searching) R.drawable.ic_search else R.drawable.ic_folder_code),
+                    null,
+                    Modifier.size(28.dp),
+                    tint = colors.outline.copy(alpha = 0.75f)
+                )
+                Text(
+                    text("一致する作品がありません"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant
+                )
+                if (state.searching && state.query.isNotBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = { state.query = "" },
+                            shape = UNIT_CONTROL_SHAPE
+                        ) {
+                            Text(text("検索をクリア"))
+                        }
+                        if (!state.searchAllFolders && state.selectedFolder != null) {
+                            OutlinedButton(
+                                onClick = { state.searchAllFolders = true },
+                                shape = UNIT_CONTROL_SHAPE
+                            ) {
+                                Text(text("すべての作品から検索"))
+                            }
+                        }
                     }
                 }
             }
@@ -824,7 +890,7 @@ private fun WorkGalleryContent(
                                     tint = colors.onSurfaceVariant.copy(alpha = 0.65f)
                                 )
                             }
-                            DropdownMenu(
+                            UnitDropdownMenu(
                                 expanded = state.cardMenuWorkId == work.id,
                                 onDismissRequest = { state.cardMenuWorkId = null }
                             ) {
@@ -1063,24 +1129,54 @@ private fun WorkGalleryContent(
                             bitmap?.let {
                                 Image(it.asImageBitmap(), text("作品プレビュー"),
                                     Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                            } ?: Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(12.dp)
+                            } ?: Box(
+                                Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    painterResource(R.drawable.ic_code),
-                                    null,
-                                    Modifier.size(18.dp),
-                                    tint = colors.outlineVariant
-                                )
-                                Text(
-                                    text("プレビュー未作成"),
-                                    fontSize = 10.sp,
-                                    color = colors.outline,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Canvas(Modifier.fillMaxSize()) {
+                                    val dotColor = colors.outlineVariant.copy(alpha = 0.35f)
+                                    val radius = 1.dp.toPx()
+                                    val cols = 5
+                                    val rows = 5
+                                    val stepX = size.width / (cols + 1)
+                                    val stepY = size.height / (rows + 1)
+                                    for (gx in 1..cols) {
+                                        for (gy in 1..rows) {
+                                            drawCircle(
+                                                color = dotColor,
+                                                radius = radius,
+                                                center = Offset(stepX * gx, stepY * gy)
+                                            )
+                                        }
+                                    }
+                                }
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                    modifier = Modifier.padding(12.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_code),
+                                        null,
+                                        Modifier.size(18.dp),
+                                        tint = colors.outlineVariant
+                                    )
+                                    Text(
+                                        text = workTypeBadge(work),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.onSurfaceVariant.copy(alpha = 0.78f),
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text("プレビュー未作成"),
+                                        fontSize = 10.sp,
+                                        color = colors.outline,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                             if (state.selecting) {
                                 Checkbox(checked = isSelected,
@@ -1222,8 +1318,8 @@ private fun WorkGalleryContent(
             }
         }
         if (!state.selecting && !landscape) Surface(onClick = onAdd, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(48.dp),
-            shape = RoundedCornerShape(14.dp), color = colors.onSurface, contentColor = background,
-            border = BorderStroke(1.dp, colors.outlineVariant)) {
+            shape = UNIT_CARD_SHAPE, color = colors.onSurface, contentColor = colors.surface,
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant)) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(painterResource(R.drawable.ic_add), text("作品を追加"), Modifier.size(24.dp))
             }
@@ -1471,6 +1567,16 @@ private fun workGalleryDetails(work: Work): String = buildList {
     if (work.libraries.containsKey("matter-js")) add("PHYSICS")
 }.joinToString(" · ")
 
+private fun workTypeBadge(work: Work): String {
+    val extensions = work.files.keys.map { it.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT) }
+    return when {
+        extensions.any { it == "html" || it == "htm" } -> "HTML"
+        extensions.any { it == "vert" || it == "frag" || it == "glsl" || it == "wgsl" } -> "GLSL"
+        work.p5Version == P5_VERSION_LEGACY -> "p5 1.x"
+        else -> "p5 2.x"
+    }
+}
+
 internal fun matchesGalleryQuery(work: Work, trimmedQuery: String, ftsMatchedIds: Set<String> = emptySet()): Boolean {
     if (trimmedQuery.isEmpty()) return true
     if (work.id in ftsMatchedIds) return true
@@ -1494,7 +1600,7 @@ private fun GalleryCodeMatchBadge(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = UNIT_COMPACT_CONTROL_SHAPE
     val highlightedExcerpt = remember(match.excerpt, match.matchedToken, colors) {
         buildAnnotatedString {
             val idx = if (match.matchedToken.isNotEmpty()) {
@@ -1522,11 +1628,21 @@ private fun GalleryCodeMatchBadge(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         shape = shape,
-        color = colors.surfaceContainerHigh,
-        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
+        color = colors.surface,
+        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.75f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .drawBehind {
+                    drawRect(
+                        color = colors.primary,
+                        topLeft = Offset.Zero,
+                        size = Size(3.dp.toPx(), size.height)
+                    )
+                }
+                .padding(start = 11.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(

@@ -38,7 +38,8 @@ class WorkTemplateTest {
             val fixed = template.code(CanvasSizingMode.FIXED)
             val responsive = template.code(CanvasSizingMode.RESPONSIVE)
             val expectedCanvas = when (kind) {
-                WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER -> "createCanvas(800, 800, WEBGL)"
+                WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER, WorkTemplateKind.BLOCK_THREE, WorkTemplateKind.BRUSH ->
+                    "createCanvas(800, 800, WEBGL)"
                 WorkTemplateKind.WEBGPU -> "createCanvas(800, 800, renderer)"
                 else -> "createCanvas(800, 800)"
             }
@@ -46,13 +47,39 @@ class WorkTemplateTest {
             assertFalse(fixed.contains("function windowResized()"))
             assertTrue(responsive.contains("resizeCanvas(windowWidth, windowHeight)"))
             if (kind == WorkTemplateKind.WEBGPU) assertTrue(fixed.contains("navigator.gpu.requestAdapter()"))
-            assertEquals(if (kind == WorkTemplateKind.PHYSICS_MATTER) mapOf("matter-js" to "0.20.0") else emptyMap<String, String>(), template.libraries)
+            val expectedLibraries = when (kind) {
+                WorkTemplateKind.PHYSICS_MATTER -> mapOf("matter-js" to "0.20.0")
+                WorkTemplateKind.BRUSH -> mapOf("p5.brush" to "2.2.1")
+                else -> emptyMap()
+            }
+            assertEquals(expectedLibraries, template.libraries)
+            assertEquals(kind == WorkTemplateKind.BLOCK_SOUND, template.requiresSound)
+            assertEquals(
+                when (kind) {
+                    WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER, WorkTemplateKind.BLOCK_THREE, WorkTemplateKind.BRUSH ->
+                        "createCanvas(800, 800, WEBGL);"
+                    WorkTemplateKind.WEBGPU -> "await createCanvas(800, 800, renderer);"
+                    else -> "createCanvas(800, 800);"
+                },
+                template.canvasCallPreview(CanvasSizingMode.FIXED)
+            )
+            assertEquals(
+                when (kind) {
+                    WorkTemplateKind.WEBGL_3D, WorkTemplateKind.SHADER, WorkTemplateKind.BLOCK_THREE, WorkTemplateKind.BRUSH ->
+                        "createCanvas(windowWidth, windowHeight, WEBGL);"
+                    WorkTemplateKind.WEBGPU -> "await createCanvas(windowWidth, windowHeight, renderer);"
+                    else -> "createCanvas(windowWidth, windowHeight);"
+                },
+                template.canvasCallPreview(CanvasSizingMode.RESPONSIVE)
+            )
         }
     }
 
     @Test fun basicTemplatesStaySmallAndParameterLayoutUsesCanvasDimensions() {
-        assertEquals(6, WorkTemplateKind.entries.count { !it.advanced })
-        assertEquals(4, WorkTemplateKind.entries.count { it.advanced })
+        assertEquals(6, WorkTemplateKind.entries.count { it.category == WorkTemplateCategory.BASIC })
+        assertEquals(6, WorkTemplateKind.entries.count { it.category == WorkTemplateCategory.BLOCKS })
+        assertEquals(5, WorkTemplateKind.entries.count { it.category == WorkTemplateCategory.ADVANCED })
+        assertEquals(5, WorkTemplateKind.entries.count { it.advanced })
         listOf(WorkTemplate("9:16", 540, 960), WorkTemplate("16:9", 960, 540)).forEach { size ->
             val code = size.copy(kind = WorkTemplateKind.PARAMETERS).code(CanvasSizingMode.FIXED)
             assertTrue(code.contains("min(width, height) * rinParams.size"))

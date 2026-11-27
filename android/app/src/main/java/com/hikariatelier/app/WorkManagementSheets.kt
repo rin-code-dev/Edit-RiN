@@ -319,6 +319,7 @@ internal fun WorkActionsMenu(
     tweetModeEnabled: Boolean = false,
     onToggleTweetMode: () -> Unit = {},
     onOpenMinify: () -> Unit = {},
+    onCreateNewWork: (() -> Unit)? = null,
     textTranslator: (String, Array<out Any?>) -> String,
     windowSetup: @Composable () -> Unit = {},
     showButtons: Boolean = true
@@ -506,6 +507,21 @@ internal fun WorkActionsMenu(
 
     @Composable
     fun FileActions() {
+        onCreateNewWork?.let { createNewWork ->
+            SectionLabel(uiText("新規作成"), colors, isLandscape)
+            ActionRow(
+                iconRes = R.drawable.ic_add,
+                title = uiText("新しい作品を作成"),
+                subtitle = uiText("基本・ブロックの例・応用・自作テンプレートから作成"),
+                colors = colors,
+                enabled = !assetBusy,
+                onClick = {
+                    viewModel.workActionsMenuExpanded = false
+                    createNewWork()
+                }
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         TextButton(enabled = !assetBusy, shape = UNIT_CONTROL_SHAPE, onClick = {
             viewModel.workActionsMenuExpanded = false
             onExportZip()

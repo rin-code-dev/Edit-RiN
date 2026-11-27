@@ -13,6 +13,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -297,12 +298,15 @@ internal fun BlockWorkspaceView(
     onRedo: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
     documentBar: @Composable (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenExamples: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val presentationStore = remember(context) { BlockEditorPresentationStore(context) }
     var displayPreferences by remember(presentationStore) { mutableStateOf(presentationStore.displayPreferences()) }
+    var easyMode by remember(presentationStore) { mutableStateOf(presentationStore.easyMode()) }
+    var easyHintDismissed by remember(presentationStore) { mutableStateOf(presentationStore.easyModeHintDismissed()) }
     val restoredViewport = remember(work.id) { session.blockEditorViewport(work.id) ?: presentationStore.viewport(work.id) }
     var generation by remember(work.id) { mutableStateOf(0) }
     var hostFailure by remember(work.id) { mutableStateOf(false) }
@@ -352,9 +356,10 @@ internal fun BlockWorkspaceView(
             .put("onErrorContainer", colors.onErrorContainer.toHexCss())
     }
     val payload = remember(work.id, source, metadata, revision, language, dark, themeJson, readOnly,
-        work.p5Version, work.p5SoundEnabled, work.assets.toMap(), sourceType, displayPreferences) {
+        work.p5Version, work.p5SoundEnabled, work.assets.toMap(), sourceType, displayPreferences, easyMode) {
         JSONObject().put("type", "load").put("workId", work.id).put("file", "sketch.js")
             .put("nativeChrome", true)
+            .put("easyMode", easyMode)
             .put("source", source).put("revision", revision)
             .put("metadata", metadata ?: JSONObject.NULL).put("language", language)
             .put("dark", dark).put("theme", themeJson).put("readOnly", readOnly).put("sourceType", sourceType)
@@ -392,6 +397,11 @@ internal fun BlockWorkspaceView(
                 "preferences" -> decodeBlockEditorDisplayPreferences(message.optJSONObject("preferences"))?.let { preferences ->
                     presentationStore.saveDisplayPreferences(preferences)
                     displayPreferences = preferences
+                }
+                "easyMode" -> (message.opt("easy") as? Boolean)?.let { nextEasy ->
+                    presentationStore.saveEasyMode(nextEasy)
+                    easyMode = nextEasy
+                    if (nextEasy) easyHintDismissed = true
                 }
                 "edit" -> {
                     val transaction = decodeBlockEditTransaction(owner, message)
@@ -513,14 +523,29 @@ internal fun BlockWorkspaceView(
             }
         }
     }
+    fun toggleEasyMode() {
+        val activation = session.blockEditorActivationGeneration
+        val nextEasy = !easyMode
+        scope.launch {
+            if (session.flushBlockEditor() && session.activeWorkIdState.value == work.id &&
+                session.canApplyBlockAction(work.id, activation, requireEditable = false)) {
+                presentationStore.saveEasyMode(nextEasy)
+                easyMode = nextEasy
+                if (nextEasy) easyHintDismissed = true
+            }
+        }
+    }
     // Keep one host and message channel across layout changes.
     @Composable
     fun WorkspaceContent() {
         BackHandler(enabled = chrome.state.overlay && !hostFailure) { host.command("dismiss") }
         Column(Modifier.fillMaxSize()) {
-            androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
-                    documentBar(!chrome.state.overlay || hostFailure)
+            androidx.compose.material3.Surface(color = colors.surface) {
+                Column(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
+                        documentBar(!chrome.state.overlay || hostFailure)
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = colors.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -534,20 +559,28 @@ internal fun BlockWorkspaceView(
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            androidx.compose.material3.FilledTonalButton(onClick = { hostFailure = false; generation++ }) {
+                            androidx.compose.material3.FilledTonalButton(
+                                onClick = { hostFailure = false; generation++ },
+                                shape = UNIT_CONTROL_SHAPE,
+                                colors = unitTonalButtonColors(colors),
+                                border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f))
+                            ) {
                                 Text(textTranslator("再読み込み", emptyArray()))
                             }
-                            androidx.compose.material3.TextButton(onClick = {
-                                // Explicit recovery uses the native acknowledged document. Never ask
-                                // the failed renderer to flush again or accept its late messages.
-                                if (session.blockEditorFlusher === flusher &&
-                                    session.canApplyBlockAction(work.id, session.blockEditorActivationGeneration,
-                                        requireEditable = false)) {
-                                    host.dispose()
-                                    session.blockEditorFlusher = null
-                                    currentOpenCode(0, 0)
-                                }
-                            }) {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    // Explicit recovery uses the native acknowledged document. Never ask
+                                    // the failed renderer to flush again or accept its late messages.
+                                    if (session.blockEditorFlusher === flusher &&
+                                        session.canApplyBlockAction(work.id, session.blockEditorActivationGeneration,
+                                            requireEditable = false)) {
+                                        host.dispose()
+                                        session.blockEditorFlusher = null
+                                        currentOpenCode(0, 0)
+                                    }
+                                },
+                                shape = UNIT_CONTROL_SHAPE
+                            ) {
                                 Text(textTranslator("コードで開く", emptyArray()))
                             }
                         }
@@ -571,6 +604,19 @@ internal fun BlockWorkspaceView(
                             .align(Alignment.TopStart)
                             .padding(start = 12.dp, top = 10.dp, end = 148.dp)
                     )
+                    BlockEditorEasyModeHintBanner(
+                        visible = !easyMode && !easyHintDismissed && hostReady && !hostFailure &&
+                            !chrome.state.busy && !chrome.state.overlay && !chrome.state.palette,
+                        text = uiText,
+                        onSwitchToEasy = ::toggleEasyMode,
+                        onDismiss = {
+                            presentationStore.dismissEasyModeHint()
+                            easyHintDismissed = true
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(start = 12.dp, end = 12.dp, bottom = 64.dp)
+                    )
                     BlockEditorFloatingDock(
                         model = chrome,
                         ready = hostReady && !hostFailure,
@@ -584,7 +630,10 @@ internal fun BlockWorkspaceView(
                         onFullscreen = ::toggleFullscreen,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        onOpenExamples = onOpenExamples,
+                        easyMode = easyMode,
+                        onToggleEasyMode = ::toggleEasyMode
                     )
                 }
             }

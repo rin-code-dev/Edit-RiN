@@ -290,7 +290,7 @@ internal fun UnifiedHistorySheet(
         var newName by remember { mutableStateOf("") }
         var newNotes by remember { mutableStateOf("") }
 
-        AlertDialog(
+        UnitAlertDialog(
             onDismissRequest = { showCreateDialog = false },
             title = { Text(uiText("スナップショット作成")) },
             text = {
@@ -321,13 +321,14 @@ internal fun UnifiedHistorySheet(
                     onClick = {
                         showCreateDialog = false
                         onCreateSnapshot(newName.takeIf { it.isNotBlank() }, newNotes.takeIf { it.isNotBlank() })
-                    }
+                    },
+                    shape = UNIT_CONTROL_SHAPE
                 ) {
                     Text(uiText("作成"))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCreateDialog = false }) {
+                TextButton(onClick = { showCreateDialog = false }, shape = UNIT_CONTROL_SHAPE) {
                     Text(uiText("キャンセル"))
                 }
             }
@@ -439,7 +440,7 @@ private fun HistoryDiffDialog(
 ) {
     val isSame = currentCode == itemCode
 
-    AlertDialog(
+    UnitAlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
@@ -507,13 +508,14 @@ private fun HistoryDiffDialog(
         confirmButton = {
             Button(
                 onClick = onConfirmRestore,
+                shape = UNIT_CONTROL_SHAPE,
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
             ) {
                 Text(uiText("復元する"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, shape = UNIT_CONTROL_SHAPE) {
                 Text(uiText("キャンセル"))
             }
         }

@@ -52,6 +52,12 @@ internal val uiTranslations: Map<String, Pair<String, String>> by lazy(LazyThrea
     "記録がありません" to ("No records" to "暂无记录"),
     "自動保存" to ("Auto-save" to "自动保存"),
     "ブロック" to ("Blocks" to "积木"),
+    "かんたん" to ("Easy" to "简易"),
+    "かんたんブロックに切り替え" to ("Switch to Easy blocks" to "切换到简易积木"),
+    "詳細ブロックに切り替え" to ("Switch to Detailed blocks" to "切换到详细积木"),
+    "かんたんブロックも使えます" to ("Easy blocks mode is also available" to "也可使用简易积木模式"),
+    "かんたんに切替" to ("Switch to Easy" to "切换为简易"),
+    "案内を閉じる" to ("Dismiss hint" to "关闭提示"),
     "ブロックを追加" to ("Add block" to "添加积木"),
     "作品内を探す" to ("Find in work" to "在作品中查找"),
     "分割表示に戻る" to ("Back to split view" to "返回分屏"),
@@ -1149,6 +1155,48 @@ internal val uiTranslations: Map<String, Pair<String, String>> by lazy(LazyThrea
     "GLSL 線形補間" to ("GLSL linear interpolation" to "GLSL 线性插值"),
     "テクスチャを参照" to ("Sample texture" to "采样纹理"),
     "全画面（PiPプレビュー）" to ("Fullscreen (PiP preview)" to "全屏（画中画预览）"),
-    "分割表示に戻す" to ("Return to split view" to "返回分屏视图")
+    "分割表示に戻す" to ("Return to split view" to "返回分屏视图"),
+    "基本" to ("Basic" to "基础"),
+    "最小構成・動き・入力・パラメータ" to ("Minimal setup, motion, input & parameters" to "基础结构、动画、交互与参数"),
+    "ブロックで組み立てやすい完成例" to ("Starter examples designed for block editing" to "适合积木编辑的完整示例"),
+    "応用" to ("Advanced" to "进阶"),
+    "3D・シェーダー・物理・ブラシ・WebGPU" to ("3D, shaders, physics, brushes & WebGPU" to "3D、着色器、物理、画笔与 WebGPU"),
+    "自作" to ("Custom" to "自定义"),
+    "保存済みのマイテンプレートから作成" to ("Start from one of your saved templates" to "从已保存的自定义模板创建"),
+    "指についてくる円" to ("Follow your finger" to "跟随手指的圆"),
+    "マウスや指の位置に円が付いてくる、ブロック入門に最適な最小例。" to
+        ("A minimal block-friendly sketch where a circle follows your pointer." to "圆形跟随手指或鼠标移动，非常适合积木入门的最简示例。"),
+    "指でお絵描き" to ("Draw with your finger" to "用手指绘画"),
+    "押している間だけキャンバスに描ける、条件分岐（if）の基本例。" to
+        ("Paint onto the canvas while pressing, showing a simple if condition." to "按住时在画布上连续绘制，展示条件判断 (if) 的基本用法。"),
+    "回る模様" to ("Rotating pattern" to "旋转图案"),
+    "原点の移動・回転と繰り返しループで模様を描きます。" to
+        ("Draw a spinning geometric pattern with translate, rotate, and loops." to "结合平移、旋转与循环绘制旋转几何图案。"),
+    "タップして音を鳴らす" to ("Tap to play a tone" to "点击播放音调"),
+    "画面を押すと横位置に応じた高さの音が鳴ります（p5.sound 自動有効）。" to
+        ("Tap to play a sine tone mapped to horizontal position (enables p5.sound)." to "点击屏幕并根据水平位置播放不同音高（自动启用 p5.sound）。"),
+    "回る3D立方体" to ("Rotating 3D box" to "旋转的 3D 立方体"),
+    "指で視点を回せる3Dキャンバスに回転する立方体を描きます。" to
+        ("A spinning 3D box in WEBGL with touch orbit controls." to "在可拖动旋转视角的 3D 画布中绘制旋转立方体。"),
+    "スライダーとXYパッド" to ("Sliders & XY pad" to "滑块与 XY 面板"),
+    "2D XYパッド・スライダー・カラーで円を操作するブロック例。" to
+        ("Control a circle using a 2D XY pad, slider, and color parameter." to "使用 2D XY 面板、滑块和颜色参数控制圆形的积木示例。"),
+    "水彩・ブラシ" to ("Watercolor & Brush" to "水彩与画笔"),
+    "p5.brushを使って、水彩のにじみや鉛筆の質感を試せます。" to
+        ("Explore watercolor bleeding and pencil textures with p5.brush." to "使用 p5.brush 体验水彩晕染与铅笔质感绘制。"),
+    "取り込む" to ("Import" to "导入"),
+    "p5.js Web Editorから取り込む" to ("Import from p5.js Web Editor" to "从 p5.js Web Editor 导入"),
+    "見本" to ("Preview" to "预览"),
+    "ブロック向け" to ("Block-ready" to "适合积木"),
+    "自作テンプレートはまだありません" to ("No custom templates yet" to "暂无自定义模板"),
+    "開始する編集モード" to ("Starting editor mode" to "初始编辑模式"),
+    "一部の構文はカスタムコードブロックとして表示されます" to
+        ("Some syntax will appear as custom code blocks" to "部分语法将显示为自定义代码块"),
+    "キャンバス設定" to ("Canvas settings" to "画布设置"),
+    "画面" to ("Screen" to "屏幕"),
+    "新規作成" to ("Create new" to "新建"),
+    "新しい作品を作成" to ("Create a new work" to "创建新作品"),
+    "基本・ブロックの例・応用・自作テンプレートから作成" to
+        ("Choose from Basic, Block examples, Advanced, or Custom templates" to "从基础、积木示例、进阶或自定义模板创建")
     )
 }

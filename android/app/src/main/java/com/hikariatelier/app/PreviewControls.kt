@@ -20,7 +20,6 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
@@ -44,6 +43,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -98,7 +98,8 @@ internal fun PreviewActionsToggleButton(
     colors: ColorScheme,
     onClick: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    borderless: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -112,16 +113,22 @@ internal fun PreviewActionsToggleButton(
         previewActionsExpanded -> colors.primary
         else -> colors.onSurfaceVariant
     }
+    val backgroundColor = if (!borderless) Color.Transparent else when {
+        isRecordingOrCountingDown -> colors.error.copy(alpha = 0.14f)
+        previewActionsExpanded -> colors.primary.copy(alpha = 0.14f)
+        else -> Color.Transparent
+    }
+    val shape = if (borderless) UNIT_COMPACT_CONTROL_SHAPE else UNIT_CONTROL_SHAPE
 
     Box(
         modifier = modifier
-            .height(if (isLandscape) 34.dp else 36.dp)
+            .height(if (isLandscape) 34.dp else if (borderless) 30.dp else 36.dp)
             .widthIn(min = if (isLandscape) 34.dp else 36.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .border(
-                width = 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(10.dp)
+            .clip(shape)
+            .background(backgroundColor)
+            .then(
+                if (borderless) Modifier
+                else Modifier.border(width = UNIT_BORDER_WIDTH, color = borderColor, shape = shape)
             )
             .clickable { onClick() }
             .padding(horizontal = 7.dp),
@@ -174,10 +181,10 @@ internal fun PreviewActionsTray(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = UNIT_CARD_SHAPE,
         color = colors.surface,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-        shadowElevation = 2.dp
+        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -207,10 +214,10 @@ internal fun PreviewActionsTray(
                 }
                 Surface(
                     onClick = onClick,
-                    shape = RoundedCornerShape(9.dp),
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                     color = chipBg,
                     border = BorderStroke(
-                        1.dp,
+                        UNIT_BORDER_WIDTH,
                         when {
                             destructive -> colors.error
                             active -> colors.primary
@@ -313,7 +320,8 @@ internal fun RunStatusControls(
     textTranslator: (String, Array<out Any?>) -> String,
     modifier: Modifier = Modifier,
     hasPendingChanges: Boolean = false,
-    onStepFrame: (() -> Unit)? = null
+    onStepFrame: (() -> Unit)? = null,
+    borderless: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
 
@@ -332,10 +340,13 @@ internal fun RunStatusControls(
     Row(
         modifier = modifier
             .height(height)
-            .border(
-                width = 1.dp,
-                color = if (isError) colors.error else colors.outlineVariant,
-                shape = RoundedCornerShape(12.dp)
+            .then(
+                if (borderless) Modifier
+                else Modifier.border(
+                    width = UNIT_BORDER_WIDTH,
+                    color = if (isError) colors.error else colors.outlineVariant,
+                    shape = UNIT_CONTROL_SHAPE
+                )
             )
             .padding(start = 8.dp, end = 2.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -439,19 +450,26 @@ internal fun ConsoleButton(
     iconSize: Dp,
     onClick: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    borderless: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
+    val shape = if (borderless) UNIT_COMPACT_CONTROL_SHAPE else UNIT_CONTROL_SHAPE
+    val backgroundColor = if (borderless && hasError) colors.error.copy(alpha = 0.12f) else Color.Transparent
 
     Box(
         modifier = modifier
-            .height(height)
+            .height(if (borderless) 30.dp else height)
             .widthIn(min = minWidth)
-            .clip(RoundedCornerShape(10.dp))
-            .border(
-                width = 1.dp,
-                color = if (hasError) colors.error else colors.outlineVariant,
-                shape = RoundedCornerShape(10.dp)
+            .clip(shape)
+            .background(backgroundColor)
+            .then(
+                if (borderless) Modifier
+                else Modifier.border(
+                    width = UNIT_BORDER_WIDTH,
+                    color = if (hasError) colors.error else colors.outlineVariant,
+                    shape = shape
+                )
             )
             .clickable { onClick() }
             .padding(horizontal = 7.dp),
@@ -471,7 +489,7 @@ internal fun ConsoleButton(
                 Spacer(Modifier.width(4.dp))
                 Text(
                     text = if (entryCount > 99) "99+" else entryCount.toString(),
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     color = if (hasError) colors.error else colors.outline
                 )
@@ -490,24 +508,32 @@ internal fun ParameterButton(
     onClick: () -> Unit,
     textTranslator: (String, Array<out Any?>) -> String,
     modifier: Modifier = Modifier,
-    active: Boolean = false
+    active: Boolean = false,
+    borderless: Boolean = false
 ) {
     fun uiText(source: String, vararg arguments: Any?): String = textTranslator(source, arguments)
     val hasParameters = parameterCount > 0
     val borderColor = if (active) colors.primary else if (hasParameters) colors.primary.copy(alpha = 0.9f) else colors.outlineVariant
-    val backgroundColor = if (active) colors.primary.copy(alpha = 0.18f) else if (hasParameters) colors.primaryContainer.copy(alpha = 0.22f) else Color.Transparent
+    val backgroundColor = when {
+        borderless && active -> colors.primary.copy(alpha = 0.16f)
+        borderless && hasParameters -> colors.primary.copy(alpha = 0.08f)
+        borderless -> Color.Transparent
+        active -> colors.primary.copy(alpha = 0.18f)
+        hasParameters -> colors.primaryContainer.copy(alpha = 0.22f)
+        else -> Color.Transparent
+    }
     val contentColor = if (active || hasParameters) colors.primary else colors.onSurfaceVariant
+    val shape = if (borderless) UNIT_COMPACT_CONTROL_SHAPE else UNIT_CONTROL_SHAPE
 
     Box(
         modifier = modifier
-            .height(height)
+            .height(if (borderless) 30.dp else height)
             .widthIn(min = minWidth)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(shape)
             .background(backgroundColor)
-            .border(
-                width = 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(10.dp)
+            .then(
+                if (borderless) Modifier
+                else Modifier.border(width = UNIT_BORDER_WIDTH, color = borderColor, shape = shape)
             )
             .clickable { onClick() }
             .padding(horizontal = 7.dp),
@@ -553,11 +579,10 @@ internal fun SaveRestoreControls(
 
     var historyExpanded by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
-    val controlShape = RoundedCornerShape(12.dp)
 
     Row(
         modifier = modifier.height(height)
-            .border(1.dp, colors.outlineVariant, controlShape)
+            .border(UNIT_BORDER_WIDTH, colors.outlineVariant, UNIT_CONTROL_SHAPE)
             .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -575,7 +600,7 @@ internal fun SaveRestoreControls(
                     modifier = Modifier.size(iconSize)
                 )
             }
-            DropdownMenu(
+            UnitDropdownMenu(
                 expanded = historyExpanded,
                 onDismissRequest = { historyExpanded = false }
             ) {
@@ -642,9 +667,9 @@ private fun PreviewHudOverlay(
     val fpsPart = if (hudMetrics.paused || isPaused) "PAUSE" else "${hudMetrics.fps.roundToInt()} fps"
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = Color.Black.copy(alpha = 0.68f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+        shape = UNIT_COMPACT_CONTROL_SHAPE,
+        color = Color(0xFF141416).copy(alpha = 0.78f),
+        border = BorderStroke(UNIT_BORDER_WIDTH, Color.White.copy(alpha = 0.18f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -655,13 +680,16 @@ private fun PreviewHudOverlay(
                 modifier = Modifier
                     .size(6.dp)
                     .clip(CircleShape)
-                    .background(if (hudMetrics.paused || isPaused) colors.tertiary else Color(0xFF4ADE80))
+                    .background(if (hudMetrics.paused || isPaused) colors.tertiary else Color(0xFF6EE7B7))
             )
             Text(
                 text = "$fpsPart · #${hudMetrics.frameCount}$sizePart",
-                fontFamily = FontFamily.Monospace,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Medium,
+                style = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFeatureSettings = "'tnum' 1"
+                ),
                 color = Color.White,
                 maxLines = 1
             )

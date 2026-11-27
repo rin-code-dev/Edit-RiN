@@ -17,6 +17,9 @@ internal fun EditorWorkDialogs(
     models: EditorModels,
     pendingRevision: WorkRevision?,
     dialogCoordinator: WorkDialogCoordinator? = null,
+    onImportJs: (() -> Unit)? = null,
+    onImportZip: (() -> Unit)? = null,
+    onImportP5: (() -> Unit)? = null,
     onRevisionChange: (WorkRevision?) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -66,7 +69,14 @@ internal fun EditorWorkDialogs(
         onRename = { id, title -> workManagementViewModel.renameUserTemplate(id, title) },
         onUpdate = { workManagementViewModel.updateUserTemplate(it) },
         onDelete = { workManagementViewModel.deleteUserTemplate(it) },
-        onDismiss = { workManagementViewModel.showTemplateManager = false }
+        onDismiss = {
+            workManagementViewModel.showTemplateManager = false
+            if (workManagementViewModel.returnToAddDialogAfterTemplateManager) {
+                workManagementViewModel.returnToAddDialogAfterTemplateManager = false
+                workManagementViewModel.addDialogInitialCategory = WorkTemplateCategory.USER
+                workManagementViewModel.showAddDialog = true
+            }
+        }
     )
     val showUnifiedHistory = showSnapshotSheet || showHistoryDialog ||
         dialogCoordinator?.isCurrent<WorkDialogDestination.HistoryAndSnapshots>() == true
@@ -207,18 +217,40 @@ internal fun EditorWorkDialogs(
             templateLoadFailed = workManagementViewModel.templateLoadFailed,
             onRetryTemplates = { workManagementViewModel.retryUserTemplates() },
             onDeleteTemplate = { workManagementViewModel.deleteUserTemplate(it) },
-            onManageTemplates = { showAddDialog = false; workManagementViewModel.showTemplateManager = true },
-            onCreateFromTemplate = { title, id ->
-                workManagementViewModel.createWorkFromUserTemplate(title.trim().ifBlank { uiText("新しい作品") }, id)
+            onManageTemplates = {
+                workManagementViewModel.returnToAddDialogAfterTemplateManager = true
+                showAddDialog = false
+                workManagementViewModel.showTemplateManager = true
             },
+            onCreateFromTemplate = { title, id, openInBlockMode, folderName ->
+                workManagementViewModel.createWorkFromUserTemplate(
+                    title.trim().ifBlank { uiText("新しい作品") },
+                    id,
+                    openInBlockMode = openInBlockMode,
+                    folderName = folderName
+                )
+            },
+            initialCategory = workManagementViewModel.addDialogInitialCategory,
+            initialFolder = workManagementViewModel.newWorkFolder,
+            galleryFolders = workManagementViewModel.galleryFolders,
+            onImportJs = onImportJs?.let { action -> { showAddDialog = false; action() } },
+            onImportZip = onImportZip?.let { action -> { showAddDialog = false; action() } },
+            onImportP5 = onImportP5?.let { action -> { showAddDialog = false; action() } },
             workTemplates = workTemplates,
             wideWorkPanels = wideWorkPanels,
             colors = colors,
             codeFontFamily = codeFontFamily,
             configuration = configuration,
             onDismiss = { showAddDialog = false },
-            onCreate = { title, ratio, sizingMode, template ->
-                workManagementViewModel.createWork(title.trim().ifBlank { uiText("新しい作品") }, ratio, sizingMode, template)
+            onCreate = { title, ratio, sizingMode, template, openInBlockMode, folderName ->
+                workManagementViewModel.createWork(
+                    title.trim().ifBlank { uiText("新しい作品") },
+                    ratio,
+                    sizingMode,
+                    template,
+                    openInBlockMode = openInBlockMode,
+                    folderName = folderName
+                )
             },
             textTranslator = { s, args -> uiText(s, *args) },
             windowSetup = { KeepLandscapeDialogImmersive() }

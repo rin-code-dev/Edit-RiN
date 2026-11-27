@@ -49,6 +49,8 @@ internal class WorkManagementViewModel(
     var workActionsMenuExpanded by mutableStateOf(false)
     var showSamplePrompt by mutableStateOf(true)
     var showAddDialog by mutableStateOf(false)
+    var addDialogInitialCategory by mutableStateOf(WorkTemplateCategory.BASIC)
+    var returnToAddDialogAfterTemplateManager by mutableStateOf(false)
     var showSaveTemplateDialog by mutableStateOf(false)
     var showTemplateManager by mutableStateOf(false)
     var showRestoreConfirmation by mutableStateOf(false)
@@ -806,13 +808,41 @@ internal class WorkManagementViewModel(
         return job
     }
 
-    fun createWork(title: String, ratio: String, sizingMode: CanvasSizingMode, template: WorkTemplate): Job? = submitNewWork { execute(locksEditor = true) {
-        val work = Work(id = java.util.UUID.randomUUID().toString(), title = title,
-            code = template.code(sizingMode), previewAspectRatio = ratio, libraries = template.libraries,
-            folderName = requestedFolderName.takeIf { it in galleryFolders }.orEmpty())
+    fun openNewWorkDialog(
+        folder: String = newWorkFolder,
+        category: WorkTemplateCategory = WorkTemplateCategory.BASIC
+    ) {
+        newWorkFolder = folder.takeIf { it in galleryFolders }.orEmpty()
+        addDialogInitialCategory = category
+        returnToAddDialogAfterTemplateManager = false
+        showAddDialog = true
+    }
+
+    fun createWork(
+        title: String,
+        ratio: String,
+        sizingMode: CanvasSizingMode,
+        template: WorkTemplate,
+        openInBlockMode: Boolean = false,
+        folderName: String? = null
+    ): Job? = submitNewWork { execute(locksEditor = true) {
+        val resolvedFolder = (folderName ?: requestedFolderName).takeIf { it in galleryFolders }.orEmpty()
+        val work = Work(
+            id = java.util.UUID.randomUUID().toString(),
+            title = title,
+            code = template.code(sizingMode),
+            previewAspectRatio = ratio,
+            p5SoundEnabled = template.requiresSound,
+            libraries = template.libraries,
+            folderName = resolvedFolder
+        )
         val next = snapshots(includeEdits = true, request = this) + work
         persistAndSwitch(next, work.id)
+        if (openInBlockMode) {
+            session.blockModeState(work.id).value = true
+        }
         showAddDialog = false
+        workMenuExpanded = false
         emit(WorkEvent(rerun = true))
     } }
 
@@ -914,15 +944,25 @@ internal class WorkManagementViewModel(
         emit(WorkEvent(message = "テンプレートを保存しました"))
     }
 
-    fun createWorkFromUserTemplate(title: String, templateId: String): Job? = submitNewWork { execute(locksEditor = true) {
+    fun createWorkFromUserTemplate(
+        title: String,
+        templateId: String,
+        openInBlockMode: Boolean = false,
+        folderName: String? = null
+    ): Job? = submitNewWork { execute(locksEditor = true) {
         ensureTemplatesLoaded()
         val repository = checkNotNull(templatePersistence)
         val template = userTemplates.first { it.id == templateId }
-        val work = newWorkFromUserTemplate(template, title.trim()).apply { folderName = requestedFolderName.takeIf { it in galleryFolders }.orEmpty() }
+        val resolvedFolder = (folderName ?: requestedFolderName).takeIf { it in galleryFolders }.orEmpty()
+        val work = newWorkFromUserTemplate(template, title.trim()).apply { this.folderName = resolvedFolder }
         val next = snapshots(includeEdits = true, request = this) + work
         withContext(io) { repository.prepareAssets(template) }
         persistAndSwitch(next, work.id)
+        if (openInBlockMode) {
+            session.blockModeState(work.id).value = true
+        }
         showAddDialog = false
+        workMenuExpanded = false
         emit(WorkEvent(rerun = true))
     } }
 

@@ -1,8 +1,9 @@
-/* global Blockly, EditRinBlockCatalogue */
+/* global Blockly, EditRinBlockCatalogue, EditRinEasyBlocks */
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
   const C = EditRinBlockCatalogue;
+  const E = typeof EditRinEasyBlocks !== 'undefined' ? EditRinEasyBlocks : null;
   // Some Android WebViews start with a zero-height CSS layout viewport even after
   // their native view is measured. Percentage/vh heights then keep the editor blank.
   // Use the measured window height and refresh it when the Compose pane changes size.
@@ -31,7 +32,8 @@
     empty:['検索に一致するブロックがありません。','No matching blocks.','没有匹配的积木。'],
     helpBody:['画面下の「＋ ブロックを追加」からハーフシートを開き、ブロックをタップして追加します。シート上部の「追加する場所」で挿入先（選択した処理の後・中・作品の最後など）を切り替えられます。\nブロック上の色スウォッチや数値カプセルをタップすると、その場で直接変更できます。ブロック本体をタップすると、操作バー（複製・削除・コード表示など）が開きます。\nブロックを移動するときは少し長押ししてからドラッグします。2本指のピンチ操作で拡大・縮小できます。\n上部バーやPiP小窓の全画面ボタンから、作品を大きくプレビューできます。右下のメニューからは分割表示への切り替えも行えます。\n外したブロックは保存されますが実行されません。変更は構文を検証してからコードへ反映され、元のコードは安全に保たれます。','Open the half-sheet from "+ Add block" at the bottom and tap a block to insert it. Use the "Where to insert" bar at the top of the sheet to switch the target (after/inside selected statement, end of program, etc.).\nTap a color swatch or value capsule on a block to edit it directly in place. Tap a block body to show its action bar (duplicate, delete, code preview, etc.).\nTo move a block, press and hold it briefly, then drag. Pinch with two fingers to zoom.\nUse the full-screen preview button in the top bar or floating PiP header to inspect your artwork at full size, or switch to split view from the More actions menu.\nDetached blocks are saved but do not run. Changes are syntax-checked before updating your source code.','点击底部的“＋ 添加积木”打开半屏面板，点击积木即可插入。可通过面板顶部的“插入位置”栏切换目标位置（所选语句之后、内部、程序末尾等）。\n点击积木上的颜色色块或数值胶囊可直接就地修改。点击积木本体会显示操作栏（复制、删除、代码预览等）。\n移动积木时，先按住片刻再拖动。双指捏合可缩放画布。\n点击顶部栏或悬浮小窗标题栏的全屏按钮可全屏预览作品，也可在右下角菜单中切换分屏视图。\n未连接的积木会保存但不会执行。所有更改都会先进行语法检查，确保原始代码安全。'],
     add:['追加','Add','添加'], more:['その他の操作','More options','更多操作'], zoomReset:['拡大率を100%に戻す','Reset zoom to 100%','缩放重置为 100%'], close:['閉じる','Close','关闭'],
-    actItems:['項目を編集','Edit items','编辑项目'], actCode:['コード','Code','代码'], actDuplicate:['複製','Duplicate','复制'], actDelete:['削除','Delete','删除'], actColor:['色','Color','颜色'], actNumber:['数値','Number','数值'], actName:['名前','Name','名称'], actCollapse:['折りたたむ','Collapse','折叠'], actExpand:['展開','Expand','展开'], actError:['エラー','Error','错误'],
+    actItems:['項目を編集','Edit items','编辑项目'], actCode:['コード','Code','代码'], actDuplicate:['複製','Duplicate','复制'], actDelete:['削除','Delete','删除'], actColor:['色','Color','颜色'], actNumber:['数値','Number','数值'], actName:['名前','Name','名称'], actCollapse:['折りたたむ','Collapse','折叠'], actExpand:['展開','Expand','展开'], actError:['エラー','Error','错误'], actMore:['その他','More','更多'],
+    easyMode:['かんたん','Easy','简易'], detailedMode:['詳細','Detailed','详细'], switchToEasy:['かんたんブロックに切り替え','Switch to Easy blocks','切换到简易积木'], switchToDetailed:['詳細ブロックに切り替え','Switch to Detailed blocks','切换到详细积木'],
     codePreview:['コードプレビュー','Code preview','代码预览'], openInEditor:['テキストエディタで開く','Open in editor','在代码编辑器中打开'], copied:['コピーしました','Copied','已复制'], copy:['コピー','Copy','复制'], selectedBlock:['選択ブロック','Selected block','已选积木'], entireProgram:['作品全体のコード','Entire program code','全部作品代码'], copyFailed:['コピーできませんでした','Failed to copy','复制失败'], jumpToCode:['コードで位置を確認','Jump to code','在代码中查看'],
     waiting:['ブロックエディターの応答がありません。コードは保持されています。モードを切り替えて再度開いてください。','The block editor is not responding. Your code is preserved. Switch modes and open it again.','积木编辑器无响应。代码已保留。请切换模式后重新打开。'],
   };
@@ -46,7 +48,7 @@
     return linePrefix + friendlyErrorMessage(error.message, language);
   }
   const label = obj => typeof obj === 'string' ? obj : (obj && (obj[language] || obj.en || obj.ja) || '');
-  const state = {sessionId:null,workId:null,source:'',revision:'',metadata:null,projection:null,readOnly:true,p5Version:'',soundEnabled:false,assets:[],dark:false,sourceType:'script',editable:false,pending:false,generation:0,view:null};
+  const state = {sessionId:null,workId:null,source:'',revision:'',metadata:null,projection:null,easyGraph:null,easyMode:false,showEasyExtensions:false,readOnly:true,p5Version:'',soundEnabled:false,assets:[],dark:false,sourceType:'script',editable:false,pending:false,generation:0,view:null};
   let port = null, workspace = null, rootBlock = null, worker = null, workerId = 0, editId = 0, muted = 0, category = 'all', changeTimer = null, busyWork = Promise.resolve(), flushWork = Promise.resolve(), lastGood = null;
   const requests = new Map(), models = new Map(), types = new Map();
   const pendingEvents = [];
@@ -98,6 +100,7 @@
   function quiet(action) {muted++;Blockly.Events.disable();try{return action();}finally{Blockly.Events.enable();muted--;}}
   function localizedUI() {
     document.documentElement.lang=language;document.body.classList.toggle('dark',state.dark);
+    document.body.classList.toggle('easy-mode',!!state.easyMode);
     $('editor').setAttribute('aria-label',language==='ja'?'ブロックエディター':language==='zh'?'积木编辑器':'Block editor');
     $('workspace').setAttribute('aria-label',language==='ja'?'作品のブロック':language==='zh'?'作品积木':'Work blocks');
     $('palette').setAttribute('aria-label',tr('search'));$('categories').setAttribute('aria-label',language==='ja'?'カテゴリー':language==='zh'?'分类':'Categories');
@@ -106,6 +109,7 @@
     $('paletteToggleLabel').textContent=tr('add');$('paletteToggle').title=tr('search');
     $('more').title=tr('more');$('more').setAttribute('aria-label',tr('more'));
     $('examplesLabel').textContent=tr('examples');$('runtimeLabel').textContent=tr('runtime');$('helpLabel').textContent=tr('help');$('zoomResetLabel').textContent=tr('zoomReset');
+    if($('menuModeToggleLabel'))$('menuModeToggleLabel').textContent=tr(state.easyMode?'switchToDetailed':'switchToEasy');
     $('paletteClose').title=tr('close');$('paletteClose').setAttribute('aria-label',tr('close'));
     if($('codePreview')){$('codePreview').title=tr('codePreview');$('codePreview').setAttribute('aria-label',tr('codePreview'));}
     if($('codeDialogClose')){$('codeDialogClose').title=tr('close');$('codeDialogClose').setAttribute('aria-label',tr('close'));}
@@ -170,7 +174,7 @@
     resizeViewport();
     if(workspace)return;
     Blockly.Blocks.rin_program={init:function(){this.appendDummyInput().appendField(tr('program'));this.appendStatementInput('BODY');this.setColour('#454b62');this.setDeletable(false);this.setMovable(true);this.setEditable(false);this.setTooltip(tr('orphan'));}};
-    workspace=Blockly.inject('workspace',{renderer:'edit_rin',theme:theme(),media:'vendor/media/',sounds:false,trashcan:true,maxTrashcanContents:0,scrollbars:true,zoom:{controls:false,wheel:true,pinch:true,startScale:1,maxScale:2,minScale:.3,scaleSpeed:1.15},move:{scrollbars:true,drag:true,wheel:true},readOnly:false,maxBlocks:2500,oneBasedIndex:false,toolbox:null});
+    workspace=Blockly.inject('workspace',{renderer:'edit_rin',theme:theme(),media:'vendor/media/',sounds:false,trashcan:true,maxTrashcanContents:0,scrollbars:true,grid:{spacing:32,length:1,colour:'#cec5ba',snap:false},zoom:{controls:false,wheel:true,pinch:true,startScale:1,maxScale:2,minScale:.3,scaleSpeed:1.15},move:{scrollbars:true,drag:true,wheel:true},readOnly:false,maxBlocks:2500,oneBasedIndex:false,toolbox:null});
     // Keep the original draggable handle rectangles. A transparent gradient paints
     // only their centre stripe while preserving the whole touch-sized drag target.
     const svg=workspace.getParentSvg(),ns='http://www.w3.org/2000/svg';
@@ -298,6 +302,10 @@
   }
   function colorSwatchFor(target){
     if(!target)return '#6c5ce7';
+    const easyItem=modelFor(target)?.easyItem;
+    if(easyItem?.colorHex)return normalizeHex(easyItem.colorHex);
+    const hexCap=(easyItem?.capsules||[]).find(c=>c.role==='color_literal'&&c.hexValue);
+    if(hexCap)return normalizeHex(hexCap.hexValue);
     if(target.getField?.('F_value'))return normalizeHex(target.getFieldValue('F_value'));
     const node=nodeFor(target);
     if(node?.colorSwatch)return normalizeHex(node.colorSwatch);
@@ -325,6 +333,12 @@
   }
   function findColorTarget(block){
     if(!block)return null;
+    const easyItem=modelFor(block)?.easyItem;
+    if(easyItem){
+      if(['trail_bg','color_call'].includes(easyItem.easyKind))return block;
+      if((easyItem.capsules||[]).some(c=>c.role==='color_literal'))return block;
+      return null;
+    }
     const node=nodeFor(block);if(!node)return null;
     if(node.kind==='expression_statement'){
       const expr=block.getInputTargetBlock?.('I_expression');
@@ -343,6 +357,28 @@
     }
     return null;
   }
+  function hasBlockMoreItems(block, node, model, easyItem, editable) {
+    if (state.easyMode) {
+      const hasBody = !!easyItem?.bodies && Object.keys(easyItem.bodies).length > 0;
+      const colorTarget = editable ? findColorTarget(block) : null;
+      return Boolean(
+        easyItem?.easyKind === 'detailed_protected' ||
+        colorTarget ||
+        model?.bound ||
+        (editable && (hasBody || block.isCollapsed()))
+      );
+    }
+    const hasBody = Object.keys(node.inputs || {}).some(key => node.inputKinds?.[key] === 'statement');
+    const colorTarget = editable ? findColorTarget(block) : null;
+    return Boolean(
+      (editable && canStructure(node)) ||
+      colorTarget ||
+      (editable && node.valueType === 'number' && block.getField('F_value')) ||
+      (editable && node.kind === 'identifier' && node.visibleNames?.length) ||
+      (editable && (hasBody || block.isCollapsed())) ||
+      model?.bound
+    );
+  }
   function showBlockActions(block){
     if(!workspace||!block||block.workspace!==workspace||block.isDisposed?.()||block===rootBlock||!models.has(block.id)){hideBlockActions();return;}
     const node=nodeFor(block),model=modelFor(block);if(!node){hideBlockActions();return;}
@@ -359,7 +395,8 @@
       add('i-error','actError',()=>showErrorDetail(block,blockError),{
         danger:true,
         customText:errLineLabel,
-        isErrorAction:true
+        isErrorAction:true,
+        actionId:'error'
       });
     }else if(state.errors?.length){
       status(formatErrorStatus(state.errors[0]),true);
@@ -368,25 +405,33 @@
       status(state.readOnly?tr('readOnly'):needsSound?tr('sound'):tr('ready')+' '+tr('orphan'),false);
     }
 
-    if(editable&&canStructure(node))add('i-items','actItems',()=>editStructure(block).catch(error=>rollback(error.message)));
-    const colorTarget=findColorTarget(block);
-    if(editable&&colorTarget)add(null,'actColor',()=>chooseColor(colorTarget),{swatch:colorSwatchFor(colorTarget)});
-    if(editable&&node.valueType==='number'&&block.getField('F_value'))add('i-tune','actNumber',()=>adjustNumber(block));
-    if(editable&&node.kind==='identifier'&&node.visibleNames?.length)add('i-rename','actName',()=>chooseVisibleName(block));
-    if(model.bound)add('i-code','actCode',()=>showCodePreview(block));
-    if(model.bound&&node.kind.startsWith('raw_'))add('i-code','code',()=>jumpToCode(block));
-    if(editable)add('i-duplicate','actDuplicate',()=>duplicateBlock(block).catch(error=>rollback(error.message)));
-    const hasBody=Object.keys(node.inputs||{}).some(key=>node.inputKinds?.[key]==='statement');
-    if(editable&&(hasBody||block.isCollapsed()))add(block.isCollapsed()?'i-unfold':'i-fold',block.isCollapsed()?'actExpand':'actCollapse',()=>{block.setCollapsed(!block.isCollapsed());showBlockActions(block);});
-    if(editable&&block.isDeletable())add('i-delete','actDelete',()=>{hideBlockActions();block.checkAndDelete();},{danger:true});
+    const easyItem=model.easyItem||null;
+    if(editable){
+      add('i-duplicate','actDuplicate',()=>duplicateBlock(block).catch(error=>rollback(error.message)),{iconOnly:true,actionId:'duplicate'});
+      if(block.isDeletable()){
+        add('i-delete','actDelete',()=>{hideBlockActions();block.checkAndDelete();},{danger:true,iconOnly:true,actionId:'delete'});
+      }
+    }
+    if(hasBlockMoreItems(block,node,model,easyItem,editable)){
+      add('i-more','actMore',()=>showBlockMoreMenu(block,model,node,easyItem,editable),{iconOnly:true,actionId:'more'});
+    }
+
     const bar=$('blockActions');if(!items.length){hideBlockActions();return;}
-    actionBlock=block;bar.setAttribute('aria-label',caption(node));
+    actionBlock=block;bar.setAttribute('aria-label',easyItem?.title||caption(node));
     bar.replaceChildren(...items.map(item=>{
-      const button=document.createElement('button');button.type='button';if(item.danger)button.className='danger';
+      const button=document.createElement('button');button.type='button';
+      const labelText=item.customText||tr(item.key);
+      if(item.danger)button.classList.add('danger');
       if(item.isErrorAction)button.classList.add('error-action');
-      if(item.icon){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS('http://www.w3.org/2000/svg','use');svg.setAttribute('class','icon');use.setAttribute('href','#'+item.icon);svg.appendChild(use);button.appendChild(svg);}
-      else{const swatch=document.createElement('i');swatch.className='swatch';swatch.style.background=item.swatch;button.appendChild(swatch);}
-      const text=document.createElement('span');text.textContent=item.customText||tr(item.key);button.appendChild(text);button.title=item.customText?`${item.customText}: ${tr(item.key)}`:tr(item.key);
+      if(item.iconOnly)button.classList.add('icon-only');
+      if(item.actionId)button.dataset.action=item.actionId;
+      button.title=item.customText?`${item.customText}: ${tr(item.key)}`:labelText;
+      button.setAttribute('aria-label',labelText);
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS('http://www.w3.org/2000/svg','use');
+      svg.setAttribute('class','icon');use.setAttribute('href','#'+item.icon);svg.appendChild(use);button.appendChild(svg);
+      if(!item.iconOnly){
+        const text=document.createElement('span');text.textContent=labelText;button.appendChild(text);
+      }
       button.onclick=()=>{if(actionBlock!==block)return;item.run();};
       return button;
     }));
@@ -505,7 +550,9 @@
       const model=modelFor(block);
       if(model?.bound){
         targetNode=state.projection?.nodes.find(n=>n.id===model.nodeId);
-        if(targetNode){
+        if(model.easyItem&&Number.isInteger(model.easyItem.start)&&Number.isInteger(model.easyItem.end)){
+          start=model.easyItem.start;end=model.easyItem.end;snippet=(state.source||'').slice(start,end).trim();
+        }else if(targetNode){
           start=targetNode.start;end=targetNode.end;snippet=(state.source||'').slice(start,end).trim();
           const semiMatch=state.source.slice(end).match(/^\s*;/);
           if(semiMatch){snippet+=';';end+=semiMatch[0].length;}
@@ -609,23 +656,31 @@
   }
   const fieldLabel = key => ({name:['名前','name','名称'],params:['引数','parameters','参数'],value:['値','value','值'],operator:['演算','operator','运算'],kind:['宣言','declaration','声明'],async:['非同期','async','异步'],text:['内容','text','内容'],code:['コード','code','代码']}[key]||[key,key,key])[language==='en'?1:language==='zh'?2:0];
   const inputLabel = key => ({body:['処理','body','语句'],test:['条件','condition','条件'],consequent:['条件成立','then','成立时'],alternate:['それ以外','else','否则'],expression:['実行','expression','表达式'],callee:['関数','function','函数'],args:['引数','arguments','参数'],left:['左','left','左'],right:['右','right','右'],argument:['値','value','值'],init:['初期値','initial','初始值'],update:['更新','update','更新'],declarations:['変数','variables','变量'],elements:['要素','items','元素'],object:['対象','object','对象'],property:['項目','property','属性'],name:['名前','name','名称']}[key]||[key,key,key])[language==='en'?1:language==='zh'?2:0];
+  function cleanDisplayTitle(raw) {
+    let text = String(raw || '').trim();
+    text = text.replace(/\s+·\s*[A-Za-z0-9_$@.]+$/,'');
+    if (language !== 'en') {
+      text = text.replace(/\s+(?:@[A-Za-z]+|[A-Za-z_$][A-Za-z0-9_$.]*)$/,'');
+      text = text.replace(/（0から数える）$/,'').replace(/ · 索引从 0 开始$/,'');
+    }
+    return text.trim() || String(raw || '');
+  }
   function simpleCallee(node){return typeof node.calleeName==='string'&&/^[\w$]+(?:\.[\w$]+)*$/.test(node.calleeName);}
   function caption(node) {
-    if(node.kind==='p5_call'){const entry=C.P5_CALLS[node.calleeName];return (entry?label(entry.label):node.calleeName)+' · '+node.calleeName;}
+    if(node.kind==='p5_call'){const entry=C.P5_CALLS[node.calleeName];return entry?cleanDisplayTitle(label(entry.label)):node.calleeName;}
     if(['call','new'].includes(node.kind)&&simpleCallee(node)){
-      if(node.calleeName?.endsWith('.push'))return words('配列に追加 · push','Append · push','追加到数组 · push');
-      if(node.calleeName?.endsWith('.pop'))return words('末尾を取り出す · pop','Remove last · pop','取出末尾 · pop');
-      return (label(C.NODE_LABELS[node.kind])||node.kind)+' · '+node.calleeName;
+      if(node.calleeName?.endsWith('.push'))return words('配列に追加','Append','追加到数组');
+      if(node.calleeName?.endsWith('.pop'))return words('末尾を取り出す','Remove last','取出末尾');
+      return node.kind==='new'?(label(C.NODE_LABELS.new)+' '+node.calleeName):node.calleeName;
     }
     if(node.kind==='function'&&node.event){
       const fnName=fieldsOf(node).name?.value;
       const ev=C.EVENTS.find(e=>e.name===fnName);
-      const title=ev?label(ev.label):({setup:language==='en'?'Once at start':language==='zh'?'启动时':'最初に一度',draw:language==='en'?'Every frame':language==='zh'?'每一帧':'毎フレーム'}[fnName]||label(C.NODE_LABELS.function));
-      return title+' · '+fnName;
+      return cleanDisplayTitle(ev?label(ev.label):({setup:language==='en'?'Once at start':language==='zh'?'启动时':'最初に一度',draw:language==='en'?'Every frame':language==='zh'?'每一帧':'毎フレーム'}[fnName]||label(C.NODE_LABELS.function)));
     }
     if(node.kind==='member'){
       if(node.computed)return words('配列の要素 [ ]','Array item [ ]','数组元素 [ ]');
-      if(node.raw?.endsWith('.length'))return words('要素数 · length','Length · length','长度 · length');
+      if(node.raw?.endsWith('.length'))return words('要素数','Length','长度');
       return label(C.NODE_LABELS.member)||node.kind;
     }
     return label(C.NODE_LABELS[node.kind])||node.kind;
@@ -934,7 +989,28 @@
         block.workspace===workspace&&workspace.getBlockById(block.id)===block&&state.editable&&!state.pending&&!state.processing&&!state.loading){
         button.disabled=true;
         dialog.close('apply');
-        if(block.getField?.('F_value')){
+        const easyModel=modelFor(block),easyItem=easyModel?.easyItem;
+        if(easyItem){
+          try{
+            if(easyItem.easyKind==='trail_bg'){
+              if(easyModel.bound){
+                const res=await ask('easyTrailColorEdit',{projection:state.projection,itemId:easyItem.id,hex:currentHex,language});
+                if(!res.ok)throw new Error(authoringError(res));
+                await submit(res.patches,await snapshotMetadata(),source,revision);
+              }else{
+                const res=await ask('easyTrailColorEdit',{projection:easyModel.projection,itemId:easyItem.id,hex:currentHex,language});
+                if(!res.ok)throw new Error(authoringError(res));
+                await commitEasyOrphanSource(block,res.source,source,revision);
+              }
+            }else if(easyItem.easyKind==='color_call'){
+              const op=easyItem.hexLiteralNodeId?{type:'replace',id:easyItem.hexLiteralNodeId,source:JSON.stringify(currentHex.toLowerCase())}:{type:'setColor',id:easyItem.callNodeId,hex:currentHex};
+              await semanticEasyEdit(block,op,source,revision);
+            }else{
+              const hexCap=(easyItem.capsules||[]).find(c=>c.role==='color_literal');
+              if(hexCap)await semanticEasyEdit(block,{type:'replace',id:hexCap.targetIds[0],source:JSON.stringify(currentHex.toLowerCase())},source,revision);
+            }
+          }catch(error){await rollback(error.message);}
+        }else if(block.getField?.('F_value')){
           block.setFieldValue(currentHex.toLowerCase(),'F_value');
         }else{
           const node=nodeFor(block);
@@ -1057,6 +1133,493 @@
       }
     });
   }
+  class RinCapsuleField extends Blockly.Field {
+    constructor(rawExpr, role, capsuleKey, onTap) {
+      super(String(rawExpr ?? '0'));
+      this.SERIALIZABLE = false;
+      this.EDITABLE = true;
+      this.rawExpr_ = String(rawExpr ?? '0');
+      this.role_ = role || 'any';
+      this.capsuleKey_ = capsuleKey;
+      this.onTap_ = onTap;
+      this.setTooltip(this.rawExpr_);
+    }
+    getText_() {
+      const expr = this.rawExpr_ !== undefined ? this.rawExpr_ : String(this.value_ ?? '0');
+      return E ? E.formatCapsuleDisplay(expr, this.role_ || 'any', language) : expr;
+    }
+    setRaw(rawExpr, role) {
+      const next = String(rawExpr ?? '0');
+      const nextRole = role || this.role_;
+      if (next !== this.rawExpr_ || nextRole !== this.role_) {
+        this.rawExpr_ = next;
+        this.role_ = nextRole;
+        this.value_ = next;
+        this.forceRerender();
+      }
+      this.setTooltip(next);
+    }
+    showEditor_() {
+      if (!state.editable || state.pending || state.processing || state.loading) return;
+      const blk = this.getSourceBlock();
+      if (blk && this.onTap_) this.onTap_(blk, this.capsuleKey_);
+    }
+  }
+  class RinActionChipField extends Blockly.Field {
+    constructor(chipLabel, onTap, tooltipText) {
+      super(String(chipLabel || '+'));
+      this.SERIALIZABLE = false;
+      this.EDITABLE = true;
+      this.chipLabel_ = String(chipLabel || '+');
+      this.onTap_ = onTap;
+      if (tooltipText) this.setTooltip(tooltipText);
+    }
+    getText_() {
+      return this.chipLabel_ !== undefined ? this.chipLabel_ : String(this.value_ || '+');
+    }
+    showEditor_() {
+      if (!state.editable || state.pending || state.processing || state.loading) return;
+      const blk = this.getSourceBlock();
+      if (blk && this.onTap_) this.onTap_(blk);
+    }
+  }
+  async function commitEasyOrphanSource(block, nextOrphanSource, expectedSource = state.source, expectedRevision = state.revision) {
+    ensureDocument(expectedSource, expectedRevision);
+    const top = block.getRootBlock();
+    const meta = JSON.parse(await snapshotMetadata());
+    const id = top.rinOrphanId || top.id;
+    const entry = (meta.orphans || []).find(o => o && o.id === id);
+    if (!entry) throw new Error(tr('unsupported'));
+    entry.source = nextOrphanSource;
+    await submit([], JSON.stringify(meta), expectedSource, expectedRevision);
+  }
+  async function semanticEasyEdit(block, operations, source = state.source, revision = state.revision) {
+    ensureDocument(source, revision);
+    const model = modelFor(block);
+    if (!model || !state.editable || state.pending) throw new Error(tr('unsupported'));
+    const targetProjection = model.bound ? state.projection : model.projection;
+    const result = await ask('proposePatch', {projection: targetProjection, operations});
+    if (!result.ok) throw new Error(authoringError(result));
+    if (model.bound) {
+      await submit(result.patches, await snapshotMetadata(), source, revision);
+    } else {
+      await commitEasyOrphanSource(block, result.source, source, revision);
+    }
+  }
+  async function showBlockMoreMenu(block, model, node, easyItem, editable) {
+    hideBlockActions();
+    const choices = [];
+    const colorTarget = editable ? findColorTarget(block) : null;
+    if (state.easyMode) {
+      const hasBody = !!easyItem?.bodies && Object.keys(easyItem.bodies).length > 0;
+      if (easyItem?.easyKind === 'detailed_protected') {
+        choices.push({value: 'openDetailed', icon: 'function', label: words('詳細ブロックに切り替えて確認', 'Inspect in Detailed blocks', '在详细积木中查看')});
+      }
+      if (colorTarget) {
+        choices.push({value: 'color', label: words('色を選ぶ', 'Choose color', '选择颜色')});
+      }
+      if (editable && (hasBody || block.isCollapsed())) {
+        choices.push({value: 'collapse', label: block.isCollapsed() ? tr('actExpand') : tr('actCollapse')});
+      }
+      if (model?.bound) {
+        choices.push({value: 'codePreview', icon: 'function', label: tr('codePreview')});
+        choices.push({value: 'openCode', icon: 'function', label: tr('openInEditor')});
+      }
+    } else {
+      const hasBody = Object.keys(node.inputs || {}).some(key => node.inputKinds?.[key] === 'statement');
+      if (editable && canStructure(node)) {
+        choices.push({value: 'items', icon: 'add', label: tr('actItems')});
+      }
+      if (colorTarget) {
+        choices.push({value: 'color', label: words('色を選ぶ', 'Choose color', '选择颜色')});
+      }
+      if (editable && node.valueType === 'number' && block.getField('F_value')) {
+        choices.push({value: 'number', label: words('数値を調整', 'Adjust number', '调整数值')});
+      }
+      if (editable && node.kind === 'identifier' && node.visibleNames?.length) {
+        choices.push({value: 'name', icon: 'rename', label: words('名前を選ぶ', 'Choose name', '选择名称')});
+      }
+      if (editable && (hasBody || block.isCollapsed())) {
+        choices.push({value: 'collapse', label: block.isCollapsed() ? tr('actExpand') : tr('actCollapse')});
+      }
+      if (model?.bound) {
+        choices.push({value: 'codePreview', icon: 'function', label: tr('codePreview')});
+        choices.push({value: 'openCode', icon: 'function', label: node.kind.startsWith('raw_') ? tr('code') : tr('openInEditor')});
+      }
+    }
+    if (!choices.length) return;
+    const picked = await choose(easyItem?.title || caption(node) || tr('more'), '', choices);
+    if (picked === 'openDetailed') {
+      restoredSelection = 'bound_' + model.nodeId;
+      await setEasyMode(false);
+    } else if (picked === 'items') {
+      await editStructure(block).catch(error => rollback(error.message));
+    } else if (picked === 'color' && colorTarget) {
+      await chooseColor(colorTarget);
+    } else if (picked === 'number') {
+      adjustNumber(block);
+    } else if (picked === 'name') {
+      await chooseVisibleName(block);
+    } else if (picked === 'collapse') {
+      block.setCollapsed(!block.isCollapsed());
+      await submit([], await snapshotMetadata(), state.source, state.revision).catch(() => {});
+    } else if (picked === 'codePreview') {
+      showCodePreview(block);
+    } else if (picked === 'openCode') {
+      await jumpToCode(block);
+    }
+  }
+  async function toggleEasyIfElse(block, addElse) {
+    if (!state.editable || state.pending || !await flushAll()) return;
+    const model = modelFor(block), easyItem = model?.easyItem;
+    if (!model || !easyItem || easyItem.easyKind !== 'if_stmt') return;
+    const source = state.source, revision = state.revision;
+    if (!addElse && (easyItem.bodies?.alternate?.children?.length || 0) > 0) {
+      const ok = await choose(
+        words('「そうでなければ」を削除', 'Remove else branch', '删除否则分支'),
+        words('中に入っている処理も一緒に削除します。元に戻す操作で復元できます。', 'Statements inside else will also be removed. Undo restores them.', '其中的语句也会删除。可撤销。'),
+        [{value: 'remove', icon: 'remove', label: words('削除する', 'Remove', '删除')}]
+      );
+      if (ok !== 'remove') return;
+    }
+    try {
+      await semanticEasyEdit(block, {type: 'setInput', id: easyItem.primaryNodeId, input: 'alternate', source: addElse ? '{\n}' : ''}, source, revision);
+    } catch (error) {
+      await rollback(error.message);
+    }
+  }
+  async function openCapsuleEditor(block, capsuleKey) {
+    if (!state.editable || state.pending || !await flushAll()) return;
+    const model = modelFor(block), easyItem = model?.easyItem;
+    const capsule = (easyItem?.capsules || []).find(c => c.key === capsuleKey);
+    if (!model || !easyItem || !capsule) return;
+    if (capsule.role === 'color_literal') {
+      await chooseColor(block);
+      return;
+    }
+    const source = state.source, revision = state.revision, generation = state.generation;
+    if (capsule.role === 'variable_name') {
+      const nextName = await textChoice(words('変数の名前を変更', 'Rename variable', '重命名变量'), capsule.raw);
+      if (!nextName || nextName === capsule.raw) return;
+      try {
+        ensureDocument(source, revision);
+        if (model.bound) {
+          const res = await ask('easyCapsuleEdit', {projection: state.projection, itemId: easyItem.id, capsuleKey, value: nextName, language});
+          if (!res.ok) throw new Error(authoringError(res));
+          await submit(res.patches, await snapshotMetadata(), source, revision);
+        } else {
+          const res = await ask('easyCapsuleEdit', {projection: model.projection, itemId: easyItem.id, capsuleKey, value: nextName, language});
+          if (!res.ok) throw new Error(authoringError(res));
+          await commitEasyOrphanSource(block, res.source, source, revision);
+        }
+      } catch (error) {
+        await rollback(error.message);
+      }
+      return;
+    }
+
+    const dialog = $('actionDialog');
+    const titlePrefix = easyItem.title ? easyItem.title + (capsule.label ? ' · ' + capsule.label : '') : (capsule.label || words('値を変更', 'Edit value', '修改值'));
+    $('dialogTitle').textContent = titlePrefix;
+    $('dialogDescription').textContent = '';
+    $('dialogChoices').replaceChildren();
+
+    const container = document.createElement('div');
+    container.className = 'rin-capsule-editor';
+
+    const rawTrimmed = String(capsule.raw || '').trim();
+    const numericVal = rawTrimmed !== '' && Number.isFinite(Number(rawTrimmed)) ? Number(rawTrimmed) : null;
+    const showSlider = numericVal !== null || ['x', 'y', 'size', 'angle', 'count', 'alpha', 'speed', 'weight', 'number'].includes(capsule.role);
+
+    const exprInput = document.createElement('input');
+    exprInput.type = 'text';
+    exprInput.value = rawTrimmed;
+    exprInput.autocomplete = 'off';
+    exprInput.spellcheck = false;
+    exprInput.setAttribute('aria-label', titlePrefix);
+
+    const errorEl = document.createElement('p');
+    errorEl.className = 'rin-capsule-error';
+    errorEl.hidden = true;
+
+    let sliderEl = null, valBadge = null;
+    if (showSlider) {
+      const cfg = E.sliderConfigForRole(capsule.role, numericVal ?? 0);
+      const sliderBox = document.createElement('div');
+      sliderBox.className = 'rin-capsule-slider-box';
+      const stepRow = document.createElement('div');
+      stepRow.className = 'rin-capsule-step-row';
+      valBadge = document.createElement('span');
+      valBadge.className = 'rin-capsule-val-badge';
+      valBadge.textContent = numericVal !== null ? String(numericVal) : E.formatCapsuleDisplay(rawTrimmed, capsule.role, language);
+
+      const stepBtns = document.createElement('div');
+      stepBtns.className = 'rin-capsule-steps';
+      const deltas = capsule.role === 'angle' ? [-0.5, -0.1, 0.1, 0.5] : capsule.role === 'count' ? [-4, -1, 1, 4] : [-10, -1, 1, 10];
+      for (const delta of deltas) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'rin-capsule-step-btn';
+        b.textContent = (delta > 0 ? '+' : '') + delta;
+        b.onclick = () => {
+          const cur = Number.isFinite(Number(exprInput.value.trim())) ? Number(exprInput.value.trim()) : (numericVal ?? 0);
+          let next = Math.round((cur + delta) * 1000) / 1000;
+          if (capsule.role === 'count') next = Math.max(1, Math.round(next));
+          if (capsule.role === 'alpha') next = Math.max(0, Math.min(255, Math.round(next)));
+          exprInput.value = String(next);
+          if (sliderEl) sliderEl.value = String(next);
+          valBadge.textContent = String(next);
+          errorEl.hidden = true;
+        };
+        stepBtns.appendChild(b);
+      }
+      stepRow.append(valBadge, stepBtns);
+
+      sliderEl = document.createElement('input');
+      sliderEl.type = 'range';
+      sliderEl.min = String(cfg.min);
+      sliderEl.max = String(cfg.max);
+      sliderEl.step = String(cfg.step);
+      sliderEl.value = String(numericVal ?? Math.max(cfg.min, Math.min(cfg.max, 0)));
+      sliderEl.setAttribute('aria-label', titlePrefix);
+      sliderEl.oninput = () => {
+        exprInput.value = sliderEl.value;
+        valBadge.textContent = sliderEl.value;
+        errorEl.hidden = true;
+      };
+      sliderBox.append(stepRow, sliderEl);
+      container.appendChild(sliderBox);
+    }
+
+    const commitValue = async candidateExpr => {
+      const trimmed = String(candidateExpr ?? '').trim();
+      if (!trimmed) {
+        errorEl.textContent = words('値または式を入力してください。', 'Enter a value or expression.', '请输入数值或表达式。');
+        errorEl.hidden = false;
+        return;
+      }
+      const validation = await ask('easyValidateExpr', {expression: trimmed, sourceType: state.sourceType});
+      if (!validation.ok) {
+        errorEl.textContent = words('有効な数値または式を入力してください（例: 100, mouseX, width / 2）。', 'Enter a valid number or expression (e.g. 100, mouseX, width / 2).', '请输入有效的数值或表达式（如 100、mouseX、width / 2）。');
+        errorEl.hidden = false;
+        return;
+      }
+      if (source !== state.source || revision !== state.revision || generation !== state.generation || !state.editable || state.pending) {
+        dialog.close('cancel');
+        return;
+      }
+      dialog.close('apply');
+      try {
+        if (model.bound) {
+          const res = await ask('easyCapsuleEdit', {projection: state.projection, itemId: easyItem.id, capsuleKey, value: validation.expression, language});
+          if (!res.ok) throw new Error(authoringError(res));
+          await submit(res.patches, await snapshotMetadata(), source, revision);
+        } else {
+          const res = await ask('easyCapsuleEdit', {projection: model.projection, itemId: easyItem.id, capsuleKey, value: validation.expression, language});
+          if (!res.ok) throw new Error(authoringError(res));
+          await commitEasyOrphanSource(block, res.source, source, revision);
+        }
+      } catch (error) {
+        await rollback(error.message);
+      }
+    };
+
+    const allVarNames = Array.from(new Set([...(easyItem.visibleNames || []), ...getGlobalVariables().map(v => v.name)]));
+    const presets = E ? E.presetsForRole(capsule.role, language, allVarNames) : [];
+    if (presets.length) {
+      const presetTitle = document.createElement('div');
+      presetTitle.className = 'rin-capsule-section-title';
+      presetTitle.textContent = words('ワンタップで選ぶ（動き・位置・変数）', 'Quick presets (motion, position & vars)', '一键选择（运动、位置与变量）');
+      const presetGrid = document.createElement('div');
+      presetGrid.className = 'rin-capsule-presets';
+      for (const preset of presets) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'rin-capsule-preset-chip' + (preset.expr.replace(/\s+/g, '') === rawTrimmed.replace(/\s+/g, '') ? ' active' : '');
+        chip.textContent = preset.label;
+        chip.title = preset.expr;
+        chip.onclick = () => {
+          safeVibrate([10]);
+          void commitValue(preset.expr);
+        };
+        presetGrid.appendChild(chip);
+      }
+      container.append(presetTitle, presetGrid);
+    }
+
+    const exprRow = document.createElement('div');
+    exprRow.className = 'rin-capsule-expr-row';
+    const exprLabel = document.createElement('div');
+    exprLabel.className = 'rin-capsule-section-title';
+    exprLabel.textContent = words('数値・式を直接入力', 'Direct number or expression', '直接输入数值或表达式');
+    exprInput.oninput = () => {
+      errorEl.hidden = true;
+      const n = Number(exprInput.value.trim());
+      if (exprInput.value.trim() !== '' && Number.isFinite(n)) {
+        if (sliderEl) sliderEl.value = String(n);
+        if (valBadge) valBadge.textContent = String(n);
+      } else if (valBadge) {
+        valBadge.textContent = E ? E.formatCapsuleDisplay(exprInput.value, capsule.role, language) : exprInput.value;
+      }
+    };
+    exprInput.onkeydown = e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void commitValue(exprInput.value);
+      }
+    };
+    exprRow.append(exprLabel, exprInput, errorEl);
+    container.appendChild(exprRow);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'filled';
+    applyBtn.textContent = words('適用', 'Apply', '应用');
+    applyBtn.onclick = () => { void commitValue(exprInput.value); };
+
+    $('dialogChoices').append(container, applyBtn);
+    dialog.showModal();
+  }
+  function easyDefinitionSignature(item) {
+    return JSON.stringify([
+      'easy',
+      language,
+      item.easyKind,
+      item.isTopContainer,
+      item.title,
+      item.titleSuffix || '',
+      item.elseLabel || '',
+      item.hasElse || false,
+      item.summary || '',
+      item.colorHex || null,
+      item.blendOptions || null,
+      (item.capsules || []).map(c => [c.key, c.label, c.role, c.hexValue || null])
+    ]);
+  }
+  function easyDefinition(item) {
+    const signature = easyDefinitionSignature(item);
+    if (types.has(signature)) return types.get(signature);
+    const type = 'rin_easy_' + hash(signature);
+    types.set(signature, type);
+    Blockly.Blocks[type] = {
+      init: function () {
+        const header = this.appendDummyInput('HEADER');
+        if (item.title) header.appendField(item.title);
+        if (item.easyKind === 'trail_bg' || item.easyKind === 'color_call') {
+          header.appendField(new Blockly.FieldImage(
+            swatchDataUrl(item.colorHex || '#6c5ce7'),
+            22, 22,
+            words('色を選ぶ', 'Choose color', '选择颜色'),
+            () => { if (state.editable) chooseColor(this); }
+          ), 'SWATCH_COLOR');
+        }
+        if (item.easyKind === 'blend_mode') {
+          const opts = (item.blendOptions || []).slice();
+          if (item.blendValue && !opts.some(o => o[1] === item.blendValue)) opts.unshift([item.blendValue, item.blendValue]);
+          header.appendField(new Blockly.FieldDropdown(opts), 'F_blend');
+        }
+        if (item.easyKind === 'comment_stmt') {
+          const tf = new Blockly.FieldTextInput(item.commentValue || '');
+          tf.maxDisplayLength = 28;
+          header.appendField(tf, 'F_comment');
+        }
+        if (item.easyKind === 'detailed_protected') {
+          if (item.summary) header.appendField(item.summary);
+          header.appendField(new RinActionChipField(
+            words('詳細 ↗', 'Details ↗', '详细 ↗'),
+            blk => {
+              const m = modelFor(blk);
+              if (m) { restoredSelection = 'bound_' + m.nodeId; void setEasyMode(false); }
+            },
+            words('詳細ブロックモードに切り替えて中身を確認します', 'Switch to Detailed mode to inspect', '切换到详细模式查看')
+          ), 'CHIP_DETAIL');
+        }
+        for (const cap of item.capsules || []) {
+          if (cap.label) header.appendField(cap.label);
+          if (cap.role === 'color_literal' && cap.hexValue) {
+            header.appendField(new Blockly.FieldImage(
+              swatchDataUrl(cap.hexValue),
+              22, 22,
+              words('色を選ぶ', 'Choose color', '选择颜色'),
+              () => { if (state.editable) chooseColor(this); }
+            ), 'SWATCH_COLOR');
+          } else {
+            header.appendField(new RinCapsuleField(cap.raw, cap.role, cap.key, openCapsuleEditor), 'C_' + cap.key);
+          }
+        }
+        if (item.titleSuffix) header.appendField(item.titleSuffix);
+
+        if (item.easyKind === 'if_stmt') {
+          this.appendStatementInput('I_consequent');
+          if (item.hasElse) {
+            const altInput = this.appendStatementInput('I_alternate');
+            altInput.appendField(item.elseLabel || words('そうでなければ', 'Else', '否则'));
+            altInput.appendField(new RinActionChipField(
+              '−',
+              blk => { void toggleEasyIfElse(blk, false); },
+              words('「そうでなければ」を削除', 'Remove else', '删除否则')
+            ), 'CHIP_REMOVE_ELSE');
+          } else {
+            this.appendDummyInput('ELSE_FOOTER').appendField(new RinActionChipField(
+              words('＋ そうでなければ', '+ Else', '＋ 否则'),
+              blk => { void toggleEasyIfElse(blk, true); },
+              words('「そうでなければ」の分岐を追加', 'Add else branch', '添加否则分支')
+            ), 'CHIP_ADD_ELSE');
+          }
+        } else if (item.bodies?.body) {
+          this.appendStatementInput('I_body');
+        }
+
+        this.setColour(item.colour || '#226b72');
+        if (item.isTopContainer && (item.easyKind === 'event_fn' || item.easyKind === 'custom_fn')) {
+          this.setPreviousStatement(false);
+          this.setNextStatement(false);
+        } else {
+          this.setPreviousStatement(true);
+          this.setNextStatement(true);
+        }
+        this.setInputsInline(!item.bodies);
+      }
+    };
+    return type;
+  }
+  function createEasyTree(projection, item, bound, idSuffix) {
+    const blockId = (bound ? 'bound_' : 'orphan_' + idSuffix + '_') + item.id;
+    const block = workspace.newBlock(easyDefinition(item), blockId);
+    block.rinDefinitionSignature = easyDefinitionSignature(item);
+    models.set(block.id, {
+      nodeId: item.primaryNodeId,
+      easyId: item.id,
+      easyItem: item,
+      projection,
+      bound
+    });
+    if (item.easyKind === 'blend_mode' && block.getField('F_blend')) {
+      block.getField('F_blend').setValue(item.blendValue);
+    }
+    if (item.easyKind === 'comment_stmt' && block.getField('F_comment')) {
+      block.getField('F_comment').setValue(item.commentValue || '');
+    }
+    for (const cap of item.capsules || []) {
+      const f = block.getField('C_' + cap.key);
+      if (f?.setRaw) f.setRaw(cap.raw, cap.role);
+    }
+    const rawPreview = (projection.source || '').slice(item.start, item.end);
+    block.setTooltip(rawPreview.slice(0, 1200));
+    block.initSvg();
+    for (const [bodyKey, bodyDesc] of Object.entries(item.bodies || {})) {
+      let prev = null;
+      for (const childItem of bodyDesc.children || []) {
+        const childBlock = createEasyTree(projection, childItem, bound, idSuffix);
+        if (!childBlock) continue;
+        const conn = prev ? prev.nextConnection : block.getInput('I_' + bodyKey)?.connection;
+        if (conn && childBlock.previousConnection) conn.connect(childBlock.previousConnection);
+        prev = childBlock;
+      }
+    }
+    block.render();
+    return block;
+  }
   function updateBlock(block,projection,node,bound,assetKind){
     models.set(block.id,{nodeId:node.id,projection,bound,assetKind});
     for(const [key,descriptor]of Object.entries(node.fields||{})){
@@ -1085,7 +1648,7 @@
     }
     block.render();return block;
   }
-  function presentationEnvironment(){return JSON.stringify([language,state.p5Version,state.soundEnabled,state.assets,state.sourceType]);}
+  function presentationEnvironment(){return JSON.stringify([language,state.p5Version,state.soundEnabled,state.assets,state.sourceType,!!state.easyMode]);}
   function pruneDefinitions(){
     for(const id of models.keys())if(!workspace.getBlockById(id))models.delete(id);
     const used=new Set(workspace.getAllBlocks(false).map(block=>block.type));
@@ -1095,6 +1658,7 @@
   // edges that differ are disconnected before any new edge is connected, so a
   // Blockly insertion cannot accidentally splice a surviving tail twice.
   async function reconcileAcknowledgedTree(projection,metadata){
+    if(state.easyMode)return false;
     if(!workspace||!rootBlock||!lastGood||lastGood.environment!==presentationEnvironment())return false;
     const ownGeneration=state.generation;
     const meta=validMetadata(metadata),previous=validMetadata(lastGood.metadata);
@@ -1167,16 +1731,59 @@
     state.unrenderedOrphans=unrendered;hideBlockActions();clearGrab();initWorkspace();
     if(state.restoreView){state.view=state.restoreView;state.restoreView=null;}else rememberView();
     const viewToRestore=state.view;
+    const preserveSelection=!restoredSelection?selectedBlockId:null;
     quiet(()=>{
       workspace.clear();models.clear();
       // Definitions capture field options and source-specific labels. Once all
       // old blocks are disposed, release them rather than retaining every edit.
       for(const type of types.values())delete Blockly.Blocks[type];
       types.clear();
-      rootBlock=workspace.newBlock('rin_program','rin_program');rootBlock.initSvg();rootBlock.render();const pos=meta.positions?.program;rootBlock.moveBy(Number.isFinite(pos?.x)?pos.x:24,Number.isFinite(pos?.y)?pos.y:28);
-      let previous=null;
-      for(const id of projection.rootIds){const block=createTree(projection,id,true,'');if(!block)continue;(previous?previous.nextConnection:rootBlock.getInput('BODY').connection).connect(block.previousConnection);previous=block;}
-      for(let i=0;i<orphanTrees.length;i++){const {orphan,projection:p,ids}=orphanTrees[i];let previousOrphan=null,first=null;for(const id of ids){const block=createTree(p,id,false,orphan.id||String(i));if(!first)first=block;if(previousOrphan?.nextConnection&&block.previousConnection)previousOrphan.nextConnection.connect(block.previousConnection);previousOrphan=block;}if(first){first.rinOrphanId=orphan.id||'o'+i;first.moveBy(Number.isFinite(orphan.x)?orphan.x:600,Number.isFinite(orphan.y)?orphan.y:60+i*120);}}
+      if(state.easyMode&&E){
+        rootBlock=null;
+        const graph=E.buildEasyGraph(projection,{language});
+        state.easyGraph=graph;
+        let cursorY=24;
+        for(const root of graph.roots){
+          let first=null,prev=null;
+          for(const item of root.items){
+            const block=createEasyTree(projection,item,true,'');
+            if(!block)continue;
+            if(!first){first=block;first.rinTopRoot=true;first.rinRootKey=root.key;}
+            if(prev?.nextConnection&&block.previousConnection)prev.nextConnection.connect(block.previousConnection);
+            prev=block;
+          }
+          if(first){
+            const savedPos=meta.positions?.[root.key];
+            const x=Number.isFinite(savedPos?.x)?savedPos.x:24;
+            const y=Number.isFinite(savedPos?.y)?savedPos.y:cursorY;
+            first.moveBy(x,y);
+            const rect=first.getBoundingRectangle();
+            cursorY=Math.max(cursorY,rect.bottom+26);
+          }
+        }
+        for(let i=0;i<orphanTrees.length;i++){
+          const {orphan,projection:p}=orphanTrees[i];
+          const orphanGraph=E.buildEasyGraph(p,{language});
+          let previousOrphan=null,first=null;
+          for(const item of orphanGraph.topItems){
+            const itemForOrphan=Object.assign({},item,{isTopContainer:false});
+            const block=createEasyTree(p,itemForOrphan,false,orphan.id||String(i));
+            if(!first)first=block;
+            if(previousOrphan?.nextConnection&&block.previousConnection)previousOrphan.nextConnection.connect(block.previousConnection);
+            previousOrphan=block;
+          }
+          if(first){
+            first.rinOrphanId=orphan.id||'o'+i;
+            first.moveBy(Number.isFinite(orphan.x)?orphan.x:460,Number.isFinite(orphan.y)?orphan.y:40+i*96);
+          }
+        }
+      }else{
+        state.easyGraph=null;
+        rootBlock=workspace.newBlock('rin_program','rin_program');rootBlock.initSvg();rootBlock.render();const pos=meta.positions?.program;rootBlock.moveBy(Number.isFinite(pos?.x)?pos.x:24,Number.isFinite(pos?.y)?pos.y:28);
+        let previous=null;
+        for(const id of projection.rootIds){const block=createTree(projection,id,true,'');if(!block)continue;(previous?previous.nextConnection:rootBlock.getInput('BODY').connection).connect(block.previousConnection);previous=block;}
+        for(let i=0;i<orphanTrees.length;i++){const {orphan,projection:p,ids}=orphanTrees[i];let previousOrphan=null,first=null;for(const id of ids){const block=createTree(p,id,false,orphan.id||String(i));if(!first)first=block;if(previousOrphan?.nextConnection&&block.previousConnection)previousOrphan.nextConnection.connect(block.previousConnection);previousOrphan=block;}if(first){first.rinOrphanId=orphan.id||'o'+i;first.moveBy(Number.isFinite(orphan.x)?orphan.x:600,Number.isFinite(orphan.y)?orphan.y:60+i*120);}}
+      }
       for(const id of Array.isArray(meta.collapsed)?meta.collapsed:[])workspace.getBlockById(id)?.setCollapsed(true);
       workspace.setTheme(theme());presentation?.decorateParts();applyReadOnly();workspace.clearUndo();
       if(state.view){workspace.setScale(state.view.scale);workspace.scroll(state.view.x,state.view.y);}
@@ -1187,10 +1794,9 @@
     // node only after that update, otherwise it can jump back to the program root.
     await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
     if(ownGeneration!==state.generation)return;
-    // Preserve legible text on phones; horizontal panning is preferable to
-    // shrinking an entire program to fit. Overview remains an explicit action.
-    if(restoredSelection&&workspace.getBlockById(restoredSelection)){
-      selectedBlockId=restoredSelection;quiet(()=>{Blockly.getFocusManager().focusNode(workspace.getBlockById(restoredSelection));workspace.getBlockById(restoredSelection).select();});
+    const selToRestore=restoredSelection||preserveSelection;
+    if(selToRestore&&workspace.getBlockById(selToRestore)){
+      selectedBlockId=selToRestore;quiet(()=>{if(restoredSelection)Blockly.getFocusManager().focusNode(workspace.getBlockById(selToRestore));workspace.getBlockById(selToRestore).select();});
       await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
       if(ownGeneration!==state.generation)return;
     }
@@ -1230,8 +1836,9 @@
     for(const block of workspace.getAllBlocks(false)){
       if(block.id==='rin_program')continue;
       const model=modelFor(block),node=nodeFor(block);
-      if(!model?.bound||!node?.loc)continue;
-      const start=node.loc.start.line,end=node.loc.end.line;
+      const loc=model?.easyItem?.loc||node?.loc;
+      if(!model?.bound||!loc)continue;
+      const start=loc.start.line,end=loc.end.line;
       if(line>=start&&line<=end){
         const lineSpan=end-start;
         let score= -lineSpan*1000;
@@ -1292,9 +1899,10 @@
     if(message.workId!==state.workId||message.source!==state.source||message.revision!==state.revision)clearOperationError();
     if(message.preferences)await applyDisplayPreferences(message.preferences,false);
     const nextLang=['ja','en','zh'].includes(message.language)?message.language:'ja';
+    const nextEasy=typeof message.easyMode==='boolean'?message.easyMode:state.easyMode;
     if(!force&&workspace&&!state.pending&&message.workId===state.workId&&message.source===state.source&&message.revision===state.revision&&
       (message.metadata||null)===state.metadata&&!!message.readOnly===state.readOnly&&
-      nextLang===language&&!!message.dark===state.dark&&String(message.p5Version||'')===state.p5Version&&
+      nextLang===language&&nextEasy===state.easyMode&&!!message.dark===state.dark&&String(message.p5Version||'')===state.p5Version&&
       !!message.soundEnabled===state.soundEnabled&&JSON.stringify(message.assets||[])===JSON.stringify(state.assets)&&
       (message.sourceType==='module'?'module':'script')===state.sourceType){
       state.errors=Array.isArray(message.errors)?message.errors:[];
@@ -1319,6 +1927,11 @@
       state.restoreView=valid?{x:view.x,y:view.y,scale:view.scale}:{x:0,y:0,scale:1};
       restoredSelection=typeof view?.selected==='string'?view.selected:null;
       for(const id of ['actionDialog','codeDialog','navigatorDialog'])if($(id).open)$(id).close('cancel');
+    }
+    if(typeof message.easyMode==='boolean'&&message.easyMode!==state.easyMode){
+      state.easyMode=message.easyMode;
+      category='all';
+      lastGood=null;
     }
     Object.assign(state,{workId:String(message.workId||''),source:String(message.source||''),revision:String(message.revision||''),metadata:message.metadata||null,readOnly:!!message.readOnly,p5Version:message.p5Version||'',soundEnabled:!!message.soundEnabled,assets:Array.isArray(message.assets)?message.assets:[],dark:!!message.dark,theme:message.theme||state.theme||null,sourceType:message.sourceType==='module'?'module':'script',errors:Array.isArray(message.errors)?message.errors:[]});
     applyAppTheme(state.theme);
@@ -1348,6 +1961,33 @@
     if(!block) return '';
     seen=seen||new Set();if(seen.has(block.id))throw new Error(tr('unsupported'));seen.add(block.id);
     const model=modelFor(block),node=nodeFor(block);if(!model||!node)throw new Error(tr('unsupported'));
+    if(model.easyItem){
+      const easyItem=model.easyItem,baseProj=model.projection;
+      const ops=[];
+      if(easyItem.easyKind==='blend_mode'&&block.getField('F_blend')){
+        const v=block.getFieldValue('F_blend');
+        if(v&&v!==easyItem.blendValue)ops.push({type:'replace',id:easyItem.modeNodeId,source:String(v)});
+      }
+      if(easyItem.easyKind==='comment_stmt'&&block.getField('F_comment')){
+        const v=block.getFieldValue('F_comment');
+        if(String(v)!==String(easyItem.commentValue||''))ops.push({type:'setField',id:easyItem.commentNodeId,field:'text',value:' '+String(v).trim()});
+      }
+      for(const [bodyKey,bodyDesc]of Object.entries(easyItem.bodies||{})){
+        const children=chain(block.getInputTargetBlock('I_'+bodyKey));
+        const liveSources=[];
+        for(const c of children)liveSources.push(await serialize(c,seen));
+        const origSources=(bodyDesc.children||[]).map(c=>(baseProj.source||'').slice(c.start,c.end));
+        if(JSON.stringify(liveSources)!==JSON.stringify(origSources)&&bodyDesc.parentId){
+          const oldChildStmtIds=(bodyDesc.children||[]).flatMap(c=>c.statementNodeIds);
+          if(oldChildStmtIds.length)ops.push({type:'delete',ids:oldChildStmtIds});
+          if(liveSources.length)ops.push({type:'insert',parentId:bodyDesc.parentId,input:bodyDesc.input,index:bodyDesc.headSkip||0,source:liveSources.join('\n')});
+        }
+      }
+      if(!ops.length)return (baseProj.source||'').slice(easyItem.start,easyItem.end);
+      const patched=await ask('proposePatch',{projection:baseProj,operations:ops});
+      if(!patched.ok)throw new Error(authoringError(patched));
+      return patched.source;
+    }
     const overrides={fields:{},inputs:{}};
     for(const [key,descriptor]of Object.entries(node.fields||{})){if(descriptor.type==='code'||!block.getField('F_'+key))continue;let value=block.getFieldValue('F_'+key);if(descriptor.type==='number')value=Number(value);else if(typeof descriptor.value==='boolean')value=value==='true';if(String(value)!==String(descriptor.value))overrides.fields[key]=value;}
     for(const [key,value]of Object.entries(node.inputs||{})){
@@ -1362,16 +2002,23 @@
     // Only processChanges may save source-bound roots as parts: it validates
     // their source removal/replacement in the same native transaction.
     const previous=validMetadata(state.metadata)||{};const orphans=(state.unrenderedOrphans||[]).slice();
+    const nextPositions=Object.assign({},previous.positions);
     for(const top of workspace.getTopBlocks(false)){
       if(top===rootBlock)continue;
       const model=modelFor(top);if(!model)continue;
+      if(state.easyMode&&top.rinTopRoot&&model.bound){
+        const xy=top.getRelativeToSurfaceXY();
+        if(top.rinRootKey)nextPositions[top.rinRootKey]={x:xy.x,y:xy.y};
+        continue;
+      }
       if(model.bound&&!allowSourceDetach)throw new Error(tr('busy'));
       const sources=[];for(const block of chain(top))sources.push(await serialize(block));
       const xy=top.getRelativeToSurfaceXY(),id=top.rinOrphanId||top.id;
       const old=(previous.orphans||[]).find(o=>o&&o.id===id)||{};
       orphans.push(Object.assign({},old,{id,source:sources.join('\n'),expression:!!top.outputConnection,x:xy.x,y:xy.y}));
     }
-    const pos=rootBlock.getRelativeToSurfaceXY();return JSON.stringify(Object.assign({},previous,{version:1,engine:state.projection.metadata,orphans,collapsed:workspace.getAllBlocks(false).filter(block=>block.isCollapsed()).map(block=>block.id),positions:Object.assign({},previous.positions,{program:{x:pos.x,y:pos.y}})}));
+    if(rootBlock){const pos=rootBlock.getRelativeToSurfaceXY();nextPositions.program={x:pos.x,y:pos.y};}
+    return JSON.stringify(Object.assign({},previous,{version:1,engine:state.projection.metadata,orphans,collapsed:workspace.getAllBlocks(false).filter(block=>block.isCollapsed()).map(block=>block.id),positions:nextPositions}));
   }
   function onChange(event){
     if(muted||event.isUiEvent||event.type===Blockly.Events.FINISHED_LOADING)return;
@@ -1385,13 +2032,183 @@
     pendingEvents.push(event);clearTimeout(changeTimer);changeTimer=setTimeout(()=>{busyWork=busyWork.then(processChanges).catch(error=>rollback(error.message));},120);
   }
   async function rollback(message){pendingEvents.length=0;if(state.projection?.ok)await rebuild(state.projection,state.metadata);failOperation(message);}
+  function easySlotRelation(block){
+    if(!block)return null;
+    let first=block;
+    while(first.getPreviousBlock()?.nextConnection?.targetBlock()===first)first=first.getPreviousBlock();
+    const parent=first.getParent();
+    if(!parent){
+      if(first.rinTopRoot&&first!==block&&modelFor(first)?.bound){
+        return {kind:'root_stack',parent:null,first,slotChain:chain(first)};
+      }
+      return null;
+    }
+    const input=parent.inputList.find(i=>i.connection?.targetBlock()===first);
+    if(!input||!input.name.startsWith('I_'))return null;
+    const bodyKey=input.name.slice(2);
+    return {kind:'container',parent,bodyKey,first,slotChain:chain(first)};
+  }
+  async function processEasyChanges(events, projection, commit){
+    const operations=[];
+    const fieldEvents=new Map(),moved=new Map(),deleted=new Set();
+    for(const event of events){
+      if(event.type==='change'&&event.element==='field'&&typeof event.name==='string'&&event.name.startsWith('F_')){
+        fieldEvents.set(event.blockId+'/'+event.name,event);
+      }
+      if(event.type==='move'){
+        const previous=moved.get(event.blockId);
+        moved.set(event.blockId,previous?{...event,oldParentId:previous.oldParentId,oldInputName:previous.oldInputName,oldCoordinate:previous.oldCoordinate}:event);
+      }
+      if(event.type==='delete')for(const id of event.ids||[event.blockId])deleted.add(id);
+    }
+    for(const top of workspace.getTopBlocks(false)){
+      const m=modelFor(top);
+      if(m?.bound&&!top.rinTopRoot&&!moved.has(top.id))moved.set(top.id,{blockId:top.id});
+    }
+    for(const event of fieldEvents.values()){
+      const block=workspace.getBlockById(event.blockId),model=modelFor(block),easyItem=model?.easyItem;
+      if(!model?.bound||!easyItem)continue;
+      if(event.name==='F_blend'&&easyItem.easyKind==='blend_mode'){
+        operations.push({type:'replace',id:easyItem.modeNodeId,source:String(block.getFieldValue('F_blend'))});
+      }else if(event.name==='F_comment'&&easyItem.easyKind==='comment_stmt'){
+        operations.push({type:'setField',id:easyItem.commentNodeId,field:'text',value:' '+String(block.getFieldValue('F_comment')||'').trim()});
+      }
+    }
+    const deletedStmtSet=new Set();
+    const deletedEasyRanges=[];
+    for(const id of deleted){
+      const model=models.get(id);
+      if(model?.bound&&model.easyItem){
+        deletedEasyRanges.push({start:model.easyItem.start,end:model.easyItem.end,ids:model.easyItem.statementNodeIds});
+      }
+    }
+    for(const entry of deletedEasyRanges){
+      const coveredByAncestor=deletedEasyRanges.some(other=>other!==entry&&other.start<=entry.start&&other.end>=entry.end);
+      if(!coveredByAncestor)for(const sid of entry.ids)deletedStmtSet.add(sid);
+    }
+    if(deletedStmtSet.size)operations.push({type:'delete',ids:Array.from(deletedStmtSet)});
+
+    const handledBlocks=new Set();
+    for(const [id,event]of moved){
+      if(deleted.has(id)||handledBlocks.has(id))continue;
+      const block=workspace.getBlockById(id),model=modelFor(block);
+      if(!block||!model||!model.easyItem)continue;
+      const slot=easySlotRelation(block);
+      if(model.bound){
+        if(!slot){
+          if(block.rinTopRoot&&!block.getParent()){
+            // Top-level card/stack repositioned on the 2D canvas: metadata only
+            continue;
+          }
+          // Bound block unplugged onto empty canvas -> save as detached orphan + delete from source
+          const stackBlocks=chain(block).filter(b=>modelFor(b)?.bound);
+          for(const b of stackBlocks)handledBlocks.add(b.id);
+          const stmtIds=stackBlocks.flatMap(b=>modelFor(b).easyItem.statementNodeIds);
+          if(stmtIds.length)operations.push({type:'delete',ids:stmtIds});
+          continue;
+        }
+        // Ignore existing bound tail displaced underneath a newly connected orphan stack
+        const prevBlk=block.getPreviousBlock();
+        if(prevBlk&&prevBlk.nextConnection?.targetBlock()===block&&modelFor(prevBlk)?.bound===false)continue;
+
+        if(slot.kind==='container'&&!modelFor(slot.parent)?.bound){
+          // Dragged a bound block into a detached container -> delete from source, metadata saves combined orphan
+          const stackBlocks=chain(block).filter(b=>modelFor(b)?.bound);
+          for(const b of stackBlocks)handledBlocks.add(b.id);
+          const stmtIds=stackBlocks.flatMap(b=>modelFor(b).easyItem.statementNodeIds);
+          if(stmtIds.length)operations.push({type:'delete',ids:stmtIds});
+          continue;
+        }
+
+        const stackBlocks=chain(block).filter(b=>modelFor(b)?.bound);
+        for(const b of stackBlocks)handledBlocks.add(b.id);
+        const movedStmtIds=stackBlocks.flatMap(b=>modelFor(b).easyItem.statementNodeIds);
+        const movedSet=new Set(movedStmtIds);
+        let destParentId=null,destInput='root',listIds=projection.rootIds,headSkip=0,afterNodeId=null;
+        if(slot.kind==='container'){
+          const parentEasy=modelFor(slot.parent)?.easyItem;
+          const bodyDesc=parentEasy?.bodies?.[slot.bodyKey];
+          if(!bodyDesc)throw new Error(tr('unsupported'));
+          destParentId=bodyDesc.parentId;
+          destInput=bodyDesc.input;
+          headSkip=bodyDesc.headSkip||0;
+          afterNodeId=bodyDesc.afterNodeId||null;
+          listIds=destParentId==null?projection.rootIds:(projectionNode(projection,destParentId)?.inputs?.[destInput]||[]);
+        }
+        const posInSlot=slot.slotChain.indexOf(block);
+        const precedingBound=slot.slotChain.slice(0,posInSlot).filter(b=>modelFor(b)?.bound&&!stackBlocks.includes(b));
+        let intermediateIndex=headSkip;
+        if(precedingBound.length>0){
+          const anchorId=modelFor(precedingBound[precedingBound.length-1]).easyItem.statementNodeIds.slice(-1)[0];
+          const rawIdx=listIds.indexOf(anchorId);
+          intermediateIndex=rawIdx>=0?listIds.slice(0,rawIdx+1).filter(sid=>!movedSet.has(sid)).length:headSkip;
+        }else if(afterNodeId){
+          const rawIdx=listIds.indexOf(afterNodeId);
+          intermediateIndex=rawIdx>=0?listIds.slice(0,rawIdx+1).filter(sid=>!movedSet.has(sid)).length:0;
+        }
+        operations.push({type:'move',ids:movedStmtIds,parentId:destParentId,input:destInput,index:intermediateIndex});
+      }else if(slot){
+        if(slot.kind==='container'&&!modelFor(slot.parent)?.bound)continue;
+        const orphanParts=[];
+        for(const part of chain(block)){
+          if(modelFor(part)?.bound)break;
+          orphanParts.push(part);
+          handledBlocks.add(part.id);
+        }
+        if(!orphanParts.length)continue;
+        const sources=[];
+        for(const part of orphanParts)sources.push(await serialize(part));
+        let destParentId=null,destInput='root',listIds=projection.rootIds,insertIdx=0;
+        if(slot.kind==='container'){
+          const parentEasy=modelFor(slot.parent)?.easyItem;
+          const bodyDesc=parentEasy?.bodies?.[slot.bodyKey];
+          if(!bodyDesc)throw new Error(tr('unsupported'));
+          destParentId=bodyDesc.parentId;
+          destInput=bodyDesc.input;
+          listIds=destParentId==null?projection.rootIds:(projectionNode(projection,destParentId)?.inputs?.[destInput]||[]);
+          const posInSlot=slot.slotChain.indexOf(block);
+          const precedingBound=slot.slotChain.slice(0,posInSlot).filter(b=>modelFor(b)?.bound);
+          if(precedingBound.length>0){
+            const anchorId=modelFor(precedingBound[precedingBound.length-1]).easyItem.statementNodeIds.slice(-1)[0];
+            insertIdx=listIds.indexOf(anchorId)+1;
+          }else if(bodyDesc.afterNodeId){
+            insertIdx=listIds.indexOf(bodyDesc.afterNodeId)+1;
+          }else{
+            insertIdx=bodyDesc.headSkip||0;
+          }
+        }else{
+          const posInSlot=slot.slotChain.indexOf(block);
+          const precedingBound=slot.slotChain.slice(0,posInSlot).filter(b=>modelFor(b)?.bound);
+          insertIdx=precedingBound.length>0?listIds.indexOf(modelFor(precedingBound[precedingBound.length-1]).easyItem.statementNodeIds.slice(-1)[0])+1:0;
+        }
+        operations.push({type:'insert',parentId:destParentId,input:destInput,index:Math.max(0,insertIdx),source:sources.join('\n')});
+      }
+    }
+    if(!operations.length){
+      if(events.some(e=>e.type==='create'||e.type==='delete'||e.type==='change'||e.type==='move'))await commit([]);
+      return;
+    }
+    const result=await ask('proposePatch',{projection,operations});
+    if(!result.ok)throw new Error(authoringError(result));
+    await commit(result.patches);
+  }
   async function processChanges(){
     if(state.pending||state.loading||!state.editable||state.processing)return;
-    if(!pendingEvents.length&&!workspace.getTopBlocks(false).some(top=>modelFor(top)?.bound))return;
+    const hasUnpluggedBound=workspace.getTopBlocks(false).some(top=>{
+      if(top===rootBlock)return false;
+      const m=modelFor(top);
+      return !!m?.bound&&!(state.easyMode&&top.rinTopRoot);
+    });
+    if(!pendingEvents.length&&!hasUnpluggedBound)return;
     if(workspace.isDragging()){changeTimer=setTimeout(()=>{busyWork=busyWork.then(processChanges).catch(error=>rollback(error.message));},100);return;}
     const generation=state.generation,expectedSource=state.source,expectedRevision=state.revision,projection=state.projection;
     state.processing=true;applyReadOnly();
     const commit=async patches=>{const metadata=await snapshotMetadata(true);if(generation!==state.generation||expectedSource!==state.source||expectedRevision!==state.revision)return;await submit(patches,metadata,expectedSource,expectedRevision);};
+    if(state.easyMode){
+      try{await processEasyChanges(pendingEvents.splice(0),projection,commit);}
+      finally{state.processing=false;applyReadOnly();}
+      return;
+    }
     try{
     const events=pendingEvents.splice(0),operations=[];
     const fieldEvents=new Map(),moved=new Map(),deleted=new Set(),deletedNodes=[],swappedValues=new Set();
@@ -1518,6 +2335,11 @@
     for(const block of workspace.getAllBlocks(false)){
       const model=modelFor(block),node=nodeFor(block);
       if(!model?.bound||!node)continue;
+      if(model.easyItem?.easyKind==='comment_stmt'&&block.getField('F_comment')){
+        const value=' '+String(block.getFieldValue('F_comment')||'').trim();
+        if(value!==String(node.fields?.text?.value||''))operations.push({type:'setField',id:model.easyItem.commentNodeId,field:'text',value});
+        continue;
+      }
       for(const [field,descriptor]of Object.entries(node.fields||{})){
         if(descriptor.type==='code'||!block.getField('F_'+field))continue;
         const value=block.getFieldValue('F_'+field);
@@ -1834,19 +2656,86 @@
       updatePaletteTargetBar();
     }
   }
-  function renderPalette(){
-    updatePaletteTargetBar();
-    $('categories').replaceChildren();const categories=['all',...Object.keys(C.CATEGORY_LABELS)];for(const id of categories){const button=document.createElement('button');button.type='button';button.textContent=id==='all'?tr('all'):label(C.CATEGORY_LABELS[id]);button.setAttribute('aria-pressed',String(category===id));button.onclick=()=>{category=id;renderPalette();};$('categories').appendChild(button);}
-    const q=$('search').value.trim().toLocaleLowerCase();
-    const dynamicVars=getDynamicVariableTemplates();
-    const allTemplates=[...dynamicVars,...C.TEMPLATES.map(effectiveTemplate)];
-    const entries=allTemplates.filter(t=>!t.hiddenFromPalette&&supportedTemplate(t)).filter(t=>(category==='all'||t.category===category)&&(!q||(t.id+' '+label(t.label)+' '+(t.source||'')).toLocaleLowerCase().includes(q)));
-    if(q){
-      const rank=t=>{const id=t.id.toLocaleLowerCase(),lbl=label(t.label).toLocaleLowerCase();return id===q||lbl===q?0:id.startsWith(q)||lbl.startsWith(q)?1:id.includes(q)||lbl.includes(q)?2:3;};
-      entries.sort((a,b)=>rank(a)-rank(b));
+  function activeEasyExtensionCategories(){
+    const used=new Set();
+    if(!state.projection?.ok)return used;
+    for(const n of state.projection.nodes||[]){
+      if(n.requirements?.webgl)used.add('three');
+      if(n.requirements?.sound)used.add('sound');
+      if(typeof n.calleeName==='string'){
+        if(n.calleeName.startsWith('brush.'))used.add('brush');
+        if(n.calleeName.startsWith('Matter.'))used.add('physics');
+        if(['image','loadImage'].includes(n.calleeName))used.add('assets');
+      }
+      if(n.kind==='function'&&!n.event)used.add('functions');
     }
+    for(const c of state.projection.comments||[]){
+      if(/@(?:slider|color|toggle|choice|xy|rin)\b/.test(c.text||''))used.add('parameters');
+    }
+    return used;
+  }
+  function easyCategoryColor(cat){
+    if(cat==='easy_events')return '#585184';
+    if(cat==='easy_layout')return '#365f8b';
+    if(cat==='easy_logic')return '#824d6e';
+    if(cat==='easy_style')return '#226b72';
+    if(cat==='easy_draw')return '#226b72';
+    return categoryColor(cat);
+  }
+  function installPaletteItemDrag(button, template){
+    let dragInfo=null;
+    button.addEventListener('pointerdown',ev=>{
+      if(!state.easyMode||!state.editable||state.pending||template.authoringAction)return;
+      dragInfo={id:ev.pointerId,startX:ev.clientX,startY:ev.clientY,dragged:false};
+    });
+    button.addEventListener('pointermove',ev=>{
+      if(!dragInfo||ev.pointerId!==dragInfo.id||dragInfo.dragged)return;
+      const dx=ev.clientX-dragInfo.startX,dy=ev.clientY-dragInfo.startY;
+      const paletteRect=$('palette').getBoundingClientRect();
+      if(Math.hypot(dx,dy)>18&&(ev.clientY<paletteRect.top+12||ev.clientX>paletteRect.right-8)){
+        dragInfo.dragged=true;
+        safeVibrate([15]);
+        setPalette(false);
+        const onUp=upEv=>{
+          if(upEv.pointerId!==dragInfo?.id)return;
+          removeEventListener('pointerup',onUp,true);
+          removeEventListener('pointercancel',onUp,true);
+          const dropPt={clientX:upEv.clientX,clientY:upEv.clientY};
+          dragInfo=null;
+          void insertEasyTemplate(template,dropPt);
+        };
+        addEventListener('pointerup',onUp,true);
+        addEventListener('pointercancel',onUp,true);
+      }
+    });
+    button.addEventListener('pointerup',()=>{if(dragInfo&&!dragInfo.dragged)dragInfo=null;});
+    button.addEventListener('pointercancel',()=>{dragInfo=null;});
+  }
+  function paletteGroupColor(group){
+    if(group==='events')return '#585184';
+    if(group==='control')return '#365f8b';
+    if(group==='variables')return '#824d6e';
+    if(group==='extensions')return '#4c6860';
+    return '#226b72';
+  }
+  function renderPalette(){
+    const groups=C.PALETTE_CATEGORIES||{};
+    const groupMap=C.PALETTE_GROUP_MAP||{};
+    const validCats=['all',...Object.keys(groups)];
+    if(!validCats.includes(category))category='all';
+    $('categories').replaceChildren();
+    for(const id of validCats){
+      const button=document.createElement('button');
+      button.type='button';
+      button.textContent=id==='all'?tr('all'):label(groups[id]);
+      button.setAttribute('aria-pressed',String(category===id));
+      button.onclick=()=>{category=id;renderPalette();};
+      $('categories').appendChild(button);
+    }
+    const q=$('search').value.trim().toLocaleLowerCase();
+    const showMakeVar=category==='variables'||(q&&(q.includes('変')||q.includes('变')||q.includes('var')||q.includes('make')));
     $('paletteItems').replaceChildren();
-    if(category==='variables'||(!category||category==='all')&&(!q||q.includes('変')||q.includes('变')||q.includes('var')||q.includes('make'))){
+    if(showMakeVar){
       const makeVarBtn=document.createElement('button');
       makeVarBtn.type='button';
       makeVarBtn.className='palette-make-var-btn';
@@ -1855,7 +2744,78 @@
       makeVarBtn.onclick=()=>showCreateVariableDialog();
       $('paletteItems').appendChild(makeVarBtn);
     }
-    for(const template of entries){const button=document.createElement('button');button.type='button';button.className='palette-item';const chip=document.createElement('span');chip.className='chip';chip.style.background=categoryColor(template.category);const texts=document.createElement('span');texts.className='texts';const title=document.createElement('span');title.className='title';title.textContent=label(template.label);const code=document.createElement('small');code.textContent=template.authoringAction?words('素材や追加する処理を選んで使います。','Choose a resource or a handler to use this block.','选择资源或事件后使用此积木。'):template.source.replace(/\s+/g,' ');texts.append(title,code);button.append(chip,texts);button.onclick=()=>showInsertion(template);$('paletteItems').appendChild(button);}if(!entries.length&&!$('paletteItems').children.length)$('paletteItems').textContent=tr('empty');
+    if(state.easyMode){
+      const dynamicVars=getDynamicVariableTemplates().filter(t=>!templateExpression(t));
+      const allMap=new Map(C.TEMPLATES.map(t=>[t.id,effectiveTemplate(t)]));
+      const entries=[];
+      const seenIds=new Set();
+      const addIfMatch=(t,groupId)=>{
+        if(!t||seenIds.has(t.id)||t.hiddenFromPalette||!supportedTemplate(t)||templateExpression(t))return;
+        if(!q&&category!=='all'&&category!==groupId)return;
+        if(q&&!(t.id+' '+label(t.label)+' '+(t.source||'')).toLocaleLowerCase().includes(q))return;
+        seenIds.add(t.id);
+        entries.push(Object.assign({},t,{displayGroup:groupId}));
+      };
+      for(const [groupCat,ids]of Object.entries(C.EASY_PALETTE_GROUPS||{})){
+        for(const tid of ids)addIfMatch(allMap.get(tid),groupCat);
+      }
+      for(const dyn of dynamicVars)addIfMatch(dyn,'variables');
+      for(const extCat of (C.EASY_EXTENSION_CATEGORIES||[])){
+        for(const t of C.TEMPLATES){
+          if(t.category===extCat)addIfMatch(allMap.get(t.id),'extensions');
+        }
+      }
+      if(q){
+        const rank=t=>{const id=t.id.toLocaleLowerCase(),lbl=label(t.label).toLocaleLowerCase();return id===q||lbl===q?0:id.startsWith(q)||lbl.startsWith(q)?1:id.includes(q)||lbl.includes(q)?2:3;};
+        entries.sort((a,b)=>rank(a)-rank(b));
+      }
+      for(const template of entries){
+        const button=document.createElement('button');
+        button.type='button';
+        button.className='palette-item';
+        const chip=document.createElement('span');
+        chip.className='chip';
+        chip.style.background=paletteGroupColor(template.displayGroup);
+        const texts=document.createElement('span');
+        texts.className='texts';
+        const title=document.createElement('span');
+        title.className='title';
+        title.textContent=cleanDisplayTitle(label(template.label));
+        texts.appendChild(title);
+        button.append(chip,texts);
+        installPaletteItemDrag(button,template);
+        button.onclick=()=>showInsertion(template);
+        $('paletteItems').appendChild(button);
+      }
+      if(!entries.length&&!$('paletteItems').children.length)$('paletteItems').textContent=tr('empty');
+      return;
+    }
+    const dynamicVars=getDynamicVariableTemplates();
+    const allTemplates=[...dynamicVars,...C.TEMPLATES.map(effectiveTemplate)];
+    const allowedSubcats=category==='all'?null:new Set(groupMap[category]||[category]);
+    const entries=allTemplates.filter(t=>!t.hiddenFromPalette&&supportedTemplate(t)).filter(t=>(!allowedSubcats||allowedSubcats.has(t.category))&&(!q||(t.id+' '+label(t.label)+' '+(t.source||'')).toLocaleLowerCase().includes(q)));
+    if(q){
+      const rank=t=>{const id=t.id.toLocaleLowerCase(),lbl=label(t.label).toLocaleLowerCase();return id===q||lbl===q?0:id.startsWith(q)||lbl.startsWith(q)?1:id.includes(q)||lbl.includes(q)?2:3;};
+      entries.sort((a,b)=>rank(a)-rank(b));
+    }
+    for(const template of entries){
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='palette-item';
+      const chip=document.createElement('span');
+      chip.className='chip';
+      chip.style.background=categoryColor(template.category);
+      const texts=document.createElement('span');
+      texts.className='texts';
+      const title=document.createElement('span');
+      title.className='title';
+      title.textContent=cleanDisplayTitle(label(template.label));
+      texts.appendChild(title);
+      button.append(chip,texts);
+      button.onclick=()=>showInsertion(template);
+      $('paletteItems').appendChild(button);
+    }
+    if(!entries.length&&!$('paletteItems').children.length)$('paletteItems').textContent=tr('empty');
   }
   function choose(title,description,choices,onChoose){
     return new Promise(resolve=>{
@@ -1876,7 +2836,166 @@
 
   function selectedStatement(){let block=selectedBlock();if(!block||block.workspace!==workspace)return null;while(block&&!block.previousConnection)block=block.getParent();return block===rootBlock?null:block;}
   function templateExpression(template){return !/[;}\n]\s*$/.test(template.source)&&!/^\s*(function|if|for|let|const|return)\b/.test(template.source);}
+  async function insertEasyTemplate(rawTemplate, dropPoint=null){
+    const template=effectiveTemplate(rawTemplate);
+    if(!state.editable||state.pending)return;
+    if(template.authoringAction){
+      try{await authorTemplate(template);}catch(error){await rollback(error.message);}
+      return;
+    }
+    if(template.requiresWebGL){
+      const s=state.source,r=state.revision;
+      try{
+        const info=await authoringInspect();ensureDocument(s,r);
+        if(!info.webgl){if(!await confirmWebGL(s,r))return;return insertEasyTemplate(rawTemplate,dropPoint);}
+      }catch(error){await rollback(error.message);return;}
+    }
+    if(template.category==='sound'&&!state.soundEnabled)status(tr('sound'),false);
+    const editSource=state.source,editRevision=state.revision;
+    setPalette(false);
+    safeVibrate([10]);
+    try{
+      if(dropPoint&&workspace){
+        let hitContainer=null;
+        for(const b of workspace.getAllBlocks(false)){
+          const m=modelFor(b);
+          if(!m?.bound||!m.easyItem?.bodies)continue;
+          const svgRect=b.getSvgRoot()?.getBoundingClientRect();
+          if(svgRect&&dropPoint.clientX>=svgRect.left&&dropPoint.clientX<=svgRect.right&&dropPoint.clientY>=svgRect.top&&dropPoint.clientY<=svgRect.bottom){
+            hitContainer=b;
+          }
+        }
+        if(hitContainer){
+          const bodyDesc=modelFor(hitContainer).easyItem.bodies.body||modelFor(hitContainer).easyItem.bodies.consequent;
+          if(bodyDesc){
+            const dest=E.resolveBodyInsertion(state.projection,bodyDesc,(bodyDesc.children||[]).length);
+            const res=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:dest.parentId,input:dest.input,index:dest.index,source:template.source}});
+            if(!res.ok)throw new Error(authoringError(res));
+            await submit(res.patches,await snapshotMetadata(),editSource,editRevision);
+            return;
+          }
+        }
+        // Dropped onto open canvas -> create detached Easy part at drop coordinate
+        const wsRect=$('workspace').getBoundingClientRect();
+        const scale=workspace.scale||1;
+        const dropX=(dropPoint.clientX-wsRect.left-workspace.scrollX)/scale;
+        const dropY=(dropPoint.clientY-wsRect.top-workspace.scrollY)/scale;
+        const parsed=await parseTemplate(template.source,false);
+        ensureDocument(editSource,editRevision);
+        const orphanGraph=E.buildEasyGraph(parsed.projection,{language});
+        quiet(()=>{
+          let previous=null,first=null;
+          const suffix='t'+Date.now().toString(36);
+          for(const item of orphanGraph.topItems){
+            const copy=createEasyTree(parsed.projection,Object.assign({},item,{isTopContainer:false}),false,suffix);
+            if(!first)first=copy;
+            if(previous?.nextConnection&&copy.previousConnection)previous.nextConnection.connect(copy.previousConnection);
+            previous=copy;
+          }
+          if(first){
+            first.rinOrphanId=suffix;
+            first.moveBy(Math.round(dropX),Math.round(dropY));
+            presentation.decorateParts();
+            first.select();
+          }
+        });
+        await submit([],await snapshotMetadata(),editSource,editRevision);
+        return;
+      }
+
+      // Smart 1-tap insertion
+      const selectedId=paletteSelectionId||selectedBlockId;
+      const selectedBlk=selectedId?workspace?.getBlockById(selectedId):null;
+      const selectedModel=modelFor(selectedBlk);
+
+      // Top-level parameter / global variable declaration when no block inside a function is selected
+      if((template.category==='parameters'||['let','const'].includes(template.id))&&(!selectedModel?.bound||selectedBlk?.rinTopRoot)){
+        let topVarIdx=0;
+        for(const rid of state.projection.rootIds||[]){
+          const rn=projectionNode(state.projection,rid);
+          if(rn&&(rn.kind==='variable_declaration'||rn.kind==='comment'))topVarIdx++;
+          else break;
+        }
+        const res=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:null,input:'root',index:topVarIdx,source:template.source}});
+        if(!res.ok)throw new Error(authoringError(res));
+        await submit(res.patches,await snapshotMetadata(),editSource,editRevision);
+        return;
+      }
+
+      // createCanvas goes into setup
+      if(template.id==='createCanvas'){
+        let setupNode=(state.projection.nodes||[]).find(n=>n.kind==='function'&&!n.parentId&&n.fields?.name?.value==='setup');
+        if(!setupNode){
+          await applyAuthoring({type:'ensureEvent',name:'setup'},editSource,editRevision);
+          return;
+        }
+        const res=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:setupNode.id,input:'body',index:0,source:template.source}});
+        if(!res.ok)throw new Error(authoringError(res));
+        await submit(res.patches,await snapshotMetadata(),editSource,editRevision);
+        return;
+      }
+
+      // If a bound Easy block is selected: insert inside if it's a container, or right after if it's a statement inside a container
+      if(selectedModel?.bound&&selectedModel.easyItem){
+        const easyItem=selectedModel.easyItem;
+        const containerBody=easyItem.bodies?.body||easyItem.bodies?.consequent;
+        if(containerBody){
+          const dest=E.resolveBodyInsertion(state.projection,containerBody,(containerBody.children||[]).length);
+          const res=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:dest.parentId,input:dest.input,index:dest.index,source:template.source}});
+          if(!res.ok)throw new Error(authoringError(res));
+          await submit(res.patches,await snapshotMetadata(),editSource,editRevision);
+          return;
+        }
+        const slot=easySlotRelation(selectedBlk);
+        if(slot?.kind==='container'&&modelFor(slot.parent)?.bound){
+          const parentEasy=modelFor(slot.parent).easyItem;
+          const bodyDesc=parentEasy?.bodies?.[slot.bodyKey];
+          if(bodyDesc){
+            const listIds=bodyDesc.parentId==null?state.projection.rootIds:(projectionNode(state.projection,bodyDesc.parentId)?.inputs?.[bodyDesc.input]||[]);
+            const lastStmtId=easyItem.statementNodeIds.slice(-1)[0];
+            const idx=listIds.indexOf(lastStmtId);
+            if(idx>=0){
+              const res=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:bodyDesc.parentId,input:bodyDesc.input,index:idx+1,source:template.source}});
+              if(!res.ok)throw new Error(authoringError(res));
+              await submit(res.patches,await snapshotMetadata(),editSource,editRevision);
+              return;
+            }
+          }
+        }
+      }
+
+      // Default: append inside `draw` (or `setup` if present without `draw`, else ensure `draw` first!)
+      let targetFn=(state.projection.nodes||[]).find(n=>n.kind==='function'&&!n.parentId&&n.fields?.name?.value==='draw')||
+                   (state.projection.nodes||[]).find(n=>n.kind==='function'&&!n.parentId&&n.fields?.name?.value==='setup');
+      if(!targetFn){
+        const planRes=await ask('authoringPlan',{projection:state.projection,request:{type:'ensureEvent',name:'draw'},env:authoringEnv()});
+        if(planRes.ok){
+          const drawAfter=(planRes.projection.nodes||[]).find(n=>n.kind==='function'&&!n.parentId&&n.fields?.name?.value==='draw');
+          if(drawAfter){
+            const insRes=await ask('proposePatch',{projection:planRes.projection,operations:{type:'insert',parentId:drawAfter.id,input:'body',index:(drawAfter.inputs?.body||[]).length,source:template.source}});
+            if(insRes.ok){
+              const combined=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:null,input:'root',index:state.projection.rootIds.length,source:'function draw() {\n  '+template.source.trim().replace(/\n/g,'\n  ')+'\n}\n'}});
+              if(combined.ok){await submit(combined.patches,await snapshotMetadata(),editSource,editRevision);return;}
+            }
+          }
+        }
+      }
+      if(targetFn){
+        const bodyIds=targetFn.inputs?.body||[];
+        const res=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:targetFn.id,input:'body',index:bodyIds.length,source:template.source}});
+        if(!res.ok)throw new Error(authoringError(res));
+        await submit(res.patches,await snapshotMetadata(),editSource,editRevision);
+        return;
+      }
+      const fallback=await ask('proposePatch',{projection:state.projection,operations:{type:'insert',parentId:null,input:'root',index:state.projection.rootIds.length,source:template.source}});
+      if(!fallback.ok)throw new Error(authoringError(fallback));
+      await submit(fallback.patches,await snapshotMetadata(),editSource,editRevision);
+    }catch(error){
+      await rollback(error.message);
+    }
+  }
   async function showInsertion(template){
+    if(state.easyMode)return insertEasyTemplate(template,null);
     if(!state.editable||state.pending)return;if(template.authoringAction){try{await authorTemplate(template);}catch(error){await rollback(error.message);}return;}if(template.requiresWebGL){const source=state.source,revision=state.revision;try{const info=await authoringInspect();ensureDocument(source,revision);if(!info.webgl){if(!await confirmWebGL(source,revision))return;return showInsertion(template);}}catch(error){await rollback(error.message);return;}}
     const source=state.source,revision=state.revision,selected=selectedStatement(),rel=relation(selected),valueBlock=selectedBlock(),isExpr=templateExpression(template);
     const useOneTap=paletteInsertMode!=='ask'&&(!isExpr||document.body.classList.contains('native-chrome'));
@@ -1928,7 +3047,52 @@
     const result=await ask('proposePatch',{projection:state.projection,operations});if(!result.ok)throw new Error(authoringError(result));await submit(result.patches,await snapshotMetadata(),editSource,editRevision);
   }
   async function replaceExample(id){const example=C.EXAMPLES.find(e=>e.id===id);if(!example)throw new Error('Unknown example');if(!state.editable||state.pending)throw new Error(tr('readOnly'));if(example.requiresSound&&!state.soundEnabled){status(tr('sound'),true);send({type:'openRuntime'});return false;}await submit([{start:0,end:state.source.length,text:example.source}],JSON.stringify({version:1,engine:null,orphans:[]}));return true;}
-  async function duplicateBlock(block){if(!state.editable||state.pending)throw new Error(tr('readOnly'));const editSource=state.source,editRevision=state.revision;const source=await serialize(block),parsed=await parseTemplate(source,!!block.outputConnection),xy=block.getRelativeToSurfaceXY();ensureDocument(editSource,editRevision);quiet(()=>{let previous=null,first=null;const suffix='d'+Date.now().toString(36);for(const nodeId of parsed.ids){const copy=createTree(parsed.projection,nodeId,false,suffix);if(!first)first=copy;if(previous?.nextConnection&&copy.previousConnection)previous.nextConnection.connect(copy.previousConnection);previous=copy;}if(first){first.rinOrphanId=suffix;presentation.placeDetached(first,{x:xy.x+80,y:xy.y+80});first.select();}});await submit([],await snapshotMetadata(),editSource,editRevision);}
+  async function duplicateBlock(block){
+    if(!state.editable||state.pending)throw new Error(tr('readOnly'));
+    const editSource=state.source,editRevision=state.revision;
+    const source=await serialize(block),parsed=await parseTemplate(source,!!block.outputConnection),xy=block.getRelativeToSurfaceXY();
+    ensureDocument(editSource,editRevision);
+    quiet(()=>{
+      let previous=null,first=null;const suffix='d'+Date.now().toString(36);
+      if(state.easyMode&&E){
+        const orphanGraph=E.buildEasyGraph(parsed.projection,{language});
+        for(const item of orphanGraph.topItems){
+          const copy=createEasyTree(parsed.projection,Object.assign({},item,{isTopContainer:false}),false,suffix);
+          if(!first)first=copy;
+          if(previous?.nextConnection&&copy.previousConnection)previous.nextConnection.connect(copy.previousConnection);
+          previous=copy;
+        }
+      }else{
+        for(const nodeId of parsed.ids){const copy=createTree(parsed.projection,nodeId,false,suffix);if(!first)first=copy;if(previous?.nextConnection&&copy.previousConnection)previous.nextConnection.connect(copy.previousConnection);previous=copy;}
+      }
+      if(first){first.rinOrphanId=suffix;presentation.placeDetached(first,{x:xy.x+80,y:xy.y+80});first.select();}
+    });
+    await submit([],await snapshotMetadata(),editSource,editRevision);
+  }
+  async function setEasyMode(nextEasy, notifyNative=true){
+    const target=!!nextEasy;
+    if(target===state.easyMode)return true;
+    if(!await flushAll())return false;
+    state.easyMode=target;
+    category='all';
+    lastGood=null;
+    setPalette(false);
+    setMore(false);
+    hideBlockActions();
+    localizedUI();
+    if(state.projection?.ok)await rebuild(state.projection,state.metadata);
+    if(notifyNative)send({type:'easyMode',easy:state.easyMode});
+    nativeChrome?.schedule();
+    return true;
+  }
+  function fitWorkspace(){
+    if(!workspace)return;
+    workspace.zoomToFit();
+    if(workspace.scale>1){
+      workspace.setScale(1);
+      workspace.scrollCenter();
+    }
+  }
   $('paletteToggle').addEventListener('pointerdown',()=>{const block=Blockly.getSelected();pendingPaletteSelection=block?.workspace===workspace?(models.has(block.id)?block.id:null):selectedBlockId;});
   $('paletteToggle').onclick=()=>setPalette($('palette').hidden);$('paletteClose').onclick=()=>setPalette(false);$('sheetScrim').onclick=()=>setPalette(false);$('search').oninput=renderPalette;
   if($('paletteTargetModeBtn'))$('paletteTargetModeBtn').onclick=()=>choosePaletteInsertMode();
@@ -1936,7 +3100,8 @@
   $('zoomReset').onclick=()=>{setMore(false);if(workspace){workspace.setScale(1);workspace.scroll(0,0);}};
   $('fullscreen').onclick=()=>{setMore(false);historyAction('toggleFullscreen');};
   $('codePreview').onclick=$('menuCodePreview').onclick=()=>{setMore(false);showCodePreview(null);};
-  $('menuFit').onclick=()=>{setMore(false);workspace?.zoomToFit();};
+  if($('menuModeToggle'))$('menuModeToggle').onclick=()=>{setMore(false);void setEasyMode(!state.easyMode);};
+  $('menuFit').onclick=()=>{setMore(false);fitWorkspace();};
   const codeDialog=$('codeDialog');
   codeDialog?.addEventListener('click',event=>{
     if(event.target===codeDialog){
@@ -1953,7 +3118,7 @@
       if(!inDialog)actionDialog.close('cancel');
     }
   });
-  $('undo').onclick=()=>historyAction('undo');$('redo').onclick=()=>historyAction('redo');$('runtime').onclick=()=>{setMore(false);historyAction('openRuntime');};$('fit').onclick=()=>workspace?.zoomToFit();
+  $('undo').onclick=()=>historyAction('undo');$('redo').onclick=()=>historyAction('redo');$('runtime').onclick=()=>{setMore(false);historyAction('openRuntime');};$('fit').onclick=()=>fitWorkspace();
   $('help').onclick=()=>{setMore(false);choose(tr('help'),tr('helpBody'),[]);};
   $('examples').onclick=async()=>{setMore(false);if(!state.editable||state.pending)return;const source=state.source,revision=state.revision;try{const id=await choose(tr('examples'),'',C.EXAMPLES.map(e=>({value:e.id,label:label(e.label)})));if(id==='cancel')return;ensureDocument(source,revision);const confirmed=await choose(tr('replaceTitle'),tr('replaceDescription'),[{value:'replace',label:tr('confirm')}]);if(confirmed==='replace'){ensureDocument(source,revision);await replaceExample(id);}}catch(error){await rollback(error.message);}};
   addEventListener('pointerdown',event=>{if(!$('moreMenu').hidden&&!(event.target instanceof Element&&event.target.closest('#moreMenu,#more')))setMore(false);},true);
@@ -1975,9 +3140,9 @@
     }
     showErrorDetail(blk,activeErr);
   };
-  Object.defineProperty(window,'RinBlocksEditor',{value:Object.freeze({get workspace(){return workspace;},get projection(){return state.projection;},get document(){return Object.freeze({source:state.source,revision:state.revision,metadata:state.metadata,workId:state.workId,sessionId:state.sessionId,editable:state.editable&&!state.loading&&!state.processing,readOnly:state.readOnly,pending:state.pending,loading:!!state.loading,processing:!!state.processing});},get status(){return $('status').textContent;},showCodePreview,showBlockActions,chooseColor,jumpToCode,safeVibrate,editStructure,authorTemplate,authoringInspect,addTemplate,replaceExample,showCreateVariableDialog,getGlobalVariables,highlightRuntimeErrors,friendlyErrorMessage,showErrorDetail,clearAllBlockErrors,findBestBlockForError,flush:flushAll})});
+  Object.defineProperty(window,'RinBlocksEditor',{value:Object.freeze({get workspace(){return workspace;},get projection(){return state.projection;},get easyGraph(){return state.easyGraph;},get easyMode(){return !!state.easyMode;},get document(){return Object.freeze({source:state.source,revision:state.revision,metadata:state.metadata,workId:state.workId,sessionId:state.sessionId,editable:state.editable&&!state.loading&&!state.processing,readOnly:state.readOnly,pending:state.pending,loading:!!state.loading,processing:!!state.processing,easy:!!state.easyMode});},get status(){return $('status').textContent;},setEasyMode,openCapsuleEditor,insertEasyTemplate,showCodePreview,showBlockActions,chooseColor,jumpToCode,safeVibrate,editStructure,authorTemplate,authoringInspect,addTemplate,replaceExample,showCreateVariableDialog,getGlobalVariables,highlightRuntimeErrors,friendlyErrorMessage,showErrorDetail,clearAllBlockErrors,findBestBlockForError,flush:flushAll})});
   presentation=EditRinBlockPresentation.create({workspace:()=>workspace,workId:()=>state.workId,ready:()=>!state.loading,selectedId:()=>selectedBlock()?.id,model:modelFor,node:nodeFor,projectionNode,caption,words,tr,send,actions:showBlockActions,flush:flushAll,preferences:()=>state.displayPreferences,applyPreferences:applyDisplayPreferences,closeOverlays:()=>{setPalette(false);setMore(false);hideBlockActions();}});
-  nativeChrome=EditRinBlockChrome.create({document:()=>({workId:state.workId,revision:state.revision,notice:state.readOnly||!state.editable||(!state.soundEnabled&&!!state.projection?.nodes.some(node=>node.requirements?.sound)),editable:state.editable&&!state.loading&&!state.processing&&!state.pending,pending:!!state.pending,loading:!!state.loading,processing:!!state.processing}),send,parts:()=>workspace?.getTopBlocks(false).filter(block=>block.id!=='rin_program'&&modelFor(block)).length||0,search:(mode,query)=>presentation.searchResults(mode,query),locate:id=>presentation.locate(id),flush:flushAll,applyPreferences:applyDisplayPreferences,closeOverlays:()=>{setPalette(false);setMore(false);hideBlockActions();}});
+  nativeChrome=EditRinBlockChrome.create({document:()=>({workId:state.workId,revision:state.revision,notice:(!state.editable&&!state.readOnly)||(!state.soundEnabled&&!!state.projection?.nodes.some(node=>node.requirements?.sound)),editable:state.editable&&!state.loading&&!state.processing&&!state.pending,pending:!!state.pending,loading:!!state.loading,processing:!!state.processing,easy:!!state.easyMode}),send,parts:()=>workspace?.getTopBlocks(false).filter(block=>block.id!=='rin_program'&&modelFor(block)&&!modelFor(block).bound).length||0,search:(mode,query)=>presentation.searchResults(mode,query),locate:id=>presentation.locate(id),flush:flushAll,applyPreferences:applyDisplayPreferences,setEasyMode:value=>setEasyMode(value,true),closeOverlays:()=>{setPalette(false);setMore(false);hideBlockActions();}});
   $('statusDismiss').onclick=()=>{clearOperationError();highlightRuntimeErrors();};
   status(tr('connecting'),false);localizedUI();
 })();

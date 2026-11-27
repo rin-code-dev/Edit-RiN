@@ -4,13 +4,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,13 +17,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 import java.util.UUID
 import kotlin.math.round
@@ -38,7 +40,8 @@ internal data class BlockChromeState(
     val parts: Int = 0,
     val overlay: Boolean = false,
     val notice: Boolean = false,
-    val palette: Boolean = false
+    val palette: Boolean = false,
+    val easy: Boolean = false
 )
 
 internal fun decodeBlockChromeState(value: JSONObject): BlockChromeState? {
@@ -47,8 +50,9 @@ internal fun decodeBlockChromeState(value: JSONObject): BlockChromeState? {
     val count = value.opt("parts") as? Number ?: return null
     if (status.length > 2048 || count.toDouble() != count.toInt().toDouble() || count.toInt() !in 0..10000) return null
     val palette = value.optBoolean("palette", false)
+    val easy = value.optBoolean("easy", false)
     return BlockChromeState(value.getBoolean("editable"), value.getBoolean("busy"), value.getBoolean("error"),
-        status, value.getBoolean("dismissable"), count.toInt(), value.getBoolean("overlay"), value.getBoolean("notice"), palette)
+        status, value.getBoolean("dismissable"), count.toInt(), value.getBoolean("overlay"), value.getBoolean("notice"), palette, easy)
 }
 
 internal data class BlockSearchEntry(val id: String, val title: String, val detail: String)
@@ -69,6 +73,10 @@ internal class BlockEditorChromeModel {
 
     fun openSearch(mode: String) {
         searchMode = mode; query = ""; invalidateSearch()
+    }
+    fun switchSearchMode(mode: String) {
+        if (searchMode == mode) return
+        searchMode = mode; invalidateSearch()
     }
     fun invalidateSearch() {
         requestId = null; resultRevision = null; entries = emptyList(); total = 0; searching = true
@@ -115,15 +123,15 @@ internal fun BlockEditorFloatingStatusPill(
         val colors = MaterialTheme.colorScheme
         val isError = model.state.error
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = if (isError) colors.errorContainer.copy(alpha = 0.96f) else colors.surfaceContainerHigh.copy(alpha = 0.95f),
+            shape = UNIT_CARD_SHAPE,
+            color = if (isError) colors.errorContainer.copy(alpha = 0.96f) else colors.surface.copy(alpha = 0.96f),
             contentColor = if (isError) colors.onErrorContainer else colors.onSurface,
-            border = BorderStroke(1.dp, if (isError) colors.error.copy(alpha = 0.5f) else colors.outlineVariant),
-            shadowElevation = 4.dp
+            border = BorderStroke(UNIT_BORDER_WIDTH, if (isError) colors.error.copy(alpha = 0.55f) else colors.outlineVariant),
+            shadowElevation = 2.dp
         ) {
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(UNIT_CARD_SHAPE)
                     .clickable(enabled = usable && isError) { onCommand("status") }
                     .padding(start = 12.dp, end = if (model.state.dismissable) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -153,6 +161,68 @@ internal fun BlockEditorFloatingStatusPill(
 }
 
 @Composable
+internal fun BlockEditorEasyModeHintBanner(
+    visible: Boolean,
+    text: (String) -> String,
+    onSwitchToEasy: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        val colors = MaterialTheme.colorScheme
+        Surface(
+            shape = UNIT_CARD_SHAPE,
+            color = colors.surface.copy(alpha = 0.97f),
+            contentColor = colors.onSurface,
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
+            shadowElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = text("かんたんブロックも使えます"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Surface(
+                    onClick = onSwitchToEasy,
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
+                    color = colors.primaryContainer,
+                    contentColor = colors.onPrimaryContainer,
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f))
+                ) {
+                    Text(
+                        text = text("かんたんに切替"),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(painterResource(R.drawable.ic_close), text("案内を閉じる"), Modifier.size(15.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun BlockEditorFloatingDock(
     model: BlockEditorChromeModel,
     ready: Boolean,
@@ -164,7 +234,10 @@ internal fun BlockEditorFloatingDock(
     onSearch: (String) -> Unit,
     onDisplay: () -> Unit,
     onFullscreen: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenExamples: (() -> Unit)? = null,
+    easyMode: Boolean = false,
+    onToggleEasyMode: (() -> Unit)? = null
 ) {
     var menu by remember { mutableStateOf(false) }
     val usable = ready && !model.state.busy && !model.state.overlay
@@ -173,81 +246,57 @@ internal fun BlockEditorFloatingDock(
     val colors = MaterialTheme.colorScheme
 
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(999.dp),
-        color = colors.surfaceContainerHigh.copy(alpha = 0.96f),
+        modifier = modifier.widthIn(max = 340.dp),
+        shape = UNIT_CARD_SHAPE,
+        color = colors.surface.copy(alpha = 0.96f),
         contentColor = colors.onSurface,
-        border = BorderStroke(1.dp, colors.outlineVariant),
-        shadowElevation = 8.dp
+        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 50.dp)
-                .padding(horizontal = 8.dp, vertical = 5.dp),
+                .heightIn(min = 46.dp)
+                .padding(horizontal = 6.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            val primaryDesc = text(if (paletteOpen) "閉じる" else "ブロックを追加")
+            val primaryLabel = text(if (paletteOpen) "閉じる" else "追加")
+            Surface(
+                onClick = {
+                    if (paletteOpen) onCommand("dismiss") else onCommand("add")
+                },
+                enabled = if (paletteOpen) ready else (usable && model.state.editable),
+                shape = UNIT_CONTROL_SHAPE,
+                color = if (paletteOpen) colors.secondaryContainer else colors.primary,
+                contentColor = if (paletteOpen) colors.onSecondaryContainer else colors.onPrimary,
+                modifier = Modifier.semantics { contentDescription = primaryDesc }
             ) {
-                // Primary Left Pill: "+ ブロック追加" or "× 閉じる" when half-sheet palette is open
-                val primaryLabel = text(if (paletteOpen) "閉じる" else "ブロックを追加")
-                Surface(
-                    onClick = {
-                        if (paletteOpen) onCommand("dismiss") else onCommand("add")
-                    },
-                    enabled = if (paletteOpen) ready else (usable && model.state.editable),
-                    shape = RoundedCornerShape(999.dp),
-                    color = if (paletteOpen) colors.secondaryContainer else colors.primary,
-                    contentColor = if (paletteOpen) colors.onSecondaryContainer else colors.onPrimary,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .semantics { contentDescription = primaryLabel }
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(if (paletteOpen) R.drawable.ic_close else R.drawable.ic_add),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = primaryLabel,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                if (model.state.parts > 0 && !paletteOpen) {
-                    Surface(
-                        onClick = { onSearch("parts") },
-                        enabled = usable,
-                        shape = RoundedCornerShape(999.dp),
-                        color = colors.tertiaryContainer,
-                        contentColor = colors.onTertiaryContainer,
-                        modifier = Modifier.semantics {
-                            contentDescription = text("未接続の部品は保存されますが実行されません。タップして一覧を開きます。") + " " + model.state.parts
-                        }
-                    ) {
-                        Text(
-                            text = text("未接続") + " " + model.state.parts,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(if (paletteOpen) R.drawable.ic_close else R.drawable.ic_add),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    AutoFitSingleLineText(
+                        text = primaryLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        minFontSize = 11.sp
+                    )
                 }
             }
+
+            Box(
+                Modifier
+                    .width(1.dp)
+                    .height(18.dp)
+                    .background(colors.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
+            )
 
             @Composable
             fun DockIconButton(
@@ -259,13 +308,14 @@ internal fun BlockEditorFloatingDock(
                 Surface(
                     onClick = onClick,
                     enabled = enabled,
-                    shape = CircleShape,
-                    color = colors.surfaceContainer.copy(alpha = if (enabled) 0.9f else 0.4f),
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
+                    color = if (enabled) colors.surfaceContainerLow else Color.Transparent,
                     contentColor = if (enabled) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.45f),
+                    border = if (enabled) BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.55f)) else null,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(painterResource(iconRes), contentDesc, Modifier.size(17.dp))
+                        Icon(painterResource(iconRes), contentDesc, Modifier.size(16.dp))
                     }
                 }
             }
@@ -286,19 +336,6 @@ internal fun BlockEditorFloatingDock(
                     enabled = usable && canRedo,
                     onClick = { onCommand("redo") }
                 )
-                DockIconButton(
-                    iconRes = R.drawable.ic_search,
-                    contentDesc = text("作品内を探す"),
-                    enabled = usable,
-                    onClick = { onSearch("search") }
-                )
-                DockIconButton(
-                    iconRes = if (fullscreen) R.drawable.ic_pip_expand else R.drawable.ic_fullscreen,
-                    contentDesc = text(if (fullscreen) "分割表示に戻る" else "全画面"),
-                    enabled = fullscreen || usable,
-                    onClick = onFullscreen
-                )
-
                 Box {
                     DockIconButton(
                         iconRes = R.drawable.ic_more_vertical,
@@ -306,24 +343,23 @@ internal fun BlockEditorFloatingDock(
                         enabled = usable || fullscreen,
                         onClick = { menu = true }
                     )
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    @Composable fun Item(label: String, enabled: Boolean = true, action: () -> Unit) {
-                        DropdownMenuItem(text = { Text(text(label)) }, enabled = enabled,
-                            onClick = { menu = false; action() })
+                    UnitDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        @Composable fun Item(label: String, enabled: Boolean = true, action: () -> Unit) {
+                            DropdownMenuItem(text = { Text(text(label)) }, enabled = enabled,
+                                onClick = { menu = false; action() })
+                        }
+                        Item("作品内を探す", usable) { onSearch("search") }
+                        if (onToggleEasyMode != null) {
+                            Item(if (easyMode) "詳細ブロックに切り替え" else "かんたんブロックに切り替え", usable) {
+                                onToggleEasyMode()
+                            }
+                        }
+                        HorizontalDivider()
+                        Item(if (fullscreen) "分割表示に戻る" else "全画面", fullscreen || usable) { onFullscreen() }
+                        Item("全体を表示", usable) { onCommand("fit") }
+                        Item("コードプレビュー", usable) { onCommand("codePreview") }
+                        Item("表示設定", usable, action = onDisplay)
                     }
-                    Item("処理の一覧", usable) { onSearch("functions") }
-                    Item("未接続の部品", usable) { onSearch("parts") }
-                    Item("コードプレビュー", usable) { onCommand("codePreview") }
-                    HorizontalDivider()
-                    Item("全体を表示", usable) { onCommand("fit") }
-                    Item("表示倍率をリセット", usable) { onCommand("zoomReset") }
-                    Item(if (fullscreen) "分割表示に戻る" else "全画面", fullscreen || usable) { onFullscreen() }
-                    Item("表示設定", usable, action = onDisplay)
-                    Item("実行設定", usable) { onCommand("runtime") }
-                    HorizontalDivider()
-                    Item("ブロックの例", usable && model.state.editable) { onCommand("examples") }
-                    Item("ブロックの使い方", usable) { onCommand("help") }
-                }
                 }
             }
         }
@@ -339,13 +375,47 @@ internal fun BlockEditorSearchDialog(
 ) {
     if (model.searchMode == null) return
     val focus = remember { FocusRequester() }
-    AlertDialog(
+    val colors = MaterialTheme.colorScheme
+    UnitAlertDialog(
         onDismissRequest = model::closeSearch,
-        title = { Text(text(when (model.searchMode) { "functions" -> "処理の一覧"; "parts" -> "未接続の部品"; else -> "作品内を探す" })) },
+        title = { Text(text("作品内を探す")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val tabs = listOf(
+                        "search" to text("すべて"),
+                        "functions" to text("処理の一覧"),
+                        "parts" to if (model.state.parts > 0) "${text("未接続")} (${model.state.parts})" else text("未接続")
+                    )
+                    for ((modeKey, label) in tabs) {
+                        val active = model.searchMode == modeKey
+                        Surface(
+                            onClick = { model.switchSearchMode(modeKey) },
+                            shape = UNIT_COMPACT_CONTROL_SHAPE,
+                            color = if (active) colors.primaryContainer else colors.surfaceContainerLow,
+                            contentColor = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                            border = BorderStroke(
+                                UNIT_BORDER_WIDTH,
+                                if (active) colors.primary.copy(alpha = 0.55f) else colors.outlineVariant.copy(alpha = 0.65f)
+                            )
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(value = model.query, onValueChange = onQuery,
                     label = { Text(text("名前・関数・コードで検索")) }, singleLine = true,
+                    shape = UNIT_CONTROL_SHAPE,
                     modifier = Modifier.fillMaxWidth().focusRequester(focus))
                 if (model.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 else Text(text(if (model.total == 0) "一致するブロックがありません" else if (model.total > 100) "100件を表示しています。検索して絞り込めます" else "選ぶとその場所へ移動します"),
@@ -363,12 +433,12 @@ internal fun BlockEditorSearchDialog(
                             Text(entry.detail, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        HorizontalDivider()
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = model::closeSearch) { Text(text("閉じる")) } }
+        confirmButton = { TextButton(onClick = model::closeSearch, shape = UNIT_CONTROL_SHAPE) { Text(text("閉じる")) } }
     )
     LaunchedEffect(Unit) { if (model.searchMode == "search") focus.requestFocus() }
 }
@@ -382,17 +452,35 @@ internal fun BlockEditorDisplayDialog(
 ) {
     var size by remember(preferences) { mutableStateOf(preferences.fontSize.toFloat()) }
     var roomy by remember(preferences) { mutableStateOf(preferences.density == "comfortable") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(text("表示設定")) }, text = {
+    UnitAlertDialog(onDismissRequest = onDismiss, title = { Text(text("表示設定")) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text("文字サイズ") + ": " + size.toString().removeSuffix(".0"))
-            Slider(value = size, onValueChange = { size = round(it * 2) / 2 }, valueRange = 12f..22f, steps = 19,
-                modifier = Modifier.semantics { contentDescription = text("文字サイズ") })
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text("文字サイズ"), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = size.toString().removeSuffix(".0"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            StudioSlider(
+                value = size,
+                onValueChange = { size = round(it * 2) / 2 },
+                valueRange = 12f..22f,
+                steps = 19,
+                defaultValue = 12.5f,
+                modifier = Modifier.semantics { contentDescription = text("文字サイズ") }
+            )
             Row(Modifier.fillMaxWidth().toggleable(value = roomy, role = Role.Checkbox, onValueChange = { roomy = it }), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = roomy, onCheckedChange = null)
                 Text(text("ゆったり表示（タッチ向け）"))
             }
             Text(text("表示だけを変更します。作品のコードは変わりません"), style = MaterialTheme.typography.bodySmall)
         }
-    }, confirmButton = { TextButton(onClick = { onApply(BlockEditorDisplayPreferences(size.toDouble(), if (roomy) "comfortable" else "standard")) }) { Text(text("適用")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(text("キャンセル")) } })
+    }, confirmButton = { TextButton(onClick = { onApply(BlockEditorDisplayPreferences(size.toDouble(), if (roomy) "comfortable" else "standard")) }, shape = UNIT_CONTROL_SHAPE) { Text(text("適用")) } },
+        dismissButton = { TextButton(onClick = onDismiss, shape = UNIT_CONTROL_SHAPE) { Text(text("キャンセル")) } })
 }

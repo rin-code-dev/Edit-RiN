@@ -1,5 +1,6 @@
 package com.hikariatelier.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -44,6 +45,35 @@ internal data class ReleaseNote(
 )
 
 internal val APP_RELEASE_NOTES = listOf(
+    ReleaseNote(
+        versionName = "4.3.0",
+        versionCode = 43,
+        titleEn = "What's New in v4.3.0",
+        titleJa = "v4.3.0 の更新内容",
+        features = listOf(
+            ReleaseFeature(
+                iconRes = R.drawable.ic_tune,
+                titleEn = "Streamlined Block Mode & 3-Icon Pill",
+                titleJa = "ブロックモードのUI整理・スリム化",
+                descEn = "Compacted the bottom dock, consolidated overflow actions to 6 items, unified work search tabs, simplified palette categories to 6 groups, and shrank block actions to a 3-icon pill.",
+                descJa = "下部ドックや6項目メニュー・タブ統合検索・6カテゴリーの1行パレット・アイコン3つの操作ピルへ整理し、キャンバスを広く使えるようにしました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_auto_run,
+                titleEn = "Detailed Default & Easy-Mode Hint",
+                titleJa = "詳細デフォルト化とかんたん切替案内",
+                descEn = "Detailed blocks are now the default projection, with a dismissible one-tap hint banner in Detailed mode so newcomers can easily discover and switch to Easy blocks.",
+                descJa = "詳細ブロックをデフォルト表示としつつ、初見の方でも1タップでかんたんブロックを試せる案内バナーを追加しました。"
+            ),
+            ReleaseFeature(
+                iconRes = R.drawable.ic_fullscreen,
+                titleEn = "Cleaner Canvas, PiP & Theme Polish",
+                titleJa = "キャンバス・PiP重なり解消とテーマ洗練",
+                descEn = "Simplified detached-part visuals and labels, removed duplicate top-bar/PiP/error chrome in block mode, and refined theme colors, gallery cards, and new-work creation.",
+                descJa = "未接続部品や表記の簡潔化、全画面PiPと上部バー・エラー表示の重複解消に加え、テーマ配色やギャラリー・新規作成画面を洗練しました。"
+            )
+        )
+    ),
     ReleaseNote(
         versionName = "4.2.0",
         versionCode = 42,
@@ -633,11 +663,13 @@ internal fun ReleaseNotesDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.85f)
-                .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, colors.outlineVariant, RoundedCornerShape(16.dp)),
+                .fillMaxHeight(0.85f),
+            shape = UNIT_SHAPE,
             color = colors.surface,
-            contentColor = colors.onSurface
+            contentColor = colors.onSurface,
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier
@@ -773,7 +805,7 @@ internal fun ReleaseNotesDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = UNIT_CONTROL_SHAPE,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = colors.primary,
                         contentColor = colors.onPrimary

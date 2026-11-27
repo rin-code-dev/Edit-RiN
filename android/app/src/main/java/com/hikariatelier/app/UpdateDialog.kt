@@ -1,5 +1,6 @@
 package com.hikariatelier.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -120,11 +121,13 @@ internal fun UpdateDialog(
                 modifier = Modifier
                     .widthIn(max = 420.dp)
                     .fillMaxWidth()
-                    .heightIn(max = maxHeight)
-                    .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
-                shape = RoundedCornerShape(24.dp),
-                color = colors.surfaceContainer,
-                tonalElevation = 6.dp
+                    .heightIn(max = maxHeight),
+                shape = UNIT_SHAPE,
+                color = colors.surface,
+                contentColor = colors.onSurface,
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -136,6 +139,7 @@ internal fun UpdateDialog(
                         if (!state.downloading) {
                             IconButton(
                                 onClick = { state.dismiss() },
+                                shape = UNIT_CONTROL_SHAPE,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .size(36.dp)
@@ -381,7 +385,7 @@ internal fun UpdateDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(44.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = UNIT_CONTROL_SHAPE,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = colors.primary,
                                     contentColor = colors.onPrimary

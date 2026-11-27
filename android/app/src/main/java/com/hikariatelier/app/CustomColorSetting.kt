@@ -3,12 +3,12 @@ package com.hikariatelier.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -30,8 +30,8 @@ internal fun CustomColorSetting(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.padding(top = 8.dp).size(48.dp)
-                .background(Color(value), RoundedCornerShape(8.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)))
+                .background(Color(value), UNIT_COMPACT_CONTROL_SHAPE)
+                .border(UNIT_BORDER_WIDTH, MaterialTheme.colorScheme.outline, UNIT_COMPACT_CONTROL_SHAPE))
             OutlinedTextField(
                 value = input,
                 onValueChange = { raw ->
@@ -42,6 +42,7 @@ internal fun CustomColorSetting(
                     }
                 },
                 prefix = { Text("#") }, singleLine = true,
+                shape = UNIT_CONTROL_SHAPE,
                 label = { Text(text("6桁のカラーコード")) },
                 isError = input.length != 6,
                 modifier = Modifier.weight(1f)
@@ -51,7 +52,12 @@ internal fun CustomColorSetting(
             val component = (value ushr shift) and 255
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("$channel $component", modifier = Modifier.width(52.dp))
+                Text(
+                    text = "$channel $component",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.width(56.dp)
+                )
                 StudioSlider(value = component.toFloat(), valueRange = 0f..255f,
                     onValueChange = {
                         val updated = (value and (255 shl shift).inv()) or (it.roundToInt() shl shift)

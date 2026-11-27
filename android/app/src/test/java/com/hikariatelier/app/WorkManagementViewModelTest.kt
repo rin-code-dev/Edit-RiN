@@ -557,6 +557,37 @@ class WorkManagementViewModelTest {
         assertEquals(work.id, session.activeWorkIdState.value)
     }
 
+    @Test fun newWorkCreationSupportsBlockModeSoundBrushAndFolderSelection() = runBlocking {
+        val session = session(); val store = Store(); val vm = vm(session, store, this)
+        vm.createWork(
+            title = "BlockSound",
+            ratio = "1:1",
+            sizingMode = CanvasSizingMode.FIXED,
+            template = WorkTemplate("1:1", 800, 800, WorkTemplateKind.BLOCK_SOUND),
+            openInBlockMode = true,
+            folderName = ""
+        )!!.join()
+        val soundWork = store.persisted!!.works.last()
+        assertTrue(soundWork.p5SoundEnabled)
+        assertTrue(session.blockModeState(soundWork.id).value)
+        assertFalse(vm.showAddDialog)
+        assertFalse(vm.workMenuExpanded)
+
+        vm.createWork(
+            title = "BrushWork",
+            ratio = "4:3",
+            sizingMode = CanvasSizingMode.RESPONSIVE,
+            template = WorkTemplate("4:3", 800, 600, WorkTemplateKind.BRUSH),
+            openInBlockMode = false,
+            folderName = ""
+        )!!.join()
+        val brushWork = store.persisted!!.works.last()
+        assertEquals(mapOf("p5.brush" to "2.2.1"), brushWork.libraries.toMap())
+        assertFalse(brushWork.p5SoundEnabled)
+        assertFalse(session.blockModeState(brushWork.id).value)
+        assertTrue(brushWork.code.contains("brush.load()"))
+    }
+
     @Test fun parameterInsertionRejectsCodeAndDuplicateLinesWithoutChangingTheEditor() = runBlocking {
         val session = session(); val store = Store(); val vm = vm(session, store, this)
         val before = session.editorValueState.value

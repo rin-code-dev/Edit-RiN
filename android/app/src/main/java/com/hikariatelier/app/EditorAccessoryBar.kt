@@ -126,9 +126,9 @@ internal fun defaultDeclarationForParamName(name: String, existing: List<WorkPar
 }
 
 private val QUICK_SWATCH_HEXES = listOf(
-    "#FF5252", "#FF9800", "#FFEB3B", "#4CAF50",
-    "#00BCD4", "#448AFF", "#B388FF", "#F8BBD0",
-    "#FFFFFF", "#121318"
+    "#9F4029", "#E7A083", "#F2EFE7", "#2B2825",
+    "#365F8B", "#226B72", "#585184", "#C89B3C",
+    "#FFFFFF", "#09090B"
 )
 
 /**
@@ -597,9 +597,9 @@ internal fun CompletionBar(
         exit = fadeOut(tween(80)) + shrinkVertically(tween(110))
     ) {
         Surface(
-            shape = RoundedCornerShape(12.dp),
+            shape = UNIT_CONTROL_SHAPE,
             color = colors.surface,
-            border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.75f))
+            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.75f))
         ) {
             Row(
                 modifier = Modifier
@@ -608,7 +608,7 @@ internal fun CompletionBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (undeclaredParam != null) {
-                    val chipShape = RoundedCornerShape(8.dp)
+                    val chipShape = UNIT_COMPACT_CONTROL_SHAPE
                     Box(
                         modifier = Modifier
                             .defaultMinSize(minHeight = 28.dp)
@@ -637,7 +637,7 @@ internal fun CompletionBar(
                     }
                 }
                 suggestions.forEach { suggestion ->
-                    val chipShape = RoundedCornerShape(8.dp)
+                    val chipShape = UNIT_COMPACT_CONTROL_SHAPE
                     Box(
                         modifier = Modifier
                             .defaultMinSize(minHeight = 28.dp)

@@ -89,9 +89,11 @@ requirements. Selecting a different runtime does not migrate existing code.
 
 ## Structural editing
 
-Tapping a block opens a floating action bar with labeled buttons for editing
-call arguments, array items, function parameters, call targets, else branches,
-colours, sliders, renames, code jumps, duplication, folding and deletion.
+Tapping a block opens a compact icon-only contextual pill (`Duplicate`, `Delete`,
+and `More`, plus an error chip when that block has a runtime error). Color swatches,
+value capsules and inline fields are edited directly on the block; `More` groups
+call-argument/array-item/parameter edits, else-branch toggles, color/number/name
+helpers, folding, code preview and code jumps in a single sheet.
 Detached parts use the same operations against their own source and commit
 metadata only. Confirmed changes remain a single native history operation. Adding a function parameter inserts a
 zero argument at matching direct calls in `sketch.js`; removing an unused
@@ -164,15 +166,38 @@ both bundled p5 runtimes. Headless browser tests cannot establish these behavior
 
 ## Workspace presentation
 
+The block editor provides two switchable projection levels over the same `sketch.js`:
+**Detailed** (the default on Android, persisted in `BlockEditorPresentationStore`) and
+**Easy** (a simplified 1-line projection). Easy mode removes the outer `rin_program`
+wrapper so top-level events (`setup`, `draw`, input handlers) sit as standalone cards
+on the 2D canvas, flattens calls/declarations/count loops into 1-line blocks with
+inline value capsules (slider, motion/position presets, variables, and validated
+expressions), projects multi-statement idioms (`push`/`pop` isolation, radial
+arrangement, 2D grid arrangement, motion-trail background, animated rainbow style)
+as single blocks, and protects complex syntax as 1-line `Detailed code` blocks that
+can jump into Detailed mode or the code editor.
+
+The bottom floating dock exposes only `[+ Add] [Undo] [Redo] [More]`. The `More`
+menu consolidates six block-specific actions: `Find in work`, `Easy / Detailed`
+mode switching, `Split / Full screen`, `Fit to view`, `Code preview`, and `Display
+settings`. Both modes share a 1-line block palette organized into six unified
+categories (`Draw`, `Color & style`, `Layout & control`, `Vars & math`, `Events`,
+and `Extensions`), omitting target-selector bars and raw JavaScript subtitle lines.
+
 The full-screen control switches between an expanded editor with floating preview
-and a split workspace. The editor uses movable Compose content so the same host,
-message channel and viewport survive layout changes. Both directions wait for a
-successful edit flush before switching. Changing presentation is not a document
-edit; an unsuccessful flush leaves the editor in place and renderer failure offers
-the existing acknowledged-source recovery controls.
+and a split workspace. In full-screen block mode, the floating PiP preview sits
+below the document header and owns preview playback/fullscreen actions so controls
+are not duplicated in the top bar; `sketch.js` diagnostic banners above the canvas
+and read-only status pills are also suppressed to avoid duplicate notifications.
+The editor uses movable Compose content so the same host, message channel and
+viewport survive layout changes. Both directions wait for a successful edit flush
+before switching. Changing presentation is not a document edit; an unsuccessful
+flush leaves the editor in place and renderer failure offers the existing
+acknowledged-source recovery controls.
 
 The Edit:RiN renderer extends the bundled Thrasos connection/layout engine with
-compact corners and shallow connectors. Role colours, field contrast and the
+compact corners, shallow connectors, subdued grid lines, and concise localized
+captions without duplicate English suffixes. Role colours, field contrast and the
 palette use the app's restrained visual styling. Initial zoom is 100 percent;
 wide programs can be panned instead of being automatically reduced to fit.
 Overview and manual zoom remain available. Browser checks cover presentation
@@ -184,11 +209,11 @@ while nested values keep their own value semantics. Unsupported edits restore th
 acknowledged tree and leave an operation message visible until dismissed or a new
 edit succeeds; clearing runtime errors must not clear an operation failure.
 
-Detached roots carry a visible "does not run" label and dashed border. New parts
-are placed outside existing stack bounds, and a count opens the part locator.
-The work search finds existing blocks by caption, identifiers or source, separate
-from the palette's search for new templates. A function/event list provides direct
-navigation. Results are capped at 100 with an explicit narrowing hint.
+Detached roots use a dashed border and subdued opacity without adding an extra
+status row. New parts are placed outside existing stack bounds. `Find in work`
+unifies `All`, `Functions`, and `Detached` filters as tabs inside one search dialog,
+separate from the palette's search for new templates. Results are capped at 100
+with an explicit narrowing hint.
 
 On Android, the file/mode bar and the block controls form one native Compose
 header in both split and full-screen layouts. Add, Undo/Redo, work search, Full

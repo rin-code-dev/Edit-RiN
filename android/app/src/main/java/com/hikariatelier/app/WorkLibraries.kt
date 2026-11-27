@@ -200,7 +200,7 @@ private fun ProjectEntrySelector(
             Text(value ?: text("ファイルを追加してください"))
             Icon(painterResource(R.drawable.ic_chevron_down), null, Modifier.size(18.dp))
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        UnitDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             choices.forEach { name ->
                 DropdownMenuItem(text = { Text(name) }, onClick = { onChange(name); expanded = false })
             }

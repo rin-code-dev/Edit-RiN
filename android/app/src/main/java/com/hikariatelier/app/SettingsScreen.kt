@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -295,8 +296,8 @@ internal fun SettingsScreen(
                 modifier = Modifier.width(196.dp).fillMaxHeight(),
                 color = colors.surface,
                 contentColor = colors.onSurface,
-                border = BorderStroke(1.dp, colors.outlineVariant),
-                shape = RoundedCornerShape(20.dp)
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+                shape = UNIT_SHAPE
             ) {
                 Column(
                     Modifier.verticalScroll(rememberScrollState()).padding(10.dp),
@@ -321,10 +322,10 @@ internal fun SettingsScreen(
                         Surface(
                             onClick = { settingsTab = index },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = UNIT_CARD_SHAPE,
                             color = if (tab == index) colors.primary.copy(alpha = 0.1f) else colors.surface,
                             contentColor = colors.onSurface,
-                            border = if (tab == index) BorderStroke(1.dp, colors.primary) else null
+                            border = if (tab == index) BorderStroke(UNIT_BORDER_WIDTH, colors.primary) else null
                         ) {
                             Row(
                                 Modifier.heightIn(min = 48.dp).padding(10.dp),
@@ -349,7 +350,7 @@ internal fun SettingsScreen(
                     Surface(
                         onClick = { showUserGuide = true },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = UNIT_CARD_SHAPE,
                         color = colors.surface,
                         contentColor = colors.onSurface
                     ) {
@@ -433,7 +434,7 @@ internal fun SettingsScreen(
                     onValueChange = { settingsSearchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = UNIT_CONTROL_SHAPE,
                     label = { Text(uiText("設定を検索")) },
                     leadingIcon = {
                         Icon(
@@ -481,10 +482,10 @@ internal fun SettingsScreen(
                         Surface(
                             onClick = { settingsTab = index },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = UNIT_CARD_SHAPE,
                             color = colors.surface,
                             contentColor = colors.onSurface,
-                            border = BorderStroke(1.dp, colors.outlineVariant)
+                            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant)
                         ) {
                             Row(
                                 Modifier.heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -519,10 +520,10 @@ internal fun SettingsScreen(
                         Surface(
                             onClick = { showUserGuide = true },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = UNIT_CARD_SHAPE,
                             color = colors.surface,
                             contentColor = colors.onSurface,
-                            border = BorderStroke(1.dp, colors.outlineVariant)
+                            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant)
                         ) {
                             Row(
                                 Modifier.heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -588,7 +589,14 @@ internal fun SettingsScreen(
                                         shape = UNIT_CONTROL_SHAPE,
                                         colors = unitFilterChipColors(colors),
                                         border = unitFilterChipBorder(state.appLanguage == code, true, colors),
-                                        label = { Text(label) },
+                                        label = {
+                                            AutoFitSingleLineText(
+                                                text = label,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                minFontSize = 10.sp
+                                            )
+                                        },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -625,18 +633,29 @@ internal fun SettingsScreen(
                         Spacer(Modifier.height(14.dp))
 
                         val themeChoices = listOf(
-                            AppThemeMode.SYSTEM,
-                            AppThemeMode.DARK,
-                            AppThemeMode.LIGHT,
-                            AppThemeMode.SUMI,
-                            AppThemeMode.CUSTOM
+                            AppThemeMode.SYSTEM to uiText("自動"),
+                            AppThemeMode.LIGHT to uiText("ライト"),
+                            AppThemeMode.SUMI to "Sumi",
+                            AppThemeMode.DARK to uiText("ダーク"),
+                            AppThemeMode.CUSTOM to uiText("カスタム")
                         )
-                        ScrollableChoiceGroup(
-                            labels = listOf(uiText("自動"), uiText("ダーク"), uiText("ライト"), "Sumi", uiText("カスタム")),
-                            selectedIndex = themeChoices.indexOf(state.themeMode),
-                            onSelect = { onThemeModeChange(themeChoices[it]) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            themeChoices.forEach { (mode, label) ->
+                                ThemeSwatchCard(
+                                    mode = mode,
+                                    label = label,
+                                    selected = state.themeMode == mode,
+                                    customBackground = Color(state.customBackground),
+                                    customAccent = Color(state.customAccent),
+                                    onClick = { onThemeModeChange(mode) }
+                                )
+                            }
+                        }
                     }
 
                     SettingsDivider()
@@ -683,17 +702,26 @@ internal fun SettingsScreen(
                                 border = BorderStroke(1.dp, colors.outlineVariant),
                                 onClick = actions.onImportFont,
                                 enabled = !font.busy,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                modifier = Modifier.weight(1f)
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                modifier = Modifier.weight(1.35f)
                             ) {
-                                Text(uiText(if (font.busy) "読み込み中" else "フォントをインポート"), maxLines = 1)
+                                AutoFitSingleLineText(
+                                    text = uiText(if (font.busy) "読み込み中" else "フォントをインポート"),
+                                    minFontSize = 10.5.sp
+                                )
                             }
                             TextButton(
                                 onClick = { actions.onResetFont() },
                                 enabled = font.family != null && !font.busy,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                shape = UNIT_CONTROL_SHAPE,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 modifier = Modifier.weight(1f)
-                            ) { Text(uiText("標準に戻す"), maxLines = 1) }
+                            ) {
+                                AutoFitSingleLineText(
+                                    text = uiText("標準に戻す"),
+                                    minFontSize = 10.5.sp
+                                )
+                            }
                         }
                         Text(
                             "EDIT:RiN  Aa 0123  日本語 中文\n->  =>  !=  ===  <=  >=",
@@ -704,7 +732,12 @@ internal fun SettingsScreen(
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(colors.surfaceContainerLow, RoundedCornerShape(12.dp))
+                                .background(colors.surfaceContainerLow, UNIT_CONTROL_SHAPE)
+                                .border(
+                                    UNIT_BORDER_WIDTH,
+                                    colors.outlineVariant.copy(alpha = 0.6f),
+                                    UNIT_CONTROL_SHAPE
+                                )
                                 .padding(12.dp)
                         )
                     }
@@ -1013,8 +1046,9 @@ internal fun SettingsScreen(
 
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            color = colors.surfaceContainerLow
+                            shape = UNIT_CONTROL_SHAPE,
+                            color = colors.surfaceContainerLow,
+                            border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.55f))
                         ) {
                             Text(
                                 text = folderName,
@@ -1087,7 +1121,7 @@ internal fun SettingsScreen(
                                 shape = UNIT_CONTROL_SHAPE,
                                 border = BorderStroke(1.dp, colors.outlineVariant),
                                 onClick = actions.onImportBackup,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
@@ -1095,15 +1129,15 @@ internal fun SettingsScreen(
                                     contentDescription = null,
                                     modifier = Modifier.size(17.dp)
                                 )
-                                Spacer(Modifier.width(6.dp))
-                                Text(uiText("復元"), maxLines = 1)
+                                Spacer(Modifier.width(5.dp))
+                                AutoFitSingleLineText(uiText("復元"), minFontSize = 10.5.sp)
                             }
                             FilledTonalButton(
                                 shape = UNIT_CONTROL_SHAPE,
                                 colors = unitTonalButtonColors(colors),
                                 border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.45f)),
                                 onClick = actions.onExportBackup,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
@@ -1111,8 +1145,8 @@ internal fun SettingsScreen(
                                     contentDescription = null,
                                     modifier = Modifier.size(17.dp)
                                 )
-                                Spacer(Modifier.width(6.dp))
-                                Text(uiText("ZIP保存"), maxLines = 1)
+                                Spacer(Modifier.width(5.dp))
+                                AutoFitSingleLineText(uiText("ZIP保存"), minFontSize = 10.5.sp)
                             }
                         }
                     }
@@ -1152,7 +1186,7 @@ internal fun SettingsScreen(
                                     modifier = Modifier.size(17.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text(uiText("JSをインポート"), maxLines = 1)
+                                AutoFitSingleLineText(uiText("JSをインポート"), minFontSize = 10.5.sp)
                             }
 
                             FilledTonalButton(
@@ -1169,7 +1203,7 @@ internal fun SettingsScreen(
                                     modifier = Modifier.size(17.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text(uiText("JSを書き出す"), maxLines = 1)
+                                AutoFitSingleLineText(uiText("JSを書き出す"), minFontSize = 10.5.sp)
                             }
                         }
                         Spacer(Modifier.height(10.dp))
@@ -1289,6 +1323,7 @@ internal fun SettingsScreen(
                             value = state.xShareText,
                             onValueChange = onXShareTextChange,
                             modifier = Modifier.fillMaxWidth(),
+                            shape = UNIT_CONTROL_SHAPE,
                             label = { Text(uiText("X共有の定型文")) },
                             supportingText = {
                                 Text(uiText("Xで共有するとき、録画と一緒に定型文を入力します"))
@@ -1298,6 +1333,7 @@ internal fun SettingsScreen(
                         )
                         TextButton(
                             onClick = { onXShareTextChange(DEFAULT_X_SHARE_TEXT) },
+                            shape = UNIT_CONTROL_SHAPE,
                             modifier = Modifier.align(Alignment.End)
                         ) {
                             Text(uiText("初期値に戻す"))
@@ -1319,6 +1355,7 @@ internal fun SettingsScreen(
                                 onSettingsChange { copy(shareCardAuthor = value.take(80)) }
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            shape = UNIT_CONTROL_SHAPE,
                             singleLine = true,
                             label = { Text(uiText("デフォルトの著者名")) }
                         )
@@ -1328,11 +1365,13 @@ internal fun SettingsScreen(
                                 onSettingsChange { copy(shareCardQrUrl = value.take(256)) }
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            shape = UNIT_CONTROL_SHAPE,
                             singleLine = true,
                             label = { Text(uiText("QRコードのリンク先URL")) }
                         )
                         TextButton(
                             onClick = { onSettingsChange { copy(shareCardQrUrl = DEFAULT_SHARE_URL) } },
+                            shape = UNIT_CONTROL_SHAPE,
                             modifier = Modifier.align(Alignment.End)
                         ) {
                             Text(uiText("初期値に戻す"))

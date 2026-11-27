@@ -22,6 +22,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -92,11 +94,11 @@ internal fun ConsolePanel(
                 max = effectiveMaxHeightDp.dp
             )
             .border(
-                width = 1.dp,
+                width = UNIT_BORDER_WIDTH,
                 color = colors.outlineVariant,
-                shape = RoundedCornerShape(16.dp)
+                shape = UNIT_CARD_SHAPE
             ),
-        shape = RoundedCornerShape(16.dp),
+        shape = UNIT_CARD_SHAPE,
         colors = CardDefaults.cardColors(
             containerColor = colors.surface
         ),
@@ -143,25 +145,36 @@ internal fun ConsolePanel(
                             color = colors.onSurfaceVariant
                         )
 
-                        TextButton(
+                        IconButton(
                             modifier = Modifier.size(30.dp),
-                            contentPadding = PaddingValues(0.dp),
+                            shape = UNIT_COMPACT_CONTROL_SHAPE,
                             onClick = {
                                 viewModel.consoleExpanded = !viewModel.consoleExpanded
                                 viewModel.consoleHeight = if (viewModel.consoleExpanded) configuration.screenHeightDp * 0.6f else 170f
                             }
                         ) {
-                            Text(
-                                if (viewModel.consoleExpanded) "−" else "+",
-                                modifier = Modifier.semantics {
-                                    contentDescription = uiText("コンソールの高さを変更")
-                                }
+                            Icon(
+                                painter = painterResource(R.drawable.ic_chevron_down),
+                                contentDescription = uiText("コンソールの高さを変更"),
+                                tint = colors.onSurfaceVariant,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .rotate(if (viewModel.consoleExpanded) 180f else 0f)
                             )
                         }
 
                         Spacer(Modifier.width(8.dp))
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .clip(UNIT_COMPACT_CONTROL_SHAPE)
+                                .background(colors.surfaceContainerLow)
+                                .border(
+                                    UNIT_BORDER_WIDTH,
+                                    colors.outlineVariant.copy(alpha = 0.6f),
+                                    UNIT_COMPACT_CONTROL_SHAPE
+                                )
+                                .padding(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             listOf(
@@ -177,20 +190,24 @@ internal fun ConsolePanel(
                                     ConsoleFilter.LOG -> colors.primary
                                     ConsoleFilter.ALL -> colors.onSurface
                                 }
+                                val segmentShape = RoundedCornerShape(6.dp)
                                 Box(
                                     modifier = Modifier
-                                        .height(24.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) filterColor.copy(alpha = 0.2f) else colors.surfaceContainerLow)
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) filterColor else colors.outlineVariant.copy(alpha = 0.5f),
-                                            RoundedCornerShape(6.dp)
+                                        .height(22.dp)
+                                        .clip(segmentShape)
+                                        .background(if (isSelected) filterColor.copy(alpha = 0.16f) else Color.Transparent)
+                                        .then(
+                                            if (isSelected) Modifier.border(
+                                                UNIT_BORDER_WIDTH,
+                                                filterColor.copy(alpha = 0.6f),
+                                                segmentShape
+                                            ) else Modifier
                                         )
                                         .clickable {
                                             viewModel.filter = f
                                             followLatest = true
                                         }
+                                        .semantics { selected = isSelected }
                                         .padding(horizontal = 6.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -226,7 +243,7 @@ internal fun ConsolePanel(
                 }
             }
 
-            HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.65f))
+            HorizontalDivider(color = colors.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
 
             if (entries.isEmpty()) {
                 Box(
@@ -358,7 +375,7 @@ internal fun ConsolePanel(
                     onEvaluateExpression(trimmed)
                 }
 
-                HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.65f))
+                HorizontalDivider(color = colors.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

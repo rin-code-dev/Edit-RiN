@@ -127,6 +127,40 @@ internal fun GuideChapterVisual(sectionIndex: Int, iconRes: Int, language: Strin
     }
 }
 
+@Composable
+private fun GuideVisualCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = UNIT_CARD_SHAPE,
+        color = colors.surface,
+        contentColor = colors.onSurface,
+        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+        tonalElevation = 0.dp
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun GuideFilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        shape = UNIT_CONTROL_SHAPE,
+        colors = unitFilterChipColors(),
+        border = unitFilterChipBorder(selected),
+        label = { Text(label) }
+    )
+}
+
 /** Chapter 0 Illustration: Samples vs My Works & Copy to edit. */
 @Composable
 private fun GuideSampleWorkflowIllustration(language: String) {
@@ -141,26 +175,27 @@ private fun GuideSampleWorkflowIllustration(language: String) {
     var paletteIdx by rememberSaveable { mutableIntStateOf(0) }
     var copied by rememberSaveable { mutableStateOf(false) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                GuideFilterChip(
                     selected = tab == 0,
                     onClick = { tab = 0 },
-                    label = { Text(t("サンプル", "Samples", "示例")) }
+                    label = t("サンプル", "Samples", "示例")
                 )
-                FilterChip(
+                GuideFilterChip(
                     selected = tab == 1 || copied,
                     onClick = { tab = 1 },
-                    label = { Text(if (copied) t("自分の作品 (コピー済み)", "My works (1 copied)", "我的作品（已复制）") else t("自分の作品", "My works", "我的作品")) }
+                    label = if (copied) t("自分の作品 (コピー済み)", "My works (1 copied)", "我的作品（已复制）") else t("自分の作品", "My works", "我的作品")
                 )
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(110.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(UNIT_CONTROL_SHAPE)
                     .background(Color(0xFFF2EFE7))
+                    .border(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.6f), UNIT_CONTROL_SHAPE)
                     .clickable { paletteIdx = (paletteIdx + 1) % palettes.size },
                 contentAlignment = Alignment.Center
             ) {
@@ -170,8 +205,9 @@ private fun GuideSampleWorkflowIllustration(language: String) {
                     drawCircle(c[1].copy(alpha = 0.85f), radius = size.minDimension * 0.24f, center = Offset(size.width * 0.58f, size.height * 0.5f))
                 }
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = colors.surface.copy(alpha = 0.9f),
+                    shape = UNIT_COMPACT_CONTROL_SHAPE,
+                    color = colors.surface.copy(alpha = 0.92f),
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.6f)),
                     modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
                 ) {
                     Text(
@@ -189,6 +225,9 @@ private fun GuideSampleWorkflowIllustration(language: String) {
                 )
                 FilledTonalButton(
                     onClick = { copied = true; tab = 1 },
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitTonalButtonColors(),
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                 ) {
@@ -213,31 +252,35 @@ private fun GuideTemplateRatioIllustration(language: String) {
     var tmplIdx by rememberSaveable { mutableIntStateOf(0) }
     var ratioIdx by rememberSaveable { mutableIntStateOf(0) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(t("テンプレート選択", "Starting template", "选择起始模板"), style = MaterialTheme.typography.labelMedium)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 templates.forEachIndexed { idx, name ->
-                    FilterChip(selected = tmplIdx == idx, onClick = { tmplIdx = idx }, label = { Text(name) })
+                    GuideFilterChip(selected = tmplIdx == idx, onClick = { tmplIdx = idx }, label = name)
                 }
             }
             Text(t("プレビュー比率", "Preview ratio", "预览比例"), style = MaterialTheme.typography.labelMedium)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ratios.forEachIndexed { idx, (label, _) ->
-                    FilterChip(selected = ratioIdx == idx, onClick = { ratioIdx = idx }, label = { Text(label) })
+                    GuideFilterChip(selected = ratioIdx == idx, onClick = { ratioIdx = idx }, label = label)
                 }
             }
             Box(
-                modifier = Modifier.fillMaxWidth().height(110.dp).background(colors.surfaceContainerHigh, RoundedCornerShape(10.dp)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+                    .background(colors.surfaceContainerLow, UNIT_CONTROL_SHAPE)
+                    .border(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.5f), UNIT_CONTROL_SHAPE),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
                         .height(if (ratios[ratioIdx].second < 1f) 96.dp else 82.dp)
                         .aspectRatio(ratios[ratioIdx].second)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(UNIT_COMPACT_CONTROL_SHAPE)
                         .background(Color(0xFFF2EFE7))
-                        .border(1.5.dp, colors.primary, RoundedCornerShape(8.dp)),
+                        .border(1.5.dp, colors.primary, UNIT_COMPACT_CONTROL_SHAPE),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("${templates[tmplIdx]} · ${ratios[ratioIdx].first}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2B2B2B))
@@ -256,9 +299,14 @@ private fun GuideEditorFeaturesIllustration(language: String) {
     var radiusVal by rememberSaveable { mutableIntStateOf(120) }
     var jumpedLine by rememberSaveable { mutableStateOf(false) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(shape = RoundedCornerShape(10.dp), color = colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                shape = UNIT_CONTROL_SHAPE,
+                color = colors.surfaceContainerLow,
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -297,17 +345,27 @@ private fun GuideEditorFeaturesIllustration(language: String) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { folded = !folded },
+                    shape = UNIT_CONTROL_SHAPE,
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    Text(if (folded) t("展開", "Expand", "展开") else t("折りたたみ", "Fold", "折叠"), maxLines = 1)
+                    AutoFitSingleLineText(
+                        if (folded) t("展開", "Expand", "展开") else t("折りたたみ", "Fold", "折叠"),
+                        minFontSize = 10.5.sp
+                    )
                 }
                 OutlinedButton(
                     onClick = { jumpedLine = !jumpedLine },
+                    shape = UNIT_CONTROL_SHAPE,
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    Text(t("エラー行へ移動", "Error jump", "错误跳转"), maxLines = 1)
+                    AutoFitSingleLineText(
+                        t("エラー行へ移動", "Error jump", "错误跳转"),
+                        minFontSize = 10.5.sp
+                    )
                 }
             }
         }
@@ -324,14 +382,19 @@ private fun GuideProjectAssetsIllustration(language: String) {
     var p5V2 by rememberSaveable { mutableStateOf(true) }
     var insertedAsset by rememberSaveable { mutableStateOf(false) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 files.forEachIndexed { idx, name ->
-                    FilterChip(selected = fileIdx == idx, onClick = { fileIdx = idx }, label = { Text(name) })
+                    GuideFilterChip(selected = fileIdx == idx, onClick = { fileIdx = idx }, label = name)
                 }
             }
-            Surface(shape = RoundedCornerShape(8.dp), color = colors.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                shape = UNIT_COMPACT_CONTROL_SHAPE,
+                color = colors.surfaceContainerLow,
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(
                     text = when {
                         fileIdx == 1 -> "export function pulse(t) { return sin(t); }"
@@ -346,11 +409,14 @@ private fun GuideProjectAssetsIllustration(language: String) {
                 )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(selected = p5V2, onClick = { p5V2 = true }, label = { Text("p5 2.3.4") })
-                FilterChip(selected = !p5V2, onClick = { p5V2 = false }, label = { Text("p5 1.11.5") })
+                GuideFilterChip(selected = p5V2, onClick = { p5V2 = true }, label = "p5 2.3.4")
+                GuideFilterChip(selected = !p5V2, onClick = { p5V2 = false }, label = "p5 1.11.5")
             }
             FilledTonalButton(
                 onClick = { fileIdx = 0; insertedAsset = true },
+                shape = UNIT_CONTROL_SHAPE,
+                colors = unitTonalButtonColors(),
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
@@ -372,13 +438,18 @@ private fun GuideUnifiedHistoryIllustration(language: String) {
     var filterSnapshots by rememberSaveable { mutableStateOf(false) }
     var restored by rememberSaveable { mutableStateOf(false) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !filterSnapshots, onClick = { filterSnapshots = false }, label = { Text(t("自動保存履歴", "Auto-saves", "自动保存")) })
-                FilterChip(selected = filterSnapshots, onClick = { filterSnapshots = true }, label = { Text(t("スナップショット", "Snapshots", "快照")) })
+                GuideFilterChip(selected = !filterSnapshots, onClick = { filterSnapshots = false }, label = t("自動保存履歴", "Auto-saves", "自动保存"))
+                GuideFilterChip(selected = filterSnapshots, onClick = { filterSnapshots = true }, label = t("スナップショット", "Snapshots", "快照"))
             }
-            Surface(shape = RoundedCornerShape(10.dp), color = colors.surface, border = BorderStroke(1.dp, colors.outlineVariant), modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                shape = UNIT_CONTROL_SHAPE,
+                color = colors.surfaceContainerLow,
+                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.7f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -396,6 +467,9 @@ private fun GuideUnifiedHistoryIllustration(language: String) {
                     Spacer(Modifier.width(8.dp))
                     FilledTonalButton(
                         onClick = { restored = true },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitTonalButtonColors(),
+                        border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(t("復元", "Restore", "恢复"), maxLines = 1)
@@ -414,12 +488,12 @@ private fun GuideExportPipelineIllustration(language: String) {
     var scale by rememberSaveable { mutableIntStateOf(2) }
     var format by rememberSaveable { mutableStateOf("MP4") }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("PNG:", style = MaterialTheme.typography.labelMedium)
                 listOf(1, 2, 4).forEach { s ->
-                    FilterChip(selected = scale == s, onClick = { scale = s }, label = { Text("${s}x") })
+                    GuideFilterChip(selected = scale == s, onClick = { scale = s }, label = "${s}x")
                 }
                 Spacer(Modifier.weight(1f))
                 Text("${600 * scale}×${600 * scale} px", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = colors.primary)
@@ -427,7 +501,7 @@ private fun GuideExportPipelineIllustration(language: String) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(t("録画:", "Record:", "录制:"), style = MaterialTheme.typography.labelMedium)
                 listOf("MP4", "GIF").forEach { fmt ->
-                    FilterChip(selected = format == fmt, onClick = { format = fmt }, label = { Text(fmt) })
+                    GuideFilterChip(selected = format == fmt, onClick = { format = fmt }, label = fmt)
                 }
             }
         }
@@ -443,11 +517,11 @@ private fun GuideOrganizationBackupIllustration(language: String) {
     var selectedIdx by rememberSaveable { mutableIntStateOf(0) }
     var backedUp by rememberSaveable { mutableStateOf(false) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 folders.forEachIndexed { idx, label ->
-                    FilterChip(selected = selectedIdx == idx, onClick = { selectedIdx = idx }, label = { Text(label) })
+                    GuideFilterChip(selected = selectedIdx == idx, onClick = { selectedIdx = idx }, label = label)
                 }
             }
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -459,6 +533,9 @@ private fun GuideOrganizationBackupIllustration(language: String) {
                 )
                 FilledTonalButton(
                     onClick = { backedUp = true },
+                    shape = UNIT_CONTROL_SHAPE,
+                    colors = unitTonalButtonColors(),
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                 ) {
@@ -519,7 +596,7 @@ internal fun GuideCommentCheatSheet(
     val sampleTitle = remember(language) { practiceTourSampleTitle(language) }
     val sampleCode = remember(language) { practiceTourSampleCode(language) }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -540,9 +617,9 @@ internal fun GuideCommentCheatSheet(
             )
             entries.forEach { (syntax, desc) ->
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = colors.surface,
-                    border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f)),
+                    shape = UNIT_CONTROL_SHAPE,
+                    color = colors.surfaceContainerLow,
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.6f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -574,18 +651,29 @@ internal fun GuideCommentCheatSheet(
                         clipboard.setPrimaryClip(ClipData.newPlainText("code", sampleCode))
                         Toast.makeText(context, t("コードをコピーしました", "Code copied", "已复制代码"), Toast.LENGTH_SHORT).show()
                     },
+                    shape = UNIT_CONTROL_SHAPE,
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    Text(t("コードをコピー", "Copy sample", "复制示例"), maxLines = 1)
+                    AutoFitSingleLineText(
+                        t("コードをコピー", "Copy sample", "复制示例"),
+                        minFontSize = 10.5.sp
+                    )
                 }
                 if (onTryCodeInEditor != null) {
                     FilledTonalButton(
                         onClick = { onTryCodeInEditor(sampleTitle, sampleCode) },
+                        shape = UNIT_CONTROL_SHAPE,
+                        colors = unitTonalButtonColors(),
+                        border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                     ) {
-                        Text(t("エディターで試す", "Try in Editor", "在编辑器中尝试"), maxLines = 1)
+                        AutoFitSingleLineText(
+                            t("エディターで試す", "Try in Editor", "在编辑器中尝试"),
+                            minFontSize = 10.5.sp
+                        )
                     }
                 }
             }
@@ -625,10 +713,14 @@ internal fun GuideControlIllustration(sectionIcon: Int, language: String) {
     }
     fun toggle(value: String) { panel = if (panel == value) "" else value }
     fun restore() { diameter = savedDiameter; ink = savedInk; confirmRestore = false; message = t("保存した状態に戻しました。", "Saved state restored.", "已恢复保存的状态。") }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    val colors = MaterialTheme.colorScheme
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(t("練習用プレビュー", "Practice preview", "练习预览"), style = MaterialTheme.typography.titleSmall)
-            Canvas(Modifier.fillMaxWidth().height(if (LocalConfiguration.current.screenHeightDp < 480) 110.dp else 160.dp).testTag("guide-preview")
+            Canvas(Modifier.fillMaxWidth().height(if (LocalConfiguration.current.screenHeightDp < 480) 110.dp else 160.dp)
+                .clip(UNIT_CONTROL_SHAPE)
+                .border(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.6f), UNIT_CONTROL_SHAPE)
+                .testTag("guide-preview")
                 .semantics { contentDescription = "${diameter.toInt()} / ${names[ink]}" }
                 .clickable { ink = (ink + 1) % palette.size }) {
                 drawRect(Color(0xFFF2EFE7))
@@ -654,7 +746,6 @@ internal fun GuideControlIllustration(sectionIcon: Int, language: String) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 itemVerticalAlignment = Alignment.CenterVertically
             ) {
-                val colors = MaterialTheme.colorScheme
                 val controlTranslator: (String, Array<out Any?>) -> String = { source, _ ->
                     when (source) {
                         "再生" -> t("再開", "Resume", "继续")
@@ -730,7 +821,7 @@ internal fun GuideControlIllustration(sectionIcon: Int, language: String) {
             }
             if (message.isNotEmpty()) Text(message, Modifier.testTag("guide-feedback"), style = MaterialTheme.typography.bodySmall)
             if (panel.isNotEmpty()) {
-                HorizontalDivider()
+                HorizontalDivider(color = colors.outlineVariant.copy(alpha = UNIT_HAIRLINE_ALPHA))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(when (panel) {
                         "parameters" -> t("パラメータ", "Parameters", "参数")
@@ -738,51 +829,51 @@ internal fun GuideControlIllustration(sectionIcon: Int, language: String) {
                         "snapshots" -> t("スナップショット", "Snapshots", "快照")
                         else -> t("プレビュー操作", "Preview actions", "预览操作")
                     }, style = MaterialTheme.typography.titleSmall)
-                    IconButton(onClick = { panel = "" }) { Icon(painterResource(R.drawable.ic_close), t("パネルを閉じる", "Close panel", "关闭面板")) }
+                    IconButton(onClick = { panel = "" }, shape = UNIT_CONTROL_SHAPE) { Icon(painterResource(R.drawable.ic_close), t("パネルを閉じる", "Close panel", "关闭面板")) }
                 }
                 when (panel) {
                     "parameters" -> {
                         Text(t("直径", "Diameter", "直径") + " ${diameter.toInt()}", Modifier.testTag("guide-diameter"))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { diameter = (diameter - 10).coerceAtLeast(20f) }) { Text("−") }
-                            StudioSlider(diameter, { diameter = it }, Modifier.weight(1f).testTag("guide-slider"), steps = 21, valueRange = 20f..240f)
-                            TextButton(onClick = { diameter = (diameter + 10).coerceAtMost(240f) }) { Text("+") }
+                            TextButton(onClick = { diameter = (diameter - 10).coerceAtLeast(20f) }, shape = UNIT_CONTROL_SHAPE) { Text("−") }
+                            StudioSlider(diameter, { diameter = it }, Modifier.weight(1f).testTag("guide-slider"), steps = 21, valueRange = 20f..240f, defaultValue = 120f)
+                            TextButton(onClick = { diameter = (diameter + 10).coerceAtMost(240f) }, shape = UNIT_CONTROL_SHAPE) { Text("+") }
                         }
                         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            names.forEachIndexed { index, name -> FilterChip(ink == index, { ink = index }, label = { Text(name) }) }
+                            names.forEachIndexed { index, name -> GuideFilterChip(ink == index, { ink = index }, name) }
                         }
-                        TextButton(onClick = { diameter = 120f; ink = 0 }) { Text(t("初期値に戻す", "Reset parameters", "重置参数")) }
+                        TextButton(onClick = { diameter = 120f; ink = 0 }, shape = UNIT_CONTROL_SHAPE) { Text(t("初期値に戻す", "Reset parameters", "重置参数")) }
                     }
                     "logs" -> Text("[demo] rinParams.diameter = ${diameter.toInt()}\n[demo] rinParams.ink = ${names[ink]}")
                     "snapshots" -> {
-                        TextButton(onClick = { snapshotDiameter = diameter; snapshotInk = ink; hasSnapshot = true }) { Text(t("スナップショットを作成", "Create snapshot", "创建快照")) }
+                        TextButton(onClick = { snapshotDiameter = diameter; snapshotInk = ink; hasSnapshot = true }, shape = UNIT_CONTROL_SHAPE) { Text(t("スナップショットを作成", "Create snapshot", "创建快照")) }
                         if (hasSnapshot) {
                             Text("${snapshotDiameter.toInt()} / ${names[snapshotInk]}")
-                            TextButton(onClick = { diameter = snapshotDiameter; ink = snapshotInk; message = t("スナップショットを復元しました。", "Snapshot restored.", "已恢复快照。") }) { Text(t("この状態を復元", "Restore snapshot", "恢复此状态")) }
+                            TextButton(onClick = { diameter = snapshotDiameter; ink = snapshotInk; message = t("スナップショットを復元しました。", "Snapshot restored.", "已恢复快照。") }, shape = UNIT_CONTROL_SHAPE) { Text(t("この状態を復元", "Restore snapshot", "恢复此状态")) }
                         } else Text(t("まだスナップショットはありません。", "No snapshots yet.", "暂无快照。"))
                     }
                     "capture" -> {
-                        TextButton(onClick = { captured = true; captureDiameter = diameter; captureInk = ink }) { Text(t("スクリーンショットを試す", "Try screenshot", "试用截图")) }
+                        TextButton(onClick = { captured = true; captureDiameter = diameter; captureInk = ink }, shape = UNIT_CONTROL_SHAPE) { Text(t("スクリーンショットを試す", "Try screenshot", "试用截图")) }
                         TextButton(onClick = {
                             if (recording) recordedSeconds = recordingSeconds else recordingSeconds = 0
                             recording = !recording
-                        }) { Text(if (recording) t("録画を停止", "Stop recording", "停止录制") else t("録画を試す", "Try recording", "试用录制")) }
+                        }, shape = UNIT_CONTROL_SHAPE) { Text(if (recording) t("録画を停止", "Stop recording", "停止录制") else t("録画を試す", "Try recording", "试用录制")) }
                         if (recording) Text(t("録画中（練習）", "Recording (practice)", "录制中（练习）") + " ${recordingSeconds}s")
                         if (!recording && recordedSeconds >= 0) Text(t("録画を終了しました（練習）", "Recording finished (practice)", "录制结束（练习）") + " ${recordedSeconds}s")
                         if (captured) {
                             Text(t("撮影結果（練習）", "Captured image (practice)", "截图结果（练习）"))
-                            Canvas(Modifier.fillMaxWidth().height(80.dp)) { drawRect(Color(0xFFF2EFE7)); drawCircle(palette[captureInk], size.minDimension * captureDiameter / 600f) }
+                            Canvas(Modifier.fillMaxWidth().height(80.dp).clip(UNIT_CONTROL_SHAPE)) { drawRect(Color(0xFFF2EFE7)); drawCircle(palette[captureInk], size.minDimension * captureDiameter / 600f) }
                         }
                     }
                 }
             }
         }
     }
-    if (confirmRestore) AlertDialog(onDismissRequest = { confirmRestore = false },
+    if (confirmRestore) UnitAlertDialog(onDismissRequest = { confirmRestore = false },
         title = { Text(t("保存した状態に戻しますか？", "Restore saved state?", "恢复保存的状态？")) },
         text = { Text(t("練習中の変更を、最後に保存した大きさと色に戻します。", "Replace practice changes with the last saved size and color.", "将练习中的修改恢复为上次保存的大小和颜色。")) },
-        confirmButton = { TextButton(onClick = { restore() }) { Text(t("復元", "Restore", "恢复")) } },
-        dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text(t("キャンセル", "Cancel", "取消")) } })
+        confirmButton = { TextButton(onClick = { restore() }, shape = UNIT_CONTROL_SHAPE) { Text(t("復元", "Restore", "恢复")) } },
+        dismissButton = { TextButton(onClick = { confirmRestore = false }, shape = UNIT_CONTROL_SHAPE) { Text(t("キャンセル", "Cancel", "取消")) } })
 }
 
 @Composable
@@ -811,7 +902,7 @@ internal fun GuideBlockModeIllustration(language: String) {
         if (args.isEmpty()) translated else String.format(java.util.Locale.ROOT, translated, *args)
     }
 
-    Card(colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow)) {
+    GuideVisualCard {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             EditorDocumentBar(
                 files = listOf("sketch.js"),
@@ -844,9 +935,9 @@ internal fun GuideBlockModeIllustration(language: String) {
 
             if (fullPreviewOpen) {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = UNIT_CARD_SHAPE,
                     color = Color(0xFFF2EFE7),
-                    border = BorderStroke(1.dp, colors.outlineVariant),
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
                     modifier = Modifier.fillMaxWidth().height(210.dp).testTag("guide-block-full-preview")
                 ) {
                     Box(Modifier.fillMaxSize()) {
@@ -862,6 +953,9 @@ internal fun GuideBlockModeIllustration(language: String) {
                         }
                         FilledTonalButton(
                             onClick = { fullPreviewOpen = false },
+                            shape = UNIT_CONTROL_SHAPE,
+                            colors = unitTonalButtonColors(),
+                            border = BorderStroke(UNIT_BORDER_WIDTH, colors.primary.copy(alpha = 0.45f)),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
                         ) {
@@ -880,8 +974,9 @@ internal fun GuideBlockModeIllustration(language: String) {
                     append("}")
                 }
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = colors.surfaceContainerHigh,
+                    shape = UNIT_CARD_SHAPE,
+                    color = colors.surfaceContainerLow,
+                    border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.7f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -895,9 +990,9 @@ internal fun GuideBlockModeIllustration(language: String) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(UNIT_CARD_SHAPE)
                         .background(colors.surfaceContainer)
-                        .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp))
+                        .border(UNIT_BORDER_WIDTH, colors.outlineVariant, UNIT_CARD_SHAPE)
                         .padding(10.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -977,10 +1072,10 @@ internal fun GuideBlockModeIllustration(language: String) {
 
                         if (paletteOpen) {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = UNIT_CARD_SHAPE,
                                 color = colors.surface,
-                                border = BorderStroke(1.dp, colors.outlineVariant),
-                                shadowElevation = 4.dp,
+                                border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+                                shadowElevation = 2.dp,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -990,12 +1085,15 @@ internal fun GuideBlockModeIllustration(language: String) {
                                         color = colors.primary,
                                         fontWeight = FontWeight.SemiBold
                                     )
-                                    OutlinedCard(
+                                    Surface(
                                         onClick = {
                                             hasExtraRing = true
                                             paletteOpen = false
                                             feedback = t("ブロックを追加しました。", "Block inserted.", "已添加积木。")
                                         },
+                                        shape = UNIT_CONTROL_SHAPE,
+                                        color = colors.surfaceContainerLow,
+                                        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
@@ -1016,10 +1114,10 @@ internal fun GuideBlockModeIllustration(language: String) {
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = UNIT_CONTROL_SHAPE,
                         color = colors.surface,
-                        border = BorderStroke(1.dp, colors.outlineVariant),
-                        shadowElevation = 4.dp,
+                        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant),
+                        shadowElevation = 2.dp,
                         modifier = Modifier.align(Alignment.TopEnd).size(width = 104.dp, height = 88.dp)
                     ) {
                         Column(Modifier.fillMaxSize()) {

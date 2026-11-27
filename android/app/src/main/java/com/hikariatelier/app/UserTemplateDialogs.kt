@@ -111,29 +111,29 @@ internal fun UserTemplateManagerSheet(
             dismissButton = { TextButton(enabled = !busy, onClick = { renamingId = null }) { Text(text("キャンセル")) } })
     }
     templates.firstOrNull { it.id == updatingId }?.let { template ->
-        AlertDialog(onDismissRequest = { if (!busy) updatingId = null },
+        UnitAlertDialog(onDismissRequest = { if (!busy) updatingId = null },
             title = { KeepLandscapeDialogImmersive(); Text(text("テンプレートを更新")) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(template.title)
                 Text(text("現在の作品の編集内容・素材・実行設定で、テンプレートを上書きします。このテンプレートから作成済みの作品は変わりません。"))
                 currentWorkTitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             } },
-            confirmButton = { TextButton(enabled = !busy && currentWorkTitle != null, onClick = {
+            confirmButton = { TextButton(enabled = !busy && currentWorkTitle != null, shape = UNIT_CONTROL_SHAPE, onClick = {
                 onUpdate(template.id); updatingId = null
             }) { Text(text("更新")) } },
-            dismissButton = { TextButton(enabled = !busy, onClick = { updatingId = null }) { Text(text("キャンセル")) } })
+            dismissButton = { TextButton(enabled = !busy, shape = UNIT_CONTROL_SHAPE, onClick = { updatingId = null }) { Text(text("キャンセル")) } })
     }
     templates.firstOrNull { it.id == deletingId }?.let { template ->
-        AlertDialog(onDismissRequest = { if (!busy) deletingId = null },
+        UnitAlertDialog(onDismissRequest = { if (!busy) deletingId = null },
             title = { KeepLandscapeDialogImmersive(); Text(text("テンプレートを削除")) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(template.title)
                 Text(text("削除しても作成済みの作品には影響しません。"))
             } },
-            confirmButton = { TextButton(enabled = !busy, onClick = {
+            confirmButton = { TextButton(enabled = !busy, shape = UNIT_CONTROL_SHAPE, onClick = {
                 onDelete(template.id); deletingId = null
             }) { Text(text("削除"), color = colors.error) } },
-            dismissButton = { TextButton(enabled = !busy, onClick = { deletingId = null }) { Text(text("キャンセル")) } })
+            dismissButton = { TextButton(enabled = !busy, shape = UNIT_CONTROL_SHAPE, onClick = { deletingId = null }) { Text(text("キャンセル")) } })
     }
 }
 
@@ -143,7 +143,7 @@ internal fun SaveUserTemplateDialog(
     onRetry: () -> Unit, onSave: (String) -> Unit, onDismiss: () -> Unit
 ) {
     var title by rememberSaveable { mutableStateOf(initialTitle) }
-    AlertDialog(
+    UnitAlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { KeepLandscapeDialogImmersive(); Text(text("テンプレートとして保存")) },
         text = {
@@ -153,15 +153,15 @@ internal fun SaveUserTemplateDialog(
                     label = { Text(text("テンプレート名")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (loadFailed) {
                     Text(text("テンプレートを読み込めませんでした。保存データは変更していません。"), color = MaterialTheme.colorScheme.error)
-                    TextButton(enabled = !busy, onClick = onRetry) { Text(text("再試行")) }
+                    TextButton(enabled = !busy, shape = UNIT_CONTROL_SHAPE, onClick = onRetry) { Text(text("再試行")) }
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy && !loadFailed && title.isNotBlank(), onClick = { onSave(title.trim()) }) {
+            TextButton(enabled = !busy && !loadFailed && title.isNotBlank(), shape = UNIT_CONTROL_SHAPE, onClick = { onSave(title.trim()) }) {
                 Text(text("保存"))
             }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(text("キャンセル")) } }
+        dismissButton = { TextButton(enabled = !busy, shape = UNIT_CONTROL_SHAPE, onClick = onDismiss) { Text(text("キャンセル")) } }
     )
 }

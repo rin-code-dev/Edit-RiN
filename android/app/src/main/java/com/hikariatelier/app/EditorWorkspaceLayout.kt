@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +108,7 @@ internal data class EditorWorkspaceSlots(
     val landscapeRail: (@Composable (Modifier) -> Unit)? = null,
 )
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun EditorWorkspaceLayout(
     state: EditorWorkspaceState,
@@ -146,7 +148,7 @@ internal fun EditorWorkspaceLayout(
         val containerMaxHeightDp = maxHeight.value
         val hasVisibleCompletions = state.hasVisibleCompletions
         val chromeHeight = (if (state.editorFocused) 0.dp else 108.dp) +
-            (if (state.showResizeHandles && !state.editorFocused) 28.dp else 0.dp) +
+            (if (state.showResizeHandles && !state.editorFocused) 18.dp else 0.dp) +
             (if (state.showConsole) 176.dp else 0.dp) +
             (if (state.editorFocused && state.showEditorAccessoryBar) 60.dp else 8.dp) +
             (if (hasVisibleCompletions) 48.dp else 0.dp)
@@ -383,11 +385,12 @@ internal fun EditorWorkspaceLayout(
                         }
                     }
                     if (useFloatingPipInLandscape) {
+                        val topReserved = if (state.blockModeFullscreen) 50.dp else 6.dp
                         val bottomReserved = if (state.parameterFullscreen) 12.dp else 72.dp
                         FloatingPipPreviewHost(
                             aspectRatio = state.workPreviewRatio,
                             containerWidthDp = containerMaxWidthDp,
-                            containerHeightDp = (containerMaxHeightDp - bottomReserved.value).coerceAtLeast(160f),
+                            containerHeightDp = (containerMaxHeightDp - topReserved.value - bottomReserved.value).coerceAtLeast(160f),
                             autoRunEnabled = state.autoRunEnabled,
                             onToggleAutoRun = actions.onToggleAutoRun,
                             previewHasChanges = state.previewHasChanges,
@@ -407,7 +410,7 @@ internal fun EditorWorkspaceLayout(
                             onExpandFullscreen = actions.onExpandPipFullscreen,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(top = 6.dp, start = 16.dp, end = 16.dp, bottom = bottomReserved)
+                                .padding(top = topReserved, start = 16.dp, end = 16.dp, bottom = bottomReserved)
                         ) { pipPreviewModifier ->
                             (slots.pipPreview ?: slots.preview)(pipPreviewModifier)
                         }
@@ -433,6 +436,27 @@ internal fun EditorWorkspaceLayout(
                 val galleryProgressProvider = state.galleryProgressProvider
                 val gallerySettled = state.gallerySettled
                 val galleryPresent = state.galleryVisible
+                val currentDensity = LocalDensity.current
+                val currentView = LocalView.current
+                val navVisibleBottomDp = with(currentDensity) { WindowInsets.navigationBars.getBottom(currentDensity).toDp() }
+                val cornerTargetDp = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    val rootInsets = currentView.rootWindowInsets
+                    val leftRadius = rootInsets?.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_LEFT)?.radius ?: 0
+                    val rightRadius = rootInsets?.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius ?: 0
+                    val maxRadiusPx = maxOf(leftRadius, rightRadius)
+                    if (maxRadiusPx > 0) {
+                        (with(currentDensity) { maxRadiusPx.toDp() } * 0.42f).coerceIn(14.dp, 20.dp)
+                    } else {
+                        14.dp
+                    }
+                } else {
+                    14.dp
+                }
+                val extraCornerBottom = if (!state.keyboardVisible) {
+                    (cornerTargetDp - navVisibleBottomDp).coerceAtLeast(0.dp)
+                } else {
+                    0.dp
+                }
                 Box(
                     Modifier
                         .weight(1f)
@@ -474,10 +498,15 @@ internal fun EditorWorkspaceLayout(
 
                         Column(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                             if (state.showResizeHandles && !state.editorFocused && !isPortraitFullscreenOverlay) {
+                                val resizeHandleHeight by animateDpAsState(
+                                    targetValue = if (state.portraitRatioDragging) 26.dp else 18.dp,
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                    label = "portraitResizeHandleHeight"
+                                )
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(28.dp)
+                                        .height(resizeHandleHeight)
                                         .galleryChrome(galleryProgressProvider, GalleryPart.SECONDARY)
                                         .pointerInput(state.activeWorkId) {
                                             var accumulated = 0f
@@ -625,8 +654,15 @@ internal fun EditorWorkspaceLayout(
                                 )
                             }
 
+                            val baseEditorBottomPadding = if (isPortraitFullscreenOverlay) {
+                                10.dp
+                            } else if (!state.isSample && state.editorFocused && state.showEditorAccessoryBar) {
+                                0.dp
+                            } else {
+                                12.dp
+                            }
                             val editorBottomPadding by animateDpAsState(
-                                targetValue = if (isPortraitFullscreenOverlay) 6.dp else if (!state.isSample && state.editorFocused && state.showEditorAccessoryBar) 0.dp else 12.dp,
+                                targetValue = maxOf(baseEditorBottomPadding, extraCornerBottom),
                                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                 label = "editorBottomPadding"
                             )
@@ -665,12 +701,14 @@ internal fun EditorWorkspaceLayout(
 
                     // Floating PiP Preview Window when the top preview is hidden during portrait editing
                     if (useFloatingPipInPortrait) {
+                        val topReserved = if (state.blockModeFullscreen) 36.dp else 6.dp
                         val bottomReserved = (if (state.parameterFullscreen) 12.dp else if (state.blockModeFullscreen) 72.dp else if (state.showEditorAccessoryBar && !state.isSample) 54.dp else 12.dp) +
-                            (if (hasVisibleCompletions && !state.parameterFullscreen) 44.dp else 0.dp)
+                            (if (hasVisibleCompletions && !state.parameterFullscreen) 44.dp else 0.dp) +
+                            (if (state.parameterFullscreen || state.blockModeFullscreen) extraCornerBottom else 0.dp)
                         FloatingPipPreviewHost(
                             aspectRatio = state.workPreviewRatio,
                             containerWidthDp = containerMaxWidthDp,
-                            containerHeightDp = (containerMaxHeightDp - bottomReserved.value).coerceAtLeast(160f),
+                            containerHeightDp = (containerMaxHeightDp - topReserved.value - bottomReserved.value).coerceAtLeast(160f),
                             autoRunEnabled = state.autoRunEnabled,
                             onToggleAutoRun = actions.onToggleAutoRun,
                             previewHasChanges = state.previewHasChanges,
@@ -690,7 +728,7 @@ internal fun EditorWorkspaceLayout(
                             onExpandFullscreen = actions.onExpandPipFullscreen,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(top = 6.dp, start = 8.dp, end = 8.dp, bottom = bottomReserved)
+                                .padding(top = topReserved, start = 8.dp, end = 8.dp, bottom = bottomReserved)
                         ) { pipPreviewModifier ->
                             (slots.pipPreview ?: slots.preview)(pipPreviewModifier)
                         }

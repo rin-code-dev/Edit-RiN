@@ -10,7 +10,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -82,7 +81,7 @@ internal fun SettingsAboutSection(
                         contentDescription = null,
                         modifier = Modifier
                             .size(56.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(UNIT_CARD_SHAPE)
                     )
                     Spacer(Modifier.width(14.dp))
                     Column(
@@ -99,7 +98,7 @@ internal fun SettingsAboutSection(
                                 fontWeight = FontWeight.Bold
                             )
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = UNIT_COMPACT_CONTROL_SHAPE,
                                 color = colors.secondaryContainer,
                                 contentColor = colors.onSecondaryContainer
                             ) {
@@ -113,7 +112,7 @@ internal fun SettingsAboutSection(
                             }
                             if (BuildConfig.DEBUG) {
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = UNIT_COMPACT_CONTROL_SHAPE,
                                     color = colors.tertiaryContainer,
                                     contentColor = colors.onTertiaryContainer
                                 ) {
@@ -140,9 +139,10 @@ internal fun SettingsAboutSection(
                 if (updateViewModel.checking || updateViewModel.downloading || statusMsg != null || available != null) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = UNIT_CONTROL_SHAPE,
                         color = colors.secondaryContainer.copy(alpha = 0.65f),
-                        contentColor = colors.onSecondaryContainer
+                        contentColor = colors.onSecondaryContainer,
+                        border = BorderStroke(UNIT_BORDER_WIDTH, colors.outlineVariant.copy(alpha = 0.55f))
                     ) {
                         Column(
                             modifier = Modifier.padding(12.dp),
@@ -257,7 +257,7 @@ internal fun SettingsAboutSection(
                         },
                         shape = UNIT_CONTROL_SHAPE,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(
@@ -265,18 +265,24 @@ internal fun SettingsAboutSection(
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(Modifier.width(6.dp))
-                        Text(uiText("環境情報をコピー"), maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.width(5.dp))
+                        AutoFitSingleLineText(
+                            text = uiText("環境情報をコピー"),
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     }
                     FilledTonalButton(
                         onClick = onShowLicenses,
                         shape = UNIT_CONTROL_SHAPE,
                         colors = unitTonalButtonColors(),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(uiText("ライセンス情報"), maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                        AutoFitSingleLineText(
+                            text = uiText("ライセンス情報"),
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     }
                 }
             }
@@ -370,7 +376,7 @@ private fun EngineSpecRow(name: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surfaceContainerLow, RoundedCornerShape(8.dp))
+            .background(colors.surfaceContainerLow, UNIT_COMPACT_CONTROL_SHAPE)
             .padding(horizontal = 10.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
